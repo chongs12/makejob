@@ -1,0 +1,26 @@
+# MakeJob Backend Configuration
+
+server:
+  port: 8080
+  mode: debug  # debug/release
+
+database:
+  host: localhost
+  port: 5434          # 修改点：对应 Docker 映射的宿主机端口
+  user: postgres      # 默认用户名，除非你通过环境变量修改过
+  password: password  # 对应你启动命令中的 POSTGRES_PASSWORD
+  dbname: makejob
+  sslmode: disable
+
+redis:
+  host: localhost
+  port: 6384          # 修改点：对应 Docker 映射的宿主机端口
+  password: ""        # 你启动 Redis 时未设置密码，保持为空
+  db: 0
+jwt:
+  secret: "makejob-secret-key-change-in-production"
+  expire: 24  # hours
+  refresh_expire: 168  # hours (7 days)
+
+casbin:
+  model_path: "config/rbac_model.conf"

@@ -1,0 +1,57 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Logs
+*.log
+*.pid
+*.seed
+*.stackdump
+debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Frontend: Nuxt / Node
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/.nitro/
+frontend/.cache/
+frontend/.data/
+frontend/dist/
+frontend/coverage/
+frontend/.vercel/
+frontend/.turbo/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+
+# Backend: Go
+backend/bin/
+backend/dist/
+backend/tmp/
+backend/coverage/
+backend/coverage.out
+backend/*.exe
+backend/*.dll
+backend/*.so
+backend/*.dylib
+backend/*.test
+backend/*.out
+
+# Generic local build artifacts
+tmp/
+temp/
+dist/
+coverage/
+*.coverprofile

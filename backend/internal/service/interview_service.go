@@ -1,0 +1,551 @@
+// Package service 提供业务逻辑层实现
+package service
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"makejob-backend/internal/ai"
+	"makejob-backend/internal/common"
+	"makejob-backend/internal/model"
+	"makejob-backend/internal/repository"
+)
+
+// InterviewService 面试服务接口
+type InterviewService interface {
+	CreateInterview(ctx context.Context, userID uint, req *CreateInterviewRequest) (*InterviewResponse, error)
+	GetInterview(ctx context.Context, userID, interviewID uint) (*InterviewDetailResponse, error)
+	ListInterviews(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error)
+	SubmitAnswer(ctx context.Context, userID, interviewID uint, req *InterviewAnswerRequest) (*InterviewAnswerResponse, error)
+	GetNextQuestion(ctx context.Context, userID, interviewID uint) (*NextQuestionResponse, error)
+	FinishInterview(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error)
+	GetReport(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error)
+}
+
+// CreateInterviewRequest 创建面试请求DTO
+type CreateInterviewRequest struct {
+	IndustryCode  string   `json:"industry_code" binding:"required"`
+	Difficulty    string   `json:"difficulty" binding:"required,oneof=easy medium hard mixed"`
+	Topics        []string `json:"topics"`
+	QuestionCount int      `json:"question_count" binding:"required,min=3,max=20"`
+}
+
+// InterviewResponse 创建面试响应DTO
+type InterviewResponse struct {
+	InterviewID   uint                  `json:"interview_id"`
+	Status        string                `json:"status"`
+	FirstQuestion *ai.InterviewQuestion `json:"first_question"`
+	CreatedAt     time.Time             `json:"created_at"`
+}
+
+// InterviewDetailResponse 面试详情响应DTO
+type InterviewDetailResponse struct {
+	ID             uint                       `json:"id"`
+	Status         string                     `json:"status"`
+	Score          float64                    `json:"score"`
+	TotalQuestions int                        `json:"total_questions"`
+	Messages       []InterviewMessageResponse `json:"messages"`
+	StartedAt      *time.Time                 `json:"started_at"`
+	EndedAt        *time.Time                 `json:"ended_at"`
+}
+
+// InterviewMessageResponse 面试消息响应DTO
+type InterviewMessageResponse struct {
+	Role        string    `json:"role"`
+	Content     string    `json:"content"`
+	MessageType string    `json:"message_type"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// InterviewAnswerRequest 提交回答请求DTO
+type InterviewAnswerRequest struct {
+	Answer string `json:"answer" binding:"required"`
+}
+
+// InterviewAnswerResponse 提交回答响应DTO
+type InterviewAnswerResponse struct {
+	Feedback     *ai.AnswerFeedback    `json:"feedback"`
+	NextQuestion *ai.InterviewQuestion `json:"next_question,omitempty"`
+	IsFinished   bool                  `json:"is_finished"`
+}
+
+// NextQuestionResponse 获取下一题响应DTO
+type NextQuestionResponse struct {
+	Question   *ai.InterviewQuestion `json:"question"`
+	QuestionNo int                   `json:"question_no"`
+	IsLast     bool                  `json:"is_last"`
+}
+
+// InterviewReportResponse 面试报告响应DTO
+type InterviewReportResponse struct {
+	InterviewID uint                `json:"interview_id"`
+	Report      *ai.InterviewReport `json:"report"`
+	Duration    int64               `json:"duration_seconds"`
+	CompletedAt time.Time           `json:"completed_at"`
+}
+
+// interviewService 面试服务实现
+type interviewService struct {
+	interviewRepo        repository.InterviewRepository
+	interviewMessageRepo repository.InterviewMessageRepository
+	interviewAgent       ai.InterviewAgent
+	industryRepo         repository.IndustryRepository
+}
+
+// NewInterviewService 创建面试服务实例
+func NewInterviewService(
+	interviewRepo repository.InterviewRepository,
+	interviewMessageRepo repository.InterviewMessageRepository,
+	interviewAgent ai.InterviewAgent,
+	industryRepo ...repository.IndustryRepository,
+) InterviewService {
+	s := &interviewService{
+		interviewRepo:        interviewRepo,
+		interviewMessageRepo: interviewMessageRepo,
+		interviewAgent:       interviewAgent,
+	}
+	if len(industryRepo) > 0 {
+		s.industryRepo = industryRepo[0]
+	}
+	return s
+}
+
+// CreateInterview 创建面试会话
+func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req *CreateInterviewRequest) (*InterviewResponse, error) {
+	// 解析行业ID（从行业代码转换）
+	var industryID uint
+	if s.industryRepo != nil {
+		industry, err := s.industryRepo.GetByCode(ctx, req.IndustryCode)
+		if err != nil {
+			return nil, fmt.Errorf("查询行业失败: %w", err)
+		}
+		if industry != nil {
+			industryID = industry.ID
+		}
+	}
+	if industryID == 0 {
+		industryID = parseIndustryCode(req.IndustryCode)
+	}
+
+	// 创建面试记录
+	now := time.Now()
+	interview := &model.MockInterview{
+		UserID:         userID,
+		IndustryID:     industryID,
+		Status:         model.InterviewStatusOngoing,
+		TotalQuestions: req.QuestionCount,
+		StartedAt:      &now,
+	}
+
+	if err := s.interviewRepo.Create(ctx, interview); err != nil {
+		return nil, err
+	}
+
+	// 调用AI开始面试
+	config := ai.InterviewConfig{
+		IndustryCode:  req.IndustryCode,
+		Difficulty:    req.Difficulty,
+		Topics:        req.Topics,
+		QuestionCount: req.QuestionCount,
+	}
+
+	sessionID, firstQuestion, err := s.interviewAgent.StartInterview(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("启动AI面试失败: %w", err)
+	}
+
+	// 保存sessionID到面试记录（通过AIFeedback字段临时存储）
+	interview.AIFeedback = sessionID
+	if err := s.interviewRepo.Update(ctx, interview); err != nil {
+		return nil, err
+	}
+
+	// 保存第一个问题为消息
+	questionMsg := &model.InterviewMessage{
+		InterviewID: interview.ID,
+		Role:        model.MessageRoleAI,
+		Content:     firstQuestion.Question,
+		MessageType: model.MessageTypeText,
+	}
+	if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
+		return nil, err
+	}
+
+	return &InterviewResponse{
+		InterviewID:   interview.ID,
+		Status:        interview.Status,
+		FirstQuestion: &firstQuestion,
+		CreatedAt:     now,
+	}, nil
+}
+
+// GetInterview 获取面试详情
+func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID uint) (*InterviewDetailResponse, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+	if interview == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+
+	// 验证面试归属
+	if interview.UserID != userID {
+		return nil, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+
+	// 获取消息列表
+	messages, err := s.interviewMessageRepo.ListByInterview(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+
+	messageResponses := make([]InterviewMessageResponse, len(messages))
+	for i, msg := range messages {
+		messageResponses[i] = InterviewMessageResponse{
+			Role:        msg.Role,
+			Content:     msg.Content,
+			MessageType: msg.MessageType,
+			CreatedAt:   time.Unix(msg.CreatedAt, 0),
+		}
+	}
+
+	return &InterviewDetailResponse{
+		ID:             interview.ID,
+		Status:         interview.Status,
+		Score:          interview.Score,
+		TotalQuestions: interview.TotalQuestions,
+		Messages:       messageResponses,
+		StartedAt:      interview.StartedAt,
+		EndedAt:        interview.EndedAt,
+	}, nil
+}
+
+// ListInterviews 获取面试列表
+func (s *interviewService) ListInterviews(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	interviews, total, err := s.interviewRepo.ListByUser(ctx, userID, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	return &common.PageResult{
+		List:     interviews,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// SubmitAnswer 提交回答
+func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID uint, req *InterviewAnswerRequest) (*InterviewAnswerResponse, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+	if interview == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+
+	// 验证面试归属
+	if interview.UserID != userID {
+		return nil, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+
+	// 验证面试状态
+	if !interview.IsOngoing() {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	}
+
+	// 获取sessionID
+	sessionID := interview.AIFeedback
+	if sessionID == "" {
+		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
+	}
+
+	// 获取当前消息数量来确定题目索引
+	msgCount, err := s.interviewMessageRepo.CountByInterview(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 计算当前题目索引（每轮包含AI问题和用户回答，所以题目索引 = msgCount / 2）
+	questionIndex := int(msgCount) / 2
+	if questionIndex >= interview.TotalQuestions {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "已完成所有题目")
+	}
+
+	// 保存用户回答
+	answerMsg := &model.InterviewMessage{
+		InterviewID: interviewID,
+		Role:        model.MessageRoleUser,
+		Content:     req.Answer,
+		MessageType: model.MessageTypeText,
+	}
+	if err := s.interviewMessageRepo.Create(ctx, answerMsg); err != nil {
+		return nil, err
+	}
+
+	// 调用AI评估答案
+	feedback, err := s.interviewAgent.EvaluateAnswer(ctx, sessionID, questionIndex, req.Answer)
+	if err != nil {
+		return nil, fmt.Errorf("评估答案失败: %w", err)
+	}
+
+	// 保存AI反馈
+	feedbackContent := fmt.Sprintf("评分: %.0f分\n%s\n\n改进建议: %s",
+		feedback.Score, feedback.Feedback, feedback.Suggestions)
+	feedbackMsg := &model.InterviewMessage{
+		InterviewID: interviewID,
+		Role:        model.MessageRoleAI,
+		Content:     feedbackContent,
+		MessageType: model.MessageTypeFeedback,
+	}
+	if err := s.interviewMessageRepo.Create(ctx, feedbackMsg); err != nil {
+		return nil, err
+	}
+
+	// 检查是否还有下一题
+	isFinished := questionIndex+1 >= interview.TotalQuestions
+	var nextQuestion *ai.InterviewQuestion
+
+	if !isFinished {
+		// 自动获取下一题
+		nextQ, hasNext, err := s.interviewAgent.GetNextQuestion(ctx, sessionID)
+		if err != nil {
+			return nil, fmt.Errorf("获取下一题失败: %w", err)
+		}
+		if hasNext {
+			nextQuestion = &nextQ
+			// 保存下一题
+			questionMsg := &model.InterviewMessage{
+				InterviewID: interviewID,
+				Role:        model.MessageRoleAI,
+				Content:     nextQ.Question,
+				MessageType: model.MessageTypeText,
+			}
+			if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
+				return nil, err
+			}
+		} else {
+			isFinished = true
+		}
+	}
+
+	return &InterviewAnswerResponse{
+		Feedback:     &feedback,
+		NextQuestion: nextQuestion,
+		IsFinished:   isFinished,
+	}, nil
+}
+
+// GetNextQuestion 获取下一题
+func (s *interviewService) GetNextQuestion(ctx context.Context, userID, interviewID uint) (*NextQuestionResponse, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+	if interview == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+
+	// 验证面试归属
+	if interview.UserID != userID {
+		return nil, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+
+	// 验证面试状态
+	if !interview.IsOngoing() {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	}
+
+	// 获取sessionID
+	sessionID := interview.AIFeedback
+	if sessionID == "" {
+		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
+	}
+
+	// 获取当前消息数量来确定下一题编号
+	msgCount, err := s.interviewMessageRepo.CountByInterview(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 计算下一题编号
+	nextQuestionNo := int(msgCount)/2 + 1
+	if nextQuestionNo > interview.TotalQuestions {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "已完成所有题目")
+	}
+
+	// 调用AI获取下一题
+	question, hasNext, err := s.interviewAgent.GetNextQuestion(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("获取下一题失败: %w", err)
+	}
+
+	if !hasNext {
+		return &NextQuestionResponse{
+			Question:   nil,
+			QuestionNo: nextQuestionNo,
+			IsLast:     true,
+		}, nil
+	}
+
+	// 保存问题到消息
+	questionMsg := &model.InterviewMessage{
+		InterviewID: interviewID,
+		Role:        model.MessageRoleAI,
+		Content:     question.Question,
+		MessageType: model.MessageTypeText,
+	}
+	if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
+		return nil, err
+	}
+
+	return &NextQuestionResponse{
+		Question:   &question,
+		QuestionNo: nextQuestionNo,
+		IsLast:     !hasNext || nextQuestionNo >= interview.TotalQuestions,
+	}, nil
+}
+
+// FinishInterview 结束面试
+func (s *interviewService) FinishInterview(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+	if interview == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+
+	// 验证面试归属
+	if interview.UserID != userID {
+		return nil, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+
+	// 验证面试状态
+	if !interview.IsOngoing() {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	}
+
+	// 获取sessionID
+	sessionID := interview.AIFeedback
+	if sessionID == "" {
+		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
+	}
+
+	// 生成面试报告
+	report, err := s.interviewAgent.GenerateReport(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("生成面试报告失败: %w", err)
+	}
+
+	// 更新面试记录
+	now := time.Now()
+	interview.Status = model.InterviewStatusCompleted
+	interview.Score = report.OverallScore
+	interview.EndedAt = &now
+
+	// 生成报告摘要保存到AIFeedback
+	reportSummary := fmt.Sprintf("总分: %.0f, 正确: %d/%d",
+		report.OverallScore, report.CorrectCount, report.TotalQuestions)
+	interview.AIFeedback = reportSummary
+
+	if err := s.interviewRepo.Update(ctx, interview); err != nil {
+		return nil, err
+	}
+
+	// 结束AI会话
+	if err := s.interviewAgent.EndInterview(ctx, sessionID); err != nil {
+		// 记录错误但不影响主流程
+		// TODO: 记录日志
+	}
+
+	// 计算面试时长
+	var duration int64
+	if interview.StartedAt != nil {
+		duration = int64(now.Sub(*interview.StartedAt).Seconds())
+	}
+
+	return &InterviewReportResponse{
+		InterviewID: interviewID,
+		Report:      &report,
+		Duration:    duration,
+		CompletedAt: now,
+	}, nil
+}
+
+// GetReport 获取面试报告
+func (s *interviewService) GetReport(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return nil, err
+	}
+	if interview == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+
+	// 验证面试归属
+	if interview.UserID != userID {
+		return nil, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+
+	// 验证面试状态
+	if interview.IsOngoing() {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "面试尚未结束")
+	}
+
+	// 计算面试时长
+	var duration int64
+	completedAt := time.Now()
+	if interview.EndedAt != nil {
+		completedAt = *interview.EndedAt
+		if interview.StartedAt != nil {
+			duration = int64(interview.EndedAt.Sub(*interview.StartedAt).Seconds())
+		}
+	}
+
+	// 从AIFeedback解析报告信息或重新生成
+	report := &ai.InterviewReport{
+		OverallScore:   interview.Score,
+		TotalQuestions: interview.TotalQuestions,
+		Summary:        interview.AIFeedback,
+	}
+
+	return &InterviewReportResponse{
+		InterviewID: interviewID,
+		Report:      report,
+		Duration:    duration,
+		CompletedAt: completedAt,
+	}, nil
+}
+
+// parseIndustryCode 解析行业代码为行业ID（简化实现）
+func parseIndustryCode(code string) uint {
+	// 简单的映射，实际应该从数据库查询
+	switch code {
+	case "go", "golang":
+		return 1
+	case "java":
+		return 2
+	case "python":
+		return 3
+	case "frontend":
+		return 4
+	case "ai":
+		return 5
+	default:
+		return 1
+	}
+}
