@@ -154,6 +154,8 @@ func (r *adminUserRepository) GetStats(ctx context.Context) (*UserStats, error) 
 
 // AdminQuestionRepository 题库管理仓库接口
 type AdminQuestionRepository interface {
+	List(ctx context.Context, page, pageSize int, keyword, difficulty string, categoryID uint) ([]model.Question, int64, error)
+	GetByID(ctx context.Context, id uint) (*model.Question, error)
 	Create(ctx context.Context, question *model.Question) error
 	Update(ctx context.Context, question *model.Question) error
 	Delete(ctx context.Context, id uint) error
@@ -169,6 +171,58 @@ type adminQuestionRepository struct {
 // NewAdminQuestionRepository 创建题库管理仓库实例
 func NewAdminQuestionRepository(db *gorm.DB) AdminQuestionRepository {
 	return &adminQuestionRepository{db: db}
+}
+
+// List 获取题库管理列表
+func (r *adminQuestionRepository) List(ctx context.Context, page, pageSize int, keyword, difficulty string, categoryID uint) ([]model.Question, int64, error) {
+	var (
+		questions []model.Question
+		total     int64
+	)
+
+	query := r.db.WithContext(ctx).
+		Model(&model.Question{}).
+		Preload("Category").
+		Preload("Industry")
+
+	if keyword != "" {
+		likeKeyword := "%" + keyword + "%"
+		query = query.Where("title LIKE ? OR content LIKE ?", likeKeyword, likeKeyword)
+	}
+	if difficulty != "" {
+		query = query.Where("difficulty = ?", difficulty)
+	}
+	if categoryID > 0 {
+		query = query.Where("category_id = ?", categoryID)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计题库列表失败: %w", err)
+	}
+
+	offset := (page - 1) * pageSize
+	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&questions).Error; err != nil {
+		return nil, 0, fmt.Errorf("查询题库列表失败: %w", err)
+	}
+
+	return questions, total, nil
+}
+
+// GetByID 获取单个题目
+func (r *adminQuestionRepository) GetByID(ctx context.Context, id uint) (*model.Question, error) {
+	var question model.Question
+
+	if err := r.db.WithContext(ctx).
+		Preload("Category").
+		Preload("Industry").
+		First(&question, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("查询题目失败: %w", err)
+	}
+
+	return &question, nil
 }
 
 // Create 创建题目

@@ -1,24 +1,89 @@
 <script setup lang="ts">
-/**
- * 题库管理页面
- * 双Tab: 题目管理 | 分类管理
- */
-
-import { Search, Plus, Upload, Edit, Delete, Refresh } from '@element-plus/icons-vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { Delete, Edit, Plus, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 definePageMeta({
   title: '题库管理',
   layout: 'admin',
-  middleware: ['admin']
+  middleware: ['admin'],
 })
+
+type QuestionType = 'choice' | 'multi' | 'code' | 'subjective'
+type DifficultyType = 'easy' | 'medium' | 'hard'
+
+interface IndustryItem {
+  id: number
+  code: string
+  name: string
+}
+
+interface CategoryItem {
+  id: number
+  industry_id: number
+  name: string
+  parent_id?: number | null
+  sort_order?: number
+  icon?: string
+  description?: string
+}
+
+interface QuestionItem {
+  id: number
+  industry_id: number
+  category_id: number
+  category_name?: string
+  title: string
+  type: QuestionType
+  difficulty: DifficultyType
+  content: string
+  options: string[]
+  answer: string
+  explanation: string
+  tags: string[]
+  is_active: boolean
+  created_at?: string
+}
+
+interface TreeNode extends CategoryItem {
+  label: string
+  value: number
+  children?: TreeNode[]
+}
+
+interface QuestionFormState {
+  title: string
+  industry_id: number | null
+  category_path: number[]
+  type: QuestionType
+  difficulty: DifficultyType
+  content: string
+  options: string[]
+  answer: string
+  explanation: string
+  tags: string
+  is_active: boolean
+}
+
+interface CategoryFormState {
+  industry_id: number | null
+  name: string
+  parent_id?: number
+  sort_order: number
+  icon: string
+  description: string
+}
 
 const api = useApi()
 
-// ==================== 题目管理 ====================
 const activeTab = ref('questions')
 const loading = ref(false)
-const questions = ref<any[]>([])
+const categoryLoading = ref(false)
+
+const questions = ref<QuestionItem[]>([])
+const categories = ref<CategoryItem[]>([])
+const industries = ref<IndustryItem[]>([])
+
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
@@ -26,13 +91,22 @@ const searchKeyword = ref('')
 const difficultyFilter = ref('')
 const categoryFilter = ref<number[]>([])
 
-// 分类数据(用于筛选和表单)
-const categories = ref<any[]>([])
-const categoryTree = ref<any[]>([])
+const questionDialogVisible = ref(false)
+const questionDialogTitle = ref('新增题目')
+const editingQuestionId = ref<number | null>(null)
 
-// 难度选项
+const categoryDialogVisible = ref(false)
+const categoryDialogTitle = ref('新增分类')
+const editingCategoryId = ref<number | null>(null)
+
+const importDialogVisible = ref(false)
+const importJson = ref('')
+const importIndustry = ref('')
+const importPreview = ref<any[]>([])
+const importLoading = ref(false)
+
 const difficultyOptions = [
-  { label: '全部', value: '' },
+  { label: '全部难度', value: '' },
   { label: '简单', value: 'easy' },
   { label: '中等', value: 'medium' },
   { label: '困难', value: 'hard' },
@@ -51,18 +125,175 @@ const typeTagMap: Record<string, { type: string; label: string }> = {
   subjective: { type: 'info', label: '主观题' },
 }
 
-// 获取题目列表
+const createQuestionForm = (): QuestionFormState => ({
+  title: '',
+  industry_id: null,
+  category_path: [],
+  type: 'choice',
+  difficulty: 'medium',
+  content: '',
+  options: ['', '', '', ''],
+  answer: '',
+  explanation: '',
+  tags: '',
+  is_active: true,
+})
+
+const createCategoryForm = (): CategoryFormState => ({
+  industry_id: null,
+  name: '',
+  parent_id: undefined,
+  sort_order: 0,
+  icon: '',
+  description: '',
+})
+
+const questionForm = ref<QuestionFormState>(createQuestionForm())
+const categoryForm = ref<CategoryFormState>(createCategoryForm())
+
+const categoryMap = computed(() => {
+  const map = new Map<number, CategoryItem>()
+  categories.value.forEach(category => map.set(category.id, category))
+  return map
+})
+
+const buildTree = (list: CategoryItem[], parentId: number | null = null, industryId?: number): TreeNode[] => {
+  const normalizedParentId = parentId ?? 0
+
+  return list
+    .filter(item => (item.parent_id ?? 0) === normalizedParentId)
+    .filter(item => industryId ? item.industry_id === industryId : true)
+    .sort((a, b) => {
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
+      if (orderDiff !== 0) return orderDiff
+      return a.id - b.id
+    })
+    .map((item) => {
+      const children = buildTree(list, item.id, industryId)
+      return {
+        ...item,
+        label: item.name,
+        value: item.id,
+        ...(children.length ? { children } : {}),
+      }
+    })
+}
+
+const categoryTree = computed(() => buildTree(categories.value))
+
+const questionCategoryTree = computed(() => {
+  if (!questionForm.value.industry_id) return []
+  return buildTree(categories.value, null, questionForm.value.industry_id)
+})
+
+const categoryParentOptions = computed(() => {
+  if (!categoryForm.value.industry_id) return []
+
+  const blockedIds = getCategoryDescendantIds(editingCategoryId.value)
+  if (editingCategoryId.value) {
+    blockedIds.add(editingCategoryId.value)
+  }
+
+  return categories.value
+    .filter(category => category.industry_id === categoryForm.value.industry_id)
+    .filter(category => !blockedIds.has(category.id))
+})
+
+const getCategoryPath = (categoryId?: number | null): number[] => {
+  if (!categoryId) return []
+
+  const path: number[] = []
+  const visited = new Set<number>()
+  let currentId: number | null | undefined = categoryId
+
+  while (currentId) {
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+
+    const category = categoryMap.value.get(currentId)
+    if (!category) break
+
+    path.unshift(category.id)
+    currentId = category.parent_id ?? null
+  }
+
+  return path
+}
+
+const getCategoryDescendantIds = (categoryId?: number | null): Set<number> => {
+  const descendants = new Set<number>()
+  if (!categoryId) return descendants
+
+  const queue = [categoryId]
+  while (queue.length) {
+    const currentId = queue.shift()
+    if (!currentId) continue
+
+    categories.value
+      .filter(category => (category.parent_id ?? 0) === currentId)
+      .forEach((category) => {
+        if (descendants.has(category.id)) return
+        descendants.add(category.id)
+        queue.push(category.id)
+      })
+  }
+
+  return descendants
+}
+
+const resetQuestionCategoryIfInvalid = () => {
+  const selectedCategoryId = questionForm.value.category_path.at(-1)
+  if (!selectedCategoryId || !questionForm.value.industry_id) return
+
+  const category = categoryMap.value.get(selectedCategoryId)
+  if (!category || category.industry_id !== questionForm.value.industry_id) {
+    questionForm.value.category_path = []
+  }
+}
+
+const resetCategoryParentIfInvalid = () => {
+  if (!categoryForm.value.parent_id || !categoryForm.value.industry_id) return
+
+  const parent = categoryMap.value.get(categoryForm.value.parent_id)
+  if (!parent || parent.industry_id !== categoryForm.value.industry_id) {
+    categoryForm.value.parent_id = undefined
+  }
+}
+
+watch(() => questionForm.value.industry_id, () => {
+  resetQuestionCategoryIfInvalid()
+})
+
+watch(() => categoryForm.value.industry_id, () => {
+  resetCategoryParentIfInvalid()
+})
+
+watch(() => questionForm.value.type, (type) => {
+  if (type === 'choice' || type === 'multi') {
+    if (questionForm.value.options.length < 2) {
+      questionForm.value.options = ['', '']
+    }
+    return
+  }
+
+  questionForm.value.options = []
+})
+
 const fetchQuestions = async () => {
   loading.value = true
   try {
-    const params: Record<string, any> = { page: page.value, page_size: pageSize.value }
-    if (searchKeyword.value) params.keyword = searchKeyword.value
-    if (difficultyFilter.value) params.difficulty = difficultyFilter.value
-    if (categoryFilter.value.length) params.category_id = categoryFilter.value[categoryFilter.value.length - 1]
+    const params: Record<string, any> = {
+      page: page.value,
+      page_size: pageSize.value,
+    }
 
-    const res = await api.get<any>('/api/admin/questions', params)
+    if (searchKeyword.value.trim()) params.keyword = searchKeyword.value.trim()
+    if (difficultyFilter.value) params.difficulty = difficultyFilter.value
+    if (categoryFilter.value.length) params.category_id = categoryFilter.value.at(-1)
+
+    const res = await api.get<{ list: QuestionItem[]; total: number }>('/api/admin/questions', params)
     if (res.code === 0 || res.code === 200) {
-      questions.value = res.data?.list || res.data || []
+      questions.value = res.data?.list || []
       total.value = res.data?.total || 0
     }
   } catch (error) {
@@ -72,81 +303,63 @@ const fetchQuestions = async () => {
   }
 }
 
-// 获取分类列表
 const fetchCategories = async () => {
+  categoryLoading.value = true
   try {
-    const res = await api.get<any>('/api/admin/categories')
+    const res = await api.get<CategoryItem[]>('/api/admin/categories')
     if (res.code === 0 || res.code === 200) {
-      const list = res.data?.list || res.data || []
-      categories.value = list
-      categoryTree.value = buildTree(list)
+      categories.value = Array.isArray(res.data) ? res.data : []
     }
   } catch (error) {
-    console.error('获取分类失败', error)
+    console.error('获取分类列表失败', error)
+  } finally {
+    categoryLoading.value = false
   }
 }
 
-// 构建分类树
-const buildTree = (list: any[], parentId = 0): any[] => {
-  return list
-    .filter((item: any) => (item.parent_id || 0) === parentId)
-    .map((item: any) => ({
-      ...item,
-      label: item.name,
-      value: item.id,
-      children: buildTree(list, item.id),
-    }))
-    .map((item: any) => {
-      if (item.children.length === 0) delete item.children
-      return item
-    })
+const fetchIndustries = async () => {
+  try {
+    const res = await api.get<IndustryItem[]>('/api/admin/industries')
+    if (res.code === 0 || res.code === 200) {
+      industries.value = Array.isArray(res.data) ? res.data : []
+    }
+  } catch (error) {
+    console.error('获取行业列表失败', error)
+  }
 }
 
-// 搜索
 const handleSearch = () => {
   page.value = 1
   fetchQuestions()
 }
 
-// ==================== 题目弹窗 ====================
-const questionDialogVisible = ref(false)
-const questionDialogTitle = ref('新增题目')
-const editingQuestionId = ref<number | null>(null)
-const questionForm = ref({
-  title: '',
-  category_id: [] as number[],
-  type: 'choice',
-  difficulty: 'medium',
-  content: '',
-  options: ['', '', '', ''],
-  answer: '',
-  explanation: '',
-  tags: '',
-})
+const handlePageChange = (newPage: number) => {
+  page.value = newPage
+  fetchQuestions()
+}
 
 const openAddQuestion = () => {
   editingQuestionId.value = null
   questionDialogTitle.value = '新增题目'
-  questionForm.value = {
-    title: '', category_id: [], type: 'choice', difficulty: 'medium',
-    content: '', options: ['', '', '', ''], answer: '', explanation: '', tags: '',
-  }
+  questionForm.value = createQuestionForm()
   questionDialogVisible.value = true
 }
 
-const openEditQuestion = (row: any) => {
+const openEditQuestion = (row: QuestionItem) => {
   editingQuestionId.value = row.id
   questionDialogTitle.value = '编辑题目'
   questionForm.value = {
     title: row.title || '',
-    category_id: row.category_id ? [row.category_id] : [],
+    industry_id: row.industry_id || null,
+    category_path: getCategoryPath(row.category_id),
     type: row.type || 'choice',
     difficulty: row.difficulty || 'medium',
     content: row.content || '',
-    options: row.options?.length ? [...row.options] : ['', '', '', ''],
+    options: row.options?.length ? [...row.options] : (row.type === 'choice' || row.type === 'multi' ? ['', ''] : []),
     answer: row.answer || '',
     explanation: row.explanation || '',
-    tags: Array.isArray(row.tags) ? row.tags.join(', ') : (row.tags || ''),
+    tags: Array.isArray(row.tags) ? row.tags.join(', ') : '',
+    is_active: row.is_active ?? true,
   }
   questionDialogVisible.value = true
 }
@@ -156,30 +369,56 @@ const addOption = () => {
 }
 
 const removeOption = (index: number) => {
-  if (questionForm.value.options.length > 2) {
-    questionForm.value.options.splice(index, 1)
-  }
+  if (questionForm.value.options.length <= 2) return
+  questionForm.value.options.splice(index, 1)
 }
 
 const saveQuestion = async () => {
   const form = questionForm.value
+  const categoryId = form.category_path.at(-1)
+  const normalizedOptions = form.options.map(item => item.trim()).filter(Boolean)
+  const normalizedTags = form.tags
+    .split(/[,，]/)
+    .map(item => item.trim())
+    .filter(Boolean)
+
   if (!form.title.trim()) {
     ElMessage.warning('请输入题目标题')
     return
   }
+  if (!form.industry_id) {
+    ElMessage.warning('请选择所属行业')
+    return
+  }
+  if (!categoryId) {
+    ElMessage.warning('请选择题目分类')
+    return
+  }
+  if (!form.content.trim()) {
+    ElMessage.warning('请输入题目内容')
+    return
+  }
+  if (!form.answer.trim()) {
+    ElMessage.warning('请输入答案')
+    return
+  }
+  if ((form.type === 'choice' || form.type === 'multi') && normalizedOptions.length < 2) {
+    ElMessage.warning('选择题至少需要两个选项')
+    return
+  }
 
-  const payload: Record<string, any> = {
-    title: form.title,
-    category_id: form.category_id.length ? form.category_id[form.category_id.length - 1] : 0,
+  const payload = {
+    title: form.title.trim(),
+    industry_id: form.industry_id,
+    category_id: categoryId,
     type: form.type,
     difficulty: form.difficulty,
-    content: form.content,
-    answer: form.answer,
-    explanation: form.explanation,
-    tags: form.tags.split(/[,，]/).map(t => t.trim()).filter(Boolean),
-  }
-  if (form.type === 'choice' || form.type === 'multi') {
-    payload.options = form.options.filter(Boolean)
+    content: form.content.trim(),
+    options_json: form.type === 'choice' || form.type === 'multi' ? JSON.stringify(normalizedOptions) : '',
+    answer: form.answer.trim(),
+    explanation: form.explanation.trim(),
+    tags: normalizedTags.join(','),
+    is_active: form.is_active,
   }
 
   try {
@@ -190,50 +429,35 @@ const saveQuestion = async () => {
       await api.post('/api/admin/questions', payload)
       ElMessage.success('题目创建成功')
     }
+
     questionDialogVisible.value = false
-    fetchQuestions()
+    await fetchQuestions()
   } catch (error) {
-    ElMessage.error('保存题目失败')
+    console.error('保存题目失败', error)
   }
 }
 
-// 删除题目
-const handleDeleteQuestion = async (row: any) => {
+const handleDeleteQuestion = async (row: QuestionItem) => {
   try {
-    await ElMessageBox.confirm(`确定删除题目「${row.title}」吗？此操作不可恢复。`, '确认删除', {
-      confirmButtonText: '确定删除',
+    await ElMessageBox.confirm(`确定删除题目“${row.title}”吗？该操作不可恢复。`, '删除确认', {
+      confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
     })
+
     await api.delete(`/api/admin/questions/${row.id}`)
-    ElMessage.success('删除成功')
-    fetchQuestions()
+    ElMessage.success('题目删除成功')
+    await fetchQuestions()
   } catch (error: any) {
-    if (error !== 'cancel') ElMessage.error('删除失败')
-  }
-}
-
-// ==================== 批量导入 ====================
-const importDialogVisible = ref(false)
-const importJson = ref('')
-const importIndustry = ref('')
-const importPreview = ref<any[]>([])
-const importLoading = ref(false)
-const industries = ref<any[]>([])
-
-const fetchIndustries = async () => {
-  try {
-    const res = await api.get<any>('/api/admin/industries')
-    if (res.code === 0 || res.code === 200) {
-      industries.value = res.data?.list || res.data || []
+    if (error !== 'cancel') {
+      console.error('删除题目失败', error)
     }
-  } catch (error) {
-    console.error('获取行业失败', error)
   }
 }
 
 const openImportDialog = () => {
   importJson.value = ''
+  importIndustry.value = ''
   importPreview.value = []
   importDialogVisible.value = true
 }
@@ -242,111 +466,128 @@ const parseImportJson = () => {
   try {
     const parsed = JSON.parse(importJson.value)
     importPreview.value = Array.isArray(parsed) ? parsed : (parsed.questions || [])
-    ElMessage.success(`解析成功，共 ${importPreview.value.length} 道题目`)
-  } catch {
-    ElMessage.error('JSON格式错误，请检查')
+    ElMessage.success(`解析成功，共 ${importPreview.value.length} 条题目`)
+  } catch (error) {
+    ElMessage.error('JSON 格式不正确')
   }
 }
 
 const handleImport = async () => {
   if (!importIndustry.value) {
-    ElMessage.warning('请选择行业')
+    ElMessage.warning('请选择导入行业')
     return
   }
-  if (importPreview.value.length === 0) {
-    ElMessage.warning('请先解析JSON')
+  if (!importPreview.value.length) {
+    ElMessage.warning('请先解析导入内容')
     return
   }
+
   importLoading.value = true
   try {
-    const res = await api.post<any>('/api/admin/questions/import', {
+    const res = await api.post<{ success_count: number }>('/api/admin/questions/import', {
       industry_code: importIndustry.value,
       questions: importPreview.value,
     })
+
     if (res.code === 0 || res.code === 200) {
-      ElMessage.success(`导入成功: ${res.data?.success_count || importPreview.value.length} 条`)
+      ElMessage.success(`批量导入成功，共导入 ${res.data?.success_count || importPreview.value.length} 条`)
       importDialogVisible.value = false
-      fetchQuestions()
+      await fetchQuestions()
     }
   } catch (error) {
-    ElMessage.error('批量导入失败')
+    console.error('批量导入失败', error)
   } finally {
     importLoading.value = false
   }
 }
 
-// ==================== 分类管理 ====================
-const categoryLoading = ref(false)
-const categoryDialogVisible = ref(false)
-const categoryDialogTitle = ref('添加分类')
-const editingCategoryId = ref<number | null>(null)
-const categoryForm = ref({ name: '', parent_id: 0, sort_order: 0 })
-
 const openAddCategory = () => {
   editingCategoryId.value = null
-  categoryDialogTitle.value = '添加分类'
-  categoryForm.value = { name: '', parent_id: 0, sort_order: 0 }
+  categoryDialogTitle.value = '新增分类'
+  categoryForm.value = createCategoryForm()
   categoryDialogVisible.value = true
 }
 
-const openEditCategory = (data: any) => {
-  editingCategoryId.value = data.id
+const openEditCategory = (category: CategoryItem) => {
+  editingCategoryId.value = category.id
   categoryDialogTitle.value = '编辑分类'
-  categoryForm.value = { name: data.name, parent_id: data.parent_id || 0, sort_order: data.sort_order || 0 }
+  categoryForm.value = {
+    industry_id: category.industry_id || null,
+    name: category.name || '',
+    parent_id: category.parent_id ?? undefined,
+    sort_order: category.sort_order ?? 0,
+    icon: category.icon || '',
+    description: category.description || '',
+  }
   categoryDialogVisible.value = true
 }
 
 const saveCategory = async () => {
-  if (!categoryForm.value.name.trim()) {
+  const form = categoryForm.value
+
+  if (!form.industry_id) {
+    ElMessage.warning('请选择所属行业')
+    return
+  }
+  if (!form.name.trim()) {
     ElMessage.warning('请输入分类名称')
     return
   }
+
+  const payload = {
+    industry_id: form.industry_id,
+    name: form.name.trim(),
+    parent_id: form.parent_id || null,
+    sort_order: form.sort_order || 0,
+    icon: form.icon.trim(),
+    description: form.description.trim(),
+  }
+
   try {
     if (editingCategoryId.value) {
-      await api.put(`/api/admin/categories/${editingCategoryId.value}`, categoryForm.value as any)
+      await api.put(`/api/admin/categories/${editingCategoryId.value}`, payload)
       ElMessage.success('分类更新成功')
     } else {
-      await api.post('/api/admin/categories', categoryForm.value as any)
+      await api.post('/api/admin/categories', payload)
       ElMessage.success('分类创建成功')
     }
+
     categoryDialogVisible.value = false
-    fetchCategories()
+    await fetchCategories()
   } catch (error) {
-    ElMessage.error('保存分类失败')
+    console.error('保存分类失败', error)
   }
 }
 
-const handleDeleteCategory = async (node: any, data: any) => {
+const handleDeleteCategory = async (category: CategoryItem) => {
   try {
-    await ElMessageBox.confirm(`确定删除分类「${data.name}」吗？`, '确认删除', {
-      confirmButtonText: '确定',
+    await ElMessageBox.confirm(`确定删除分类“${category.name}”吗？该操作不可恢复。`, '删除确认', {
+      confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
     })
-    await api.delete(`/api/admin/categories/${data.id}`)
-    ElMessage.success('删除成功')
-    fetchCategories()
+
+    await api.delete(`/api/admin/categories/${category.id}`)
+    ElMessage.success('分类删除成功')
+    await fetchCategories()
   } catch (error: any) {
-    if (error !== 'cancel') ElMessage.error('删除失败')
+    if (error !== 'cancel') {
+      console.error('删除分类失败', error)
+    }
   }
 }
 
-// 格式化时间
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
+const formatDate = (value?: string) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN')
 }
 
-// 分页
-const handlePageChange = (newPage: number) => {
-  page.value = newPage
-  fetchQuestions()
-}
-
-onMounted(() => {
-  fetchQuestions()
-  fetchCategories()
-  fetchIndustries()
+onMounted(async () => {
+  await Promise.all([
+    fetchIndustries(),
+    fetchCategories(),
+  ])
+  await fetchQuestions()
 })
 </script>
 
@@ -354,52 +595,81 @@ onMounted(() => {
   <div class="space-y-6">
     <h1 class="text-2xl font-bold text-secondary-900">题库管理</h1>
 
-    <el-tabs v-model="activeTab" class="bg-white rounded-lg shadow-sm border border-secondary-200 p-4">
-      <!-- 题目管理Tab -->
+    <el-tabs v-model="activeTab" class="rounded-lg border border-secondary-200 bg-white p-4 shadow-sm">
       <el-tab-pane label="题目管理" name="questions">
-        <!-- 工具栏 -->
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-4">
-            <el-input v-model="searchKeyword" placeholder="搜索题目" class="w-64" clearable @keyup.enter="handleSearch" @clear="handleSearch">
-              <template #prefix><el-icon><Search /></el-icon></template>
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索题目标题或内容"
+              class="w-72"
+              clearable
+              @keyup.enter="handleSearch"
+              @clear="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
             </el-input>
-            <el-cascader v-model="categoryFilter" :options="categoryTree" :props="{ checkStrictly: true, value: 'id', label: 'name', emitPath: true }" placeholder="选择分类" clearable class="w-48" @change="handleSearch" />
-            <el-select v-model="difficultyFilter" placeholder="难度" class="w-28" @change="handleSearch">
-              <el-option v-for="opt in difficultyOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+
+            <el-cascader
+              v-model="categoryFilter"
+              :options="categoryTree"
+              :props="{ checkStrictly: true, value: 'id', label: 'name', emitPath: true }"
+              placeholder="按分类筛选"
+              clearable
+              class="w-56"
+              @change="handleSearch"
+            />
+
+            <el-select v-model="difficultyFilter" placeholder="难度" class="w-32" @change="handleSearch">
+              <el-option v-for="item in difficultyOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </div>
-          <div class="flex gap-2">
+
+          <div class="flex flex-wrap gap-2">
             <el-button type="primary" :icon="Plus" @click="openAddQuestion">新增题目</el-button>
             <el-button plain :icon="Upload" @click="openImportDialog">批量导入</el-button>
           </div>
         </div>
 
-        <!-- 表格 -->
         <el-table :data="questions" v-loading="loading" style="width: 100%">
           <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="title" label="标题" min-width="250" show-overflow-tooltip />
-          <el-table-column label="分类" width="120">
+          <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
+          <el-table-column label="行业" width="140">
             <template #default="{ row }">
-              <span class="text-sm">{{ row.category_name || '-' }}</span>
+              <span>{{ industries.find(item => item.id === row.industry_id)?.name || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="难度" width="90">
+          <el-table-column label="分类" width="160">
+            <template #default="{ row }">
+              <span>{{ row.category_name || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="难度" width="100">
             <template #default="{ row }">
               <el-tag :type="(difficultyTagMap[row.difficulty]?.type as any) || 'info'" size="small">
                 {{ difficultyTagMap[row.difficulty]?.label || row.difficulty }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="题型" width="90">
+          <el-table-column label="题型" width="100">
             <template #default="{ row }">
               <el-tag :type="(typeTagMap[row.type]?.type as any) || 'info'" size="small">
                 {{ typeTagMap[row.type]?.label || row.type }}
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
+                {{ row.is_active ? '启用' : '停用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="创建时间" width="180">
             <template #default="{ row }">
-              <span class="text-sm text-secondary-500">{{ formatDate(row.created_at) }}</span>
+              {{ formatDate(row.created_at) }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="140" fixed="right">
@@ -408,136 +678,219 @@ onMounted(() => {
               <el-button type="danger" link size="small" :icon="Delete" @click="handleDeleteQuestion(row)">删除</el-button>
             </template>
           </el-table-column>
-          <template #empty><el-empty description="暂无题目" /></template>
+
+          <template #empty>
+            <el-empty description="暂无题目数据" />
+          </template>
         </el-table>
 
-        <div class="flex justify-end mt-4">
-          <el-pagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="total, prev, pager, next" @current-change="handlePageChange" />
+        <div class="mt-4 flex justify-end">
+          <el-pagination
+            v-model:current-page="page"
+            :page-size="pageSize"
+            :total="total"
+            layout="total, prev, pager, next"
+            @current-change="handlePageChange"
+          />
         </div>
       </el-tab-pane>
 
-      <!-- 分类管理Tab -->
       <el-tab-pane label="分类管理" name="categories">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-sm text-secondary-500">拖拽排序分类层级结构</span>
-          <el-button type="primary" :icon="Plus" @click="openAddCategory">添加分类</el-button>
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+          <span class="text-sm text-secondary-500">分类会按父子层级展示，新增和编辑时请确保行业、父级分类匹配。</span>
+          <el-button type="primary" :icon="Plus" @click="openAddCategory">新增分类</el-button>
         </div>
-        <el-tree :data="categoryTree" node-key="id" default-expand-all :props="{ label: 'name', children: 'children' }" v-loading="categoryLoading">
-          <template #default="{ node, data }">
-            <div class="flex items-center justify-between flex-1 pr-2">
-              <span>{{ data.name }}</span>
-              <div class="flex gap-2">
+
+        <el-tree
+          :data="categoryTree"
+          node-key="id"
+          default-expand-all
+          :props="{ label: 'name', children: 'children' }"
+          v-loading="categoryLoading"
+        >
+          <template #default="{ data }">
+            <div class="flex flex-1 items-center justify-between gap-4 pr-2">
+              <div class="min-w-0">
+                <div class="font-medium text-secondary-900">{{ data.name }}</div>
+                <div class="text-xs text-secondary-500">
+                  {{ industries.find(item => item.id === data.industry_id)?.name || '未分配行业' }}
+                  <span v-if="data.icon"> · {{ data.icon }}</span>
+                </div>
+              </div>
+              <div class="flex shrink-0 gap-2">
                 <el-button type="primary" link size="small" @click.stop="openEditCategory(data)">编辑</el-button>
-                <el-button type="danger" link size="small" @click.stop="handleDeleteCategory(node, data)">删除</el-button>
+                <el-button type="danger" link size="small" @click.stop="handleDeleteCategory(data)">删除</el-button>
               </div>
             </div>
           </template>
         </el-tree>
-        <el-empty v-if="categoryTree.length === 0" description="暂无分类" />
+
+        <el-empty v-if="!categoryTree.length" description="暂无分类数据" />
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 新增/编辑题目弹窗 -->
-    <el-dialog v-model="questionDialogVisible" :title="questionDialogTitle" width="700px" :close-on-click-modal="false">
-      <el-form :model="questionForm" label-width="80px" label-position="top">
-        <el-form-item label="标题">
+    <el-dialog v-model="questionDialogVisible" :title="questionDialogTitle" width="760px" :close-on-click-modal="false">
+      <el-form :model="questionForm" label-position="top">
+        <el-form-item label="题目标题">
           <el-input v-model="questionForm.title" placeholder="请输入题目标题" />
         </el-form-item>
-        <div class="grid grid-cols-2 gap-4">
-          <el-form-item label="分类">
-            <el-cascader v-model="questionForm.category_id" :options="categoryTree" :props="{ checkStrictly: true, value: 'id', label: 'name' }" placeholder="选择分类" clearable class="w-full" />
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <el-form-item label="所属行业">
+            <el-select v-model="questionForm.industry_id" placeholder="请选择行业" class="w-full" clearable>
+              <el-option v-for="item in industries" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
           </el-form-item>
-          <el-form-item label="题型">
+
+          <el-form-item label="题目分类">
+            <el-cascader
+              v-model="questionForm.category_path"
+              :options="questionCategoryTree"
+              :props="{ checkStrictly: true, value: 'id', label: 'name', emitPath: true }"
+              placeholder="请选择分类"
+              clearable
+              class="w-full"
+            />
+          </el-form-item>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <el-form-item label="题目类型">
             <el-radio-group v-model="questionForm.type">
-              <el-radio-button value="choice">单选</el-radio-button>
-              <el-radio-button value="multi">多选</el-radio-button>
-              <el-radio-button value="code">编程</el-radio-button>
-              <el-radio-button value="subjective">主观</el-radio-button>
+              <el-radio-button value="choice">单选题</el-radio-button>
+              <el-radio-button value="multi">多选题</el-radio-button>
+              <el-radio-button value="code">编程题</el-radio-button>
+              <el-radio-button value="subjective">主观题</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="难度">
+            <el-radio-group v-model="questionForm.difficulty">
+              <el-radio-button value="easy">简单</el-radio-button>
+              <el-radio-button value="medium">中等</el-radio-button>
+              <el-radio-button value="hard">困难</el-radio-button>
             </el-radio-group>
           </el-form-item>
         </div>
-        <el-form-item label="难度">
-          <el-radio-group v-model="questionForm.difficulty">
-            <el-radio-button value="easy">简单</el-radio-button>
-            <el-radio-button value="medium">中等</el-radio-button>
-            <el-radio-button value="hard">困难</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
+
         <el-form-item label="题目内容">
           <el-input v-model="questionForm.content" type="textarea" :rows="6" placeholder="请输入题目内容" />
         </el-form-item>
-        <!-- 选项(仅choice/multi) -->
+
         <el-form-item v-if="questionForm.type === 'choice' || questionForm.type === 'multi'" label="选项">
           <div class="w-full space-y-2">
-            <div v-for="(_, idx) in questionForm.options" :key="idx" class="flex items-center gap-2">
-              <span class="text-sm font-medium text-secondary-500 w-6">{{ String.fromCharCode(65 + idx) }}.</span>
-              <el-input v-model="questionForm.options[idx]" :placeholder="`选项${String.fromCharCode(65 + idx)}`" />
-              <el-button v-if="questionForm.options.length > 2" type="danger" link :icon="Delete" @click="removeOption(idx)" />
+            <div v-for="(_, index) in questionForm.options" :key="index" class="flex items-center gap-2">
+              <span class="w-6 text-sm font-medium text-secondary-500">{{ String.fromCharCode(65 + index) }}.</span>
+              <el-input v-model="questionForm.options[index]" :placeholder="`请输入选项 ${String.fromCharCode(65 + index)}`" />
+              <el-button v-if="questionForm.options.length > 2" type="danger" link :icon="Delete" @click="removeOption(index)" />
             </div>
             <el-button type="primary" link :icon="Plus" @click="addOption">添加选项</el-button>
           </div>
         </el-form-item>
-        <el-form-item label="正确答案">
-          <el-input v-model="questionForm.answer" placeholder="请输入正确答案" />
+
+        <el-form-item label="答案">
+          <el-input v-model="questionForm.answer" placeholder="请输入题目答案" />
         </el-form-item>
+
         <el-form-item label="解析">
-          <el-input v-model="questionForm.explanation" type="textarea" :rows="4" placeholder="请输入解析" />
+          <el-input v-model="questionForm.explanation" type="textarea" :rows="4" placeholder="请输入题目解析" />
         </el-form-item>
-        <el-form-item label="标签">
-          <el-input v-model="questionForm.tags" placeholder="多个标签用逗号分隔" />
-        </el-form-item>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <el-form-item label="标签">
+            <el-input v-model="questionForm.tags" placeholder="多个标签请用逗号分隔" />
+          </el-form-item>
+
+          <el-form-item label="启用状态">
+            <el-switch v-model="questionForm.is_active" inline-prompt active-text="启用" inactive-text="停用" />
+          </el-form-item>
+        </div>
       </el-form>
+
       <template #footer>
         <el-button @click="questionDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveQuestion">保存</el-button>
       </template>
     </el-dialog>
 
-    <!-- 批量导入弹窗 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="700px" :close-on-click-modal="false">
+    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="760px" :close-on-click-modal="false">
       <el-form label-position="top">
-        <el-form-item label="JSON数据">
-          <el-input v-model="importJson" type="textarea" :rows="12" placeholder='请输入JSON数组，格式: [{"title":"...", "content":"...", "type":"choice", "difficulty":"easy", ...}]' style="font-family: monospace" />
-        </el-form-item>
-        <div class="flex items-center gap-4 mb-4">
-          <el-button @click="parseImportJson">解析预览</el-button>
-          <span v-if="importPreview.length" class="text-sm text-green-600">已解析 {{ importPreview.length }} 道题目</span>
-        </div>
-        <!-- 预览区 -->
-        <div v-if="importPreview.length" class="bg-secondary-50 rounded-lg p-4 mb-4 max-h-40 overflow-y-auto">
-          <div v-for="(q, i) in importPreview.slice(0, 10)" :key="i" class="text-sm text-secondary-700 py-1 border-b border-secondary-200 last:border-0">
-            {{ i + 1 }}. {{ q.title || '未命名' }}
-          </div>
-          <div v-if="importPreview.length > 10" class="text-sm text-secondary-400 mt-2">...还有 {{ importPreview.length - 10 }} 条</div>
-        </div>
-        <el-form-item label="目标行业">
-          <el-select v-model="importIndustry" placeholder="选择行业" class="w-64">
-            <el-option v-for="ind in industries" :key="ind.code || ind.id" :label="ind.name" :value="ind.code || ind.id" />
+        <el-form-item label="所属行业">
+          <el-select v-model="importIndustry" placeholder="请选择导入行业" class="w-64">
+            <el-option v-for="item in industries" :key="item.id" :label="item.name" :value="item.code" />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="JSON 内容">
+          <el-input
+            v-model="importJson"
+            type="textarea"
+            :rows="12"
+            placeholder='请输入 JSON 数组，例如 [{"title":"题目标题","category_name":"分类名称","type":"choice","difficulty":"easy","content":"题目内容","options_json":"[\"A\",\"B\"]","answer":"A"}]'
+            style="font-family: monospace"
+          />
+        </el-form-item>
+
+        <div class="mb-4 flex items-center gap-4">
+          <el-button @click="parseImportJson">解析预览</el-button>
+          <span v-if="importPreview.length" class="text-sm text-green-600">已解析 {{ importPreview.length }} 条数据</span>
+        </div>
+
+        <div v-if="importPreview.length" class="max-h-48 overflow-y-auto rounded-lg bg-secondary-50 p-4">
+          <div
+            v-for="(item, index) in importPreview.slice(0, 10)"
+            :key="index"
+            class="border-b border-secondary-200 py-2 text-sm text-secondary-700 last:border-0"
+          >
+            {{ index + 1 }}. {{ item.title || '未命名题目' }}
+          </div>
+          <div v-if="importPreview.length > 10" class="mt-2 text-sm text-secondary-400">
+            还有 {{ importPreview.length - 10 }} 条数据未展示
+          </div>
+        </div>
       </el-form>
+
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleImport" :loading="importLoading" :disabled="importPreview.length === 0">确认导入</el-button>
+        <el-button type="primary" :loading="importLoading" :disabled="!importPreview.length" @click="handleImport">
+          开始导入
+        </el-button>
       </template>
     </el-dialog>
 
-    <!-- 分类弹窗 -->
-    <el-dialog v-model="categoryDialogVisible" :title="categoryDialogTitle" width="480px" :close-on-click-modal="false">
-      <el-form :model="categoryForm" label-width="80px">
-        <el-form-item label="名称">
-          <el-input v-model="categoryForm.name" placeholder="请输入分类名称" />
-        </el-form-item>
-        <el-form-item label="父级分类">
-          <el-select v-model="categoryForm.parent_id" placeholder="无(顶级分类)" clearable class="w-full">
-            <el-option label="无(顶级分类)" :value="0" />
-            <el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id" />
+    <el-dialog v-model="categoryDialogVisible" :title="categoryDialogTitle" width="560px" :close-on-click-modal="false">
+      <el-form :model="categoryForm" label-position="top">
+        <el-form-item label="所属行业">
+          <el-select v-model="categoryForm.industry_id" placeholder="请选择行业" class="w-full" clearable>
+            <el-option v-for="item in industries" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="categoryForm.sort_order" :min="0" :max="999" />
+
+        <el-form-item label="分类名称">
+          <el-input v-model="categoryForm.name" placeholder="请输入分类名称" />
+        </el-form-item>
+
+        <el-form-item label="父级分类">
+          <el-select v-model="categoryForm.parent_id" placeholder="不选则为顶级分类" clearable class="w-full">
+            <el-option v-for="item in categoryParentOptions" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+        </el-form-item>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <el-form-item label="排序">
+            <el-input-number v-model="categoryForm.sort_order" :min="0" :max="999" class="w-full" />
+          </el-form-item>
+
+          <el-form-item label="图标">
+            <el-input v-model="categoryForm.icon" placeholder="可填写图标名称或 URL" />
+          </el-form-item>
+        </div>
+
+        <el-form-item label="描述">
+          <el-input v-model="categoryForm.description" type="textarea" :rows="4" placeholder="请输入分类描述" />
         </el-form-item>
       </el-form>
+
       <template #footer>
         <el-button @click="categoryDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveCategory">保存</el-button>

@@ -33,12 +33,14 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/users/:id/disable", h.DisableUser)
 
 	// 题库管理
+	r.GET("/questions", h.ListQuestions)
 	r.POST("/questions", h.CreateQuestion)
 	r.PUT("/questions/:id", h.UpdateQuestion)
 	r.DELETE("/questions/:id", h.DeleteQuestion)
 	r.POST("/questions/import", h.BatchImportQuestions)
 
 	// 分类管理
+	r.GET("/categories", h.ListCategories)
 	r.POST("/categories", h.CreateCategory)
 	r.PUT("/categories/:id", h.UpdateCategory)
 	r.DELETE("/categories/:id", h.DeleteCategory)
@@ -212,6 +214,35 @@ func (h *AdminHandler) DisableUser(c *gin.Context) {
 // @Param request body service.AdminCreateQuestionRequest true "题目信息"
 // @Success 200 {object} common.Response{data=model.Question}
 // @Router /api/admin/questions [post]
+func (h *AdminHandler) ListQuestions(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	keyword := c.Query("keyword")
+	difficulty := c.Query("difficulty")
+
+	var categoryID uint
+	if categoryIDStr := c.Query("category_id"); categoryIDStr != "" {
+		id, err := strconv.ParseUint(categoryIDStr, 10, 32)
+		if err != nil {
+			common.BadRequest(c, "无效的分类ID")
+			return
+		}
+		categoryID = uint(id)
+	}
+
+	result, err := h.adminService.ListQuestions(c.Request.Context(), page, pageSize, keyword, difficulty, categoryID)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取题库列表失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, result)
+}
+
 func (h *AdminHandler) CreateQuestion(c *gin.Context) {
 	var req service.AdminCreateQuestionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -339,6 +370,20 @@ func (h *AdminHandler) BatchImportQuestions(c *gin.Context) {
 // @Param request body service.CreateCategoryRequest true "分类信息"
 // @Success 200 {object} common.Response{data=model.Category}
 // @Router /api/admin/categories [post]
+func (h *AdminHandler) ListCategories(c *gin.Context) {
+	categories, err := h.adminService.ListCategories(c.Request.Context())
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取分类列表失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, categories)
+}
+
 func (h *AdminHandler) CreateCategory(c *gin.Context) {
 	var req service.CreateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/spf13/viper"
@@ -11,11 +12,12 @@ import (
 
 // Config 应用程序全局配置结构体
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Casbin   CasbinConfig   `mapstructure:"casbin"`
+	Server         ServerConfig         `mapstructure:"server"`
+	Database       DatabaseConfig       `mapstructure:"database"`
+	Redis          RedisConfig          `mapstructure:"redis"`
+	JWT            JWTConfig            `mapstructure:"jwt"`
+	Casbin         CasbinConfig         `mapstructure:"casbin"`
+	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
 }
 
 // ServerConfig 服务器相关配置
@@ -65,6 +67,15 @@ type CasbinConfig struct {
 	ModelPath string `mapstructure:"model_path"`
 }
 
+// AdminBootstrapConfig 启动时管理员自检与补齐配置
+type AdminBootstrapConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Username        string `mapstructure:"username"`
+	Email           string `mapstructure:"email"`
+	Password        string `mapstructure:"password"`
+	MembershipLevel string `mapstructure:"membership_level"`
+}
+
 var (
 	instance *Config
 	once     sync.Once
@@ -79,6 +90,7 @@ func Load(configPath string) (*Config, error) {
 
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("yaml")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// 支持环境变量覆盖配置
 	viper.AutomaticEnv()
@@ -126,6 +138,13 @@ func GetConfig() *Config {
 				},
 				Casbin: CasbinConfig{
 					ModelPath: "config/rbac_model.conf",
+				},
+				AdminBootstrap: AdminBootstrapConfig{
+					Enabled:         true,
+					Username:        "Admin",
+					Email:           "admin@makejob.com",
+					Password:        "admin123456",
+					MembershipLevel: "pro",
 				},
 			}
 		}

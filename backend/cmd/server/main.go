@@ -60,6 +60,7 @@ type AppDependencies struct {
 	PlanHandler          *handler.PlanHandler
 	AdminHandler         *handler.AdminHandler
 	ScraperHandler       *handler.ScraperHandler
+	CommunityHandler     *handler.CommunityHandler
 }
 
 func main() {
@@ -94,6 +95,10 @@ func main() {
 			// 插入种子数据（首次启动）
 			if err := model.SeedData(db); err != nil {
 				applogger.Warn("种子数据插入失败",
+					zap.Any("error", err))
+			}
+			if err := model.EnsureAdminUser(db, &cfg.AdminBootstrap); err != nil {
+				applogger.Warn("admin bootstrap failed",
 					zap.Any("error", err))
 			}
 		}
@@ -182,6 +187,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.NoteRepo = repository.NewNoteRepository(db)
 		deps.PlanRepo = repository.NewPlanRepository(db)
 		deps.PlanTaskRepo = repository.NewPlanTaskRepository(db)
+		communityRepo := repository.NewCommunityRepository(db)
 
 		// AI Provider初始化（使用Mock）
 		aiProvider := mock.NewAIProvider("mock", nil)
@@ -214,6 +220,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanTaskRepo,
 			planAgent,
 		)
+		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
 
 		// Handler层
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
@@ -221,6 +228,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService)
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
+		deps.CommunityHandler = handler.NewCommunityHandler(communityService)
 
 		// Admin相关依赖初始化
 		adminUserRepo := repository.NewAdminUserRepository(db)
@@ -345,6 +353,9 @@ func registerRoutes(r *gin.Engine, deps *AppDependencies) {
 			public := api.Group("")
 			public.Use(middleware.OptionalAuth())
 			deps.QuestionHandler.RegisterRoutes(public, nil)
+			if deps.CommunityHandler != nil {
+				deps.CommunityHandler.RegisterRoutes(public, nil)
+			}
 		}
 
 		// 需要认证的路由
@@ -376,6 +387,9 @@ func registerRoutes(r *gin.Engine, deps *AppDependencies) {
 			// 题库认证路由（需要认证）
 			if deps.QuestionHandler != nil {
 				deps.QuestionHandler.RegisterRoutes(nil, protected)
+			}
+			if deps.CommunityHandler != nil {
+				deps.CommunityHandler.RegisterRoutes(nil, protected)
 			}
 		}
 

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from './user'
 
 export interface User {
   id: number
@@ -34,6 +35,14 @@ interface AuthState {
   loading: boolean
 }
 
+interface LogoutOptions {
+  redirectTo?: string
+  silent?: boolean
+  callApi?: boolean
+}
+
+const isSuccessCode = (code: number): boolean => code === 0 || code === 200
+
 const normalizeUser = (user: RawUser | null | undefined): User | null => {
   if (!user) return null
 
@@ -62,15 +71,15 @@ export const useAuthStore = defineStore('auth', {
     isLoggedIn: (state): boolean => !!state.token,
     isAdmin: (state): boolean => state.user?.role === 'admin',
     username: (state): string => state.user?.username || '',
-    avatar: (state): string => state.user?.avatar || '/default-avatar.png',
+    avatar: (state): string => state.user?.avatar || '',
   },
 
   actions: {
     initAuth() {
       if (!process.client) return
 
-      const tokenCookie = useCookie('token')
-      const refreshTokenCookie = useCookie('refreshToken')
+      const tokenCookie = useCookie<string | null>('token')
+      const refreshTokenCookie = useCookie<string | null>('refreshToken')
 
       this.token = tokenCookie.value || localStorage.getItem('token')
       this.refreshToken = refreshTokenCookie.value || localStorage.getItem('refreshToken')
@@ -85,7 +94,7 @@ export const useAuthStore = defineStore('auth', {
       }
 
       if (this.token && !this.user) {
-        this.fetchUserInfo()
+        void this.fetchUserInfo()
       }
     },
 
@@ -101,20 +110,17 @@ export const useAuthStore = defineStore('auth', {
           user: RawUser
         }>('/auth/login', { email, password })
 
-        if (response.code === 200) {
-          const token = response.data.token
-          const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
+        if (!isSuccessCode(response.code)) return false
 
-          this.setTokens(token, refreshToken)
-          this.setUser(normalizeUser(response.data.user))
+        const token = response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
 
-          ElMessage.success('登录成功')
-          return true
-        }
+        this.setTokens(token, refreshToken)
+        this.setUser(normalizeUser(response.data.user))
 
-        return false
-      } catch (error: any) {
-        ElMessage.error(error?.message || '登录失败')
+        ElMessage.success('登录成功')
+        return true
+      } catch {
         return false
       } finally {
         this.loading = false
@@ -133,44 +139,44 @@ export const useAuthStore = defineStore('auth', {
           user: RawUser
         }>('/auth/register', { username, email, password })
 
-        if (response.code === 200) {
-          const token = response.data.token
-          const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
+        if (!isSuccessCode(response.code)) return false
 
-          this.setTokens(token, refreshToken)
-          this.setUser(normalizeUser(response.data.user))
+        const token = response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
 
-          ElMessage.success('注册成功')
-          return true
-        }
+        this.setTokens(token, refreshToken)
+        this.setUser(normalizeUser(response.data.user))
 
-        return false
-      } catch (error: any) {
-        ElMessage.error(error?.message || '注册失败')
+        ElMessage.success('注册成功')
+        return true
+      } catch {
         return false
       } finally {
         this.loading = false
       }
     },
 
-    logout() {
-      this.token = null
-      this.refreshToken = null
-      this.setUser(null)
+    async logout(options: LogoutOptions = {}) {
+      const { redirectTo = '/', silent = false, callApi = true } = options
 
-      const tokenCookie = useCookie('token')
-      const refreshTokenCookie = useCookie('refreshToken')
-      tokenCookie.value = null
-      refreshTokenCookie.value = null
-
-      if (process.client) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('user')
+      if (callApi && this.token) {
+        try {
+          const { $api } = useNuxtApp()
+          await $api.post('/auth/logout', {})
+        } catch {
+          // Best effort logout. Local cleanup is the real source of truth for now.
+        }
       }
 
-      navigateTo('/')
-      ElMessage.success('已退出登录')
+      this.clearAuthState()
+
+      if (redirectTo) {
+        await navigateTo(redirectTo)
+      }
+
+      if (!silent) {
+        ElMessage.success('已退出登录')
+      }
     },
 
     async fetchUserInfo(): Promise<void> {
@@ -180,11 +186,14 @@ export const useAuthStore = defineStore('auth', {
         const { $api } = useNuxtApp()
         const response = await $api.get<RawUser>('/user/profile')
 
-        if (response.code === 200) {
+        if (isSuccessCode(response.code)) {
           this.setUser(normalizeUser(response.data))
+          return
         }
+
+        this.clearAuthState()
       } catch {
-        this.logout()
+        this.clearAuthState()
       }
     },
 
@@ -202,16 +211,18 @@ export const useAuthStore = defineStore('auth', {
           refreshToken: this.refreshToken,
         })
 
-        if (response.code === 200) {
-          const token = response.data.token
-          const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
-          this.setTokens(token, refreshToken)
-          return true
+        if (!isSuccessCode(response.code)) {
+          this.clearAuthState()
+          return false
         }
 
-        return false
+        const token = response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refreshToken || ''
+
+        this.setTokens(token, refreshToken)
+        return true
       } catch {
-        this.logout()
+        this.clearAuthState()
         return false
       }
     },
@@ -225,15 +236,16 @@ export const useAuthStore = defineStore('auth', {
       this.token = token
       this.refreshToken = refreshToken
 
-      const tokenCookie = useCookie('token', { maxAge: 60 * 60 * 24 * 7 })
-      const refreshTokenCookie = useCookie('refreshToken', { maxAge: 60 * 60 * 24 * 30 })
+      const tokenCookie = useCookie<string | null>('token', { maxAge: 60 * 60 * 24 * 7 })
+      const refreshTokenCookie = useCookie<string | null>('refreshToken', { maxAge: 60 * 60 * 24 * 30 })
+
       tokenCookie.value = token
       refreshTokenCookie.value = refreshToken
 
-      if (process.client) {
-        localStorage.setItem('token', token)
-        localStorage.setItem('refreshToken', refreshToken)
-      }
+      if (!process.client) return
+
+      localStorage.setItem('token', token)
+      localStorage.setItem('refreshToken', refreshToken)
     },
 
     setUser(user: User | null) {
@@ -246,6 +258,27 @@ export const useAuthStore = defineStore('auth', {
       } else {
         localStorage.removeItem('user')
       }
+    },
+
+    clearAuthState() {
+      this.token = null
+      this.refreshToken = null
+      this.user = null
+      this.loading = false
+
+      const tokenCookie = useCookie<string | null>('token')
+      const refreshTokenCookie = useCookie<string | null>('refreshToken')
+      tokenCookie.value = null
+      refreshTokenCookie.value = null
+
+      const userStore = useUserStore()
+      userStore.clearUserData()
+
+      if (!process.client) return
+
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      localStorage.removeItem('user')
     },
   },
 })

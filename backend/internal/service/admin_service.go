@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -36,6 +37,24 @@ type AdminUserListItem struct {
 	MembershipType     string     `json:"membership_type"`
 	MembershipExpireAt *time.Time `json:"membership_expire_at"`
 	IsDisabled         bool       `json:"is_disabled"`
+}
+
+type AdminQuestionListItem struct {
+	ID           uint      `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	CategoryID   uint      `json:"category_id"`
+	CategoryName string    `json:"category_name"`
+	IndustryID   uint      `json:"industry_id"`
+	Type         string    `json:"type"`
+	Difficulty   string    `json:"difficulty"`
+	Title        string    `json:"title"`
+	Content      string    `json:"content"`
+	Options      []string  `json:"options"`
+	Answer       string    `json:"answer"`
+	Explanation  string    `json:"explanation"`
+	Tags         []string  `json:"tags"`
+	IsActive     bool      `json:"is_active"`
 }
 
 // AdminCreateQuestionRequest 创建题目请求DTO
@@ -211,12 +230,14 @@ type AdminService interface {
 	DisableUser(ctx context.Context, userID uint) error
 
 	// 题库管理
+	ListQuestions(ctx context.Context, page, pageSize int, keyword, difficulty string, categoryID uint) (*common.PageResult, error)
 	CreateQuestion(ctx context.Context, req *AdminCreateQuestionRequest) (*model.Question, error)
 	UpdateQuestion(ctx context.Context, id uint, req *AdminUpdateQuestionRequest) error
 	DeleteQuestion(ctx context.Context, id uint) error
 	BatchImportQuestions(ctx context.Context, req *BatchImportRequest) (*BatchImportResponse, error)
 
 	// 分类管理
+	ListCategories(ctx context.Context) ([]model.Category, error)
 	CreateCategory(ctx context.Context, req *CreateCategoryRequest) (*model.Category, error)
 	UpdateCategory(ctx context.Context, id uint, req *UpdateCategoryRequest) error
 	DeleteCategory(ctx context.Context, id uint) error
@@ -391,6 +412,52 @@ func (s *adminService) DisableUser(ctx context.Context, userID uint) error {
 
 // ==================== 题库管理 ====================
 
+// ListQuestions 获取题库管理列表
+func (s *adminService) ListQuestions(ctx context.Context, page, pageSize int, keyword, difficulty string, categoryID uint) (*common.PageResult, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	questions, total, err := s.adminQuestionRepo.List(ctx, page, pageSize, keyword, difficulty, categoryID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]AdminQuestionListItem, 0, len(questions))
+	for _, question := range questions {
+		items = append(items, AdminQuestionListItem{
+			ID:           question.ID,
+			CreatedAt:    question.CreatedAt,
+			UpdatedAt:    question.UpdatedAt,
+			CategoryID:   question.CategoryID,
+			CategoryName: question.Category.Name,
+			IndustryID:   question.IndustryID,
+			Type:         question.Type,
+			Difficulty:   question.Difficulty,
+			Title:        question.Title,
+			Content:      question.Content,
+			Options:      parseQuestionOptions(question.OptionsJSON),
+			Answer:       question.Answer,
+			Explanation:  question.Explanation,
+			Tags:         parseQuestionTags(question.Tags),
+			IsActive:     question.IsActive,
+		})
+	}
+
+	return &common.PageResult{
+		List:     items,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
 // CreateQuestion 创建题目
 func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuestionRequest) (*model.Question, error) {
 	// 验证题目类型和选项
@@ -398,6 +465,13 @@ func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuest
 		if req.OptionsJSON == "" {
 			return nil, common.NewBusinessError(common.CodeBadRequest, "选择题必须提供选项")
 		}
+	}
+
+	if err := s.validateQuestionRefs(ctx, req.IndustryID, req.CategoryID); err != nil {
+		return nil, err
+	}
+	if err := validateQuestionPayload(req.Type, req.OptionsJSON); err != nil {
+		return nil, err
 	}
 
 	question := &model.Question{
@@ -423,6 +497,68 @@ func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuest
 
 // UpdateQuestion 更新题目
 func (s *adminService) UpdateQuestion(ctx context.Context, id uint, req *AdminUpdateQuestionRequest) error {
+	if id > 0 || id == 0 {
+		question, err := s.adminQuestionRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if question == nil {
+			return common.NewBusinessError(common.CodeNotFound, "题目不存在")
+		}
+
+		nextIndustryID := question.IndustryID
+		if req.IndustryID != 0 {
+			nextIndustryID = req.IndustryID
+		}
+
+		nextCategoryID := question.CategoryID
+		if req.CategoryID != 0 {
+			nextCategoryID = req.CategoryID
+		}
+
+		if err := s.validateQuestionRefs(ctx, nextIndustryID, nextCategoryID); err != nil {
+			return err
+		}
+
+		nextType := question.Type
+		if req.Type != "" {
+			nextType = req.Type
+		}
+
+		nextOptionsJSON := question.OptionsJSON
+		if req.OptionsJSON != "" || nextType == model.QuestionTypeCode || nextType == model.QuestionTypeSubjective {
+			nextOptionsJSON = req.OptionsJSON
+		}
+
+		if err := validateQuestionPayload(nextType, nextOptionsJSON); err != nil {
+			return err
+		}
+
+		question.IndustryID = nextIndustryID
+		question.CategoryID = nextCategoryID
+		question.Type = nextType
+		if req.Difficulty != "" {
+			question.Difficulty = req.Difficulty
+		}
+		if req.Title != "" {
+			question.Title = req.Title
+		}
+		if req.Content != "" {
+			question.Content = req.Content
+		}
+		if req.Answer != "" {
+			question.Answer = req.Answer
+		}
+		question.OptionsJSON = nextOptionsJSON
+		question.Explanation = req.Explanation
+		question.Tags = req.Tags
+		if req.IsActive != nil {
+			question.IsActive = *req.IsActive
+		}
+
+		return s.adminQuestionRepo.Update(ctx, question)
+	}
+
 	// 这里简化处理，实际应该先从数据库获取现有记录再更新
 	// 由于repository层使用Save方法，需要完整对象
 	// 实际项目中可能需要先查询再更新
@@ -528,8 +664,17 @@ func (s *adminService) BatchImportQuestions(ctx context.Context, req *BatchImpor
 
 // ==================== 分类管理 ====================
 
+// ListCategories 获取分类列表
+func (s *adminService) ListCategories(ctx context.Context) ([]model.Category, error) {
+	return s.adminCategoryRepo.List(ctx)
+}
+
 // CreateCategory 创建分类
 func (s *adminService) CreateCategory(ctx context.Context, req *CreateCategoryRequest) (*model.Category, error) {
+	if err := s.validateCategoryRefs(ctx, req.IndustryID, req.ParentID, 0); err != nil {
+		return nil, err
+	}
+
 	category := &model.Category{
 		IndustryID:  req.IndustryID,
 		Name:        req.Name,
@@ -548,6 +693,41 @@ func (s *adminService) CreateCategory(ctx context.Context, req *CreateCategoryRe
 
 // UpdateCategory 更新分类
 func (s *adminService) UpdateCategory(ctx context.Context, id uint, req *UpdateCategoryRequest) error {
+	if id > 0 || id == 0 {
+		category, err := s.adminCategoryRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if category == nil {
+			return common.NewBusinessError(common.CodeNotFound, "分类不存在")
+		}
+
+		nextIndustryID := category.IndustryID
+		if req.IndustryID != 0 {
+			nextIndustryID = req.IndustryID
+		}
+
+		nextParentID := category.ParentID
+		if req.ParentID != nil {
+			nextParentID = req.ParentID
+		}
+
+		if err := s.validateCategoryRefs(ctx, nextIndustryID, nextParentID, id); err != nil {
+			return err
+		}
+
+		category.IndustryID = nextIndustryID
+		category.ParentID = nextParentID
+		category.Name = req.Name
+		category.Icon = req.Icon
+		category.Description = req.Description
+		if req.SortOrder != nil {
+			category.SortOrder = *req.SortOrder
+		}
+
+		return s.adminCategoryRepo.Update(ctx, category)
+	}
+
 	// 简化处理，实际应该先从数据库获取现有记录再更新
 	return common.NewBusinessError(common.CodeInternalError, "更新分类功能需要完整实现")
 }
@@ -861,4 +1041,129 @@ func (s *adminService) UpdateTTSConfig(ctx context.Context, id uint, req *Update
 // DeleteTTSConfig 删除TTS配置
 func (s *adminService) DeleteTTSConfig(ctx context.Context, id uint) error {
 	return s.ttsRepo.Delete(ctx, id)
+}
+
+func parseQuestionOptions(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+
+	var options []string
+	if err := json.Unmarshal([]byte(raw), &options); err == nil {
+		return options
+	}
+
+	return []string{}
+}
+
+func parseQuestionTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '，'
+	})
+
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		tag := strings.TrimSpace(part)
+		if tag == "" {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+
+	return tags
+}
+
+func validateQuestionPayload(questionType, optionsJSON string) error {
+	if questionType == model.QuestionTypeChoice || questionType == model.QuestionTypeMulti {
+		if strings.TrimSpace(optionsJSON) == "" {
+			return common.NewBusinessError(common.CodeBadRequest, "选项题必须提供选项")
+		}
+	}
+
+	return nil
+}
+
+func (s *adminService) validateQuestionRefs(ctx context.Context, industryID, categoryID uint) error {
+	industry, err := s.industryRepo.GetByID(ctx, industryID)
+	if err != nil {
+		return err
+	}
+	if industry == nil {
+		return common.NewBusinessError(common.CodeNotFound, "行业不存在")
+	}
+
+	category, err := s.adminCategoryRepo.GetByID(ctx, categoryID)
+	if err != nil {
+		return err
+	}
+	if category == nil {
+		return common.NewBusinessError(common.CodeNotFound, "分类不存在")
+	}
+	if category.IndustryID != industryID {
+		return common.NewBusinessError(common.CodeBadRequest, "题目分类与所属行业不匹配")
+	}
+
+	return nil
+}
+
+func (s *adminService) validateCategoryRefs(ctx context.Context, industryID uint, parentID *uint, currentCategoryID uint) error {
+	industry, err := s.industryRepo.GetByID(ctx, industryID)
+	if err != nil {
+		return err
+	}
+	if industry == nil {
+		return common.NewBusinessError(common.CodeNotFound, "行业不存在")
+	}
+
+	if parentID == nil || *parentID == 0 {
+		return nil
+	}
+	if currentCategoryID != 0 && *parentID == currentCategoryID {
+		return common.NewBusinessError(common.CodeBadRequest, "分类不能选择自己作为父级")
+	}
+
+	parent, err := s.adminCategoryRepo.GetByID(ctx, *parentID)
+	if err != nil {
+		return err
+	}
+	if parent == nil {
+		return common.NewBusinessError(common.CodeNotFound, "父级分类不存在")
+	}
+	if parent.IndustryID != industryID {
+		return common.NewBusinessError(common.CodeBadRequest, "父级分类与所属行业不匹配")
+	}
+	if currentCategoryID != 0 {
+		categories, err := s.adminCategoryRepo.List(ctx)
+		if err != nil {
+			return err
+		}
+
+		categoryMap := make(map[uint]model.Category, len(categories))
+		for _, category := range categories {
+			categoryMap[category.ID] = category
+		}
+
+		currentParentID := parent.ParentID
+		for currentParentID != nil && *currentParentID != 0 {
+			if *currentParentID == currentCategoryID {
+				return common.NewBusinessError(common.CodeBadRequest, "不能把分类移动到自己的子分类下")
+			}
+
+			nextCategory, ok := categoryMap[*currentParentID]
+			if !ok {
+				break
+			}
+			currentParentID = nextCategory.ParentID
+		}
+
+		if parent.ID == currentCategoryID {
+			return common.NewBusinessError(common.CodeBadRequest, "分类不能选择自己作为父级")
+		}
+	}
+
+	return nil
 }

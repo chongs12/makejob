@@ -56,6 +56,8 @@ interface UserState {
   loading: boolean
 }
 
+const isSuccessCode = (code: number): boolean => code === 0 || code === 200
+
 const normalizeProfile = (profile: RawUserProfile | null | undefined): UserProfile | null => {
   if (!profile) return null
 
@@ -99,7 +101,7 @@ export const useUserStore = defineStore('user', {
         const { $api } = useNuxtApp()
         const response = await $api.get<RawUserProfile>('/user/profile')
 
-        if (response.code === 200) {
+        if (isSuccessCode(response.code)) {
           this.profile = normalizeProfile(response.data)
           return true
         }
@@ -120,7 +122,7 @@ export const useUserStore = defineStore('user', {
         const { $api } = useNuxtApp()
         const response = await $api.put('/user/profile', data as Record<string, unknown>)
 
-        if (response.code === 200) {
+        if (isSuccessCode(response.code)) {
           this.profile = {
             ...(this.profile || ({} as UserProfile)),
             ...data,
@@ -148,7 +150,7 @@ export const useUserStore = defineStore('user', {
         const { $api } = useNuxtApp()
         const response = await $api.post<{ url: string }>('/user/avatar', formData as any)
 
-        if (response.code === 200) {
+        if (isSuccessCode(response.code)) {
           const avatarUrl = response.data.url
           if (this.profile) {
             this.profile.avatar = avatarUrl
@@ -174,7 +176,7 @@ export const useUserStore = defineStore('user', {
           newPassword,
         })
 
-        if (response.code === 200) {
+        if (isSuccessCode(response.code)) {
           ElMessage.success('密码修改成功')
           return true
         }

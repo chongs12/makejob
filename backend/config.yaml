@@ -24,3 +24,10 @@ jwt:
 
 casbin:
   model_path: "config/rbac_model.conf"
+
+admin_bootstrap:
+  enabled: true
+  username: "Admin"
+  email: "admin@makejob.com"
+  password: "admin123456"
+  membership_level: "pro"
