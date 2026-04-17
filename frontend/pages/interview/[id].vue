@@ -31,12 +31,17 @@ const currentQuestion = ref(0)
 const totalQuestions = ref(0)
 const aiStatus = ref<'asking' | 'waiting' | 'scoring'>('waiting')
 
+const live2DScene = 'interview'
+const live2DIndustryCode = computed(() => interview.value?.industry_code || '')
+const { modelConfig, loading: live2DLoading, error: live2DError } = useLive2DModel(live2DScene, live2DIndustryCode)
+
 const startTime = ref(Date.now())
 const elapsed = ref('00:00')
 let timerInterval: ReturnType<typeof setInterval> | null = null
 
 const chatContainer = ref<HTMLElement | null>(null)
 
+/* scrollToBottom 将面试消息滚动到底部。 */
 const scrollToBottom = () => {
   nextTick(() => {
     if (chatContainer.value) {
@@ -45,6 +50,7 @@ const scrollToBottom = () => {
   })
 }
 
+/* updateTimer 更新页面上的面试计时器。 */
 const updateTimer = () => {
   const diff = Math.floor((Date.now() - startTime.value) / 1000)
   const minutes = Math.floor(diff / 60).toString().padStart(2, '0')
@@ -52,6 +58,7 @@ const updateTimer = () => {
   elapsed.value = `${minutes}:${seconds}`
 }
 
+/* appendQuestion 将新问题追加到消息流中。 */
 const appendQuestion = (question: any) => {
   if (!question?.question) return
 
@@ -64,6 +71,7 @@ const appendQuestion = (question: any) => {
   scrollToBottom()
 }
 
+/* mapMessage 将后端消息结构映射为前端展示结构。 */
 const mapMessage = (message: any): InterviewMessage => {
   if (message.message_type === 'feedback') {
     const scoreMatch = typeof message.content === 'string'
@@ -86,6 +94,7 @@ const mapMessage = (message: any): InterviewMessage => {
   }
 }
 
+/* loadInterview 拉取当前面试详情。 */
 const loadInterview = async () => {
   loading.value = true
   try {
@@ -104,14 +113,15 @@ const loadInterview = async () => {
 
       scrollToBottom()
     }
-  } catch (e) {
-    ElMessage.error('加载面试详情失败')
-    console.error(e)
+  } catch (error) {
+    ElMessage.error('获取面试详情失败')
+    console.error(error)
   } finally {
     loading.value = false
   }
 }
 
+/* sendAnswer 提交当前答案并接收反馈与下一题。 */
 const sendAnswer = async () => {
   if (!inputText.value.trim() || sending.value || status.value !== 'ongoing') return
 
@@ -144,24 +154,25 @@ const sendAnswer = async () => {
       if (res.data.is_finished) {
         messages.value.push({
           role: 'system',
-          content: '所有题目已答完，可以结束面试查看报告。',
+          content: '本轮面试已结束，系统正在整理最终报告。',
           type: 'system',
         })
       }
 
       scrollToBottom()
     }
-  } catch (e: any) {
-    ElMessage.error(e?.data?.message || '提交回答失败')
+  } catch (error: any) {
+    ElMessage.error(error?.data?.message || '提交答案失败')
   } finally {
     sending.value = false
     aiStatus.value = 'waiting'
   }
 }
 
+/* endInterview 主动结束当前面试。 */
 const endInterview = async () => {
   try {
-    await ElMessageBox.confirm('确定要结束本次面试吗？', '结束面试', {
+    await ElMessageBox.confirm('确认要提前结束当前面试吗？', '结束面试', {
       type: 'warning',
     })
   } catch {
@@ -181,10 +192,12 @@ const endInterview = async () => {
   }
 }
 
+/* goBack 返回面试列表页。 */
 const goBack = () => {
   router.push('/interview')
 }
 
+/* viewReport 跳转到当前面试报告页。 */
 const viewReport = () => {
   router.push(`/interview/report/${interviewId.value}`)
 }
@@ -208,7 +221,7 @@ onUnmounted(() => {
       <div class="flex-1" />
       <div class="flex items-center gap-4 text-sm text-gray-500">
         <span v-if="totalQuestions > 0" class="bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-medium">
-          第 {{ currentQuestion }} / {{ totalQuestions }} 题
+          进度 {{ currentQuestion }} / {{ totalQuestions }} 题
         </span>
         <span class="flex items-center gap-1">
           <el-icon><Clock /></el-icon>
@@ -226,14 +239,16 @@ onUnmounted(() => {
     <div class="flex-1 flex overflow-hidden" v-loading="loading">
       <div class="w-[35%] border-r border-gray-200 bg-gradient-to-b from-blue-50 to-indigo-50 flex flex-col items-center justify-center p-8">
         <div class="relative">
-          <div class="w-36 h-36 rounded-full bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-indigo-200 animate-breathing">
-            <svg class="w-20 h-20 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a2.25 2.25 0 01-1.591.659H9.061a2.25 2.25 0 01-1.591-.659L5 14.5m14 0V7.5a2.25 2.25 0 00-2.25-2.25h-9.5A2.25 2.25 0 005 7.5v7" />
-            </svg>
-          </div>
+          <Live2DInterviewer
+            :width="360"
+            :height="520"
+            :model-config="modelConfig"
+            :loading="live2DLoading"
+            :error="live2DError"
+            :speaking="aiStatus === 'asking' || sending"
+          />
           <div
-            class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-4 border-white"
+            class="absolute top-3 right-3 w-8 h-8 rounded-full border-4 border-white"
             :class="aiStatus === 'waiting' ? 'bg-green-400' : aiStatus === 'asking' ? 'bg-blue-400 animate-pulse' : 'bg-amber-400 animate-pulse'"
           />
         </div>
@@ -247,13 +262,14 @@ onUnmounted(() => {
             'bg-amber-100 text-amber-700': aiStatus === 'scoring',
           }"
         >
-          {{ aiStatus === 'waiting' ? '等待回答...' : aiStatus === 'asking' ? '出题中...' : '评分中...' }}
+          {{ aiStatus === 'waiting' ? '等待你的回答' : aiStatus === 'asking' ? '正在发问' : '正在评分' }}
         </p>
 
         <div class="mt-8 w-full max-w-xs space-y-3 bg-white/60 backdrop-blur rounded-xl p-4 text-sm text-gray-600">
           <div class="flex justify-between"><span>状态</span><el-tag size="small">{{ status }}</el-tag></div>
-          <div class="flex justify-between"><span>题数</span><span class="font-medium text-gray-900">{{ totalQuestions }} 题</span></div>
-          <div class="flex justify-between"><span>用时</span><span class="font-medium text-gray-900">{{ elapsed }}</span></div>
+          <div class="flex justify-between"><span>题目数</span><span class="font-medium text-gray-900">{{ totalQuestions }} 题</span></div>
+          <div class="flex justify-between"><span>耗时</span><span class="font-medium text-gray-900">{{ elapsed }}</span></div>
+          <div class="flex justify-between"><span>模型来源</span><span class="font-medium text-gray-900">{{ modelConfig?.source || '-' }}</span></div>
         </div>
       </div>
 
@@ -275,8 +291,11 @@ onUnmounted(() => {
             <div v-else-if="msg.type === 'feedback'" class="flex justify-center px-8">
               <div class="w-full max-w-lg bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
                 <div class="flex items-center gap-3 mb-2">
-                  <span class="text-2xl font-bold" :class="(msg.score ?? 0) >= 80 ? 'text-green-500' : (msg.score ?? 0) >= 60 ? 'text-amber-500' : 'text-red-500'">
-                    {{ msg.score ?? '-' }}分
+                  <span
+                    class="text-2xl font-bold"
+                    :class="(msg.score ?? 0) >= 80 ? 'text-green-500' : (msg.score ?? 0) >= 60 ? 'text-amber-500' : 'text-red-500'"
+                  >
+                    {{ msg.score ?? '-' }} 分
                   </span>
                   <el-progress
                     :percentage="msg.score ?? 0"
@@ -315,7 +334,7 @@ onUnmounted(() => {
               v-model="inputText"
               type="textarea"
               :rows="3"
-              placeholder="输入你的回答..."
+              placeholder="输入你的回答内容..."
               :disabled="status !== 'ongoing' || sending"
               @keydown.enter.ctrl="sendAnswer"
               resize="vertical"
@@ -325,7 +344,15 @@ onUnmounted(() => {
               <el-button circle size="large" disabled class="!w-10 !h-10">
                 <el-icon><Microphone /></el-icon>
               </el-button>
-              <el-button type="primary" circle size="large" :loading="sending" :disabled="!inputText.trim() || status !== 'ongoing'" @click="sendAnswer" class="!w-10 !h-10">
+              <el-button
+                type="primary"
+                circle
+                size="large"
+                :loading="sending"
+                :disabled="!inputText.trim() || status !== 'ongoing'"
+                @click="sendAnswer"
+                class="!w-10 !h-10"
+              >
                 <el-icon><Promotion /></el-icon>
               </el-button>
             </div>
@@ -336,14 +363,3 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-@keyframes breathing {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.animate-breathing {
-  animation: breathing 3s ease-in-out infinite;
-}
-</style>

@@ -42,6 +42,7 @@ type InterviewResponse struct {
 // InterviewDetailResponse 面试详情响应DTO
 type InterviewDetailResponse struct {
 	ID             uint                       `json:"id"`
+	IndustryCode   string                     `json:"industry_code"`
 	Status         string                     `json:"status"`
 	Score          float64                    `json:"score"`
 	TotalQuestions int                        `json:"total_questions"`
@@ -211,8 +212,12 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 		}
 	}
 
+	// resolveInterviewIndustryCode 解析面试记录对应的行业编码。
+	industryCode := s.resolveInterviewIndustryCode(ctx, interview.IndustryID)
+
 	return &InterviewDetailResponse{
 		ID:             interview.ID,
+		IndustryCode:   industryCode,
 		Status:         interview.Status,
 		Score:          interview.Score,
 		TotalQuestions: interview.TotalQuestions,
@@ -220,6 +225,20 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 		StartedAt:      interview.StartedAt,
 		EndedAt:        interview.EndedAt,
 	}, nil
+}
+
+// resolveInterviewIndustryCode 解析面试记录的行业编码，失败时返回空字符串。
+func (s *interviewService) resolveInterviewIndustryCode(ctx context.Context, industryID uint) string {
+	if industryID == 0 || s.industryRepo == nil {
+		return ""
+	}
+
+	industry, err := s.industryRepo.GetByID(ctx, industryID)
+	if err != nil || industry == nil {
+		return ""
+	}
+
+	return industry.Code
 }
 
 // ListInterviews 获取面试列表

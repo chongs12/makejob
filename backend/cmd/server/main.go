@@ -18,6 +18,7 @@ import (
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/config"
 	"makejob-backend/internal/handler"
+	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/middleware"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
@@ -48,6 +49,7 @@ type AppDependencies struct {
 	QuestionService   service.QuestionService
 	PlanService       service.PlanService
 	CompanionService  service.CompanionService
+	Live2DService     service.Live2DService
 	CasbinService     service.CasbinService
 
 	AuthHandler       *handler.AuthHandler
@@ -56,6 +58,7 @@ type AppDependencies struct {
 	QuestionHandler   *handler.QuestionHandler
 	PlanHandler       *handler.PlanHandler
 	CompanionHandler  *handler.CompanionHandler
+	Live2DHandler     *handler.Live2DHandler
 	AdminHandler      *handler.AdminHandler
 	ScraperHandler    *handler.ScraperHandler
 	CommunityHandler  *handler.CommunityHandler
@@ -144,6 +147,8 @@ func main() {
 // initDependencies 初始化仓库、服务和处理器依赖。
 func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 	deps := &AppDependencies{}
+	var industryRepo repository.IndustryRepository
+	var live2DRepo repository.Live2DModelRepository
 
 	if db != nil {
 		deps.UserRepo = repository.NewUserRepository(db)
@@ -158,14 +163,14 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.PlanRepo = repository.NewPlanRepository(db)
 		deps.PlanTaskRepo = repository.NewPlanTaskRepository(db)
 
-		industryRepo := repository.NewIndustryRepository(db)
+		industryRepo = repository.NewIndustryRepository(db)
 		adminConfigRepo := repository.NewAdminConfigRepository(db)
 		adminUserRepo := repository.NewAdminUserRepository(db)
 		adminQuestionRepo := repository.NewAdminQuestionRepository(db)
 		adminCategoryRepo := repository.NewAdminCategoryRepository(db)
 		promptRepo := repository.NewPromptTemplateRepository(db)
 		aiCallLogRepo := repository.NewAICallLogRepository(db)
-		live2DRepo := repository.NewLive2DModelRepository(db)
+		live2DRepo = repository.NewLive2DModelRepository(db)
 		ttsRepo := repository.NewTTSConfigRepository(db)
 		mockInterviewRepo := repository.NewMockInterviewRepository(db)
 		scraperTaskRepo := repository.NewScraperTaskRepository(db)
@@ -194,6 +199,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			aiClient.PlanAgent,
 		)
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)
+		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
 
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
@@ -202,6 +208,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)
+		deps.Live2DHandler = handler.NewLive2DHandler(deps.Live2DService)
 		deps.CommunityHandler = handler.NewCommunityHandler(communityService)
 
 		adminService := service.NewAdminService(
@@ -228,6 +235,13 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			adminQuestionRepo,
 		)
 		deps.ScraperHandler = handler.NewScraperHandler(scraperService)
+	}
+
+	if deps.Live2DService == nil {
+		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
+	}
+	if deps.Live2DHandler == nil && deps.Live2DService != nil {
+		deps.Live2DHandler = handler.NewLive2DHandler(deps.Live2DService)
 	}
 
 	casbinService, err := service.NewCasbinService(cfg)
@@ -273,6 +287,12 @@ func initRedis(cfg *config.Config) (*redis.Client, error) {
 }
 
 func registerRoutes(r *gin.Engine, deps *AppDependencies) {
+	if assetsDir := live2dassets.ResolveAssetsDir(); assetsDir != "" {
+		r.StaticFS(live2dassets.MountPath, gin.Dir(assetsDir, false))
+	} else {
+		applogger.Warn("live2d assets dir not found")
+	}
+
 	r.GET("/api/health", func(c *gin.Context) {
 		common.Success(c, gin.H{
 			"status":    "ok",
@@ -299,6 +319,9 @@ func registerRoutes(r *gin.Engine, deps *AppDependencies) {
 		}
 		if deps.CommunityHandler != nil {
 			deps.CommunityHandler.RegisterRoutes(public, nil)
+		}
+		if deps.Live2DHandler != nil {
+			deps.Live2DHandler.RegisterRoutes(public)
 		}
 
 		protected := api.Group("")

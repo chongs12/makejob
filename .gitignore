@@ -57,3 +57,4 @@ coverage/
 *.coverprofile
 _skill_staging/
 docs/
+live2d-src/

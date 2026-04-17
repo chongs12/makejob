@@ -1,44 +1,83 @@
 <script setup lang="ts">
 /**
- * Live2D陪伴页 - 全屏布局
- * 左侧虚拟人展示 + 右侧聊天区域
+ * Live2D 学习陪伴页
+ * 左侧展示陪伴形象，右侧承载实时对话
  */
 
 import { Promotion } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 
 definePageMeta({
   layout: false,
   middleware: ['auth'],
 })
 
+type ChatMessage = {
+  role: 'assistant' | 'user'
+  content: string
+}
+
 const router = useRouter()
 const { $api } = useNuxtApp()
 
-const messages = ref<{ role: string; content: string }[]>([])
+const messages = ref<ChatMessage[]>([])
 const inputText = ref('')
 const sending = ref(false)
 const mood = ref<'happy' | 'thinking' | 'encouraging' | 'neutral'>('happy')
-const isSpeaking = ref(false)
 const chatContainer = ref<HTMLElement | null>(null)
-const eyesClosed = ref(false)
+const live2DViewport = reactive({ width: 0, height: 0 })
 
-// 预设快捷回复
+const live2DScene = 'companion'
+const { modelConfig, loading: live2DLoading, error: live2DError } = useLive2DModel(live2DScene)
+
 const quickReplies = [
-  { text: '今天学什么', emoji: '📚' },
-  { text: '鼓励一下我', emoji: '💪' },
-  { text: '学习建议', emoji: '💡' },
+  { text: '今天适合学什么？', emoji: '🌤' },
+  { text: '我有点没动力了', emoji: '💪' },
+  { text: '帮我复盘一下今天', emoji: '📝' },
 ]
 
-// 随机眨眼
-let blinkTimer: ReturnType<typeof setInterval> | null = null
-const startBlinking = () => {
-  blinkTimer = setInterval(() => {
-    eyesClosed.value = true
-    setTimeout(() => { eyesClosed.value = false }, 200)
-  }, 3000 + Math.random() * 2000)
+/* syncLive2DViewport 同步浏览器视口，用于按左半屏计算 Live2D 展示尺寸。 */
+const syncLive2DViewport = () => {
+  if (!process.client) {
+    return
+  }
+
+  live2DViewport.width = window.innerWidth
+  live2DViewport.height = window.innerHeight
 }
 
+/* companionCanvasSize 根据当前视口计算陪伴页的大尺寸画布。 */
+const companionCanvasSize = computed(() => {
+  const viewportWidth = live2DViewport.width || 1440
+  const viewportHeight = live2DViewport.height || 900
+  const width = Math.min(Math.max(viewportWidth * 0.5 - 72, 460), 720)
+  const height = Math.min(Math.max(viewportHeight - 148, 640), 920)
+
+  return {
+    width: Math.round(width),
+    height: Math.round(height),
+  }
+})
+
+/* displayModelConfig 在陪伴页覆盖模型缩放和位置，让角色更贴近半屏展示。 */
+const displayModelConfig = computed(() => {
+  if (!modelConfig.value) {
+    return null
+  }
+
+  const baseScale = Number(modelConfig.value.scale ?? 0.4)
+  const basePosition = modelConfig.value.position || { x: 0, y: 0 }
+
+  return {
+    ...modelConfig.value,
+    scale: Math.max(baseScale, 0.98),
+    position: {
+      x: Number(basePosition.x || 0),
+      y: Number(basePosition.y || 0) + 0.08,
+    },
+  }
+})
+
+/* scrollToBottom 将对话滚动到底部。 */
 const scrollToBottom = () => {
   nextTick(() => {
     if (chatContainer.value) {
@@ -47,19 +86,37 @@ const scrollToBottom = () => {
   })
 }
 
-// 发送消息
+/* buildGreeting 根据当前时间生成欢迎语。 */
+const buildGreeting = () => {
+  const hour = new Date().getHours()
+  if (hour < 9) return '早上好，今天我们先从一个轻量目标开始。'
+  if (hour < 12) return '上午好，状态不错的话，我们把最难的任务先拿下。'
+  if (hour < 14) return '中午好，先别着急卷，吃好休息好也算进度。'
+  if (hour < 18) return '下午好，现在适合集中做一轮高价值练习。'
+  return '晚上好，适合复盘和收尾，我陪你把今天整理清楚。'
+}
+
+/* initGreeting 初始化首条陪伴消息。 */
+const initGreeting = () => {
+  const greeting = buildGreeting()
+  setTimeout(() => {
+    messages.value.push({ role: 'assistant', content: greeting })
+  }, 500)
+}
+
+/* sendMessage 发送消息并处理陪伴回复。 */
 const sendMessage = async (text?: string) => {
   const msg = text || inputText.value.trim()
   if (!msg || sending.value) return
+
   inputText.value = ''
   messages.value.push({ role: 'user', content: msg })
   scrollToBottom()
 
   sending.value = true
   mood.value = 'thinking'
-  isSpeaking.value = false
+
   try {
-    // 调用陪伴聊天API（使用通用聊天接口）
     const res = await $api.post<any>('/companion/chat', {
       message: msg,
       messages: messages.value.map(item => ({
@@ -67,65 +124,56 @@ const sendMessage = async (text?: string) => {
         content: item.content,
       })),
     })
+
     if (res.code === 200 && res.data) {
       const reply = res.data.reply || res.data.content || res.data.message || ''
       messages.value.push({ role: 'assistant', content: reply })
       mood.value = res.data.mood || 'happy'
-      isSpeaking.value = true
-      setTimeout(() => { isSpeaking.value = false }, reply.length * 80)
     }
-  } catch (e) {
-    // 静默处理，如果API不存在，用本地回复
+  } catch {
     const fallbackReplies = [
-      '今天也要加油哦！坚持学习一定会有收获的 ✨',
-      '你已经很棒了！每天进步一点点，积少成多 💪',
-      '建议今天复习一下Go的并发编程，这是面试高频考点 📖',
-      '休息一下也很重要哦，劳逸结合效率更高 ☕',
-      '你今天的学习状态看起来很不错！继续保持 🎯',
+      '先别急，我们把目标拆小一点，今天只完成最关键的一步就够了。',
+      '你已经在往前走了。先告诉我卡在哪，我帮你一起拆开。',
+      '如果今天状态一般，那就做 20 分钟最重要的题，我陪你撑过去。',
+      '先深呼吸一下，再把你脑子里最乱的那件事发给我。',
+      '今天也可以是温和推进，不一定非要高强度冲刺。',
     ]
+
     messages.value.push({
       role: 'assistant',
-      content: fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)]
+      content: fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)]!,
     })
     mood.value = 'encouraging'
-    isSpeaking.value = true
-    setTimeout(() => { isSpeaking.value = false }, 2000)
   } finally {
     sending.value = false
   }
+
   scrollToBottom()
 }
 
-// 初始问候
 onMounted(() => {
-  startBlinking()
-  const hour = new Date().getHours()
-  let greeting = '你好呀！'
-  if (hour < 9) greeting = '早上好！新的一天，元气满满！🌞'
-  else if (hour < 12) greeting = '上午好！来一起学习吧！📚'
-  else if (hour < 14) greeting = '中午好！吃完饭记得休息一下哦 ☕'
-  else if (hour < 18) greeting = '下午好！继续加油，你很棒！💪'
-  else greeting = '晚上好！今天辛苦了，还要学习吗？🌙'
-
-  setTimeout(() => {
-    messages.value.push({ role: 'assistant', content: greeting })
-    isSpeaking.value = true
-    setTimeout(() => { isSpeaking.value = false }, 2000)
-  }, 500)
+  syncLive2DViewport()
+  window.addEventListener('resize', syncLive2DViewport)
+  initGreeting()
 })
 
 onUnmounted(() => {
-  if (blinkTimer) clearInterval(blinkTimer)
+  if (!process.client) {
+    return
+  }
+
+  window.removeEventListener('resize', syncLive2DViewport)
 })
 </script>
 
 <template>
   <div class="h-screen flex bg-gray-50">
-    <!-- 左侧: 虚拟人展示区 -->
     <div class="w-1/2 bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 relative overflow-hidden flex flex-col items-center justify-center">
-      <!-- 装饰粒子 -->
       <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <div v-for="i in 20" :key="i" class="absolute rounded-full opacity-20 animate-float"
+        <div
+          v-for="i in 20"
+          :key="i"
+          class="absolute rounded-full opacity-20 animate-float"
           :class="i % 3 === 0 ? 'bg-indigo-300' : i % 3 === 1 ? 'bg-purple-300' : 'bg-pink-300'"
           :style="{
             width: `${6 + Math.random() * 12}px`,
@@ -134,71 +182,52 @@ onUnmounted(() => {
             top: `${Math.random() * 100}%`,
             animationDelay: `${Math.random() * 5}s`,
             animationDuration: `${4 + Math.random() * 4}s`,
-          }" />
+          }"
+        />
       </div>
 
-      <!-- 返回按钮 -->
-      <button @click="router.push('/dashboard')"
-        class="absolute top-4 left-4 z-10 text-gray-500 hover:text-gray-700 bg-white/60 backdrop-blur rounded-full w-10 h-10 flex items-center justify-center transition-colors">
+      <button
+        @click="router.push('/dashboard')"
+        class="absolute top-4 left-4 z-10 text-gray-500 hover:text-gray-700 bg-white/60 backdrop-blur rounded-full w-10 h-10 flex items-center justify-center transition-colors"
+      >
         ←
       </button>
 
-      <!-- CSS角色 -->
-      <div class="relative animate-companion-float">
-        <!-- 主体 -->
-        <div class="w-44 h-44 rounded-full bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400 shadow-2xl shadow-purple-200 flex items-center justify-center relative">
-          <!-- 脸部 -->
-          <div class="relative">
-            <!-- 眼睛 -->
-            <div class="flex gap-6 mb-3">
-              <div class="relative">
-                <div class="w-5 h-5 bg-white rounded-full flex items-center justify-center transition-all"
-                  :class="eyesClosed ? '!h-1 !rounded-sm' : ''">
-                  <div v-if="!eyesClosed" class="w-2.5 h-2.5 bg-gray-800 rounded-full" />
-                </div>
-              </div>
-              <div class="relative">
-                <div class="w-5 h-5 bg-white rounded-full flex items-center justify-center transition-all"
-                  :class="eyesClosed ? '!h-1 !rounded-sm' : ''">
-                  <div v-if="!eyesClosed" class="w-2.5 h-2.5 bg-gray-800 rounded-full" />
-                </div>
-              </div>
-            </div>
-            <!-- 腮红 -->
-            <div class="flex gap-12 mb-1">
-              <div class="w-4 h-2.5 bg-pink-300/60 rounded-full" />
-              <div class="w-4 h-2.5 bg-pink-300/60 rounded-full" />
-            </div>
-            <!-- 嘴巴 -->
-            <div class="flex justify-center">
-              <div class="transition-all duration-200"
-                :class="isSpeaking ? 'w-4 h-4 bg-pink-400 rounded-full animate-mouth' : 'w-6 h-3 border-b-2 border-pink-400 rounded-b-full'" />
-            </div>
-          </div>
-        </div>
-        <!-- 光晕 -->
-        <div class="absolute -inset-4 rounded-full bg-gradient-to-br from-indigo-200/30 to-pink-200/30 blur-xl -z-10" />
+      <div class="relative animate-companion-float max-w-[calc(100%-2rem)]">
+        <Live2DCompanion
+          :width="companionCanvasSize.width"
+          :height="companionCanvasSize.height"
+          :model-config="displayModelConfig"
+          :loading="live2DLoading"
+          :error="live2DError"
+          :mood="mood"
+        />
       </div>
 
-      <h3 class="mt-6 text-xl font-bold text-gray-800">小助手</h3>
-      <el-tag :type="mood === 'happy' ? 'success' : mood === 'thinking' ? 'warning' : mood === 'encouraging' ? 'primary' : 'info'"
-        class="mt-2" effect="light">
-        {{ mood === 'happy' ? '😊 开心' : mood === 'thinking' ? '🤔 思考中' : mood === 'encouraging' ? '💪 加油' : '😐 平静' }}
+      <h3 class="mt-6 text-xl font-bold text-gray-800">学习陪伴中</h3>
+      <el-tag
+        :type="mood === 'happy' ? 'success' : mood === 'thinking' ? 'warning' : mood === 'encouraging' ? 'primary' : 'info'"
+        class="mt-2"
+        effect="light"
+      >
+        {{ mood === 'happy' ? '心情不错' : mood === 'thinking' ? '认真思考' : mood === 'encouraging' ? '正在鼓励你' : '平静陪伴' }}
       </el-tag>
+      <p class="mt-3 text-sm text-gray-500 bg-white/60 backdrop-blur px-4 py-2 rounded-full">
+        {{ modelConfig?.source === 'database' ? '已接入后台模型配置' : '当前使用内置默认模型' }}
+      </p>
     </div>
 
-    <!-- 右侧: 聊天区域 -->
     <div class="w-1/2 flex flex-col">
-      <!-- 顶部 -->
       <div class="h-14 border-b border-gray-200 bg-white flex items-center px-6">
         <span class="font-bold text-gray-900">AI 学习陪伴</span>
       </div>
 
-      <!-- 消息列表 -->
       <div ref="chatContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
-        <div v-for="(msg, idx) in messages" :key="idx"
-          :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-          <!-- AI消息 -->
+        <div
+          v-for="(msg, idx) in messages"
+          :key="idx"
+          :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']"
+        >
           <div v-if="msg.role === 'assistant'" class="flex gap-3 max-w-[85%]">
             <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex-shrink-0 flex items-center justify-center">
               <span class="text-white text-xs">AI</span>
@@ -207,51 +236,57 @@ onUnmounted(() => {
               <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ msg.content }}</p>
             </div>
           </div>
-          <!-- 用户消息 -->
+
           <div v-else class="max-w-[80%] bg-blue-500 text-white px-4 py-3 rounded-2xl rounded-br-sm">
             <p class="text-sm leading-relaxed">{{ msg.content }}</p>
           </div>
         </div>
 
-        <!-- 思考中 -->
         <div v-if="sending" class="flex gap-3">
           <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex-shrink-0 flex items-center justify-center">
             <span class="text-white text-xs">AI</span>
           </div>
           <div class="bg-purple-50 border border-purple-100 text-purple-400 px-4 py-3 rounded-2xl rounded-bl-sm">
             <span class="flex gap-1">
-              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay:0ms" />
-              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay:150ms" />
-              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay:300ms" />
+              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay: 0ms" />
+              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay: 150ms" />
+              <span class="w-2 h-2 bg-purple-300 rounded-full animate-bounce" style="animation-delay: 300ms" />
             </span>
           </div>
         </div>
       </div>
 
-      <!-- 快捷回复 -->
       <div class="px-6 pb-2 flex gap-2">
-        <button v-for="q in quickReplies" :key="q.text"
+        <button
+          v-for="q in quickReplies"
+          :key="q.text"
           @click="sendMessage(q.text)"
-          class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-purple-50 hover:border-purple-200 hover:text-purple-600 transition-colors">
+          class="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-purple-50 hover:border-purple-200 hover:text-purple-600 transition-colors"
+        >
           {{ q.emoji }} {{ q.text }}
         </button>
       </div>
 
-      <!-- 输入区 -->
       <div class="border-t border-gray-200 bg-white p-4">
         <div class="flex gap-3 items-end">
           <el-input
             v-model="inputText"
             type="textarea"
             :rows="2"
-            placeholder="和小助手聊聊天..."
+            placeholder="把你现在的学习状态或问题发给我……"
             :disabled="sending"
             @keydown.enter.ctrl="sendMessage()"
             resize="none"
             class="flex-1"
           />
-          <el-button type="primary" circle :loading="sending" :disabled="!inputText.trim()"
-            @click="sendMessage()" class="!w-10 !h-10">
+          <el-button
+            type="primary"
+            circle
+            :loading="sending"
+            :disabled="!inputText.trim()"
+            @click="sendMessage()"
+            class="!w-10 !h-10"
+          >
             <el-icon><Promotion /></el-icon>
           </el-button>
         </div>
@@ -266,6 +301,7 @@ onUnmounted(() => {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
+
 .animate-companion-float {
   animation: companionFloat 3s ease-in-out infinite;
 }
@@ -274,15 +310,8 @@ onUnmounted(() => {
   0%, 100% { transform: translateY(0) scale(1); opacity: 0.2; }
   50% { transform: translateY(-20px) scale(1.1); opacity: 0.35; }
 }
+
 .animate-float {
   animation: float 5s ease-in-out infinite;
-}
-
-@keyframes mouth {
-  0%, 100% { transform: scaleY(0.5); }
-  50% { transform: scaleY(1); }
-}
-.animate-mouth {
-  animation: mouth 0.3s ease-in-out infinite;
 }
 </style>
