@@ -72,6 +72,7 @@ type UserProfile struct {
 	WeakTopics      []string `json:"weak_topics"`
 	StrongTopics    []string `json:"strong_topics"`
 	DailyStudyTime  int      `json:"daily_study_time"` // 分钟
+	DurationDays    int      `json:"duration_days"`    // 学习计划总天数
 	GoalDescription string   `json:"goal_description"`
 }
 

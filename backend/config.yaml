@@ -25,6 +25,59 @@ jwt:
 casbin:
   model_path: "config/rbac_model.conf"
 
+ai:
+  provider: "eino"           # 可切换为 eino
+  fallback_provider: "mock"
+  model: ""                  # 留空时可回退到 volcengine.ark.chat_model
+  api_key: ""                # 留空时可回退到 volcengine.ark.api_key
+  base_url: ""               # 留空时可回退到 volcengine.ark.base_url
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 2048
+  timeout_seconds: 30
+  enable_stream: false
+  interview_model: ""
+  plan_model: ""
+  companion_model: ""
+  quiz_model: ""
+
+volcengine:
+  region: "cn-beijing"
+  access_key: ""
+  secret_key: ""
+  ark:
+    api_key: "ark-1c544572-9c83-495d-a291-4fe31d71e8d5-91264"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    chat_model: "deepseek-v3-2-251201"
+    interview_model: "deepseek-v3-2-251201"
+    plan_model: "deepseek-v3-2-251201"
+    companion_model: "deepseek-v3-2-251201"
+    quiz_model: "deepseek-v3-2-251201"
+  asr:
+    enabled: false
+    base_url: ""
+    app_id: ""
+    access_token: ""
+    cluster: ""
+    resource_id: ""
+    workflow: ""
+    audio_format: "wav"
+    sample_rate: 16000
+    language: "zh-CN"
+  tts:
+    enabled: false
+    base_url: ""
+    app_id: ""
+    access_token: ""
+    cluster: ""
+    resource_id: ""
+    voice_type: ""
+    encoding: "mp3"
+    speed_ratio: 100
+    volume_ratio: 100
+    pitch_ratio: 100
+    sample_rate: 24000
+
 admin_bootstrap:
   enabled: true
   username: "Admin"

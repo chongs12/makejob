@@ -228,6 +228,8 @@ type AdminService interface {
 
 	GetAIConfigs(ctx context.Context) (*AIConfigResponse, error)
 	UpdateAIConfigs(ctx context.Context, configs map[string]string) error
+	DebugAIRuntime(ctx context.Context, req *AIDebugRequest) (*AIDebugResponse, error)
+	ListAICallLogs(ctx context.Context, req *ListAICallLogsRequest) (*common.PageResult, error)
 
 	ListLive2DModels(ctx context.Context) ([]model.Live2DModel, error)
 	CreateLive2DModel(ctx context.Context, req *CreateLive2DModelRequest) (*model.Live2DModel, error)
@@ -247,11 +249,14 @@ type adminService struct {
 	adminCategoryRepo repository.AdminCategoryRepository
 	promptRepo        repository.PromptTemplateRepository
 	adminConfigRepo   repository.AdminConfigRepository
+	aiCallLogRepo     repository.AICallLogRepository
 	live2DRepo        repository.Live2DModelRepository
 	ttsRepo           repository.TTSConfigRepository
 	mockInterviewRepo repository.MockInterviewRepository
+	baseAIConfig      map[string]string
 }
 
+// NewAdminService 创建后台管理服务。
 func NewAdminService(
 	adminUserRepo repository.AdminUserRepository,
 	adminQuestionRepo repository.AdminQuestionRepository,
@@ -259,9 +264,11 @@ func NewAdminService(
 	adminCategoryRepo repository.AdminCategoryRepository,
 	promptRepo repository.PromptTemplateRepository,
 	adminConfigRepo repository.AdminConfigRepository,
+	aiCallLogRepo repository.AICallLogRepository,
 	live2DRepo repository.Live2DModelRepository,
 	ttsRepo repository.TTSConfigRepository,
 	mockInterviewRepo repository.MockInterviewRepository,
+	baseAIConfig map[string]string,
 ) AdminService {
 	return &adminService{
 		adminUserRepo:     adminUserRepo,
@@ -270,9 +277,11 @@ func NewAdminService(
 		adminCategoryRepo: adminCategoryRepo,
 		promptRepo:        promptRepo,
 		adminConfigRepo:   adminConfigRepo,
+		aiCallLogRepo:     aiCallLogRepo,
 		live2DRepo:        live2DRepo,
 		ttsRepo:           ttsRepo,
 		mockInterviewRepo: mockInterviewRepo,
+		baseAIConfig:      ai.NormalizeRuntimeConfig(baseAIConfig),
 	}
 }
 
@@ -755,7 +764,7 @@ func (s *adminService) GetAIConfigs(ctx context.Context) (*AIConfigResponse, err
 		return nil, err
 	}
 
-	return buildAIConfigResponse(items), nil
+	return buildAIConfigResponse(items, s.baseAIConfig), nil
 }
 
 func (s *adminService) UpdateAIConfigs(ctx context.Context, configs map[string]string) error {

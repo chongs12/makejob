@@ -59,6 +59,8 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// AI配置管理
 	r.GET("/ai-configs", h.GetAIConfigs)
 	r.PUT("/ai-configs", h.UpdateAIConfigs)
+	r.POST("/prompts/test-render", h.TestRenderPrompt)
+	r.GET("/ai-call-logs", h.ListAICallLogs)
 
 	// Live2D模型管理
 	r.GET("/live2d-models", h.ListLive2DModels)

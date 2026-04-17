@@ -141,6 +141,7 @@ func main() {
 	applogger.Info("server exited")
 }
 
+// initDependencies 初始化仓库、服务和处理器依赖。
 func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 	deps := &AppDependencies{}
 
@@ -163,11 +164,12 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		adminQuestionRepo := repository.NewAdminQuestionRepository(db)
 		adminCategoryRepo := repository.NewAdminCategoryRepository(db)
 		promptRepo := repository.NewPromptTemplateRepository(db)
+		aiCallLogRepo := repository.NewAICallLogRepository(db)
 		live2DRepo := repository.NewLive2DModelRepository(db)
 		ttsRepo := repository.NewTTSConfigRepository(db)
 		mockInterviewRepo := repository.NewMockInterviewRepository(db)
 		scraperTaskRepo := repository.NewScraperTaskRepository(db)
-		aiClient := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo).Build(context.Background())
+		aiClient := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults()).Build(context.Background())
 		communityRepo := repository.NewCommunityRepository(db)
 
 		deps.AuthService = service.NewAuthService(deps.UserRepo, cfg)
@@ -209,9 +211,11 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			adminCategoryRepo,
 			promptRepo,
 			adminConfigRepo,
+			aiCallLogRepo,
 			live2DRepo,
 			ttsRepo,
 			mockInterviewRepo,
+			cfg.AIRuntimeDefaults(),
 		)
 		deps.AdminHandler = handler.NewAdminHandler(adminService)
 

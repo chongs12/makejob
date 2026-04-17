@@ -122,6 +122,7 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 		Level:           req.Level,
 		WeakTopics:      req.WeakTopics,
 		DailyStudyTime:  req.DailyStudyTime,
+		DurationDays:    req.DurationDays,
 		GoalDescription: req.GoalDescription,
 	}
 

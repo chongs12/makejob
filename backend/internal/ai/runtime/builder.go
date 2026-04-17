@@ -14,29 +14,37 @@ import (
 
 var builtInScenePrompts = map[string]string{
 	model.PromptSceneInterview: "You are a strict but constructive technical interviewer for {{industry_code}} roles. Keep questions progressive, clear, and grounded in the user's difficulty {{difficulty}}.",
-	model.PromptScenePlan:      "You are a study planner for {{industry_code}} learners. Build a practical plan for level {{level}} with daily study time {{daily_study_time}} minutes and goal {{goal_description}}.",
+	model.PromptScenePlan:      "You are a study planner for {{industry_code}} learners. Build a practical plan for level {{level}} with daily study time {{daily_study_time}} minutes, duration {{duration_days}} days, and goal {{goal_description}}.",
 	model.PromptSceneCompanion: "You are a supportive study companion. Reply briefly, stay empathetic to the user's emotion {{user_emotion}}, and give concrete encouragement.",
 	model.PromptSceneQuiz:      "You are a code and answer reviewer. Judge correctness carefully, explain issues clearly, and provide actionable improvements.",
 }
 
 type Builder struct {
-	configRepo   repository.AdminConfigRepository
-	promptRepo   repository.PromptTemplateRepository
-	industryRepo repository.IndustryRepository
+	configRepo    repository.AdminConfigRepository
+	promptRepo    repository.PromptTemplateRepository
+	industryRepo  repository.IndustryRepository
+	aiCallLogRepo repository.AICallLogRepository
+	baseConfig    map[string]string
 }
 
+// NewBuilder 创建 AI runtime 构建器。
 func NewBuilder(
 	configRepo repository.AdminConfigRepository,
 	promptRepo repository.PromptTemplateRepository,
 	industryRepo repository.IndustryRepository,
+	aiCallLogRepo repository.AICallLogRepository,
+	baseConfig map[string]string,
 ) *Builder {
 	return &Builder{
-		configRepo:   configRepo,
-		promptRepo:   promptRepo,
-		industryRepo: industryRepo,
+		configRepo:    configRepo,
+		promptRepo:    promptRepo,
+		industryRepo:  industryRepo,
+		aiCallLogRepo: aiCallLogRepo,
+		baseConfig:    ai.NormalizeRuntimeConfig(baseConfig),
 	}
 }
 
+// Build 根据默认配置和后台配置组装 AI 客户端。
 func (b *Builder) Build(ctx context.Context) *ai.AIClient {
 	runtimeConfig := b.loadRuntimeConfig(ctx)
 	prompts := &promptResolver{
@@ -44,35 +52,41 @@ func (b *Builder) Build(ctx context.Context) *ai.AIClient {
 		industryRepo: b.industryRepo,
 	}
 
-	interviewProvider := buildProvider(ctx, runtimeConfig, model.PromptSceneInterview)
-	planProvider := buildProvider(ctx, runtimeConfig, model.PromptScenePlan)
-	companionProvider := buildProvider(ctx, runtimeConfig, model.PromptSceneCompanion)
-	quizProvider := buildProvider(ctx, runtimeConfig, model.PromptSceneQuiz)
+	interviewSceneConfig := buildSceneConfig(runtimeConfig, model.PromptSceneInterview)
+	planSceneConfig := buildSceneConfig(runtimeConfig, model.PromptScenePlan)
+	companionSceneConfig := buildSceneConfig(runtimeConfig, model.PromptSceneCompanion)
+	quizSceneConfig := buildSceneConfig(runtimeConfig, model.PromptSceneQuiz)
+
+	interviewProvider := buildProvider(ctx, interviewSceneConfig)
+	planProvider := buildProvider(ctx, planSceneConfig)
+	companionProvider := buildProvider(ctx, companionSceneConfig)
+	quizProvider := buildProvider(ctx, quizSceneConfig)
 
 	return &ai.AIClient{
-		Provider: buildProvider(ctx, runtimeConfig, ""),
-		InterviewAgent: &interviewAgent{
-			base:    mock.NewInterviewAgent(interviewProvider),
-			prompts: prompts,
-		},
-		PlanAgent: &planAgent{
-			base:    mock.NewPlanAgent(planProvider),
-			prompts: prompts,
-		},
+		Provider: buildProvider(ctx, buildSceneConfig(runtimeConfig, "")),
+		InterviewAgent: newInterviewAgent(
+			interviewProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceInterviewRuntime, model.PromptSceneInterview, runtimeConfig, interviewSceneConfig),
+		),
+		PlanAgent: newPlanAgent(
+			planProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourcePlanRuntime, model.PromptScenePlan, runtimeConfig, planSceneConfig),
+		),
 		CompanionAgent: &companionAgent{
 			base:    mock.NewCompanionAgent(companionProvider),
 			prompts: prompts,
 		},
-		QuizAnalyzer: &quizAnalyzer{
-			base:    mock.NewQuizAnalyzer(quizProvider),
-			prompts: prompts,
-		},
+		QuizAnalyzer: newQuizAnalyzer(
+			quizProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceQuizRuntime, model.PromptSceneQuiz, runtimeConfig, quizSceneConfig),
+		),
 	}
 }
 
-func buildProvider(ctx context.Context, runtimeConfig map[string]string, scene string) ai.AIProvider {
-	sceneConfig := buildSceneConfig(runtimeConfig, scene)
-
+func buildProvider(ctx context.Context, sceneConfig map[string]string) ai.AIProvider {
 	primary, err := newProvider(ctx, sceneConfig[ai.ConfigKeyProvider], sceneConfig)
 	if err != nil {
 		fallback, fallbackErr := newProvider(ctx, sceneConfig[ai.ConfigKeyFallbackProvider], sceneConfig)
@@ -113,22 +127,24 @@ func newProvider(ctx context.Context, providerType string, config map[string]str
 	}
 }
 
+// loadRuntimeConfig 加载 AI runtime 配置，并让 config.yaml 中的显式配置优先生效。
 func (b *Builder) loadRuntimeConfig(ctx context.Context) map[string]string {
-	if b.configRepo == nil {
-		return ai.DefaultRuntimeConfig()
+	merged := ai.DefaultRuntimeConfig()
+
+	if b.configRepo != nil {
+		items, err := b.configRepo.List(ctx)
+		if err == nil {
+			for _, item := range items {
+				merged[item.ConfigKey] = item.ConfigValue
+			}
+		}
 	}
 
-	items, err := b.configRepo.List(ctx)
-	if err != nil {
-		return ai.DefaultRuntimeConfig()
+	for key, value := range ai.NormalizeRuntimeConfig(b.baseConfig) {
+		merged[key] = value
 	}
 
-	raw := make(map[string]string, len(items))
-	for _, item := range items {
-		raw[item.ConfigKey] = item.ConfigValue
-	}
-
-	return ai.NormalizeRuntimeConfig(raw)
+	return ai.NormalizeRuntimeConfig(merged)
 }
 
 func buildSceneConfig(runtimeConfig map[string]string, scene string) map[string]string {
@@ -160,24 +176,47 @@ type promptResolver struct {
 	industryRepo repository.IndustryRepository
 }
 
-func (r *promptResolver) ResolveByIndustryCode(ctx context.Context, scene string, industryCode string, vars map[string]string) string {
-	if industryID := r.lookupIndustryID(ctx, industryCode); industryID != nil {
-		return r.ResolveByIndustryID(ctx, scene, industryID, vars)
-	}
-	return r.ResolveByIndustryID(ctx, scene, nil, vars)
+// resolvedPromptDetails 描述 prompt 解析后的来源与内容。
+type resolvedPromptDetails struct {
+	Prompt       string
+	Source       string
+	TemplateID   *uint
+	TemplateName string
 }
 
+// ResolveByIndustryCode 按行业编码解析 prompt 文本。
+func (r *promptResolver) ResolveByIndustryCode(ctx context.Context, scene string, industryCode string, vars map[string]string) string {
+	return r.ResolveDetailsByIndustryCode(ctx, scene, industryCode, vars).Prompt
+}
+
+// ResolveByIndustryID 按行业 ID 解析 prompt 文本。
 func (r *promptResolver) ResolveByIndustryID(ctx context.Context, scene string, industryID *uint, vars map[string]string) string {
+	return r.ResolveDetailsByIndustryID(ctx, scene, industryID, vars).Prompt
+}
+
+// ResolveDetailsByIndustryCode 按行业编码解析 prompt 详情。
+func (r *promptResolver) ResolveDetailsByIndustryCode(ctx context.Context, scene string, industryCode string, vars map[string]string) resolvedPromptDetails {
+	if industryID := r.lookupIndustryID(ctx, industryCode); industryID != nil {
+		return r.ResolveDetailsByIndustryID(ctx, scene, industryID, vars)
+	}
+	return r.ResolveDetailsByIndustryID(ctx, scene, nil, vars)
+}
+
+// ResolveDetailsByIndustryID 按行业 ID 解析 prompt 详情。
+func (r *promptResolver) ResolveDetailsByIndustryID(ctx context.Context, scene string, industryID *uint, vars map[string]string) resolvedPromptDetails {
 	if r.promptRepo != nil {
 		if tpl := r.findActiveTemplate(ctx, scene, industryID, false); tpl != nil {
-			return renderPrompt(tpl.TemplateContent, vars)
+			return buildResolvedPromptDetails(tpl, "template_industry", vars)
 		}
 		if tpl := r.findActiveTemplate(ctx, scene, nil, true); tpl != nil {
-			return renderPrompt(tpl.TemplateContent, vars)
+			return buildResolvedPromptDetails(tpl, "template_generic", vars)
 		}
 	}
 
-	return renderPrompt(builtInScenePrompts[scene], vars)
+	return resolvedPromptDetails{
+		Prompt: renderPrompt(builtInScenePrompts[scene], vars),
+		Source: "built_in",
+	}
 }
 
 func (r *promptResolver) lookupIndustryID(ctx context.Context, industryCode string) *uint {
@@ -224,6 +263,26 @@ func (r *promptResolver) findActiveTemplate(ctx context.Context, scene string, i
 	return nil
 }
 
+// buildResolvedPromptDetails 构造带来源信息的 prompt 解析结果。
+func buildResolvedPromptDetails(tpl *model.PromptTemplate, source string, vars map[string]string) resolvedPromptDetails {
+	if tpl == nil {
+		return resolvedPromptDetails{Source: source}
+	}
+
+	var templateID *uint
+	if tpl.ID != 0 {
+		templateIDValue := tpl.ID
+		templateID = &templateIDValue
+	}
+
+	return resolvedPromptDetails{
+		Prompt:       renderPrompt(tpl.TemplateContent, vars),
+		Source:       source,
+		TemplateID:   templateID,
+		TemplateName: strings.TrimSpace(tpl.Name),
+	}
+}
+
 func renderPrompt(template string, vars map[string]string) string {
 	rendered := strings.TrimSpace(template)
 	if rendered == "" {
@@ -237,69 +296,6 @@ func renderPrompt(template string, vars map[string]string) string {
 	}
 
 	return rendered
-}
-
-type interviewAgent struct {
-	base    ai.InterviewAgent
-	prompts *promptResolver
-}
-
-func (a *interviewAgent) StartInterview(ctx context.Context, config ai.InterviewConfig) (string, ai.InterviewQuestion, error) {
-	if a.prompts != nil {
-		_ = a.prompts.ResolveByIndustryCode(ctx, model.PromptSceneInterview, config.IndustryCode, map[string]string{
-			"industry_code":  config.IndustryCode,
-			"difficulty":     config.Difficulty,
-			"topics":         strings.Join(config.Topics, ", "),
-			"question_count": intToString(config.QuestionCount),
-		})
-	}
-
-	return a.base.StartInterview(ctx, config)
-}
-
-func (a *interviewAgent) EvaluateAnswer(ctx context.Context, sessionID string, questionIndex int, answer string) (ai.AnswerFeedback, error) {
-	return a.base.EvaluateAnswer(ctx, sessionID, questionIndex, answer)
-}
-
-func (a *interviewAgent) GetNextQuestion(ctx context.Context, sessionID string) (ai.InterviewQuestion, bool, error) {
-	return a.base.GetNextQuestion(ctx, sessionID)
-}
-
-func (a *interviewAgent) GenerateReport(ctx context.Context, sessionID string) (ai.InterviewReport, error) {
-	return a.base.GenerateReport(ctx, sessionID)
-}
-
-func (a *interviewAgent) EndInterview(ctx context.Context, sessionID string) error {
-	return a.base.EndInterview(ctx, sessionID)
-}
-
-type planAgent struct {
-	base    ai.PlanAgent
-	prompts *promptResolver
-}
-
-func (a *planAgent) GeneratePlan(ctx context.Context, profile ai.UserProfile, industryCode string) (ai.LearningPlan, error) {
-	if a.prompts != nil {
-		prompt := a.prompts.ResolveByIndustryCode(ctx, model.PromptScenePlan, industryCode, map[string]string{
-			"industry_code":    industryCode,
-			"level":            profile.Level,
-			"daily_study_time": intToString(profile.DailyStudyTime),
-			"goal_description": profile.GoalDescription,
-			"weak_topics":      strings.Join(profile.WeakTopics, ", "),
-			"strong_topics":    strings.Join(profile.StrongTopics, ", "),
-		})
-		profile.GoalDescription = mergePrompt(prompt, profile.GoalDescription)
-	}
-
-	return a.base.GeneratePlan(ctx, profile, industryCode)
-}
-
-func (a *planAgent) AdjustPlan(ctx context.Context, planID string, completedTasks []string, performance map[string]float64) (ai.LearningPlan, error) {
-	return a.base.AdjustPlan(ctx, planID, completedTasks, performance)
-}
-
-func (a *planAgent) GetStudySuggestion(ctx context.Context, profile ai.UserProfile) (string, error) {
-	return a.base.GetStudySuggestion(ctx, profile)
 }
 
 type companionAgent struct {
@@ -325,23 +321,6 @@ func (a *companionAgent) GetGreeting(ctx context.Context, profile ai.UserProfile
 
 func (a *companionAgent) GetEncouragement(ctx context.Context, achievement string) (ai.CompanionResponse, error) {
 	return a.base.GetEncouragement(ctx, achievement)
-}
-
-type quizAnalyzer struct {
-	base    ai.QuizAnalyzer
-	prompts *promptResolver
-}
-
-func (a *quizAnalyzer) AnalyzeCode(ctx context.Context, code string, language string, question string) (ai.CodeAnalysis, error) {
-	return a.base.AnalyzeCode(ctx, code, language, question)
-}
-
-func (a *quizAnalyzer) ExplainAnswer(ctx context.Context, questionTitle string, questionContent string, correctAnswer string) (string, error) {
-	return a.base.ExplainAnswer(ctx, questionTitle, questionContent, correctAnswer)
-}
-
-func (a *quizAnalyzer) GenerateHint(ctx context.Context, questionTitle string, questionContent string) (string, error) {
-	return a.base.GenerateHint(ctx, questionTitle, questionContent)
 }
 
 func prependSystemPrompt(messages []ai.Message, prompt string) []ai.Message {

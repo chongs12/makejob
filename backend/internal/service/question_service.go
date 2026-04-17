@@ -296,9 +296,6 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 		IsCorrect:  isCorrect,
 		TimeSpent:  req.TimeSpent,
 	}
-	if err := s.recordRepo.Create(ctx, record); err != nil {
-		return nil, err
-	}
 
 	// 构建响应
 	resp := &SubmitAnswerResponse{
@@ -310,12 +307,18 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 	// 对于编程题和主观题，调用AI分析
 	if question.Type == model.QuestionTypeCode || question.Type == model.QuestionTypeSubjective {
 		if s.quizAnalyzer != nil {
-			analysis, err := s.quizAnalyzer.AnalyzeCode(ctx, req.Answer, "go", question.Content)
+			analysis, err := s.quizAnalyzer.AnalyzeCode(ctx, req.Answer, detectQuestionLanguage(question), question.Content)
 			if err == nil {
+				resp.IsCorrect = analysis.IsCorrect
 				analysisJSON, _ := json.Marshal(analysis)
 				resp.AIAnalysis = string(analysisJSON)
 			}
 		}
+	}
+
+	record.IsCorrect = resp.IsCorrect
+	if err := s.recordRepo.Create(ctx, record); err != nil {
+		return nil, err
 	}
 
 	return resp, nil

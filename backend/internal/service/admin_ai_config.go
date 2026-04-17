@@ -10,9 +10,10 @@ type AIConfigResponse struct {
 	Items   []model.AdminConfig `json:"items"`
 }
 
-func buildAIConfigResponse(items []model.AdminConfig) *AIConfigResponse {
+// buildAIConfigResponse 构建 AI 配置响应，并把配置文件默认值合并进返回结果。
+func buildAIConfigResponse(items []model.AdminConfig, baseConfig map[string]string) *AIConfigResponse {
 	filtered := make([]model.AdminConfig, 0, len(items))
-	configMap := make(map[string]string, len(items))
+	configMap := ai.NormalizeRuntimeConfig(baseConfig)
 
 	for _, item := range items {
 		if !ai.IsRuntimeConfigKey(item.ConfigKey) {
@@ -29,6 +30,7 @@ func buildAIConfigResponse(items []model.AdminConfig) *AIConfigResponse {
 	}
 }
 
+// buildAIConfigItems 将运行时配置映射为后台配置项。
 func buildAIConfigItems(configs map[string]string) []model.AdminConfig {
 	items := make([]model.AdminConfig, 0, len(configs))
 	for key, value := range ai.NormalizeRuntimeConfig(configs) {

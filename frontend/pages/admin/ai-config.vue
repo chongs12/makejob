@@ -19,9 +19,14 @@ const configs = ref<Record<string, any>>({
   ai_api_key: '',
   ai_temperature: 0.7,
   ai_top_p: 0.9,
+  ai_max_tokens: 2048,
   ai_timeout_seconds: 30,
   ai_enable_stream: false,
   ai_fallback_provider: 'mock',
+  ai_scene_interview_model: '',
+  ai_scene_plan_model: '',
+  ai_scene_companion_model: '',
+  ai_scene_quiz_model: '',
 })
 
 const providerOptions = [
@@ -43,9 +48,14 @@ const paramDescriptions: Record<string, string> = {
   ai_api_key: 'AI 上游密钥，仅在后台保存，不应泄漏到前端。',
   ai_temperature: '采样温度，值越高输出越发散。',
   ai_top_p: 'Top-p 采样参数。',
+  ai_max_tokens: '单次请求允许的最大输出 token 数。',
   ai_timeout_seconds: '单次 AI 请求超时时间，单位为秒。',
   ai_enable_stream: '是否启用流式输出预留开关。',
   ai_fallback_provider: '主 provider 失败后的回退 provider。',
+  ai_scene_interview_model: 'interview 场景专用模型，留空时使用默认模型。',
+  ai_scene_plan_model: 'plan 场景专用模型，留空时使用默认模型。',
+  ai_scene_companion_model: 'companion 场景专用模型，留空时使用默认模型。',
+  ai_scene_quiz_model: 'quiz 场景专用模型，留空时使用默认模型。',
 }
 
 const normalizeNumber = (value: unknown, fallback: number) => {
@@ -69,9 +79,14 @@ const applyConfigs = (payload: Record<string, any>) => {
   configs.value.ai_api_key = payload.ai_api_key || ''
   configs.value.ai_temperature = normalizeNumber(payload.ai_temperature, 0.7)
   configs.value.ai_top_p = normalizeNumber(payload.ai_top_p, 0.9)
+  configs.value.ai_max_tokens = normalizeNumber(payload.ai_max_tokens, 2048)
   configs.value.ai_timeout_seconds = normalizeNumber(payload.ai_timeout_seconds, 30)
   configs.value.ai_enable_stream = normalizeBoolean(payload.ai_enable_stream, false)
   configs.value.ai_fallback_provider = payload.ai_fallback_provider || 'mock'
+  configs.value.ai_scene_interview_model = payload.ai_scene_interview_model || ''
+  configs.value.ai_scene_plan_model = payload.ai_scene_plan_model || ''
+  configs.value.ai_scene_companion_model = payload.ai_scene_companion_model || ''
+  configs.value.ai_scene_quiz_model = payload.ai_scene_quiz_model || ''
 }
 
 const fetchConfigs = async () => {
@@ -99,9 +114,14 @@ const saveConfigs = async () => {
         ai_api_key: configs.value.ai_api_key,
         ai_temperature: String(configs.value.ai_temperature),
         ai_top_p: String(configs.value.ai_top_p),
+        ai_max_tokens: String(configs.value.ai_max_tokens),
         ai_timeout_seconds: String(configs.value.ai_timeout_seconds),
         ai_enable_stream: String(Boolean(configs.value.ai_enable_stream)),
         ai_fallback_provider: configs.value.ai_fallback_provider,
+        ai_scene_interview_model: configs.value.ai_scene_interview_model,
+        ai_scene_plan_model: configs.value.ai_scene_plan_model,
+        ai_scene_companion_model: configs.value.ai_scene_companion_model,
+        ai_scene_quiz_model: configs.value.ai_scene_quiz_model,
       }
     })
     ElMessage.success('配置保存成功')
@@ -183,10 +203,36 @@ onMounted(() => {
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <el-form-item label="Max Tokens">
+                <el-input-number v-model="configs.ai_max_tokens" :min="256" :max="16384" :step="128" class="w-full" />
+              </el-form-item>
+
               <el-form-item label="超时时间(秒)">
                 <el-input-number v-model="configs.ai_timeout_seconds" :min="5" :max="120" class="w-full" />
               </el-form-item>
+            </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <el-form-item label="Interview 模型">
+                <el-input v-model="configs.ai_scene_interview_model" placeholder="留空时使用默认模型" />
+              </el-form-item>
+
+              <el-form-item label="Plan 模型">
+                <el-input v-model="configs.ai_scene_plan_model" placeholder="留空时使用默认模型" />
+              </el-form-item>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <el-form-item label="Companion 模型">
+                <el-input v-model="configs.ai_scene_companion_model" placeholder="留空时使用默认模型" />
+              </el-form-item>
+
+              <el-form-item label="Quiz 模型">
+                <el-input v-model="configs.ai_scene_quiz_model" placeholder="留空时使用默认模型" />
+              </el-form-item>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <el-form-item label="流式输出">
                 <el-switch v-model="configs.ai_enable_stream" inline-prompt active-text="开" inactive-text="关" />
               </el-form-item>
