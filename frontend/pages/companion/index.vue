@@ -60,7 +60,13 @@ const sendMessage = async (text?: string) => {
   isSpeaking.value = false
   try {
     // 调用陪伴聊天API（使用通用聊天接口）
-    const res = await $api.post<any>('/companion/chat', { message: msg })
+    const res = await $api.post<any>('/companion/chat', {
+      message: msg,
+      messages: messages.value.map(item => ({
+        role: item.role,
+        content: item.content,
+      })),
+    })
     if (res.code === 200 && res.data) {
       const reply = res.data.reply || res.data.content || res.data.message || ''
       messages.value.push({ role: 'assistant', content: reply })

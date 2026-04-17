@@ -3,6 +3,7 @@ package mock
 import (
 	"context"
 	"math/rand"
+	"strings"
 	"time"
 
 	"makejob-backend/internal/ai"
@@ -10,11 +11,11 @@ import (
 
 // MockCompanionAgent Mock陪伴聊天Agent实现
 type MockCompanionAgent struct {
-	provider *MockProvider
+	provider ai.AIProvider
 }
 
 // NewMockCompanionAgent 创建Mock陪伴聊天Agent
-func NewMockCompanionAgent(provider *MockProvider) *MockCompanionAgent {
+func NewMockCompanionAgent(provider ai.AIProvider) *MockCompanionAgent {
 	return &MockCompanionAgent{
 		provider: provider,
 	}
@@ -29,8 +30,51 @@ func (a *MockCompanionAgent) Chat(ctx context.Context, messages []ai.Message, us
 	}
 
 	// 根据用户情绪返回不同的回复
+	if a.provider != nil {
+		if _, isMock := a.provider.(*MockProvider); !isMock {
+			content, err := a.provider.Chat(ctx, messages)
+			if err != nil {
+				return ai.CompanionResponse{}, err
+			}
+			if strings.TrimSpace(content) != "" {
+				emotion := normalizeEmotion(userEmotion)
+				return ai.CompanionResponse{
+					Content: content,
+					Emotion: emotion,
+					Action:  actionForEmotion(emotion),
+				}, nil
+			}
+		}
+	}
+
 	response := a.getResponseByEmotion(userEmotion)
 	return response, nil
+}
+
+func normalizeEmotion(userEmotion string) string {
+	switch strings.ToLower(strings.TrimSpace(userEmotion)) {
+	case "happy", "excited":
+		return "happy"
+	case "sad", "tired":
+		return "encouraging"
+	case "frustrated", "confused":
+		return "thinking"
+	default:
+		return "neutral"
+	}
+}
+
+func actionForEmotion(emotion string) string {
+	switch emotion {
+	case "happy":
+		return "wave"
+	case "encouraging":
+		return "nod"
+	case "thinking":
+		return "thinking"
+	default:
+		return "idle"
+	}
 }
 
 // GetGreeting 获取问候语

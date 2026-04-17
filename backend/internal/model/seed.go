@@ -820,6 +820,66 @@ func seedPromptTemplates(db *gorm.DB) error {
 func seedAdminConfigs(db *gorm.DB) error {
 	configs := []AdminConfig{
 		{
+			ConfigKey:   "ai_provider",
+			ConfigValue: "mock",
+			ConfigType:  ConfigTypeString,
+			Description: "AI runtime provider",
+		},
+		{
+			ConfigKey:   "ai_top_p",
+			ConfigValue: "0.9",
+			ConfigType:  ConfigTypeNumber,
+			Description: "AI top-p sampling",
+		},
+		{
+			ConfigKey:   "ai_max_tokens",
+			ConfigValue: "2048",
+			ConfigType:  ConfigTypeNumber,
+			Description: "AI max completion tokens",
+		},
+		{
+			ConfigKey:   "ai_timeout_seconds",
+			ConfigValue: "30",
+			ConfigType:  ConfigTypeNumber,
+			Description: "AI request timeout in seconds",
+		},
+		{
+			ConfigKey:   "ai_enable_stream",
+			ConfigValue: "false",
+			ConfigType:  ConfigTypeBoolean,
+			Description: "Enable AI streaming",
+		},
+		{
+			ConfigKey:   "ai_fallback_provider",
+			ConfigValue: "mock",
+			ConfigType:  ConfigTypeString,
+			Description: "Fallback provider when primary provider fails",
+		},
+		{
+			ConfigKey:   "ai_scene_interview_model",
+			ConfigValue: "",
+			ConfigType:  ConfigTypeString,
+			Description: "Interview scene model override",
+		},
+		{
+			ConfigKey:   "ai_scene_plan_model",
+			ConfigValue: "",
+			ConfigType:  ConfigTypeString,
+			Description: "Plan scene model override",
+		},
+		{
+			ConfigKey:   "ai_scene_companion_model",
+			ConfigValue: "",
+			ConfigType:  ConfigTypeString,
+			Description: "Companion scene model override",
+		},
+		{
+			ConfigKey:   "ai_scene_quiz_model",
+			ConfigValue: "",
+			ConfigType:  ConfigTypeString,
+			Description: "Quiz scene model override",
+		},
+		{
 			ConfigKey:   "ai_model",
 			ConfigValue: "gpt-4o-mini",
 			ConfigType:  ConfigTypeString,

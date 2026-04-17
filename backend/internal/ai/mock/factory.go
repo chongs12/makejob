@@ -27,27 +27,27 @@ const (
 //
 // 当前阶段仅支持Mock实现，后续将支持真实AI Provider
 func NewAIProvider(providerType string, config map[string]string) ai.AIProvider {
+	normalizedConfig := ai.NormalizeRuntimeConfig(config)
+	modelName := normalizedConfig[ai.ConfigKeyModel]
+	if modelName == "" {
+		modelName = "mock-llm-v1"
+	}
+
 	switch ProviderType(providerType) {
 	case ProviderTypeMock, "":
-		modelName := "mock-llm-v1"
-		if config != nil {
-			if name, ok := config["model_name"]; ok {
-				modelName = name
-			}
-		}
 		return NewMockProvider(modelName)
 	case ProviderTypeOpenAI:
 		// TODO: 实现OpenAI Provider
-		return NewMockProvider("openai-mock")
+		return NewMockProvider("openai:" + modelName)
 	case ProviderTypeAzure:
 		// TODO: 实现Azure OpenAI Provider
-		return NewMockProvider("azure-mock")
+		return NewMockProvider("azure:" + modelName)
 	case ProviderTypeEino:
 		// TODO: 实现Eino框架集成
-		return NewMockProvider("eino-mock")
+		return NewMockProvider("eino:" + modelName)
 	default:
 		// 默认返回Mock实现
-		return NewMockProvider("default-mock")
+		return NewMockProvider(modelName)
 	}
 }
 
@@ -75,10 +75,10 @@ func NewPlanAgent(provider ai.AIProvider) ai.PlanAgent {
 // provider: AI Provider实例
 // 返回: CompanionAgent接口实例
 func NewCompanionAgent(provider ai.AIProvider) ai.CompanionAgent {
-	if mockProvider, ok := provider.(*MockProvider); ok {
-		return NewMockCompanionAgent(mockProvider)
+	if provider == nil {
+		provider = NewMockProvider("companion-mock")
 	}
-	return NewMockCompanionAgent(NewMockProvider("companion-mock"))
+	return NewMockCompanionAgent(provider)
 }
 
 // NewQuizAnalyzer 创建刷题分析Agent实例
