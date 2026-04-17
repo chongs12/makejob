@@ -20,7 +20,7 @@ const (
 )
 
 var defaultRuntimeConfig = map[string]string{
-	ConfigKeyProvider:         string(ProviderTypeMock),
+	ConfigKeyProvider:         string(ProviderTypeEino),
 	ConfigKeyModel:            "gpt-4o-mini",
 	ConfigKeyAPIKey:           "",
 	ConfigKeyBaseURL:          "",

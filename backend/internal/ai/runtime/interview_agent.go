@@ -72,6 +72,46 @@ type interviewReportPayload struct {
 	Summary         string             `json:"summary"`
 }
 
+// interviewQuestionPayloadSchema 返回面试题结构化输出的 JSON 合同。
+func interviewQuestionPayloadSchema() string {
+	return `{
+  "question": "题目内容",
+  "topic": "知识点主题",
+  "difficulty": "easy|medium|hard",
+  "type": "technical|behavioral|coding",
+  "hints": "可选提示"
+}`
+}
+
+// interviewFeedbackPayloadSchema 返回答题反馈结构化输出的 JSON 合同。
+func interviewFeedbackPayloadSchema() string {
+	return `{
+  "score": 85,
+  "is_correct": true,
+  "feedback": "总体评价",
+  "key_points": ["关键点1", "关键点2"],
+  "suggestions": "改进建议",
+  "follow_up": "追问问题"
+}`
+}
+
+// interviewReportPayloadSchema 返回面试报告结构化输出的 JSON 合同。
+func interviewReportPayloadSchema() string {
+	return `{
+  "overall_score": 82,
+  "total_questions": 5,
+  "correct_count": 4,
+  "dimension_scores": {
+    "并发": 80,
+    "网络": 84
+  },
+  "strengths": ["优势1", "优势2"],
+  "weaknesses": ["待加强1", "待加强2"],
+  "suggestions": ["建议1", "建议2"],
+  "summary": "总结说明"
+}`
+}
+
 // newInterviewAgent 创建 interview 场景专用 Agent。
 func newInterviewAgent(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder) ai.InterviewAgent {
 	return &providerInterviewAgent{
@@ -237,6 +277,7 @@ func (a *providerInterviewAgent) getSession(sessionID string) (*interviewSession
 
 // generateQuestion 调用 Provider 生成结构化面试题。
 func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *interviewSessionState, questionIndex int) (ai.InterviewQuestion, error) {
+	userPrompt := buildQuestionUserPrompt(session, questionIndex)
 	messages := []ai.Message{
 		{
 			Role:    "system",
@@ -244,25 +285,19 @@ func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *
 		},
 		{
 			Role:    "user",
-			Content: buildQuestionUserPrompt(session, questionIndex),
+			Content: userPrompt,
 		},
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
+	payload, response, err := callStructuredJSON[interviewQuestionPayload](ctx, a.provider, messages, interviewQuestionPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, session, buildQuestionUserPrompt(session, questionIndex), messages, response, err, startedAt)
-		return ai.InterviewQuestion{}, err
-	}
-
-	payload, err := decodeJSONPayload[interviewQuestionPayload](response)
-	if err != nil {
-		a.recordCall(ctx, session, buildQuestionUserPrompt(session, questionIndex), messages, response, err, startedAt)
+		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
 		return ai.InterviewQuestion{}, err
 	}
 
 	question, err := normalizeQuestionPayload(payload, session, questionIndex)
-	a.recordCall(ctx, session, buildQuestionUserPrompt(session, questionIndex), messages, response, err, startedAt)
+	a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
 	if err != nil {
 		return ai.InterviewQuestion{}, err
 	}
@@ -272,6 +307,7 @@ func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *
 
 // generateFeedback 调用 Provider 生成结构化答案反馈。
 func (a *providerInterviewAgent) generateFeedback(ctx context.Context, session *interviewSessionState, questionIndex int, answer string) (ai.AnswerFeedback, error) {
+	userPrompt := buildFeedbackUserPrompt(session, questionIndex, answer)
 	messages := []ai.Message{
 		{
 			Role:    "system",
@@ -279,18 +315,12 @@ func (a *providerInterviewAgent) generateFeedback(ctx context.Context, session *
 		},
 		{
 			Role:    "user",
-			Content: buildFeedbackUserPrompt(session, questionIndex, answer),
+			Content: userPrompt,
 		},
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
-	if err != nil {
-		a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, err, startedAt)
-		return ai.AnswerFeedback{}, err
-	}
-
-	payload, err := decodeJSONPayload[interviewFeedbackPayload](response)
+	payload, response, err := callStructuredJSON[interviewFeedbackPayload](ctx, a.provider, messages, interviewFeedbackPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, err, startedAt)
 		return ai.AnswerFeedback{}, err
@@ -303,6 +333,7 @@ func (a *providerInterviewAgent) generateFeedback(ctx context.Context, session *
 
 // generateReport 调用 Provider 生成结构化面试报告。
 func (a *providerInterviewAgent) generateReport(ctx context.Context, session *interviewSessionState) (ai.InterviewReport, error) {
+	userPrompt := buildReportUserPrompt(session)
 	messages := []ai.Message{
 		{
 			Role:    "system",
@@ -310,25 +341,19 @@ func (a *providerInterviewAgent) generateReport(ctx context.Context, session *in
 		},
 		{
 			Role:    "user",
-			Content: buildReportUserPrompt(session),
+			Content: userPrompt,
 		},
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
+	payload, response, err := callStructuredJSON[interviewReportPayload](ctx, a.provider, messages, interviewReportPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, session, buildReportUserPrompt(session), messages, response, err, startedAt)
-		return ai.InterviewReport{}, err
-	}
-
-	payload, err := decodeJSONPayload[interviewReportPayload](response)
-	if err != nil {
-		a.recordCall(ctx, session, buildReportUserPrompt(session), messages, response, err, startedAt)
+		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
 		return ai.InterviewReport{}, err
 	}
 
 	report := normalizeReportPayload(payload, session)
-	a.recordCall(ctx, session, buildReportUserPrompt(session), messages, response, nil, startedAt)
+	a.recordCall(ctx, session, userPrompt, messages, response, nil, startedAt)
 	return report, nil
 }
 

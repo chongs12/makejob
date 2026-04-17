@@ -32,6 +32,19 @@ type quizAnalysisPayload struct {
 	SpaceComplexity string   `json:"space_complexity"`
 }
 
+// quizAnalysisPayloadSchema 返回判题分析结构化输出的 JSON 合同。
+func quizAnalysisPayloadSchema() string {
+	return `{
+  "is_correct": true,
+  "score": 80,
+  "feedback": "总体反馈",
+  "issues": ["问题1", "问题2"],
+  "improvements": ["改进1", "改进2"],
+  "time_complexity": "O(n)",
+  "space_complexity": "O(1)"
+}`
+}
+
 // newQuizAnalyzer 创建题目分析运行时 Agent。
 func newQuizAnalyzer(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder) ai.QuizAnalyzer {
 	return &providerQuizAnalyzer{
@@ -68,13 +81,7 @@ func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, lan
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
-	if err != nil {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.AnalyzeCode(ctx, code, language, question)
-	}
-
-	payload, err := decodeJSONPayload[quizAnalysisPayload](response)
+	payload, response, err := callStructuredJSON[quizAnalysisPayload](ctx, a.provider, messages, quizAnalysisPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
 		return a.fallback.AnalyzeCode(ctx, code, language, question)

@@ -40,6 +40,25 @@ type planTaskPayload struct {
 	Priority    string `json:"priority"`
 }
 
+// learningPlanPayloadSchema 返回学习计划结构化输出的 JSON 合同。
+func learningPlanPayloadSchema() string {
+	return `{
+  "title": "学习计划标题",
+  "description": "学习计划说明",
+  "duration_days": 30,
+  "tasks": [
+    {
+      "title": "任务标题",
+      "description": "任务说明",
+      "task_type": "study|practice|interview|review",
+      "day_number": 1,
+      "duration_minutes": 60,
+      "priority": "high|medium|low"
+    }
+  ]
+}`
+}
+
 // newPlanAgent 创建学习计划运行时 Agent。
 func newPlanAgent(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder) ai.PlanAgent {
 	return &providerPlanAgent{
@@ -74,13 +93,7 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
-	if err != nil {
-		a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.GeneratePlan(ctx, profile, industryCode)
-	}
-
-	payload, err := decodeJSONPayload[learningPlanPayload](response)
+	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
 		return a.fallback.GeneratePlan(ctx, profile, industryCode)
@@ -119,13 +132,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
-	if err != nil {
-		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.AdjustPlan(ctx, planID, completedTasks, performance)
-	}
-
-	payload, err := decodeJSONPayload[learningPlanPayload](response)
+	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
 		return a.fallback.AdjustPlan(ctx, planID, completedTasks, performance)

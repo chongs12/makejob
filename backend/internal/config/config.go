@@ -182,7 +182,7 @@ func Load(configPath string) (*Config, error) {
 // 优先使用 ai 段配置，缺失时回退到 volcengine.ark 段。
 func (c *Config) AIRuntimeDefaults() map[string]string {
 	runtimeConfig := map[string]string{
-		"ai_provider":              firstNonEmpty(c.AI.Provider, "mock"),
+		"ai_provider":              firstNonEmpty(c.AI.Provider, "eino"),
 		"ai_fallback_provider":     firstNonEmpty(c.AI.FallbackProvider, "mock"),
 		"ai_model":                 firstNonEmpty(c.AI.Model, c.Volcengine.Ark.ChatModel),
 		"ai_api_key":               firstNonEmpty(c.AI.APIKey, c.Volcengine.Ark.APIKey),
@@ -234,7 +234,7 @@ func GetConfig() *Config {
 					ModelPath: "config/rbac_model.conf",
 				},
 				AI: AIConfig{
-					Provider:         "mock",
+					Provider:         "eino",
 					FallbackProvider: "mock",
 					Temperature:      0.7,
 					TopP:             0.9,
