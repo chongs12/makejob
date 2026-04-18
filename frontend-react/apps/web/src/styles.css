@@ -656,6 +656,234 @@ button {
   white-space: pre-wrap;
 }
 
+.companion-page-panel {
+  max-width: 1240px;
+  padding: 22px;
+}
+
+.companion-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 2.7fr);
+  gap: 20px;
+  min-height: calc(100vh - 200px);
+}
+
+.companion-sidebar,
+.companion-stage-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.companion-sidebar {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.companion-sidebar-head h1,
+.companion-card-head h2 {
+  margin: 10px 0 0;
+}
+
+.companion-goal-card,
+.companion-history-card,
+.companion-input-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.companion-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.companion-card-note,
+.companion-stage-copy {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.companion-goal-list,
+.companion-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.companion-goal-item,
+.companion-history-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  background: #f7f9fc;
+}
+
+.companion-goal-head,
+.companion-history-head,
+.companion-goal-meta,
+.companion-composer-actions,
+.companion-stage-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.companion-goal-head,
+.companion-history-head {
+  align-items: flex-start;
+}
+
+.companion-goal-item p,
+.companion-history-item p {
+  margin: 10px 0 0;
+  color: #566a84;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.companion-goal-meta,
+.companion-history-head span {
+  color: #718198;
+  font-size: 13px;
+}
+
+.companion-history-card {
+  min-height: 0;
+}
+
+.companion-history-list {
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.companion-history-item-assistant {
+  background: linear-gradient(180deg, rgba(255, 245, 214, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.companion-history-item-user {
+  background: linear-gradient(180deg, rgba(233, 242, 255, 0.9), rgba(255, 255, 255, 0.96));
+}
+
+.companion-empty-text {
+  margin: 0;
+  color: #667a94;
+  line-height: 1.8;
+}
+
+.companion-stage-shell {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.companion-stage-panel {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+}
+
+.companion-stage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.companion-state-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(19, 34, 56, 0.06);
+  color: #1d395e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.companion-stage-canvas-wrap {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  background:
+    radial-gradient(circle at top center, rgba(255, 215, 129, 0.28), transparent 28%),
+    linear-gradient(180deg, rgba(255, 254, 248, 0.96), rgba(238, 245, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 22px 54px rgba(30, 56, 101, 0.1);
+}
+
+.companion-stage-canvas {
+  width: 100%;
+  height: min(72vh, 760px);
+  min-height: 520px;
+}
+
+.companion-stage-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.companion-stage-overlay {
+  position: absolute;
+  inset: 24px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 20px;
+  text-align: center;
+  color: #27405e;
+  background: rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+.companion-stage-overlay-error {
+  color: #8c2f2f;
+  background: rgba(255, 242, 242, 0.82);
+}
+
+.companion-stage-dialogue {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  left: 24px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: rgba(15, 24, 38, 0.74);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 44px rgba(7, 13, 23, 0.24);
+}
+
+.companion-stage-dialogue p {
+  margin: 12px 0 0;
+  color: rgba(250, 252, 255, 0.92);
+  font-size: clamp(15px, 1.7vw, 18px);
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
+.companion-composer {
+  display: grid;
+  gap: 14px;
+}
+
+.companion-composer textarea {
+  width: 100%;
+  min-height: 118px;
+  padding: 16px 18px;
+  border: 1px solid rgba(19, 34, 56, 0.12);
+  border-radius: 18px;
+  background: #fff;
+  resize: vertical;
+}
+
+.companion-composer-message {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
 @media (max-width: 1120px) {
   .topbar-inner {
     grid-template-columns: 1fr;
@@ -682,6 +910,10 @@ button {
   }
 
   .editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .companion-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -711,12 +943,32 @@ button {
   .section-head,
   .editor-toolbar,
   .card-inline,
-  .page-actions {
+  .page-actions,
+  .companion-card-head,
+  .companion-goal-head,
+  .companion-history-head,
+  .companion-composer-actions,
+  .companion-stage-topbar {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .brand-mark {
     font-size: 24px;
+  }
+
+  .companion-page-panel {
+    padding: 16px;
+  }
+
+  .companion-stage-canvas {
+    min-height: 420px;
+    height: 58vh;
+  }
+
+  .companion-stage-dialogue {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
   }
 }

@@ -15,6 +15,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
+import { CompanionWorkspacePage } from './features/companion/CompanionPage'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -2175,76 +2176,7 @@ function InterviewPage() {
  * 提供学习陪伴频道首页，整合学习计划、陪伴角色和成长记录的入口设计。
  */
 function CompanionPage() {
-  return (
-    <section className="page-panel">
-      <span className="page-tag">学习陪伴</span>
-      <h1>学习计划与 Live2D 入口</h1>
-      <p className="page-copy">
-        学习陪伴不是单独的玩具页，而是学习计划、提醒机制、成长轨迹和 Live2D 角色的聚合入口，后续会直接服务题库和面试两条主线。
-      </p>
-
-      <div className="channel-overview-grid">
-        <article className="channel-entry-card">
-          <span className="section-kicker">学习计划</span>
-          <h2>按阶段拆任务</h2>
-          <p>把刷题、项目复盘和面试准备拆成周计划与日计划，让站点除了练习页，还能承接节奏管理。</p>
-          <Link className="secondary-link" to="/workspace">进入工作台</Link>
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">成长轨迹</span>
-          <h2>学习记录可视化</h2>
-          <p>后续会承接学习日历、连续学习天数、复盘记录和阶段总结，形成用户长期使用的留存点。</p>
-          <Link className="secondary-link" to="/practice/wrong">去看错题复盘</Link>
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">Live2D 陪伴</span>
-          <h2>角色展示与互动</h2>
-          <p>Live2D 不会孤立存在，而是与提醒、TTS、ASR 和反馈机制绑定，让角色真正参与学习流程。</p>
-          <button className="secondary-button" type="button">角色区域规划中</button>
-        </article>
-      </div>
-
-      <div className="channel-split">
-        <article className="section-card section-card-large">
-          <div className="section-head">
-            <div>
-              <span className="section-kicker">陪伴主线</span>
-              <h2>陪伴区的设计目标不是展示，而是持续驱动学习</h2>
-            </div>
-          </div>
-          <div className="timeline-list">
-            <div className="timeline-item">
-              <strong>1. 制定计划</strong>
-              <p>明确本周要刷的题型、要补的知识点和要准备的面试方向。</p>
-            </div>
-            <div className="timeline-item">
-              <strong>2. 进入学习过程</strong>
-              <p>在题库、面试和项目学习中同步记录进展，让陪伴区不是一个静态看板。</p>
-            </div>
-            <div className="timeline-item">
-              <strong>3. 获得提醒和反馈</strong>
-              <p>后续结合 Live2D、语音与提示系统，把计划执行和即时反馈打通成持续学习体验。</p>
-            </div>
-          </div>
-        </article>
-
-        <aside className="home-side-column">
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">入口聚合</span>
-            <div className="sidebar-links">
-              <Link className="sidebar-link" to="/practice">刷题主线</Link>
-              <Link className="sidebar-link" to="/practice/notes">学习笔记</Link>
-              <Link className="sidebar-link" to="/interview">AI 面试</Link>
-            </div>
-          </article>
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">后续模块</span>
-            <p>学习计划页、学习日历、提醒中心和 Live2D 展示页后续都会从这里继续拆分，不走后台式二级菜单。</p>
-          </article>
-        </aside>
-      </div>
-    </section>
-  )
+  return <CompanionWorkspacePage />
 }
 
 /**
