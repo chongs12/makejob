@@ -1,0 +1,10 @@
+{
+  "name": "@makejob/api-client",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@makejob/shared-types": "file:../shared-types"
+  }
+}

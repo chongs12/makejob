@@ -287,10 +287,10 @@ func initRedis(cfg *config.Config) (*redis.Client, error) {
 }
 
 func registerRoutes(r *gin.Engine, deps *AppDependencies) {
-	if assetsDir := live2dassets.ResolveAssetsDir(); assetsDir != "" {
+	if assetsDir, err := live2dassets.EnsureAssetsDir(); err == nil && assetsDir != "" {
 		r.StaticFS(live2dassets.MountPath, gin.Dir(assetsDir, false))
 	} else {
-		applogger.Warn("live2d assets dir not found")
+		applogger.Warn("live2d assets dir not ready", zap.Error(err))
 	}
 
 	r.GET("/api/health", func(c *gin.Context) {

@@ -502,7 +502,7 @@ func (s *questionService) GenerateRandomExam(ctx context.Context, userID uint, r
 
 	// 获取随机题目
 	params := repository.RandomQuestionParams{
-		IndustryID: 1, // 默认行业，后续可从用户配置获取
+		IndustryID: s.resolveExamIndustryID(ctx, req.CategoryID),
 		CategoryID: req.CategoryID,
 		Difficulty: req.Difficulty,
 		Count:      req.Count,
@@ -530,7 +530,7 @@ func (s *questionService) GenerateRandomExam(ctx context.Context, userID uint, r
 		QuestionIDs: questionIDs,
 		TimeLimit:   0, // 随机组卷不限时
 		CreatedAt:   time.Now(),
-		IndustryID:  params.IndustryID,
+		IndustryID:  derefIndustryID(params.IndustryID),
 	}
 	examSessions.Store(examID, session)
 
@@ -556,7 +556,7 @@ func (s *questionService) GenerateRandomExam(ctx context.Context, userID uint, r
 func (s *questionService) GenerateTimedExam(ctx context.Context, userID uint, req *TimedExamRequest) (*ExamResponse, error) {
 	// 获取随机题目
 	params := repository.RandomQuestionParams{
-		IndustryID: 1, // 默认行业
+		IndustryID: s.resolveExamIndustryID(ctx, req.CategoryID),
 		CategoryID: req.CategoryID,
 		Difficulty: req.Difficulty,
 		Count:      req.Count,
@@ -584,7 +584,7 @@ func (s *questionService) GenerateTimedExam(ctx context.Context, userID uint, re
 		QuestionIDs: questionIDs,
 		TimeLimit:   req.TimeLimitMinutes,
 		CreatedAt:   time.Now(),
-		IndustryID:  params.IndustryID,
+		IndustryID:  derefIndustryID(params.IndustryID),
 	}
 	examSessions.Store(examID, session)
 
@@ -604,6 +604,29 @@ func (s *questionService) GenerateTimedExam(ctx context.Context, userID uint, re
 		Questions: questionDetails,
 		TimeLimit: req.TimeLimitMinutes,
 	}, nil
+}
+
+// resolveExamIndustryID 根据分类推导组卷所需的行业 ID，未指定分类时不过滤行业。
+func (s *questionService) resolveExamIndustryID(ctx context.Context, categoryID *uint) *uint {
+	if categoryID == nil || *categoryID == 0 || s.categoryRepo == nil {
+		return nil
+	}
+
+	category, err := s.categoryRepo.GetByID(ctx, *categoryID)
+	if err != nil || category == nil {
+		return nil
+	}
+
+	industryID := category.IndustryID
+	return &industryID
+}
+
+// derefIndustryID 将可选行业 ID 指针转换为可存储的数值，空指针时返回 0。
+func derefIndustryID(industryID *uint) uint {
+	if industryID == nil {
+		return 0
+	}
+	return *industryID
 }
 
 // generateExamID 生成考试ID

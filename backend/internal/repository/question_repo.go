@@ -26,7 +26,7 @@ type QuestionListParams struct {
 
 // RandomQuestionParams 随机题目查询参数
 type RandomQuestionParams struct {
-	IndustryID uint
+	IndustryID *uint
 	CategoryID *uint
 	Difficulty string
 	Count      int
@@ -147,9 +147,11 @@ func (r *questionRepository) GetRandomByParams(ctx context.Context, params Rando
 
 	// 构建基础查询
 	query := r.db.WithContext(ctx).Model(&model.Question{}).
-		Where("industry_id = ?", params.IndustryID).
 		Where("is_active = ?", true)
 
+	if params.IndustryID != nil {
+		query = query.Where("industry_id = ?", *params.IndustryID)
+	}
 	if params.CategoryID != nil {
 		query = query.Where("category_id = ?", *params.CategoryID)
 	}
@@ -169,10 +171,24 @@ func (r *questionRepository) GetRandomByParams(ctx context.Context, params Rando
 		count = 100
 	}
 
-	// MySQL的RAND()函数
-	if err := query.Order("RAND()").Limit(count).Find(&questions).Error; err != nil {
+	// 根据数据库方言选择随机函数，兼容 PostgreSQL / SQLite / MySQL。
+	if err := query.Order(randomOrderExpression(r.db)).Limit(count).Find(&questions).Error; err != nil {
 		return nil, fmt.Errorf("随机查询题目失败: %w", err)
 	}
 
 	return questions, nil
+}
+
+// randomOrderExpression 根据当前数据库方言返回可用的随机排序表达式。
+func randomOrderExpression(db *gorm.DB) string {
+	if db == nil || db.Dialector == nil {
+		return "RANDOM()"
+	}
+
+	switch strings.ToLower(strings.TrimSpace(db.Dialector.Name())) {
+	case "mysql":
+		return "RAND()"
+	default:
+		return "RANDOM()"
+	}
 }

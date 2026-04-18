@@ -2,6 +2,8 @@
 
 更新时间: 2026-04-16
 
+> 说明：本文档保留了大量早期 Nuxt 方案分析，当前前端主线已切换为 `frontend-react/`。后文中出现的 `frontend/` 路径，默认视为历史上下文而非当前实现。
+
 本文档面向后续接手该仓库的 agent，目标是用最短时间建立正确心智模型，避免重复踩坑。
 
 ## 1. 一句话结论
@@ -9,7 +11,7 @@
 这是一个“AI 面试/刷题/学习计划”产品原型，采用前后端分离结构：
 
 - 后端: Go + Gin + Gorm + PostgreSQL + Redis + Casbin
-- 前端: Nuxt 3 + Pinia + Element Plus + Tailwind CSS
+- 前端: React + Vite + TanStack Router + React Query
 
 项目的页面和接口覆盖面已经比较广，但整体还处于“流程已铺开、真实能力和前后端闭环未完全打通”的阶段。尤其是 AI 能力、会员限制、管理后台数据、前端状态管理与接口返回字段之间，存在多处不一致。
 
@@ -18,7 +20,8 @@
 根目录主要内容:
 
 - `backend/`: Go 后端
-- `frontend/`: Nuxt 前端
+- `frontend-react/`: React 前端工作区
+- `frontend/`: 已废弃的 Nuxt 前端目录，待本地调试缓存释放后彻底删除
 - `start.md`: 启动提示，内容很短
 - `产品计划书.md`: 产品规划文档
 - `debug.log`: 调试日志
@@ -26,9 +29,9 @@
 
 额外观察:
 
-- 根目录不是 git 仓库，`git status` 返回 `fatal: not a git repository`
-- `frontend/node_modules/` 已提交在仓库内
-- `backend/bin/server.exe` 也已存在于仓库中
+- 当前根目录是 git 仓库
+- React 工作区位于 `frontend-react/`
+- 旧 Nuxt 目录只保留了被浏览器占用的本地调试缓存残留
 
 这意味着当前仓库更像“本地开发快照”而不是标准化、精简过的代码仓。
 
@@ -51,9 +54,9 @@ go run cmd/server/main.go
 ### 前端
 
 ```powershell
-cd D:\gogogo\makejob\frontend
+cd D:\gogogo\makejob\frontend-react
 npm install
-npm run dev
+npm run dev -w @makejob/web
 ```
 
 默认关键配置位于 `backend/config.yaml`:

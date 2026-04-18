@@ -1,0 +1,22 @@
+{
+  "name": "@makejob/web",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@monaco-editor/loader": "^1.7.0",
+    "@makejob/api-client": "file:../../packages/api-client",
+    "@makejob/shared-types": "file:../../packages/shared-types",
+    "@tanstack/react-query": "^5.90.5",
+    "@tanstack/react-router": "^1.133.48",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.8"
+  }
+}

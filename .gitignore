@@ -22,7 +22,7 @@ pnpm-debug.log*
 !.env.example
 !.env.*.example
 
-# Frontend: Nuxt / Node
+# Frontend: legacy Nuxt / Node
 frontend/node_modules/
 frontend/.nuxt/
 frontend/.output/
@@ -35,6 +35,16 @@ frontend/.vercel/
 frontend/.turbo/
 frontend/.eslintcache
 frontend/*.tsbuildinfo
+frontend/.edge-debug/
+
+# Frontend: React workspace
+frontend-react/node_modules/
+frontend-react/**/node_modules/
+frontend-react/**/dist/
+frontend-react/.turbo/
+frontend-react/.cache/
+frontend-react/coverage/
+frontend-react/*.tsbuildinfo
 
 # Backend: Go
 backend/bin/

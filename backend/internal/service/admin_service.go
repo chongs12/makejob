@@ -9,6 +9,7 @@ import (
 
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
+	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
 )
@@ -179,6 +180,14 @@ type UpdateLive2DModelRequest struct {
 	IsActive     *bool  `json:"is_active,omitempty"`
 }
 
+// ImportLive2DPackageResponse 描述后台导入 Live2D 模型包后的自动识别结果。
+type ImportLive2DPackageResponse struct {
+	Name         string `json:"name"`
+	AssetDir     string `json:"asset_dir"`
+	ModelURL     string `json:"model_url"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+}
+
 type CreateTTSConfigRequest struct {
 	Name       string `json:"name" binding:"required,max=100"`
 	Engine     string `json:"engine" binding:"required,oneof=elevenlabs minimax aliyun xunfei"`
@@ -235,6 +244,7 @@ type AdminService interface {
 	CreateLive2DModel(ctx context.Context, req *CreateLive2DModelRequest) (*model.Live2DModel, error)
 	UpdateLive2DModel(ctx context.Context, id uint, req *UpdateLive2DModelRequest) error
 	DeleteLive2DModel(ctx context.Context, id uint) error
+	ImportLive2DPackage(ctx context.Context, filename string, content []byte) (*ImportLive2DPackageResponse, error)
 
 	ListTTSConfigs(ctx context.Context) ([]model.TTSConfig, error)
 	CreateTTSConfig(ctx context.Context, req *CreateTTSConfigRequest) (*model.TTSConfig, error)
@@ -847,6 +857,23 @@ func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *Upda
 
 func (s *adminService) DeleteLive2DModel(ctx context.Context, id uint) error {
 	return s.live2DRepo.Delete(ctx, id)
+}
+
+// ImportLive2DPackage 导入后台上传的 Live2D ZIP 包，并返回可直接回填的资源地址。
+func (s *adminService) ImportLive2DPackage(ctx context.Context, filename string, content []byte) (*ImportLive2DPackageResponse, error) {
+	_ = ctx
+
+	importedPackage, err := live2dassets.ImportZip(filename, content)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "导入Live2D模型包失败: "+err.Error())
+	}
+
+	return &ImportLive2DPackageResponse{
+		Name:         importedPackage.Name,
+		AssetDir:     importedPackage.AssetDir,
+		ModelURL:     importedPackage.ModelURL,
+		ThumbnailURL: importedPackage.ThumbnailURL,
+	}, nil
 }
 
 func (s *adminService) ListTTSConfigs(ctx context.Context) ([]model.TTSConfig, error) {

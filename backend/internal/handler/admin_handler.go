@@ -2,7 +2,10 @@
 package handler
 
 import (
+	"io"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -64,6 +67,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Live2D模型管理
 	r.GET("/live2d-models", h.ListLive2DModels)
+	r.POST("/live2d-models/import", h.ImportLive2DPackage)
 	r.POST("/live2d-models", h.CreateLive2DModel)
 	r.PUT("/live2d-models/:id", h.UpdateLive2DModel)
 	r.DELETE("/live2d-models/:id", h.DeleteLive2DModel)
@@ -754,6 +758,8 @@ func (h *AdminHandler) UpdateAIConfigs(c *gin.Context) {
 
 // ==================== Live2D模型管理 ====================
 
+const maxLive2DPackageBytes = 200 << 20
+
 // ListLive2DModels 获取Live2D模型列表
 // @Summary 获取Live2D模型列表
 // @Description 获取所有Live2D模型
@@ -775,6 +781,62 @@ func (h *AdminHandler) ListLive2DModels(c *gin.Context) {
 	}
 
 	common.Success(c, models)
+}
+
+// ImportLive2DPackage 导入管理员上传的 Live2D ZIP 包。
+// @Summary 导入Live2D模型包
+// @Description 上传并解压 Live2D ZIP 包，自动识别模型地址和缩略图
+// @Tags 管理后台-Live2D管理
+// @Accept mpfd
+// @Produce json
+// @Security Bearer
+// @Param file formData file true "Live2D ZIP 模型包"
+// @Success 200 {object} common.Response{data=service.ImportLive2DPackageResponse}
+// @Router /api/admin/live2d-models/import [post]
+func (h *AdminHandler) ImportLive2DPackage(c *gin.Context) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		common.BadRequest(c, "请上传Live2D模型ZIP包")
+		return
+	}
+
+	if !strings.EqualFold(filepath.Ext(fileHeader.Filename), ".zip") {
+		common.BadRequest(c, "仅支持上传.zip模型包")
+		return
+	}
+	if fileHeader.Size <= 0 {
+		common.BadRequest(c, "上传的模型包为空")
+		return
+	}
+	if fileHeader.Size > maxLive2DPackageBytes {
+		common.BadRequest(c, "模型包过大，请控制在200MB以内")
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		common.InternalError(c, "打开Live2D模型包失败: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		common.InternalError(c, "读取Live2D模型包失败: "+err.Error())
+		return
+	}
+
+	resp, err := h.adminService.ImportLive2DPackage(c.Request.Context(), fileHeader.Filename, content)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "导入Live2D模型包失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, resp)
 }
 
 // CreateLive2DModel 创建Live2D模型
