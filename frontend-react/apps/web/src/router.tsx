@@ -15,7 +15,7 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
-import { CompanionWorkspacePage } from './features/companion/CompanionPage'
+import { CompanionHubPage, CompanionWorkspacePage } from './features/companion/CompanionPage'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -774,6 +774,16 @@ function RootLayout() {
     { to: '/companion', label: '学习陪伴', match: pathname.startsWith('/companion') },
   ]
   const accountLabel = accessToken ? (user?.username || '工作台') : '登录'
+  const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
+
+  if (isStandaloneCompanionRoom) {
+    return (
+      <div className="app-shell companion-room-shell">
+        <AuthBootstrap />
+        <Outlet />
+      </div>
+    )
+  }
 
   return (
     <div className="app-shell">
@@ -2176,7 +2186,7 @@ function InterviewPage() {
  * 提供学习陪伴频道首页，整合学习计划、陪伴角色和成长记录的入口设计。
  */
 function CompanionPage() {
-  return <CompanionWorkspacePage />
+  return <CompanionHubPage />
 }
 
 /**
@@ -2391,6 +2401,12 @@ const companionRoute = createRoute({
   component: CompanionPage,
 })
 
+const companionRoomRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'companion/room',
+  component: CompanionWorkspacePage,
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth/login',
@@ -2430,6 +2446,7 @@ const routeTree = rootRoute.addChildren([
   practiceNotesRoute,
   interviewRoute,
   companionRoute,
+  companionRoomRoute,
   loginRoute,
   workspaceRoute,
 ])

@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import type { Application } from 'pixi.js'
 import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubism4'
 import { requestJson, extractErrorMessage } from '@makejob/api-client'
@@ -9,6 +10,7 @@ import { useAuthStore } from '../../state/auth'
 
 const ARIU_MODEL_URL = '/live2d-assets/ariu/ariu.model3.json'
 const MAX_CHAT_HISTORY = 12
+const COMPANION_SESSION_SUMMARY_KEY = 'makejob.companion.session-summary'
 
 type CompanionMessageRole = 'assistant' | 'user'
 
@@ -47,6 +49,14 @@ interface CompanionChatReply {
   action?: string
 }
 
+interface CompanionSessionSummary {
+  updatedAt: number
+  latestAssistantReply: string
+  latestUserMessage: string
+  planTitle: string
+  progress: number
+}
+
 declare global {
   interface Window {
     PIXI?: typeof import('pixi.js')
@@ -55,6 +65,146 @@ declare global {
 }
 
 let cubismCoreScriptPromise: Promise<void> | null = null
+
+/**
+ * 从本地缓存恢复最近一次陪伴会话摘要，供入口页显示“上次聊到哪一步”。
+ */
+function readCompanionSessionSummary(): CompanionSessionSummary | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(COMPANION_SESSION_SUMMARY_KEY)
+    if (!raw) {
+      return null
+    }
+
+    return JSON.parse(raw) as CompanionSessionSummary
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 将最近一次陪伴会话摘要写入本地缓存，避免每次返回入口页都丢失上下文。
+ */
+function persistCompanionSessionSummary(summary: CompanionSessionSummary): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(COMPANION_SESSION_SUMMARY_KEY, JSON.stringify(summary))
+}
+
+/**
+ * 根据当前计划和历史消息提炼出入口页需要展示的最近会话摘要。
+ */
+function buildCompanionSessionSummary(
+  history: CompanionHistoryItem[],
+  plan: CompanionPlanDetail | null,
+): CompanionSessionSummary | null {
+  const latestAssistantMessage = [...history].reverse().find((item) => item.role === 'assistant')
+  const latestUserMessage = [...history].reverse().find((item) => item.role === 'user')
+
+  if (!latestAssistantMessage && !plan) {
+    return null
+  }
+
+  return {
+    updatedAt: Date.now(),
+    latestAssistantReply: latestAssistantMessage?.content || '最近还没有新的 Ariu 回复。',
+    latestUserMessage: latestUserMessage?.content || '',
+    planTitle: plan?.title || '',
+    progress: Math.round(plan?.progress || 0),
+  }
+}
+
+/**
+ * 提供学习陪伴的二级入口页，避免顶栏导航直接命中重型 Live2D 页面。
+ */
+export function CompanionHubPage() {
+  const accessToken = useAuthStore((state) => state.accessToken)
+  const [sessionSummary, setSessionSummary] = useState<CompanionSessionSummary | null>(() => readCompanionSessionSummary())
+
+  const currentPlanQuery = useQuery({
+    queryKey: ['companion-hub-current-plan', accessToken],
+    queryFn: () => fetchCurrentPlan(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+
+  /**
+   * 当用户从独立陪伴页返回入口页时，重新读取最近一次本地会话摘要。
+   */
+  useEffect(() => {
+    function handleFocus(): void {
+      setSessionSummary(readCompanionSessionSummary())
+    }
+
+    handleFocus()
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [])
+
+  const progressText = currentPlanQuery.data
+    ? `${Math.round(currentPlanQuery.data.progress || 0)}%`
+    : (sessionSummary ? `${sessionSummary.progress}%` : '--')
+
+  return (
+    <section className="page-panel companion-hub-panel">
+      <div className="companion-hub-hero">
+        <div className="companion-hub-copy">
+          <span className="page-tag">学习陪伴入口</span>
+          <h1>先进入陪伴区，再单独打开 Ariu 全屏学习页</h1>
+          <p className="page-copy">
+            顶部导航只负责带你来到学习陪伴频道，不直接加载 Live2D 主舞台。真正的陪伴页会作为单独场景打开，界面里不会再混入站内导航和栏目切换。
+          </p>
+          <div className="hero-actions">
+            <Link className="primary-button hero-link-button" to="/companion/room">
+              进入 Ariu 独立陪伴页
+            </Link>
+            <a className="secondary-button hero-link-button" href="/companion/room" target="_blank" rel="noreferrer">
+              新窗口打开
+            </a>
+          </div>
+        </div>
+
+        <article className="section-card companion-hub-sidecard">
+          <span className="section-kicker">最近一次记录</span>
+          <div className="companion-hub-summary">
+            <div className="timeline-item">
+              <strong>上次学习进度</strong>
+              <p>{currentPlanQuery.data?.title || sessionSummary?.planTitle || '还没有正在进行的学习计划。'}</p>
+              <div className="companion-hub-meta">
+                <span>当前进度：{progressText}</span>
+                <span>{accessToken ? '已同步登录态计划' : '未登录时展示本地摘要'}</span>
+              </div>
+            </div>
+
+            <div className="timeline-item">
+              <strong>最近一次会话摘要</strong>
+              <p>{sessionSummary?.latestAssistantReply || '还没有历史会话，第一次进入时会从 Ariu 的欢迎语开始。'}</p>
+              {sessionSummary?.latestUserMessage ? (
+                <div className="companion-hub-quote">
+                  <span>你上次输入：</span>
+                  <strong>{sessionSummary.latestUserMessage}</strong>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="timeline-item">
+              <strong>独立陪伴页结构</strong>
+              <p>左侧固定目标与历史，右侧保留 Ariu 主舞台和输入区，只有进入独立页时才会加载 Live2D 运行时。</p>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  )
+}
 
 /**
  * 创建陪伴页首屏默认消息，保证页面在未登录时也能展示完整骨架。
@@ -495,6 +645,18 @@ export function CompanionWorkspacePage() {
   const stageFeedback = useMemo(() => resolveStageFeedback(history), [history])
 
   /**
+   * 将当前陪伴页的最新状态持续写回入口页可读的会话摘要缓存。
+   */
+  useEffect(() => {
+    const summary = buildCompanionSessionSummary(history, currentPlanQuery.data || null)
+    if (!summary) {
+      return
+    }
+
+    persistCompanionSessionSummary(summary)
+  }, [history, currentPlanQuery.data])
+
+  /**
    * 处理用户输入并在必要时请求后端陪伴接口，完成 Ariu 的一轮回复。
    */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -558,6 +720,13 @@ export function CompanionWorkspacePage() {
 
   return (
     <section className="page-panel companion-page-panel">
+      <div className="companion-room-toolbar">
+        <Link className="ghost-button companion-room-back" to="/companion">
+          返回陪伴入口
+        </Link>
+        <span className="companion-room-note">当前为 Ariu 独立陪伴页</span>
+      </div>
+
       <div className="companion-layout">
         <aside className="companion-sidebar">
           <div className="companion-sidebar-head">
