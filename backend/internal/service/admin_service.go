@@ -162,7 +162,7 @@ type UpdatePromptRequest struct {
 
 type CreateLive2DModelRequest struct {
 	Name         string `json:"name" binding:"required,max=100"`
-	IndustryID   uint   `json:"industry_id"`
+	IndustryID   *uint  `json:"industry_id"`
 	Scene        string `json:"scene" binding:"required,oneof=interview companion"`
 	ModelURL     string `json:"model_url" binding:"required,max=500"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
@@ -172,7 +172,7 @@ type CreateLive2DModelRequest struct {
 
 type UpdateLive2DModelRequest struct {
 	Name         string `json:"name,omitempty" binding:"omitempty,max=100"`
-	IndustryID   uint   `json:"industry_id,omitempty"`
+	IndustryID   *uint  `json:"industry_id,omitempty"`
 	Scene        string `json:"scene,omitempty" binding:"omitempty,oneof=interview companion"`
 	ModelURL     string `json:"model_url,omitempty" binding:"omitempty,max=500"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
@@ -790,20 +790,21 @@ func (s *adminService) UpdateAIConfigs(ctx context.Context, configs map[string]s
 	return s.adminConfigRepo.BatchUpsert(ctx, adminConfigs)
 }
 
+// ListLive2DModels 返回后台可维护的 Live2D 模型列表。
 func (s *adminService) ListLive2DModels(ctx context.Context) ([]model.Live2DModel, error) {
 	return s.live2DRepo.List(ctx)
 }
 
+// CreateLive2DModel 创建一条新的 Live2D 模型配置记录。
 func (s *adminService) CreateLive2DModel(ctx context.Context, req *CreateLive2DModelRequest) (*model.Live2DModel, error) {
-	if req.IndustryID != 0 {
-		if _, err := s.requireIndustry(ctx, req.IndustryID); err != nil {
-			return nil, err
-		}
+	industryID, err := s.normalizeOptionalIndustryID(ctx, req.IndustryID)
+	if err != nil {
+		return nil, err
 	}
 
 	live2d := &model.Live2DModel{
 		Name:         req.Name,
-		IndustryID:   req.IndustryID,
+		IndustryID:   industryID,
 		Scene:        req.Scene,
 		ModelURL:     req.ModelURL,
 		ThumbnailURL: req.ThumbnailURL,
@@ -818,6 +819,7 @@ func (s *adminService) CreateLive2DModel(ctx context.Context, req *CreateLive2DM
 	return live2d, nil
 }
 
+// UpdateLive2DModel 更新指定的 Live2D 模型，并支持切换为通用模型。
 func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *UpdateLive2DModelRequest) error {
 	live2d, err := s.live2DRepo.GetByID(ctx, id)
 	if err != nil {
@@ -827,11 +829,12 @@ func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *Upda
 		return common.NewBusinessError(common.CodeNotFound, "live2d model not found")
 	}
 
-	if req.IndustryID != 0 {
-		if _, err := s.requireIndustry(ctx, req.IndustryID); err != nil {
+	if req.IndustryID != nil {
+		industryID, err := s.normalizeOptionalIndustryID(ctx, req.IndustryID)
+		if err != nil {
 			return err
 		}
-		live2d.IndustryID = req.IndustryID
+		live2d.IndustryID = industryID
 	}
 	if req.Name != "" {
 		live2d.Name = req.Name
@@ -855,6 +858,7 @@ func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *Upda
 	return s.live2DRepo.Update(ctx, live2d)
 }
 
+// DeleteLive2DModel 删除指定的 Live2D 模型记录。
 func (s *adminService) DeleteLive2DModel(ctx context.Context, id uint) error {
 	return s.live2DRepo.Delete(ctx, id)
 }

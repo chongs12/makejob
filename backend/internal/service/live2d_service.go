@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"makejob-backend/internal/common"
@@ -35,9 +36,29 @@ type CurrentLive2DModelResponse struct {
 	Source       string                 `json:"source"`
 }
 
+// SelectableLive2DModelsRequest 描述前台查询可切换模型列表的请求。
+type SelectableLive2DModelsRequest struct {
+	Scene        string
+	IndustryCode string
+}
+
+// SelectableLive2DModelResponse 描述前台可用于切换的 Live2D 模型条目。
+type SelectableLive2DModelResponse struct {
+	Key           string `json:"key"`
+	Name          string `json:"name"`
+	Scene         string `json:"scene"`
+	ModelURL      string `json:"model_url"`
+	ThumbnailURL  string `json:"thumbnail_url"`
+	Source        string `json:"source"`
+	MatchType     string `json:"match_type"`
+	IsGeneric     bool   `json:"is_generic"`
+	IsRecommended bool   `json:"is_recommended"`
+}
+
 // Live2DService 定义前台 Live2D 模型查询能力。
 type Live2DService interface {
 	GetCurrentModel(ctx context.Context, req *CurrentLive2DModelRequest) (*CurrentLive2DModelResponse, error)
+	ListSelectableModels(ctx context.Context, req *SelectableLive2DModelsRequest) ([]SelectableLive2DModelResponse, error)
 }
 
 // live2dService 实现前台 Live2D 模型选择逻辑。
@@ -85,6 +106,47 @@ func (s *live2dService) GetCurrentModel(ctx context.Context, req *CurrentLive2DM
 	return buildBundledLive2DResponse(scene)
 }
 
+// ListSelectableModels 返回当前场景下可供前台切换的 Live2D 模型列表。
+func (s *live2dService) ListSelectableModels(ctx context.Context, req *SelectableLive2DModelsRequest) ([]SelectableLive2DModelResponse, error) {
+	if req == nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "live2d request is required")
+	}
+
+	scene, err := normalizeLive2DScene(req.Scene)
+	if err != nil {
+		return nil, err
+	}
+
+	requestIndustryID, _, err := s.findIndustryID(ctx, strings.TrimSpace(req.IndustryCode))
+	if err != nil {
+		return nil, err
+	}
+
+	models := make([]model.Live2DModel, 0)
+	if s.live2DRepo != nil {
+		models, err = s.live2DRepo.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	recommended := selectActiveLive2DModel(models, scene, requestIndustryID)
+	items := buildSelectableDatabaseLive2DModels(models, scene, requestIndustryID, recommended)
+
+	bundledItem, err := buildBundledSelectableLive2DModel(scene, recommended == nil)
+	if err == nil {
+		items = append(items, bundledItem)
+	}
+	if len(items) == 0 {
+		if err != nil {
+			return nil, err
+		}
+		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
+	}
+
+	return items, nil
+}
+
 // normalizeLive2DScene 规范并校验场景参数。
 func normalizeLive2DScene(scene string) (string, error) {
 	normalized := strings.TrimSpace(strings.ToLower(scene))
@@ -122,7 +184,7 @@ func selectActiveLive2DModel(models []model.Live2DModel, scene string, industryI
 		if !item.IsActive || item.Scene != scene {
 			continue
 		}
-		if industryID > 0 && item.IndustryID == industryID {
+		if industryID > 0 && item.IndustryID != nil && *item.IndustryID == industryID {
 			return item
 		}
 		if item.IsGeneric() && genericMatch == nil {
@@ -153,6 +215,94 @@ func buildDatabaseLive2DResponse(m *model.Live2DModel, scene, industryCode strin
 		Config:       config,
 		Source:       "database",
 	}, nil
+}
+
+// buildSelectableDatabaseLive2DModels 组装数据库中的可切换模型列表，并按推荐优先级排序。
+func buildSelectableDatabaseLive2DModels(
+	models []model.Live2DModel,
+	scene string,
+	industryID uint,
+	recommended *model.Live2DModel,
+) []SelectableLive2DModelResponse {
+	industryMatches := make([]SelectableLive2DModelResponse, 0)
+	genericMatches := make([]SelectableLive2DModelResponse, 0)
+	otherMatches := make([]SelectableLive2DModelResponse, 0)
+
+	for i := range models {
+		item := &models[i]
+		if !item.IsActive || item.Scene != scene {
+			continue
+		}
+
+		matchType := "other"
+		switch {
+		case industryID > 0 && item.IndustryID != nil && *item.IndustryID == industryID:
+			matchType = "industry"
+		case item.IsGeneric():
+			matchType = "generic"
+		}
+
+		response := SelectableLive2DModelResponse{
+			Key:           buildDatabaseLive2DModelKey(item.ID),
+			Name:          strings.TrimSpace(item.Name),
+			Scene:         scene,
+			ModelURL:      strings.TrimSpace(item.ModelURL),
+			ThumbnailURL:  strings.TrimSpace(item.ThumbnailURL),
+			Source:        "database",
+			MatchType:     matchType,
+			IsGeneric:     item.IsGeneric(),
+			IsRecommended: recommended != nil && item.ID == recommended.ID,
+		}
+
+		switch matchType {
+		case "industry":
+			industryMatches = append(industryMatches, response)
+		case "generic":
+			genericMatches = append(genericMatches, response)
+		default:
+			otherMatches = append(otherMatches, response)
+		}
+	}
+
+	items := make([]SelectableLive2DModelResponse, 0, len(industryMatches)+len(genericMatches)+len(otherMatches))
+	items = append(items, industryMatches...)
+	items = append(items, genericMatches...)
+	items = append(items, otherMatches...)
+	return items
+}
+
+// buildBundledSelectableLive2DModel 组装内置回退模型的可切换条目。
+func buildBundledSelectableLive2DModel(scene string, isRecommended bool) (SelectableLive2DModelResponse, error) {
+	if !live2dassets.HasAsset(bundledLive2DRelativeModel) {
+		return SelectableLive2DModelResponse{}, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
+	}
+
+	thumbnailURL := ""
+	if live2dassets.HasAsset(bundledLive2DThumbnail) {
+		thumbnailURL = live2dassets.AssetURL(bundledLive2DThumbnail)
+	}
+
+	return SelectableLive2DModelResponse{
+		Key:           buildBundledLive2DModelKey(),
+		Name:          bundledLive2DName,
+		Scene:         scene,
+		ModelURL:      live2dassets.AssetURL(bundledLive2DRelativeModel),
+		ThumbnailURL:  thumbnailURL,
+		Source:        "bundled",
+		MatchType:     "bundled",
+		IsGeneric:     true,
+		IsRecommended: isRecommended,
+	}, nil
+}
+
+// buildDatabaseLive2DModelKey 为数据库模型生成稳定的前台选择键。
+func buildDatabaseLive2DModelKey(id uint) string {
+	return "db:" + strconv.FormatUint(uint64(id), 10)
+}
+
+// buildBundledLive2DModelKey 返回内置回退模型的固定选择键。
+func buildBundledLive2DModelKey() string {
+	return "bundled:ariu"
 }
 
 // buildBundledLive2DResponse 组装内置模型回退响应。

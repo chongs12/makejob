@@ -9,6 +9,7 @@ import (
 
 // TestLive2DServiceGetCurrentModelPreferIndustryModel 验证行业专属模型优先于通用模型。
 func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
+	industryID := uint(2)
 	svc := NewLive2DService(
 		&mockLive2DModelRepository{
 			models: []model.Live2DModel{
@@ -21,7 +22,7 @@ func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
 				{
 					Name:         "Go 面试模型",
 					Scene:        model.Live2DSceneInterview,
-					IndustryID:   2,
+					IndustryID:   &industryID,
 					ModelURL:     "/live2d-assets/go/model.json",
 					ThumbnailURL: "/live2d-assets/go/cover.png",
 					ConfigJSON:   `{"scale":0.52,"tap_motion":"focus"}`,
@@ -66,6 +67,7 @@ func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
 
 // TestLive2DServiceGetCurrentModelFallbackToGeneric 验证未命中行业模型时会回退到通用模型。
 func TestLive2DServiceGetCurrentModelFallbackToGeneric(t *testing.T) {
+	industryID := uint(9)
 	svc := NewLive2DService(
 		&mockLive2DModelRepository{
 			models: []model.Live2DModel{
@@ -79,7 +81,7 @@ func TestLive2DServiceGetCurrentModelFallbackToGeneric(t *testing.T) {
 				{
 					Name:       "Java 陪伴模型",
 					Scene:      model.Live2DSceneCompanion,
-					IndustryID: 9,
+					IndustryID: &industryID,
 					ModelURL:   "/live2d-assets/java/model.json",
 					IsActive:   false,
 				},
@@ -108,6 +110,90 @@ func TestLive2DServiceGetCurrentModelFallbackToGeneric(t *testing.T) {
 	}
 	if resp.Source != "database" {
 		t.Fatalf("expected database source, got %s", resp.Source)
+	}
+}
+
+// TestLive2DServiceListSelectableModels 验证前台切换列表会返回数据库模型和内置回退模型。
+func TestLive2DServiceListSelectableModels(t *testing.T) {
+	goIndustryID := uint(2)
+	javaIndustryID := uint(9)
+
+	svc := NewLive2DService(
+		&mockLive2DModelRepository{
+			models: []model.Live2DModel{
+				{
+					BaseModel:  model.BaseModel{ID: 101},
+					Name:       "Go 专属陪伴模型",
+					Scene:      model.Live2DSceneCompanion,
+					IndustryID: &goIndustryID,
+					ModelURL:   "/live2d-assets/go/companion.model3.json",
+					IsActive:   true,
+				},
+				{
+					BaseModel: model.BaseModel{ID: 102},
+					Name:      "通用陪伴模型",
+					Scene:     model.Live2DSceneCompanion,
+					ModelURL:  "/live2d-assets/generic/companion.model3.json",
+					IsActive:  true,
+				},
+				{
+					BaseModel:  model.BaseModel{ID: 103},
+					Name:       "Java 陪伴模型",
+					Scene:      model.Live2DSceneCompanion,
+					IndustryID: &javaIndustryID,
+					ModelURL:   "/live2d-assets/java/companion.model3.json",
+					IsActive:   true,
+				},
+			},
+		},
+		&mockIndustryRepository{
+			byCode: map[string]*model.Industry{
+				"go": {BaseModel: model.BaseModel{ID: 2}, Code: "go", Name: "Go"},
+			},
+		},
+	)
+
+	items, err := svc.ListSelectableModels(context.Background(), &SelectableLive2DModelsRequest{
+		Scene:        model.Live2DSceneCompanion,
+		IndustryCode: "go",
+	})
+	if err != nil {
+		t.Fatalf("ListSelectableModels returned error: %v", err)
+	}
+
+	if len(items) != 4 {
+		t.Fatalf("expected 4 selectable models, got %d", len(items))
+	}
+	if items[0].Key != "db:101" || !items[0].IsRecommended || items[0].MatchType != "industry" {
+		t.Fatalf("expected first item to be recommended go model, got %#v", items[0])
+	}
+	if items[1].Key != "db:102" || items[1].MatchType != "generic" {
+		t.Fatalf("expected second item to be generic model, got %#v", items[1])
+	}
+	if items[2].Key != "db:103" || items[2].MatchType != "other" {
+		t.Fatalf("expected third item to be other active model, got %#v", items[2])
+	}
+	if items[3].Key != buildBundledLive2DModelKey() || items[3].Source != "bundled" {
+		t.Fatalf("expected bundled fallback item, got %#v", items[3])
+	}
+}
+
+// TestLive2DServiceListSelectableModelsFallbackToBundled 验证无数据库模型时仍会返回内置回退模型。
+func TestLive2DServiceListSelectableModelsFallbackToBundled(t *testing.T) {
+	svc := NewLive2DService(nil, nil)
+
+	items, err := svc.ListSelectableModels(context.Background(), &SelectableLive2DModelsRequest{
+		Scene: model.Live2DSceneCompanion,
+	})
+	if err != nil {
+		t.Fatalf("ListSelectableModels returned error: %v", err)
+	}
+
+	if len(items) != 1 {
+		t.Fatalf("expected only bundled model, got %d items", len(items))
+	}
+	if items[0].Key != buildBundledLive2DModelKey() || !items[0].IsRecommended {
+		t.Fatalf("expected bundled model to be recommended fallback, got %#v", items[0])
 	}
 }
 

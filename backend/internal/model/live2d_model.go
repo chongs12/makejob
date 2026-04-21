@@ -11,7 +11,7 @@ const (
 type Live2DModel struct {
 	BaseModel
 	Name         string `json:"name" gorm:"size:100;not null;comment:模型名称"`
-	IndustryID   uint   `json:"industry_id" gorm:"index;comment:所属行业ID，0表示通用"`
+	IndustryID   *uint  `json:"industry_id" gorm:"index;comment:所属行业ID，NULL表示通用"`
 	Scene        string `json:"scene" gorm:"size:20;not null;comment:使用场景(interview/companion)"`
 	ModelURL     string `json:"model_url" gorm:"size:500;not null;comment:模型文件URL"`
 	ThumbnailURL string `json:"thumbnail_url" gorm:"size:500;comment:缩略图URL"`
@@ -29,5 +29,5 @@ func (Live2DModel) TableName() string {
 
 // IsGeneric 判断是否为通用模型
 func (l *Live2DModel) IsGeneric() bool {
-	return l.IndustryID == 0
+	return l.IndustryID == nil || *l.IndustryID == 0
 }

@@ -16,6 +16,7 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
 import { CompanionHubPage, CompanionWorkspacePage } from './features/companion/CompanionPage'
+import { InterviewHubPage, InterviewReportPage, InterviewSessionPage } from './features/interview/InterviewPage'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -2107,82 +2108,6 @@ function PracticeNotesPage() {
 }
 
 /**
- * 提供 AI 面试频道首页，集中承接岗位模拟、面试流程与报告入口的设计。
- */
-function InterviewPage() {
-  return (
-    <section className="page-panel">
-      <span className="page-tag">面试频道</span>
-      <h1>AI 面试入口</h1>
-      <p className="page-copy">
-        这一层不再只是一个占位页，而是后续 AI 面试主链路的入口首页。这里会承接岗位选择、面试进行页、面试报告和面经沉淀。
-      </p>
-
-      <div className="channel-overview-grid">
-        <article className="channel-entry-card">
-          <span className="section-kicker">岗位定制</span>
-          <h2>按岗位生成题纲</h2>
-          <p>后续会支持后端、前端、测试、算法等岗位入口，并按目标岗位生成更贴近真实场景的面试路径。</p>
-          <Link className="secondary-link" to="/workspace">查看工作台</Link>
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">面试过程</span>
-          <h2>流式追问与多轮对话</h2>
-          <p>文本会走流式输出，后续再叠加语音输入、语音播报和动作反馈，形成更接近真实面试的节奏。</p>
-          <Link className="secondary-link" to="/practice">先补题库基础</Link>
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">报告沉淀</span>
-          <h2>报告、面经、复盘</h2>
-          <p>每次模拟结束后都会沉淀成结构化报告，并能继续扩展为面经帖子与学习记录内容。</p>
-          <button className="secondary-button" type="button">报告设计中</button>
-        </article>
-      </div>
-
-      <div className="channel-split">
-        <article className="section-card section-card-large">
-          <div className="section-head">
-            <div>
-              <span className="section-kicker">面试流程</span>
-              <h2>这一栏后续会承接完整面试闭环</h2>
-            </div>
-          </div>
-          <div className="timeline-list">
-            <div className="timeline-item">
-              <strong>1. 选择岗位与方向</strong>
-              <p>先确定岗位、技术栈和面试风格，再生成当前会话需要覆盖的能力维度。</p>
-            </div>
-            <div className="timeline-item">
-              <strong>2. 进入 AI 模拟面试</strong>
-              <p>支持连续追问、基于上一轮回答即时调整深度，不做机械的一问一答脚本页。</p>
-            </div>
-            <div className="timeline-item">
-              <strong>3. 输出报告与面经</strong>
-              <p>沉淀为可复盘的结构化结果，后续可继续发到首页内容流和个人成长记录里。</p>
-            </div>
-          </div>
-        </article>
-
-        <aside className="home-side-column">
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">当前设计原则</span>
-            <div className="sidebar-links">
-              <div className="sidebar-link">入口显眼，不藏在工具页</div>
-              <div className="sidebar-link">报告可沉淀，可继续发布</div>
-              <div className="sidebar-link">与题库练习结果互相导流</div>
-            </div>
-          </article>
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">后续挂载</span>
-            <p>面试首页后面会继续拆成岗位入口页、面试进行页、结果页、面经列表页，不会再沿用后台式菜单组织。</p>
-          </article>
-        </aside>
-      </div>
-    </section>
-  )
-}
-
-/**
  * 提供学习陪伴频道首页，整合学习计划、陪伴角色和成长记录的入口设计。
  */
 function CompanionPage() {
@@ -2392,7 +2317,39 @@ const practiceNotesRoute = createRoute({
 const interviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview',
-  component: InterviewPage,
+  component: InterviewHubPage,
+})
+
+const interviewSessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'interview/$interviewId',
+  beforeLoad: async () => {
+    const authStore = useAuthStore.getState()
+    authStore.initAuth()
+
+    if (!authStore.accessToken) {
+      throw redirect({
+        to: '/auth/login',
+      })
+    }
+  },
+  component: InterviewSessionPage,
+})
+
+const interviewReportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'interview/$interviewId/report',
+  beforeLoad: async () => {
+    const authStore = useAuthStore.getState()
+    authStore.initAuth()
+
+    if (!authStore.accessToken) {
+      throw redirect({
+        to: '/auth/login',
+      })
+    }
+  },
+  component: InterviewReportPage,
 })
 
 const companionRoute = createRoute({
@@ -2445,6 +2402,8 @@ const routeTree = rootRoute.addChildren([
   practiceFavoritesRoute,
   practiceNotesRoute,
   interviewRoute,
+  interviewSessionRoute,
+  interviewReportRoute,
   companionRoute,
   companionRoomRoute,
   loginRoute,

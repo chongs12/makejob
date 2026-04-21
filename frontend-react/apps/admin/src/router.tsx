@@ -11,6 +11,12 @@ import {
 } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import { useAdminAuthStore } from './state/auth'
+import { AIConfigPage } from './features/ai-config/AIConfigPage'
+import { Live2DPage } from './features/live2d/Live2DPage'
+import { PromptPage } from './features/prompt/PromptPage'
+import { QuestionPage } from './features/question/QuestionPage'
+import { TaxonomyPage } from './features/taxonomy/TaxonomyPage'
+import { TTSPage } from './features/tts/TTSPage'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -58,7 +64,11 @@ function AdminLayout() {
         <p>后台管理 React 主干</p>
         <nav className="admin-nav">
           <Link className="admin-link" to="/dashboard">总览</Link>
+          <Link className="admin-link" to="/ai-configs">AI 配置</Link>
+          <Link className="admin-link" to="/prompts">Prompt 管理</Link>
           <Link className="admin-link" to="/live2d">Live2D 管理</Link>
+          <Link className="admin-link" to="/tts">TTS 配置</Link>
+          <Link className="admin-link" to="/taxonomy">行业/分类</Link>
           <Link className="admin-link" to="/questions">题库管理</Link>
           <Link className="admin-link" to="/auth/login">后台登录</Link>
         </nav>
@@ -175,29 +185,24 @@ function DashboardPage() {
 }
 
 /**
- * 预留 Live2D 资产管理页。
+ * 统一校验后台受保护路由的管理员权限，避免每个页面重复实现守卫逻辑。
  */
-function Live2DPage() {
-  return (
-    <section className="admin-panel">
-      <span className="admin-tag">核心资产</span>
-      <h2>Live2D 管理</h2>
-      <p className="admin-copy">这里后续接入模型导入、场景绑定、缩放参数、缩略图和动作配置。</p>
-    </section>
-  )
-}
+async function ensureAdminRouteAccess() {
+  const authStore = useAdminAuthStore.getState()
+  authStore.initAuth()
 
-/**
- * 预留题库管理页。
- */
-function QuestionsPage() {
-  return (
-    <section className="admin-panel">
-      <span className="admin-tag">题库中心</span>
-      <h2>题库管理</h2>
-      <p className="admin-copy">这里后续接入题目编辑、标签管理、难度策略和行业分类。</p>
-    </section>
-  )
+  if (!authStore.accessToken) {
+    throw redirect({
+      to: '/auth/login',
+    })
+  }
+
+  const ready = await useAdminAuthStore.getState().ensureAdmin()
+  if (!ready) {
+    throw redirect({
+      to: '/auth/login',
+    })
+  }
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
@@ -213,58 +218,60 @@ const loginRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'dashboard',
-  beforeLoad: async () => {
-    const authStore = useAdminAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
-      throw redirect({
-        to: '/auth/login',
-      })
-    }
-
-    const ready = await useAdminAuthStore.getState().ensureAdmin()
-    if (!ready) {
-      throw redirect({
-        to: '/auth/login',
-      })
-    }
-  },
+  beforeLoad: ensureAdminRouteAccess,
   component: DashboardPage,
+})
+
+const aiConfigsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'ai-configs',
+  beforeLoad: ensureAdminRouteAccess,
+  component: AIConfigPage,
+})
+
+const promptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'prompts',
+  beforeLoad: ensureAdminRouteAccess,
+  component: PromptPage,
 })
 
 const live2DRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'live2d',
-  beforeLoad: async () => {
-    const ready = await useAdminAuthStore.getState().ensureAdmin()
-    if (!ready) {
-      throw redirect({
-        to: '/auth/login',
-      })
-    }
-  },
+  beforeLoad: ensureAdminRouteAccess,
   component: Live2DPage,
+})
+
+const ttsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'tts',
+  beforeLoad: ensureAdminRouteAccess,
+  component: TTSPage,
+})
+
+const taxonomyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'taxonomy',
+  beforeLoad: ensureAdminRouteAccess,
+  component: TaxonomyPage,
 })
 
 const questionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'questions',
-  beforeLoad: async () => {
-    const ready = await useAdminAuthStore.getState().ensureAdmin()
-    if (!ready) {
-      throw redirect({
-        to: '/auth/login',
-      })
-    }
-  },
-  component: QuestionsPage,
+  beforeLoad: ensureAdminRouteAccess,
+  component: QuestionPage,
 })
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
   dashboardRoute,
+  aiConfigsRoute,
+  promptsRoute,
   live2DRoute,
+  ttsRoute,
+  taxonomyRoute,
   questionsRoute,
 ])
 
