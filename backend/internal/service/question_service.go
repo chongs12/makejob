@@ -39,6 +39,7 @@ type QuestionDetail struct {
 
 // RandomExamRequest 随机组卷请求DTO
 type RandomExamRequest struct {
+	IndustryID *uint  `json:"industry_id"`
 	CategoryID *uint  `json:"category_id"`
 	Difficulty string `json:"difficulty"`
 	Count      int    `json:"count" binding:"required,min=1,max=100"`
@@ -46,6 +47,7 @@ type RandomExamRequest struct {
 
 // TimedExamRequest 限时模拟请求DTO
 type TimedExamRequest struct {
+	IndustryID       *uint  `json:"industry_id"`
 	CategoryID       *uint  `json:"category_id"`
 	Difficulty       string `json:"difficulty"`
 	Count            int    `json:"count" binding:"required,min=1,max=100"`
@@ -113,7 +115,8 @@ type QuestionService interface {
 	// 题目
 	ListQuestions(ctx context.Context, params repository.QuestionListParams) (*common.PageResult, error)
 	GetQuestion(ctx context.Context, id uint, userID uint) (*QuestionDetail, error)
-	GetCategories(ctx context.Context, industryID uint) ([]CategoryTree, error)
+	ListIndustries(ctx context.Context) ([]model.Industry, error)
+	GetCategories(ctx context.Context, industryID uint, industryCode string) ([]CategoryTree, error)
 
 	// 答题
 	SubmitAnswer(ctx context.Context, userID, questionID uint, req *SubmitAnswerRequest) (*SubmitAnswerResponse, error)
@@ -148,6 +151,7 @@ type questionService struct {
 	favoriteRepo FavoriteRepository
 	noteRepo     NoteRepository
 	quizAnalyzer ai.QuizAnalyzer
+	industryRepo repository.IndustryRepository
 }
 
 // QuestionRepository 题目仓库接口 (本地定义，避免循环导入)
@@ -215,8 +219,9 @@ func NewQuestionService(
 	favoriteRepo repository.FavoriteRepository,
 	noteRepo repository.NoteRepository,
 	quizAnalyzer ai.QuizAnalyzer,
+	industryRepo ...repository.IndustryRepository,
 ) QuestionService {
-	return &questionService{
+	s := &questionService{
 		questionRepo: questionRepo,
 		categoryRepo: categoryRepo,
 		recordRepo:   recordRepo,
@@ -224,6 +229,10 @@ func NewQuestionService(
 		noteRepo:     noteRepo,
 		quizAnalyzer: quizAnalyzer,
 	}
+	if len(industryRepo) > 0 {
+		s.industryRepo = industryRepo[0]
+	}
+	return s
 }
 
 // ListQuestions 获取题目列表
@@ -269,9 +278,56 @@ func (s *questionService) GetQuestion(ctx context.Context, id uint, userID uint)
 	return detail, nil
 }
 
-// GetCategories 获取分类列表
-func (s *questionService) GetCategories(ctx context.Context, industryID uint) ([]CategoryTree, error) {
-	return s.categoryRepo.GetTree(ctx, industryID)
+// ListIndustries 获取前台可见的行业列表，仅返回已启用行业。
+func (s *questionService) ListIndustries(ctx context.Context) ([]model.Industry, error) {
+	if s.industryRepo == nil {
+		return []model.Industry{}, nil
+	}
+
+	industries, err := s.industryRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	activeIndustries := make([]model.Industry, 0, len(industries))
+	for _, industry := range industries {
+		if industry.IsActive {
+			activeIndustries = append(activeIndustries, industry)
+		}
+	}
+
+	return activeIndustries, nil
+}
+
+// GetCategories 获取分类列表。
+func (s *questionService) GetCategories(ctx context.Context, industryID uint, industryCode string) ([]CategoryTree, error) {
+	resolvedIndustryID, err := s.resolveCategoryIndustryID(ctx, industryID, industryCode)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.categoryRepo.GetTree(ctx, resolvedIndustryID)
+}
+
+// resolveCategoryIndustryID 解析分类查询使用的行业ID，兼容行业编码筛选。
+func (s *questionService) resolveCategoryIndustryID(ctx context.Context, industryID uint, industryCode string) (uint, error) {
+	if industryID > 0 {
+		return industryID, nil
+	}
+
+	if industryCode == "" || s.industryRepo == nil {
+		return 0, nil
+	}
+
+	industry, err := s.industryRepo.GetByCode(ctx, industryCode)
+	if err != nil {
+		return 0, err
+	}
+	if industry == nil {
+		return 0, common.NewBusinessError(common.CodeNotFound, "行业不存在")
+	}
+
+	return industry.ID, nil
 }
 
 // SubmitAnswer 提交答案
@@ -502,7 +558,7 @@ func (s *questionService) GenerateRandomExam(ctx context.Context, userID uint, r
 
 	// 获取随机题目
 	params := repository.RandomQuestionParams{
-		IndustryID: s.resolveExamIndustryID(ctx, req.CategoryID),
+		IndustryID: s.resolveExamIndustryID(ctx, req.IndustryID, req.CategoryID),
 		CategoryID: req.CategoryID,
 		Difficulty: req.Difficulty,
 		Count:      req.Count,
@@ -556,7 +612,7 @@ func (s *questionService) GenerateRandomExam(ctx context.Context, userID uint, r
 func (s *questionService) GenerateTimedExam(ctx context.Context, userID uint, req *TimedExamRequest) (*ExamResponse, error) {
 	// 获取随机题目
 	params := repository.RandomQuestionParams{
-		IndustryID: s.resolveExamIndustryID(ctx, req.CategoryID),
+		IndustryID: s.resolveExamIndustryID(ctx, req.IndustryID, req.CategoryID),
 		CategoryID: req.CategoryID,
 		Difficulty: req.Difficulty,
 		Count:      req.Count,
@@ -606,10 +662,13 @@ func (s *questionService) GenerateTimedExam(ctx context.Context, userID uint, re
 	}, nil
 }
 
-// resolveExamIndustryID 根据分类推导组卷所需的行业 ID，未指定分类时不过滤行业。
-func (s *questionService) resolveExamIndustryID(ctx context.Context, categoryID *uint) *uint {
+// resolveExamIndustryID 解析组卷所需的行业 ID，优先按分类归属推导，未指定分类时回退到显式行业筛选。
+func (s *questionService) resolveExamIndustryID(ctx context.Context, industryID, categoryID *uint) *uint {
 	if categoryID == nil || *categoryID == 0 || s.categoryRepo == nil {
-		return nil
+		if industryID == nil || *industryID == 0 {
+			return nil
+		}
+		return industryID
 	}
 
 	category, err := s.categoryRepo.GetByID(ctx, *categoryID)
@@ -617,8 +676,8 @@ func (s *questionService) resolveExamIndustryID(ctx context.Context, categoryID 
 		return nil
 	}
 
-	industryID := category.IndustryID
-	return &industryID
+	resolvedIndustryID := category.IndustryID
+	return &resolvedIndustryID
 }
 
 // derefIndustryID 将可选行业 ID 指针转换为可存储的数值，空指针时返回 0。

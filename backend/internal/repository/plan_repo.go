@@ -29,6 +29,7 @@ type PlanTaskRepository interface {
 	ListByPlan(ctx context.Context, planID uint) ([]model.LearningTask, error)
 	CountByPlanAndStatus(ctx context.Context, planID uint, status string) (int64, error)
 	DeleteByPlan(ctx context.Context, planID uint) error
+	DeleteIncompleteByPlan(ctx context.Context, planID uint) error
 }
 
 // planRepository 学习计划数据访问实现
@@ -201,6 +202,16 @@ func (r *planTaskRepository) DeleteByPlan(ctx context.Context, planID uint) erro
 		Where("plan_id = ?", planID).
 		Delete(&model.LearningTask{}).Error; err != nil {
 		return fmt.Errorf("删除学习任务失败: %w", err)
+	}
+	return nil
+}
+
+// DeleteIncompleteByPlan 删除计划下所有未完成任务，保留已完成历史记录。
+func (r *planTaskRepository) DeleteIncompleteByPlan(ctx context.Context, planID uint) error {
+	if err := r.db.WithContext(ctx).
+		Where("plan_id = ? AND status <> ?", planID, model.TaskStatusCompleted).
+		Delete(&model.LearningTask{}).Error; err != nil {
+		return fmt.Errorf("删除未完成学习任务失败: %w", err)
 	}
 	return nil
 }

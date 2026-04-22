@@ -46,13 +46,13 @@ volcengine:
   access_key: ""
   secret_key: ""
   ark:
-    api_key: "ark-1c544572-9c83-495d-a291-4fe31d71e8d5-91264"
-    base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    chat_model: "deepseek-v3-2-251201"
-    interview_model: "deepseek-v3-2-251201"
-    plan_model: "deepseek-v3-2-251201"
-    companion_model: "deepseek-v3-2-251201"
-    quiz_model: "deepseek-v3-2-251201"
+    api_key: "sk-cp-2lV8WHkir8LNFEzkVEZIOfhdjr90rngNZu_nioVJk2Dr0SlfngE_r0SXuPxsDl31C5O--OpHYqfLdQnCU4OBaprWRofhtTxDxqHNtk0ZrCdEQke6412mUuU"
+    base_url: "https://api.minimaxi.com/v1"
+    chat_model: "MiniMax-M2.7"
+    interview_model: "MiniMax-M2.7"
+    plan_model: "MiniMax-M2.7"
+    companion_model: "MiniMax-M2.7"
+    quiz_model: "MiniMax-M2.7"
   asr:
     enabled: false
     base_url: ""

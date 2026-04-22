@@ -7,12 +7,19 @@ import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubi
 import { requestJson, extractErrorMessage } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
+import {
+  DEFAULT_FRONTEND_INDUSTRY_CODE as DEFAULT_COMPANION_INDUSTRY_CODE,
+  fetchFrontendIndustries as fetchCompanionIndustries,
+  formatFrontendIndustryLabel as formatCompanionIndustryLabel,
+  persistSelectedFrontendIndustryCode as persistSelectedCompanionIndustryCode,
+  readSelectedFrontendIndustryCode as readSelectedCompanionIndustryCode,
+  resolvePreferredFrontendIndustry as resolveCompanionIndustry,
+  type FrontendIndustry as CompanionIndustry,
+} from '../../shared/industryContext'
 
 const MAX_CHAT_HISTORY = 12
 const COMPANION_SESSION_SUMMARY_KEY = 'makejob.companion.session-summary'
 const COMPANION_SELECTED_MODEL_KEY_PREFIX = 'makejob.companion.selected-live2d:'
-const DEFAULT_COMPANION_INDUSTRY_ID = 1
-const DEFAULT_COMPANION_INDUSTRY_CODE = 'go'
 
 type CompanionMessageRole = 'assistant' | 'user'
 
@@ -30,6 +37,8 @@ interface CompanionPlanTask {
 
 interface CompanionPlanDetail {
   id: number
+  industry_id?: number
+  industry_code?: string
   title: string
   description: string
   status: string
@@ -110,7 +119,7 @@ interface CompanionGeneratePlanPayload {
   weak_topics: string[]
   goal_description: string
   duration_days: number
-  industry_id: number
+  industry_id?: number
   industry_code: string
 }
 
@@ -262,15 +271,14 @@ function parseWeakTopicsText(value: string): string[] {
 /**
  * 将计划生成表单转换为后端可直接消费的请求结构。
  */
-function buildGeneratePlanPayload(form: CompanionGeneratePlanForm): CompanionGeneratePlanPayload {
+function buildGeneratePlanPayload(form: CompanionGeneratePlanForm, industryCode: string): CompanionGeneratePlanPayload {
   return {
     level: form.level,
     daily_study_time: Number(form.dailyStudyTime) || 60,
     weak_topics: Array.from(new Set([...form.weakTopics, ...parseWeakTopicsText(form.weakTopicsText)])),
     goal_description: form.goalDescription.trim(),
     duration_days: Number(form.durationDays) || 14,
-    industry_id: DEFAULT_COMPANION_INDUSTRY_ID,
-    industry_code: DEFAULT_COMPANION_INDUSTRY_CODE,
+    industry_code: industryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE,
   }
 }
 
@@ -400,7 +408,14 @@ export function CompanionHubPage() {
   const queryClient = useQueryClient()
   const [sessionSummary, setSessionSummary] = useState<CompanionSessionSummary | null>(() => readCompanionSessionSummary())
   const [planForm, setPlanForm] = useState<CompanionGeneratePlanForm>(() => buildInitialPlanForm())
-  const [planFormMessage, setPlanFormMessage] = useState('当前阶段先固定生成 Go 方向学习计划。')
+  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
+  const [planFormMessage, setPlanFormMessage] = useState('先选择学习方向，再让陪伴助手生成对应计划。')
+
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchCompanionIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const currentPlanQuery = useQuery({
     queryKey: ['companion-hub-current-plan', accessToken],
@@ -416,9 +431,21 @@ export function CompanionHubPage() {
     retry: false,
   })
 
+  const selectedIndustry = useMemo(
+    () => resolveCompanionIndustry(industriesQuery.data || [], selectedIndustryCode),
+    [industriesQuery.data, selectedIndustryCode],
+  )
+  const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE
+  const effectiveIndustryLabel = formatCompanionIndustryLabel(selectedIndustry, effectiveIndustryCode)
+  const currentPlanIndustry = useMemo(
+    () => resolveCompanionIndustry(industriesQuery.data || [], currentPlanQuery.data?.industry_code || ''),
+    [currentPlanQuery.data?.industry_code, industriesQuery.data],
+  )
+
   const categoryOptionsQuery = useQuery({
-    queryKey: ['companion-hub-category-options', DEFAULT_COMPANION_INDUSTRY_ID],
-    queryFn: fetchCompanionCategoryOptions,
+    queryKey: ['companion-hub-category-options', effectiveIndustryCode],
+    queryFn: () => fetchCompanionCategoryOptions(effectiveIndustryCode),
+    enabled: Boolean(effectiveIndustryCode),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -433,6 +460,9 @@ export function CompanionHubPage() {
     mutationFn: (payload: CompanionGeneratePlanPayload) => createCompanionPlan(accessToken as string, payload),
     onSuccess: async (plan) => {
       setPlanForm(buildInitialPlanForm())
+      if (plan.industry_code) {
+        setSelectedIndustryCode(plan.industry_code)
+      }
       setPlanFormMessage(`新计划已生成：${plan.title}`)
 
       await Promise.all([
@@ -461,6 +491,21 @@ export function CompanionHubPage() {
     }
   }, [])
 
+  /**
+   * 在行业列表加载后统一归一化当前选中的行业编码，并写回本地缓存。
+   */
+  useEffect(() => {
+    const normalizedIndustryCode = effectiveIndustryCode.trim()
+    if (!normalizedIndustryCode) {
+      return
+    }
+
+    persistSelectedCompanionIndustryCode(normalizedIndustryCode)
+    if (normalizedIndustryCode !== selectedIndustryCode) {
+      setSelectedIndustryCode(normalizedIndustryCode)
+    }
+  }, [effectiveIndustryCode, selectedIndustryCode])
+
   const progressText = currentPlanQuery.data
     ? `${Math.round(currentPlanQuery.data.progress || 0)}%`
     : (sessionSummary ? `${sessionSummary.progress}%` : '--')
@@ -474,6 +519,18 @@ export function CompanionHubPage() {
   const completedText = latestCompletedTask
     ? `${latestCompletedTask.title} · ${formatCompanionDateTime(latestCompletedTask.completed_at)}`
     : '还没有已完成任务记录'
+
+  /**
+   * 切换入口页当前学习方向，并清空上一方向快速勾选的弱项标签。
+   */
+  function handleIndustryChange(nextIndustryCode: string): void {
+    setSelectedIndustryCode(nextIndustryCode)
+    setPlanForm((current) => ({
+      ...current,
+      weakTopics: [],
+    }))
+    setPlanFormMessage(`已切换到 ${formatCompanionIndustryLabel(resolveCompanionIndustry(industriesQuery.data || [], nextIndustryCode), nextIndustryCode)} 方向。`)
+  }
 
   /**
    * 切换计划表单中的弱项标签，方便快速组织 AI 生成计划的输入上下文。
@@ -501,9 +558,9 @@ export function CompanionHubPage() {
       return
     }
 
-    const payload = buildGeneratePlanPayload(planForm)
+    const payload = buildGeneratePlanPayload(planForm, effectiveIndustryCode)
     if (!payload.goal_description) {
-      setPlanFormMessage('先写清楚目标，例如“两周内完成 Go 并发与数据库复习”。')
+      setPlanFormMessage(`先写清楚目标，例如“两周内完成 ${effectiveIndustryLabel} 方向的重点模块复习”。`)
       return
     }
 
@@ -591,17 +648,17 @@ export function CompanionHubPage() {
 
         <div className="companion-hub-board">
           <section className="status-card companion-plan-builder">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">生成计划</span>
-                <h2>先把这阶段要学什么交给陪伴助手排出来</h2>
+              <div className="companion-card-head">
+                <div>
+                  <span className="section-kicker">生成计划</span>
+                  <h2>先把这阶段要学什么交给陪伴助手排出来</h2>
+                </div>
+              <span className="companion-card-note">当前方向：{effectiveIndustryLabel}</span>
               </div>
-              <span className="companion-card-note">当前固定为 Go 方向</span>
-            </div>
 
-            <p className="companion-empty-text">
-              这一版先接通 `POST /api/plans`。行业配置数据还没独立设计，所以前端先固定生成 Go 方向学习计划，弱项可从现有题库分类里快速勾选。
-            </p>
+              <p className="companion-empty-text">
+               当前已接通真实行业列表、分类筛选和计划生成链路。先选定方向，再让陪伴助手围绕这一领域拆出阶段计划和重点弱项。
+              </p>
 
             <form className="stack-form companion-plan-form" onSubmit={handleGeneratePlan}>
               <div className="companion-plan-form-grid">
@@ -641,19 +698,38 @@ export function CompanionHubPage() {
 
                 <label className="field">
                   <span>当前方向</span>
-                  <input value="Go 面试 / Go 学习计划" disabled />
+                  <select
+                    value={effectiveIndustryCode}
+                    disabled={industriesQuery.isLoading || !industriesQuery.data?.length}
+                    onChange={(event) => handleIndustryChange(event.target.value)}
+                  >
+                    {industriesQuery.data?.map((industry) => (
+                      <option key={industry.id} value={industry.code}>
+                        {industry.name}
+                      </option>
+                    ))}
+                    {!industriesQuery.data?.length ? (
+                      <option value={effectiveIndustryCode}>{effectiveIndustryLabel}</option>
+                    ) : null}
+                  </select>
                 </label>
               </div>
 
+              {industriesQuery.isError ? (
+                <p className="companion-empty-text">
+                  {extractErrorMessage(industriesQuery.error, '行业列表读取失败，当前将回退到默认方向。')}
+                </p>
+              ) : null}
+
               <label className="field">
-                <span>阶段目标</span>
-                <textarea
-                  value={planForm.goalDescription}
-                  onChange={(event) => setPlanForm((current) => ({ ...current, goalDescription: event.target.value }))}
-                  placeholder="例如：两周内完成 Go 并发、数据库和 Gin 框架复习，并能开始做中等难度面试题。"
-                  rows={4}
-                />
-              </label>
+                  <span>阶段目标</span>
+                  <textarea
+                    value={planForm.goalDescription}
+                    onChange={(event) => setPlanForm((current) => ({ ...current, goalDescription: event.target.value }))}
+                    placeholder={`例如：两周内完成 ${effectiveIndustryLabel} 方向的并发、数据库和框架复习，并能开始做中等难度题目。`}
+                    rows={4}
+                  />
+                </label>
 
               <div className="field">
                 <span>快速选择弱项</span>
@@ -672,7 +748,7 @@ export function CompanionHubPage() {
                   </div>
                 ) : (
                   <p className="companion-empty-text">
-                    {categoryOptionsQuery.isLoading ? '正在加载弱项建议...' : '当前没有可用的题库分类建议。'}
+                    {categoryOptionsQuery.isLoading ? '正在加载弱项建议...' : `当前方向 ${effectiveIndustryLabel} 暂无可用的题库分类建议。`}
                   </p>
                 )}
               </div>
@@ -706,7 +782,7 @@ export function CompanionHubPage() {
                   <h2>{currentPlanQuery.data?.title || '还没有进行中的学习计划'}</h2>
                 </div>
                 <span className="companion-card-note">
-                  {currentPlanQuery.data ? planStatusLabel(currentPlanQuery.data.status) : '等待计划创建'}
+                  {currentPlanQuery.data ? `${formatCompanionIndustryLabel(currentPlanIndustry, currentPlanQuery.data.industry_code || effectiveIndustryCode)} · ${planStatusLabel(currentPlanQuery.data.status)}` : '等待计划创建'}
                 </span>
               </div>
 
@@ -857,10 +933,13 @@ async function fetchCompanionPracticeStats(token: string): Promise<CompanionPrac
 }
 
 /**
- * 读取 Go 行业下的题库分类，为计划生成表单提供弱项建议标签。
+ * 按当前学习方向读取题库分类，为计划生成表单提供弱项建议标签。
  */
-async function fetchCompanionCategoryOptions(): Promise<CompanionCategoryOption[]> {
-  const response = await requestJson<ApiEnvelope<CompanionCategoryNode[]>>(`/categories?industry_id=${DEFAULT_COMPANION_INDUSTRY_ID}`)
+async function fetchCompanionCategoryOptions(industryCode: string): Promise<CompanionCategoryOption[]> {
+  const params = new URLSearchParams({
+    industry_code: industryCode.trim(),
+  })
+  const response = await requestJson<ApiEnvelope<CompanionCategoryNode[]>>(`/categories?${params.toString()}`)
 
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取弱项分类失败')
@@ -1193,13 +1272,13 @@ function ensureCubismCoreScript(): Promise<void> {
 function layoutAriuModel(model: Cubism4Live2DModel, host: HTMLDivElement, baseWidth: number, baseHeight: number): void {
   const safeBaseWidth = Math.max(baseWidth, 1)
   const safeBaseHeight = Math.max(baseHeight, 1)
-  const widthScale = (host.clientWidth * 0.74) / safeBaseWidth
-  const heightScale = (host.clientHeight * 0.92) / safeBaseHeight
-  const scale = Math.max(Math.min(widthScale, heightScale), 0.1)
+  const preferredWidthScale = (host.clientWidth * 0.86) / safeBaseWidth
+  const guardedHeightScale = (host.clientHeight * 1.12) / safeBaseHeight
+  const scale = Math.max(Math.min(preferredWidthScale, guardedHeightScale) * 0.9, 0.1)
 
   model.scale.set(scale)
   model.anchor.set(0.5, 1)
-  model.position.set(host.clientWidth * 0.57, host.clientHeight * 0.98)
+  model.position.set(host.clientWidth * 0.5, host.clientHeight * 0.93)
 }
 
 /**
@@ -1492,6 +1571,13 @@ export function CompanionWorkspacePage() {
   const [composerMessage, setComposerMessage] = useState('')
   const [taskActionTaskId, setTaskActionTaskId] = useState<number | null>(null)
   const [planActionMessage, setPlanActionMessage] = useState('')
+  const [preferredIndustryCode, setPreferredIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
+
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchCompanionIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const currentPlanQuery = useQuery({
     queryKey: ['companion-current-plan', accessToken],
@@ -1512,6 +1598,12 @@ export function CompanionWorkspacePage() {
   const currentDialogue = useMemo(() => resolveCurrentDialogue(history), [history])
   const stageFeedback = useMemo(() => resolveStageFeedback(history), [history])
   const planProgressHint = useMemo(() => buildPlanProgressHint(planProgressQuery.data), [planProgressQuery.data])
+  const workspaceIndustryCode = currentPlanQuery.data?.industry_code?.trim() || preferredIndustryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE
+  const workspaceIndustry = useMemo(
+    () => resolveCompanionIndustry(industriesQuery.data || [], workspaceIndustryCode),
+    [industriesQuery.data, workspaceIndustryCode],
+  )
+  const workspaceIndustryLabel = formatCompanionIndustryLabel(workspaceIndustry, workspaceIndustryCode)
 
   const updateTaskMutation = useMutation({
     mutationFn: (payload: { taskId: number; status: CompanionTaskStatus }) =>
@@ -1559,6 +1651,20 @@ export function CompanionWorkspacePage() {
 
     persistCompanionSessionSummary(summary)
   }, [history, currentPlanQuery.data])
+
+  /**
+   * 当当前计划或入口页偏好发生变化时，同步持久化当前陪伴场景应使用的行业上下文。
+   */
+  useEffect(() => {
+    if (!workspaceIndustryCode) {
+      return
+    }
+
+    persistSelectedCompanionIndustryCode(workspaceIndustryCode)
+    if (workspaceIndustryCode !== preferredIndustryCode) {
+      setPreferredIndustryCode(workspaceIndustryCode)
+    }
+  }, [preferredIndustryCode, workspaceIndustryCode])
 
   /**
    * 在陪伴页直接切换任务状态，让计划推进不必退回入口页操作。
@@ -1658,7 +1764,7 @@ export function CompanionWorkspacePage() {
         <Link className="ghost-button companion-room-back" to="/companion">
           返回陪伴入口
         </Link>
-        <span className="companion-room-note">当前为学习陪伴独立页</span>
+        <span className="companion-room-note">当前为学习陪伴独立页 · {workspaceIndustryLabel}</span>
       </div>
 
       <div className="companion-layout">
@@ -1785,7 +1891,7 @@ export function CompanionWorkspacePage() {
             emotion={stageFeedback.emotion}
             action={stageFeedback.action}
             loggedIn={Boolean(accessToken)}
-            industryCode={DEFAULT_COMPANION_INDUSTRY_CODE}
+            industryCode={workspaceIndustryCode}
           />
 
           <section className="status-card companion-input-panel">

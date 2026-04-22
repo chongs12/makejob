@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 
 	"makejob-backend/internal/ai"
 )
+
+var reasoningBlockPattern = regexp.MustCompile(`(?is)<(think|reasoning)>\s*.*?\s*</(think|reasoning)>`)
 
 type Provider struct {
 	chatModel einoModel.ToolCallingChatModel
@@ -161,27 +164,52 @@ func extractMessageText(message *schema.Message) string {
 		return ""
 	}
 
-	if content := strings.TrimSpace(message.Content); content != "" {
+	if content := sanitizeVisibleMessageContent(message.Content); content != "" {
 		return content
 	}
 
 	var parts []string
 	for _, part := range message.AssistantGenMultiContent {
-		if text := strings.TrimSpace(part.Text); text != "" {
+		if text := sanitizeVisibleMessageContent(part.Text); text != "" {
 			parts = append(parts, text)
 		}
-		if part.Reasoning != nil {
-			if text := strings.TrimSpace(part.Reasoning.Text); text != "" {
-				parts = append(parts, text)
-			}
-		}
-	}
-
-	if reasoning := strings.TrimSpace(message.ReasoningContent); reasoning != "" {
-		parts = append(parts, reasoning)
 	}
 
 	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+// sanitizeVisibleMessageContent 清理模型返回中不应直接展示给用户的深度思考片段。
+func sanitizeVisibleMessageContent(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+
+	content = reasoningBlockPattern.ReplaceAllString(content, "")
+	content = strings.ReplaceAll(content, "<think>", "")
+	content = strings.ReplaceAll(content, "</think>", "")
+	content = strings.ReplaceAll(content, "<reasoning>", "")
+	content = strings.ReplaceAll(content, "</reasoning>", "")
+
+	lines := strings.Split(content, "\n")
+	filtered := make([]string, 0, len(lines))
+	previousBlank := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			if previousBlank {
+				continue
+			}
+			previousBlank = true
+			filtered = append(filtered, "")
+			continue
+		}
+
+		previousBlank = false
+		filtered = append(filtered, trimmed)
+	}
+
+	return strings.TrimSpace(strings.Join(filtered, "\n"))
 }
 
 func parsePositiveInt(raw string) int {

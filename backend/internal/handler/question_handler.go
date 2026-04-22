@@ -30,6 +30,7 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 	if public != nil {
 		public.GET("/questions", h.ListQuestions)
 		public.GET("/questions/:id", h.GetQuestion)
+		public.GET("/industries", h.ListIndustries)
 		public.GET("/categories", h.GetCategories)
 	}
 
@@ -146,6 +147,28 @@ func (h *QuestionHandler) GetQuestion(c *gin.Context) {
 	common.Success(c, question)
 }
 
+// ListIndustries 获取行业列表
+// @Summary 获取行业列表
+// @Description 获取前台可用的行业列表
+// @Tags 题库
+// @Accept json
+// @Produce json
+// @Success 200 {object} common.Response{data=[]model.Industry}
+// @Router /api/industries [get]
+func (h *QuestionHandler) ListIndustries(c *gin.Context) {
+	industries, err := h.questionService.ListIndustries(c.Request.Context())
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取行业列表失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, industries)
+}
+
 // GetCategories 获取分类列表
 // @Summary 获取分类列表
 // @Description 获取分类树形列表
@@ -153,6 +176,7 @@ func (h *QuestionHandler) GetQuestion(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param industry_id query int false "行业ID"
+// @Param industry_code query string false "行业编码"
 // @Success 200 {object} common.Response{data=[]service.CategoryTree}
 // @Router /api/categories [get]
 func (h *QuestionHandler) GetCategories(c *gin.Context) {
@@ -163,7 +187,7 @@ func (h *QuestionHandler) GetCategories(c *gin.Context) {
 		}
 	}
 
-	categories, err := h.questionService.GetCategories(c.Request.Context(), industryID)
+	categories, err := h.questionService.GetCategories(c.Request.Context(), industryID, c.Query("industry_code"))
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)

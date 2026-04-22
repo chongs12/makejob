@@ -1,10 +1,19 @@
 import type { FormEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
+import {
+  DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
+  fetchFrontendIndustries,
+  formatFrontendIndustryLabel,
+  persistSelectedFrontendIndustryCode,
+  readSelectedFrontendIndustryCode,
+  resolvePreferredFrontendIndustry,
+  subscribeFrontendIndustryCodeChange,
+} from '../../shared/industryContext'
 
 interface InterviewConfigForm {
   difficulty: string
@@ -101,7 +110,18 @@ interface PageResult<T> {
   page_size: number
 }
 
-const INTERVIEW_DEFAULT_INDUSTRY_CODE = 'go'
+/**
+ * 根据当前行业生成更贴近方向语境的默认面试主题，减少用户首次填写成本。
+ */
+function buildDefaultInterviewTopics(industryCode: string): string {
+  const topicMap: Record<string, string> = {
+    go: 'Go基础, 并发编程, Gin, 数据库',
+    java: 'Java基础, JVM, Spring, 数据库',
+    frontend: 'HTML/CSS, JavaScript, React, 工程化',
+  }
+
+  return topicMap[industryCode.trim()] || '基础概念, 核心框架, 数据结构, 工程实践'
+}
 
 /**
  * 创建 AI 面试入口页默认表单，保证首次进入时就能直接提交。
@@ -110,7 +130,7 @@ function buildInitialInterviewForm(): InterviewConfigForm {
   return {
     difficulty: 'medium',
     questionCount: '5',
-    topicsText: 'Go基础, 并发编程, Gin, 数据库',
+    topicsText: buildDefaultInterviewTopics(INTERVIEW_DEFAULT_INDUSTRY_CODE),
   }
 }
 
@@ -383,7 +403,14 @@ export function InterviewHubPage() {
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
   const [form, setForm] = useState<InterviewConfigForm>(() => buildInitialInterviewForm())
-  const [message, setMessage] = useState('当前阶段先聚焦 Go 面试文本链路。')
+  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
+  const [message, setMessage] = useState('先选择目标方向，再开始这场文本模拟面试。')
+
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const historyQuery = useQuery({
     queryKey: ['interview-history', accessToken],
@@ -391,6 +418,13 @@ export function InterviewHubPage() {
     enabled: Boolean(accessToken),
     retry: false,
   })
+
+  const selectedIndustry = useMemo(
+    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], selectedIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),
+    [industriesQuery.data, selectedIndustryCode],
+  )
+  const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || INTERVIEW_DEFAULT_INDUSTRY_CODE
+  const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
 
   const createMutation = useMutation({
     mutationFn: (payload: {
@@ -420,6 +454,33 @@ export function InterviewHubPage() {
   )
 
   /**
+   * 在行业列表加载后归一化当前选中的行业编码，并同步写回前台公共偏好。
+   */
+  useEffect(() => {
+    const normalizedIndustryCode = effectiveIndustryCode.trim()
+    if (!normalizedIndustryCode) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(normalizedIndustryCode)
+    if (normalizedIndustryCode !== selectedIndustryCode) {
+      setSelectedIndustryCode(normalizedIndustryCode)
+    }
+  }, [effectiveIndustryCode, selectedIndustryCode])
+
+  /**
+   * 切换目标行业时重置推荐主题，避免仍然保留上一方向的面试范围。
+   */
+  function handleIndustryChange(nextIndustryCode: string): void {
+    setSelectedIndustryCode(nextIndustryCode)
+    setForm((current) => ({
+      ...current,
+      topicsText: buildDefaultInterviewTopics(nextIndustryCode),
+    }))
+    setMessage(`已切换到 ${formatFrontendIndustryLabel(resolvePreferredFrontendIndustry(industriesQuery.data || [], nextIndustryCode), nextIndustryCode)} 面试方向。`)
+  }
+
+  /**
    * 提交面试配置表单，并创建新的 AI 面试会话。
    */
   async function handleCreateInterview(event: FormEvent<HTMLFormElement>) {
@@ -432,13 +493,13 @@ export function InterviewHubPage() {
 
     const topics = parseInterviewTopics(form.topicsText)
     if (topics.length === 0) {
-      setMessage('至少填写一个主题，例如 Go基础 或 并发编程。')
+      setMessage(`至少填写一个主题，例如 ${buildDefaultInterviewTopics(effectiveIndustryCode).split(',')[0]}。`)
       return
     }
 
     setMessage('Ariu 正在准备你的第一道面试题...')
     await createMutation.mutateAsync({
-      industry_code: INTERVIEW_DEFAULT_INDUSTRY_CODE,
+      industry_code: effectiveIndustryCode,
       difficulty: form.difficulty,
       topics,
       question_count: Number(form.questionCount) || 5,
@@ -450,9 +511,9 @@ export function InterviewHubPage() {
       <div className="interview-hero">
         <div className="interview-hero-copy">
           <span className="page-tag">AI 面试主链路</span>
-          <h1>{user?.username ? `${user.username}，开始一场 Go 方向模拟面试` : '开始一场 Go 方向模拟面试'}</h1>
+          <h1>{user?.username ? `${user.username}，开始一场 ${effectiveIndustryLabel} 模拟面试` : `开始一场 ${effectiveIndustryLabel} 模拟面试`}</h1>
           <p className="page-copy">
-            这一版先落文本面试闭环：配置题量和主题，进入会话，逐题回答，拿到反馈和报告。语音、TTS、动作联动留到后续阶段，不在当前切片里扩散。
+            当前优先跑通文本面试闭环：选择行业、配置题量和主题，进入会话，逐题回答，拿到反馈和报告。语音、TTS、动作联动仍放在后续阶段。
           </p>
           <div className="interview-metrics">
             <article className="metric-card">
@@ -464,8 +525,8 @@ export function InterviewHubPage() {
               <span>进行中会话</span>
             </article>
             <article className="metric-card">
-              <strong>Go</strong>
-              <span>当前固定方向</span>
+              <strong>{effectiveIndustryLabel}</strong>
+              <span>当前目标方向</span>
             </article>
           </div>
         </div>
@@ -478,8 +539,8 @@ export function InterviewHubPage() {
               <p>优先完成创建、答题、下一题、结束、报告这条主链路，不先做语音和动作系统。</p>
             </div>
             <div className="timeline-item">
-              <strong>当前固定 Go 面试方向</strong>
-              <p>行业配置入口后续再做，首版先把 Go 面试体验跑稳，避免前台参数设计过早发散。</p>
+              <strong>现在直接切换真实行业</strong>
+              <p>面试页已接行业列表和公共偏好，后续 companion、practice 会沿用同一份方向上下文。</p>
             </div>
             <div className="timeline-item">
               <strong>后端已接 AI runtime</strong>
@@ -491,19 +552,37 @@ export function InterviewHubPage() {
 
       <div className="interview-hub-board">
         <section className="status-card interview-builder">
-          <div className="companion-card-head">
-            <div>
-              <span className="section-kicker">创建面试</span>
-              <h2>先定难度、题量和想覆盖的主题</h2>
+            <div className="companion-card-head">
+              <div>
+                <span className="section-kicker">创建面试</span>
+                <h2>先定难度、题量和想覆盖的主题</h2>
+              </div>
+              <span className="companion-card-note">当前行业：{effectiveIndustryLabel}</span>
             </div>
-            <span className="companion-card-note">当前固定行业：Go</span>
-          </div>
 
-          <form className="stack-form" onSubmit={handleCreateInterview}>
-            <div className="interview-form-grid">
-              <label className="field">
-                <span>难度</span>
-                <select
+            <form className="stack-form" onSubmit={handleCreateInterview}>
+              <div className="interview-form-grid">
+                <label className="field">
+                  <span>目标方向</span>
+                  <select
+                    value={effectiveIndustryCode}
+                    disabled={industriesQuery.isLoading || !industriesQuery.data?.length}
+                    onChange={(event) => handleIndustryChange(event.target.value)}
+                  >
+                    {industriesQuery.data?.map((industry) => (
+                      <option key={industry.id} value={industry.code}>
+                        {industry.name}
+                      </option>
+                    ))}
+                    {!industriesQuery.data?.length ? (
+                      <option value={effectiveIndustryCode}>{effectiveIndustryLabel}</option>
+                    ) : null}
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>难度</span>
+                  <select
                   value={form.difficulty}
                   onChange={(event) => setForm((current) => ({ ...current, difficulty: event.target.value }))}
                 >
@@ -524,6 +603,12 @@ export function InterviewHubPage() {
                   onChange={(event) => setForm((current) => ({ ...current, questionCount: event.target.value }))}
                 />
               </label>
+
+              {industriesQuery.isError ? (
+                <p className="companion-empty-text">
+                  {extractErrorMessage(industriesQuery.error, '行业列表读取失败，当前将回退到默认方向。')}
+                </p>
+              ) : null}
             </div>
 
             <label className="field">
@@ -532,7 +617,7 @@ export function InterviewHubPage() {
                 rows={4}
                 value={form.topicsText}
                 onChange={(event) => setForm((current) => ({ ...current, topicsText: event.target.value }))}
-                placeholder="例如：Go基础, 并发编程, Gin, GORM, Redis"
+                placeholder={`例如：${buildDefaultInterviewTopics(effectiveIndustryCode)}`}
               />
             </label>
 
@@ -610,11 +695,11 @@ export function InterviewHubPage() {
           ) : null}
 
           {accessToken && !historyQuery.isLoading && !historyQuery.data?.list?.length ? (
-            <div className="timeline-item">
-              <strong>还没有面试记录</strong>
-              <p>从左侧创建第一场 Go 面试，系统会自动保存历史记录和后续报告。</p>
-            </div>
-          ) : null}
+              <div className="timeline-item">
+                <strong>还没有面试记录</strong>
+                <p>从左侧创建第一场模拟面试，系统会自动保存历史记录和后续报告。</p>
+              </div>
+            ) : null}
         </section>
       </div>
     </section>
@@ -639,6 +724,11 @@ export function InterviewSessionPage() {
     enabled: Boolean(accessToken && interviewId),
     retry: false,
     refetchOnWindowFocus: false,
+  })
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
   })
 
   const submitMutation = useMutation({
@@ -687,6 +777,23 @@ export function InterviewSessionPage() {
   const currentQuestion = useMemo(() => resolveCurrentInterviewQuestion(detailQuery.data), [detailQuery.data])
   const answerCount = useMemo(() => countInterviewAnswers(detailQuery.data?.messages || []), [detailQuery.data])
   const latestFeedback = useMemo(() => resolveLatestInterviewFeedback(detailQuery.data), [detailQuery.data])
+  const sessionIndustryCode = detailQuery.data?.industry_code || readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE
+  const sessionIndustry = useMemo(
+    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], sessionIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),
+    [industriesQuery.data, sessionIndustryCode],
+  )
+  const sessionIndustryLabel = formatFrontendIndustryLabel(sessionIndustry, sessionIndustryCode)
+
+  /**
+   * 当面试详情恢复成功后，同步写回当前会话所属行业，供其他频道复用同一方向偏好。
+   */
+  useEffect(() => {
+    if (!detailQuery.data?.industry_code) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(detailQuery.data.industry_code)
+  }, [detailQuery.data?.industry_code])
 
   /**
    * 提交当前问题的文字回答，并刷新面试详情。
@@ -709,7 +816,7 @@ export function InterviewSessionPage() {
         <Link className="ghost-button companion-room-back" to="/interview">
           返回面试入口
         </Link>
-        <span className="companion-room-note">当前为文本面试进行页</span>
+        <span className="companion-room-note">当前为文本面试进行页 · {sessionIndustryLabel}</span>
       </div>
 
       <div className="interview-session-layout">
@@ -870,6 +977,7 @@ export function InterviewReportPage() {
   const accessToken = useAuthStore((state) => state.accessToken)
   const params = useParams({ strict: false })
   const interviewId = String(params.interviewId || '')
+  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
 
   const reportQuery = useQuery({
     queryKey: ['interview-report', accessToken, interviewId],
@@ -878,6 +986,47 @@ export function InterviewReportPage() {
     retry: false,
     refetchOnWindowFocus: false,
   })
+  const detailQuery = useQuery({
+    queryKey: ['interview-report-detail', accessToken, interviewId],
+    queryFn: () => fetchInterviewDetail(accessToken as string, interviewId),
+    enabled: Boolean(accessToken && interviewId),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
+  const reportIndustryCode = detailQuery.data?.industry_code || selectedIndustryCode || INTERVIEW_DEFAULT_INDUSTRY_CODE
+  const reportIndustry = useMemo(
+    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], reportIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),
+    [industriesQuery.data, reportIndustryCode],
+  )
+  const reportIndustryLabel = formatFrontendIndustryLabel(reportIndustry, reportIndustryCode)
+
+  /**
+   * 订阅前台行业偏好变化，让报告页在同页切换方向后也能同步显示最新名称。
+   */
+  useEffect(() => {
+    const unsubscribe = subscribeFrontendIndustryCodeChange((industryCode) => {
+      setSelectedIndustryCode(industryCode || INTERVIEW_DEFAULT_INDUSTRY_CODE)
+    })
+
+    return unsubscribe
+  }, [])
+
+  /**
+   * 当报告页补拿到会话详情后，优先以真实会话行业覆盖本地偏好。
+   */
+  useEffect(() => {
+    if (!detailQuery.data?.industry_code) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(detailQuery.data.industry_code)
+    setSelectedIndustryCode(detailQuery.data.industry_code)
+  }, [detailQuery.data?.industry_code])
 
   return (
     <section className="page-panel interview-page-panel">
@@ -885,7 +1034,7 @@ export function InterviewReportPage() {
         <Link className="ghost-button companion-room-back" to="/interview">
           返回面试入口
         </Link>
-        <span className="companion-room-note">当前为面试报告页</span>
+        <span className="companion-room-note">当前为面试报告页 · {reportIndustryLabel}</span>
       </div>
 
       <div className="interview-report-layout">
@@ -894,6 +1043,7 @@ export function InterviewReportPage() {
             <div>
               <span className="section-kicker">面试报告</span>
               <h1>面试 #{interviewId} 结果总结</h1>
+              <p className="companion-empty-text">所属方向：{reportIndustryLabel}</p>
             </div>
             <span className="companion-card-note">
               {reportQuery.data?.completed_at ? `完成于 ${formatInterviewDateTime(reportQuery.data.completed_at)}` : '等待报告加载'}

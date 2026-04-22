@@ -14,6 +14,7 @@ import { useAdminAuthStore } from './state/auth'
 import { AIConfigPage } from './features/ai-config/AIConfigPage'
 import { Live2DPage } from './features/live2d/Live2DPage'
 import { PromptPage } from './features/prompt/PromptPage'
+import { QuestionPipelinePage } from './features/question-pipeline/QuestionPipelinePage'
 import { QuestionPage } from './features/question/QuestionPage'
 import { TaxonomyPage } from './features/taxonomy/TaxonomyPage'
 import { TTSPage } from './features/tts/TTSPage'
@@ -69,6 +70,7 @@ function AdminLayout() {
           <Link className="admin-link" to="/live2d">Live2D 管理</Link>
           <Link className="admin-link" to="/tts">TTS 配置</Link>
           <Link className="admin-link" to="/taxonomy">行业/分类</Link>
+          <Link className="admin-link" to="/question-pipeline">题目流水线</Link>
           <Link className="admin-link" to="/questions">题库管理</Link>
           <Link className="admin-link" to="/auth/login">后台登录</Link>
         </nav>
@@ -264,6 +266,13 @@ const questionsRoute = createRoute({
   component: QuestionPage,
 })
 
+const questionPipelineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'question-pipeline',
+  beforeLoad: ensureAdminRouteAccess,
+  component: QuestionPipelinePage,
+})
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   dashboardRoute,
@@ -272,6 +281,7 @@ const routeTree = rootRoute.addChildren([
   live2DRoute,
   ttsRoute,
   taxonomyRoute,
+  questionPipelineRoute,
   questionsRoute,
 ])
 

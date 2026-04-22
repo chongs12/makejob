@@ -62,7 +62,7 @@ Write-Host ""
 Write-Host "========== Question APIs =========="
 
 # 7. Categories
-$r = Test-API "Categories" "GET" "$base/api/categories?industry_id=1" $null
+$r = Test-API "Categories" "GET" "$base/api/categories?industry_code=go" $null
 $results += $r
 
 # 8. Questions List

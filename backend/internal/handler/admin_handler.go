@@ -41,6 +41,8 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/questions/:id", h.UpdateQuestion)
 	r.DELETE("/questions/:id", h.DeleteQuestion)
 	r.POST("/questions/import", h.BatchImportQuestions)
+	r.POST("/question-pipeline/generate", h.GenerateQuestionPipeline)
+	r.POST("/question-pipeline/import", h.ImportQuestionPipeline)
 
 	// 分类管理
 	r.GET("/categories", h.ListCategories)

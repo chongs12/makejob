@@ -175,6 +175,8 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		mockInterviewRepo := repository.NewMockInterviewRepository(db)
 		scraperTaskRepo := repository.NewScraperTaskRepository(db)
 		aiClient := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults()).Build(context.Background())
+		scraperProvider := scraperMock.NewMockScraperProvider()
+		questionCleaner := scraper.NewMockCleaner()
 		communityRepo := repository.NewCommunityRepository(db)
 
 		deps.AuthService = service.NewAuthService(deps.UserRepo, cfg)
@@ -192,11 +194,13 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.FavoriteRepo,
 			deps.NoteRepo,
 			aiClient.QuizAnalyzer,
+			industryRepo,
 		)
 		deps.PlanService = service.NewPlanService(
 			deps.PlanRepo,
 			deps.PlanTaskRepo,
 			aiClient.PlanAgent,
+			industryRepo,
 		)
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
@@ -222,13 +226,15 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			live2DRepo,
 			ttsRepo,
 			mockInterviewRepo,
+			scraperProvider,
+			questionCleaner,
 			cfg.AIRuntimeDefaults(),
 		)
 		deps.AdminHandler = handler.NewAdminHandler(adminService)
 
 		scraperService := service.NewScraperService(
-			scraperMock.NewMockScraperProvider(),
-			scraper.NewMockCleaner(),
+			scraperProvider,
+			questionCleaner,
 			scraperTaskRepo,
 			industryRepo,
 			adminCategoryRepo,

@@ -17,6 +17,16 @@ import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
 import { CompanionHubPage, CompanionWorkspacePage } from './features/companion/CompanionPage'
 import { InterviewHubPage, InterviewReportPage, InterviewSessionPage } from './features/interview/InterviewPage'
+import {
+  DEFAULT_FRONTEND_INDUSTRY_CODE,
+  type FrontendIndustry,
+  fetchFrontendIndustries,
+  formatFrontendIndustryLabel,
+  persistSelectedFrontendIndustryCode,
+  readSelectedFrontendIndustryCode,
+  resolvePreferredFrontendIndustry,
+  subscribeFrontendIndustryCodeChange,
+} from './shared/industryContext'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -97,6 +107,29 @@ interface WrongQuestionRecord {
   question?: PracticeQuestion
 }
 
+interface CommunityPostAuthor {
+  id: number
+  username: string
+  avatar?: string
+  role?: string
+}
+
+interface CommunityPostItem {
+  id: number
+  post_type: string
+  title: string
+  content: string
+  summary: string
+  tags: string[]
+  view_count: number
+  comment_count: number
+  like_count: number
+  is_pinned: boolean
+  is_recommended: boolean
+  created_at: string
+  author: CommunityPostAuthor
+}
+
 interface PracticeStats {
   total_answered: number
   correct_count: number
@@ -110,6 +143,46 @@ interface ExamResponse {
   exam_id: string
   time_limit: number
   questions: PracticeQuestionDetail[]
+}
+
+interface HomePlanTask {
+  id: number
+  title: string
+  status: string
+  day_number: number
+  due_date?: string
+}
+
+interface HomeCurrentPlan {
+  id: number
+  title: string
+  description: string
+  status: string
+  progress: number
+  total_tasks: number
+  completed_tasks: number
+  industry_code?: string
+  tasks: HomePlanTask[]
+}
+
+interface HomePlanProgress {
+  plan_id: number
+  total_tasks: number
+  completed_tasks: number
+  skipped_tasks: number
+  in_progress_tasks: number
+  pending_tasks: number
+  progress: number
+}
+
+interface HomeInterviewHistoryItem {
+  id: number
+  status: string
+  score: number
+  total_questions: number
+  started_at?: string
+  ended_at?: string
+  created_at?: string
 }
 
 const PRACTICE_PAGE_SIZE = 10
@@ -183,6 +256,114 @@ function formatDateTime(value?: string | number): string {
   const hour = String(date.getHours()).padStart(2, '0')
   const minute = String(date.getMinutes()).padStart(2, '0')
   return `${year}-${month}-${day} ${hour}:${minute}`
+}
+
+/**
+ * 将时间格式化为相对时间，便于首页动态流展示“刚刚更新”等轻量信息。
+ */
+function formatRelativeTime(value?: string): string {
+  if (!value) {
+    return '--'
+  }
+
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) {
+    return value
+  }
+
+  const diff = Date.now() - timestamp
+  if (diff < 60 * 1000) {
+    return '刚刚'
+  }
+
+  const minutes = Math.floor(diff / (60 * 1000))
+  if (minutes < 60) {
+    return `${minutes} 分钟前`
+  }
+
+  const hours = Math.floor(diff / (60 * 60 * 1000))
+  if (hours < 24) {
+    return `${hours} 小时前`
+  }
+
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000))
+  if (days < 7) {
+    return `${days} 天前`
+  }
+
+  return formatDateTime(value)
+}
+
+/**
+ * 将长文本裁剪成首页卡片更适合展示的摘要长度，避免卡片高度失控。
+ */
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+
+  return `${normalized.slice(0, maxLength)}...`
+}
+
+/**
+ * 根据行业主键从前台行业列表中定位真实行业对象，供详情页展示真实方向名称。
+ */
+function findFrontendIndustryById(industries: FrontendIndustry[], industryId?: number): FrontendIndustry | null {
+  if (!industryId) {
+    return null
+  }
+
+  return industries.find((item) => item.id === industryId) || null
+}
+
+/**
+ * 统一维护前台行业偏好，让导航、首页和工作台能共享同一份方向上下文。
+ */
+function useFrontendIndustryPreference() {
+  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || DEFAULT_FRONTEND_INDUSTRY_CODE)
+
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const selectedIndustry = useMemo(
+    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], selectedIndustryCode),
+    [industriesQuery.data, selectedIndustryCode],
+  )
+  const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || DEFAULT_FRONTEND_INDUSTRY_CODE
+  const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
+
+  useEffect(() => {
+    const unsubscribe = subscribeFrontendIndustryCodeChange((industryCode) => {
+      setSelectedIndustryCode(industryCode || DEFAULT_FRONTEND_INDUSTRY_CODE)
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    const normalizedIndustryCode = effectiveIndustryCode.trim()
+    if (!normalizedIndustryCode) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(normalizedIndustryCode)
+    if (normalizedIndustryCode !== selectedIndustryCode) {
+      setSelectedIndustryCode(normalizedIndustryCode)
+    }
+  }, [effectiveIndustryCode, selectedIndustryCode])
+
+  return {
+    industriesQuery,
+    selectedIndustry,
+    selectedIndustryCode,
+    setSelectedIndustryCode,
+    effectiveIndustryCode,
+    effectiveIndustryLabel,
+  }
 }
 
 /**
@@ -308,8 +489,11 @@ function persistCodeDraft(questionId: number | string, language: string, content
 /**
  * 拉取题库分类树，供刷题页筛选器使用。
  */
-async function fetchCategories(): Promise<CategoryNode[]> {
-  const response = await requestJson<ApiEnvelope<CategoryNode[]>>('/categories?industry_id=1')
+async function fetchCategories(industryCode: string): Promise<CategoryNode[]> {
+  const params = new URLSearchParams({
+    industry_code: industryCode.trim() || DEFAULT_FRONTEND_INDUSTRY_CODE,
+  })
+  const response = await requestJson<ApiEnvelope<CategoryNode[]>>(`/categories?${params.toString()}`)
   if (!isSuccessCode(response.code)) {
     throw new Error(response.message || '获取分类失败')
   }
@@ -325,6 +509,7 @@ async function fetchQuestions(params: {
   pageSize: number
   difficulty: string
   keyword: string
+  industryId: number | null
   categoryId: number | null
 }): Promise<PageResult<PracticeQuestion>> {
   const searchParams = new URLSearchParams({
@@ -340,6 +525,10 @@ async function fetchQuestions(params: {
     searchParams.set('keyword', params.keyword)
   }
 
+  if (params.industryId) {
+    searchParams.set('industry_id', String(params.industryId))
+  }
+
   if (params.categoryId) {
     searchParams.set('category_id', String(params.categoryId))
   }
@@ -347,6 +536,75 @@ async function fetchQuestions(params: {
   const response = await requestJson<ApiEnvelope<PageResult<PracticeQuestion>>>(`/questions?${searchParams.toString()}`)
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取题目列表失败')
+  }
+
+  return response.data
+}
+
+/**
+ * 拉取首页内容流使用的社区帖子列表，作为首版公开动态内容来源。
+ */
+async function fetchHomeCommunityPosts(params: {
+  page: number
+  pageSize: number
+}): Promise<PageResult<CommunityPostItem>> {
+  const searchParams = new URLSearchParams({
+    page: String(params.page),
+    page_size: String(params.pageSize),
+  })
+
+  const response = await requestJson<ApiEnvelope<PageResult<CommunityPostItem>>>(`/community/posts?${searchParams.toString()}`)
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '获取首页动态失败')
+  }
+
+  return response.data
+}
+
+/**
+ * 拉取首页使用的最近面试记录，为“继续面试/查看报告”卡片提供数据。
+ */
+async function fetchHomeInterviewHistory(token: string): Promise<PageResult<HomeInterviewHistoryItem>> {
+  const response = await requestJson<ApiEnvelope<PageResult<HomeInterviewHistoryItem>>>('/interviews?page=1&page_size=3', {
+    token,
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '获取最近面试记录失败')
+  }
+
+  return response.data
+}
+
+/**
+ * 拉取当前进行中的学习计划，为首页工作台展示当前推进主线。
+ */
+async function fetchHomeCurrentPlan(token: string): Promise<HomeCurrentPlan | null> {
+  const response = await requestJson<ApiEnvelope<HomeCurrentPlan>>('/plans/current', {
+    token,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    if (response.code === 404) {
+      return null
+    }
+
+    throw new Error(response.message || '获取当前学习计划失败')
+  }
+
+  return response.data || null
+}
+
+/**
+ * 拉取当前计划进度统计，让首页可以直接显示任务推进状态。
+ */
+async function fetchHomePlanProgress(token: string, planId: number): Promise<HomePlanProgress> {
+  const response = await requestJson<ApiEnvelope<HomePlanProgress>>(`/plans/${planId}/progress`, {
+    token,
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '获取学习计划进度失败')
   }
 
   return response.data
@@ -565,6 +823,7 @@ async function generateExamRequest(params: {
   token: string
   mode: 'random' | 'timed'
   difficulty: string
+  industryId: number | null
   categoryId: number | null
 }): Promise<ExamResponse> {
   const endpoint = params.mode === 'timed' ? '/exams/timed' : '/exams/random'
@@ -572,12 +831,14 @@ async function generateExamRequest(params: {
     ? {
         count: 5,
         difficulty: params.difficulty || 'medium',
+        industry_id: params.industryId || undefined,
         category_id: params.categoryId || undefined,
         time_limit_minutes: 30,
       }
     : {
         count: 5,
         difficulty: params.difficulty || 'medium',
+        industry_id: params.industryId || undefined,
         category_id: params.categoryId || undefined,
       }
 
@@ -747,6 +1008,7 @@ function RootLayout() {
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const [headerKeyword, setHeaderKeyword] = useState('')
+  const { effectiveIndustryLabel } = useFrontendIndustryPreference()
 
   /**
    * 统一处理顶部题库搜索，确保无论当前处于哪个页面都能直接跳转到题库页筛选。
@@ -794,7 +1056,7 @@ function RootLayout() {
         <div className="topbar-inner">
           <Link className="brand-block" to="/">
             <div className="brand-mark">MakeJob</div>
-            <div className="brand-subtitle">刷题、面试、学习陪伴一体化入口</div>
+            <div className="brand-subtitle">{effectiveIndustryLabel} 刷题、面试、学习陪伴一体化入口</div>
           </Link>
 
           <nav className="top-nav">
@@ -813,7 +1075,7 @@ function RootLayout() {
             <input
               value={headerKeyword}
               onChange={(event) => setHeaderKeyword(event.target.value)}
-              placeholder="搜索题目、面经、学习主题"
+              placeholder={`搜索 ${effectiveIndustryLabel} 题目、面经、学习主题`}
             />
             <button className="secondary-button" type="submit">搜索</button>
           </form>
@@ -831,6 +1093,7 @@ function RootLayout() {
         <div className="topbar-status">
           <div className="topbar-status-inner">
             <span>当前路径：{pathname}</span>
+            <span>当前方向：{effectiveIndustryLabel}</span>
             <span>用户：{user?.username || '游客'}</span>
             <span>会员：{user?.membershipLevel || 'free'}</span>
             <span>状态：{accessToken ? '已登录' : '未登录'}</span>
@@ -854,37 +1117,99 @@ function RootLayout() {
  * 展示当前 React 前台重构的整体方向和优先迁移模块。
  */
 function HomePage() {
+  const accessToken = useAuthStore((state) => state.accessToken)
+  const { effectiveIndustryCode, effectiveIndustryLabel, industriesQuery } = useFrontendIndustryPreference()
+  const highlightedIndustries = industriesQuery.data?.length
+    ? industriesQuery.data
+    : [
+        { id: 0, code: 'go', name: 'Go 后端' },
+        { id: 1, code: 'frontend', name: '前端工程' },
+        { id: 2, code: 'java', name: 'Java 后端' },
+      ]
+  const practicePreviewQuery = useQuery({
+    queryKey: ['home-practice-preview', effectiveIndustryCode],
+    queryFn: () => fetchQuestions({
+      page: 1,
+      pageSize: 4,
+      difficulty: '',
+      keyword: '',
+      industryId: highlightedIndustries.find((item) => item.code === effectiveIndustryCode)?.id || null,
+      categoryId: null,
+    }),
+    enabled: Boolean(highlightedIndustries.find((item) => item.code === effectiveIndustryCode)?.id),
+  })
+  const communityQuery = useQuery({
+    queryKey: ['home-community-posts'],
+    queryFn: () => fetchHomeCommunityPosts({
+      page: 1,
+      pageSize: 3,
+    }),
+    staleTime: 2 * 60 * 1000,
+  })
+  const statsQuery = useQuery({
+    queryKey: ['home-practice-stats', accessToken],
+    queryFn: () => fetchPracticeStats(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+  const collectionsOverviewQuery = useQuery({
+    queryKey: ['home-practice-collections', accessToken],
+    queryFn: () => fetchPracticeCollectionsOverview(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+  const interviewHistoryQuery = useQuery({
+    queryKey: ['home-interview-history', accessToken],
+    queryFn: () => fetchHomeInterviewHistory(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+  const currentPlanQuery = useQuery({
+    queryKey: ['home-current-plan', accessToken],
+    queryFn: () => fetchHomeCurrentPlan(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+  const planProgressQuery = useQuery({
+    queryKey: ['home-plan-progress', accessToken, currentPlanQuery.data?.id],
+    queryFn: () => fetchHomePlanProgress(accessToken as string, currentPlanQuery.data?.id as number),
+    enabled: Boolean(accessToken && currentPlanQuery.data?.id),
+    retry: false,
+  })
+  const currentPlanNextTask = currentPlanQuery.data?.tasks.find((task) => task.status !== 'completed' && task.status !== 'skipped') || currentPlanQuery.data?.tasks[0] || null
+  const latestInterview = interviewHistoryQuery.data?.list?.[0]
+
   return (
     <div className="home-shell">
       <section className="hero-panel">
         <div className="hero-content">
-          <span className="page-tag">Offer 导向学习平台</span>
-          <h1>把题库训练、AI 面试和学习陪伴放在同一条成长链路里</h1>
+          <span className="page-tag">{effectiveIndustryLabel} Offer 导向学习平台</span>
+          <h1>围绕 {effectiveIndustryLabel} 把题库训练、AI 面试和学习陪伴放在同一条成长链路里</h1>
           <p className="page-copy">
-            首页改成内容门户结构，不再像后台管理。后续这里可以继续接说说、论坛、面经和动态流，现在先把用户进入后的首屏氛围、业务入口和节奏做对。
+            当前首页会沿用你最近选择的行业方向，把题库、面试和学习陪伴统一收拢到同一条主线里；后续继续补说说、论坛、面经和动态流时，也会默认围绕这条方向展开。
           </p>
 
           <div className="hero-actions">
             <Link className="primary-button hero-link-button" to="/practice">
-              进入题库
+              进入 {effectiveIndustryLabel} 题库
             </Link>
             <Link className="secondary-button hero-link-button" to="/interview">
-              打开面试入口
+              打开 {effectiveIndustryLabel} 面试入口
             </Link>
           </div>
 
           <div className="hero-metrics">
             <article className="metric-card">
-              <strong>真题训练</strong>
+              <strong>{effectiveIndustryLabel} 真题训练</strong>
               <span>刷题、错题、收藏、笔记统一沉淀</span>
             </article>
             <article className="metric-card">
-              <strong>AI 面试</strong>
+              <strong>{effectiveIndustryLabel} AI 面试</strong>
               <span>后续承接流式问答、追问与评分</span>
             </article>
             <article className="metric-card">
-              <strong>学习陪伴</strong>
-              <span>学习计划、Live2D、提醒与反馈联动</span>
+              <strong>统一方向上下文</strong>
+              <span>学习计划、Live2D、提醒与反馈都沿用当前行业偏好</span>
             </article>
           </div>
         </div>
@@ -892,15 +1217,15 @@ function HomePage() {
         <aside className="hero-aside">
           <div className="section-card spotlight-card">
             <span className="section-kicker">今日主线</span>
-            <h2>先把题库刷顺，再进 AI 面试</h2>
-            <p>题库页已经是当前最完整的业务域，后续论坛与说说也会从首页继续向牛客式信息流靠拢。</p>
+            <h2>先把 {effectiveIndustryLabel} 题库刷顺，再进 AI 面试</h2>
+            <p>题库页已经是当前最完整的业务域，现在首页也会直接沿用当前方向，保证从首屏进入任何频道都不脱节。</p>
           </div>
           <div className="section-card mini-feed-card">
             <span className="section-kicker">近期规划</span>
             <ul className="mini-feed-list">
-              <li>题库体验统一收口到 React 版前台</li>
-              <li>接入首页内容流与发布入口</li>
-              <li>面试页挂载 AI 流式交互</li>
+              <li>{effectiveIndustryLabel} 题库体验统一收口到 React 版前台</li>
+              <li>首页内容流按当前方向给出更贴近的引导</li>
+              <li>{effectiveIndustryLabel} 面试页挂载 AI 流式交互</li>
             </ul>
           </div>
         </aside>
@@ -909,20 +1234,20 @@ function HomePage() {
       <section className="channel-grid">
         <article className="channel-card channel-card-practice">
           <span className="section-kicker">题库</span>
-          <h2>把刷题、复盘、错题本串起来</h2>
-          <p>这里承接题目列表、筛选、代码题、收藏、错题、笔记和模拟练习。</p>
+          <h2>把 {effectiveIndustryLabel} 刷题、复盘、错题本串起来</h2>
+          <p>这里承接当前方向的题目列表、筛选、代码题、收藏、错题、笔记和模拟练习。</p>
           <Link className="secondary-link" to="/practice">前往题库</Link>
         </article>
         <article className="channel-card channel-card-interview">
           <span className="section-kicker">面试</span>
-          <h2>AI 面试页面入口</h2>
+          <h2>{effectiveIndustryLabel} AI 面试页面入口</h2>
           <p>后续承接岗位定制追问、语音链路、流式输出和结构化点评。</p>
           <Link className="secondary-link" to="/interview">查看入口</Link>
         </article>
         <article className="channel-card channel-card-companion">
           <span className="section-kicker">学习陪伴</span>
-          <h2>学习计划与 Live2D</h2>
-          <p>学习计划、提醒机制、陪伴角色和学习反馈都会聚合在这里。</p>
+          <h2>{effectiveIndustryLabel} 学习计划与 Live2D</h2>
+          <p>学习计划、提醒机制、陪伴角色和学习反馈都会沿用当前方向聚合在这里。</p>
           <Link className="secondary-link" to="/companion">进入陪伴区</Link>
         </article>
       </section>
@@ -965,71 +1290,184 @@ function HomePage() {
             <div className="section-head">
               <div>
                 <span className="section-kicker">首页动态流</span>
-                <h2>后续会接成类似牛客的内容广场</h2>
+                <h2>{effectiveIndustryLabel} 首页动态流已经开始接真实内容</h2>
               </div>
-              <button className="secondary-button" type="button">查看全部</button>
+              <Link className="secondary-button hero-link-button" to="/practice">进入题库主战场</Link>
             </div>
 
-            <div className="feed-stack">
-              <article className="feed-item">
-                <div className="feed-item-head">
-                  <strong>题库训练建议</strong>
-                  <span>刚刚更新</span>
-                </div>
-                <p>把刷题模式和错题复盘放在首页首屏之后，可以让新用户先看到“内容氛围”，再进入具体训练流程。</p>
-              </article>
-              <article className="feed-item">
-                <div className="feed-item-head">
-                  <strong>面试入口预告</strong>
-                  <span>准备中</span>
-                </div>
-                <p>AI 面试页会挂在顶部一级导航，不藏在后台子菜单里，保证整站信息架构从一开始就是面向业务展示的。</p>
-              </article>
-              <article className="feed-item">
-                <div className="feed-item-head">
-                  <strong>学习陪伴板块</strong>
-                  <span>规划中</span>
-                </div>
-                <p>学习计划、学习状态和 Live2D 陪伴组件会集中到一个入口，而不是散落在多个工具页里。</p>
-              </article>
+            {communityQuery.isLoading ? <p className="companion-empty-text">首页动态加载中...</p> : null}
+            {communityQuery.isError ? (
+              <p className="companion-empty-text">
+                {extractErrorMessage(communityQuery.error, '首页动态读取失败，稍后重试。')}
+              </p>
+            ) : null}
+            {communityQuery.data?.list?.length ? (
+              <div className="feed-stack">
+                {communityQuery.data.list.map((post) => (
+                  <article className="feed-item" key={post.id}>
+                    <div className="feed-item-head">
+                      <strong>{post.title || truncateText(post.summary || post.content, 24)}</strong>
+                      <span>{formatRelativeTime(post.created_at)}</span>
+                    </div>
+                    <p>{truncateText(post.summary || post.content, 120)}</p>
+                    <div className="card-inline">
+                      <span>{post.author?.username || '匿名用户'} · {post.post_type === 'article' ? '文章' : '动态'}</span>
+                      <span>浏览 {post.view_count} · 点赞 {post.like_count}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="timeline-item">
+                <strong>内容流还没有帖子</strong>
+                <p>当前接口已经接通，等社区内容开始沉淀后，这里会直接展示真实动态，而不是继续写死演示文案。</p>
+              </div>
+            )}
+          </article>
+
+          <article className="section-card section-card-large">
+            <div className="section-head">
+              <div>
+                <span className="section-kicker">当前推进</span>
+                <h2>围绕 {effectiveIndustryLabel} 的下一步操作</h2>
+              </div>
+            </div>
+            <div className="timeline-list">
+              <div className="timeline-item">
+                <strong>1. 进入 {effectiveIndustryLabel} 题库开始练习</strong>
+                <p>
+                  {practicePreviewQuery.data?.total
+                    ? `当前方向已经可用 ${practicePreviewQuery.data.total} 道题，先从首页推荐题单切入。`
+                    : '按难度、分类、关键词快速筛出当前阶段该刷的题。'}
+                </p>
+              </div>
+              <div className="timeline-item">
+                <strong>2. 用学习计划把训练节奏固定下来</strong>
+                <p>
+                  {currentPlanQuery.data
+                    ? `当前计划《${currentPlanQuery.data.title}》正在推进，${Math.round(planProgressQuery.data?.progress || currentPlanQuery.data.progress || 0)}% 已完成。`
+                    : '如果还没有计划，直接进入学习陪伴页生成一份当前方向的学习计划。'}
+                </p>
+              </div>
+              <div className="timeline-item">
+                <strong>3. 把刷题结果带到 {effectiveIndustryLabel} AI 面试</strong>
+                <p>
+                  {latestInterview
+                    ? `最近一场面试状态为${latestInterview.status === 'ongoing' ? '进行中' : '已完成'}，可以继续进入面试链路做追问和复述训练。`
+                    : '等题库链路稳定后，再进入 AI 面试页做追问与复述训练。'}
+                </p>
+              </div>
             </div>
           </article>
 
           <article className="section-card section-card-large">
             <div className="section-head">
               <div>
-                <span className="section-kicker">快速开始</span>
-                <h2>先完成这一条主流程</h2>
+                <span className="section-kicker">题库推荐</span>
+                <h2>{effectiveIndustryLabel} 当前可直接开练的题目</h2>
               </div>
+              <Link className="secondary-link" to="/practice">查看全部题目</Link>
             </div>
-            <div className="timeline-list">
-              <div className="timeline-item">
-                <strong>1. 进入题库筛选方向</strong>
-                <p>按难度、分类、关键词快速筛出当前阶段该刷的题。</p>
+
+            {practicePreviewQuery.isLoading ? <p className="companion-empty-text">推荐题单加载中...</p> : null}
+            {practicePreviewQuery.isError ? (
+              <p className="companion-empty-text">
+                {extractErrorMessage(practicePreviewQuery.error, '推荐题单读取失败')}
+              </p>
+            ) : null}
+            {practicePreviewQuery.data?.list?.length ? (
+              <div className="grid-cards">
+                {practicePreviewQuery.data.list.map((question) => (
+                  <article className="feature-card" key={question.id}>
+                    <div className="card-inline">
+                      <strong>#{question.id}</strong>
+                      <span>{difficultyLabel(question.difficulty)}</span>
+                    </div>
+                    <h2>{question.title}</h2>
+                    <p>题型：{questionTypeLabel(question.type)}</p>
+                    <p>分类：{question.category_name || question.category_id}</p>
+                    <div className="page-actions">
+                      <Link
+                        className="secondary-link"
+                        to={question.type === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
+                        params={{ questionId: String(question.id) }}
+                      >
+                        进入做题
+                      </Link>
+                    </div>
+                  </article>
+                ))}
               </div>
+            ) : (
               <div className="timeline-item">
-                <strong>2. 用错题和笔记做复盘</strong>
-                <p>做题后立刻沉淀错题与个人笔记，避免只刷不总结。</p>
+                <strong>当前方向还没有题目推荐</strong>
+                <p>如果行业已切换但这里为空，优先检查该行业下的题库数据是否已完成导入。</p>
               </div>
-              <div className="timeline-item">
-                <strong>3. 再进入 AI 面试</strong>
-                <p>等题库链路稳定后，把刷题结果带到 AI 面试页进行追问与复述训练。</p>
-              </div>
-            </div>
+            )}
           </article>
         </div>
 
         <aside className="home-side-column">
           <article className="section-card sidebar-card">
+            <span className="section-kicker">个人工作台</span>
+            {accessToken ? (
+              <div className="sidebar-links">
+                <span className="sidebar-link">今日练习：{statsQuery.data?.today_count ?? '--'}</span>
+                <span className="sidebar-link">连续打卡：{statsQuery.data?.streak_days ?? '--'} 天</span>
+                <span className="sidebar-link">错题待复习：{collectionsOverviewQuery.data?.wrongQuestions ?? '--'}</span>
+                <span className="sidebar-link">学习计划：{currentPlanQuery.data ? `${Math.round(planProgressQuery.data?.progress || currentPlanQuery.data.progress || 0)}%` : '未创建'}</span>
+                {latestInterview ? (
+                  <Link
+                    className="sidebar-link"
+                    to={latestInterview.status === 'ongoing' ? '/interview/$interviewId' : '/interview/$interviewId/report'}
+                    params={{ interviewId: String(latestInterview.id) }}
+                  >
+                    {latestInterview.status === 'ongoing' ? '继续最近一场面试' : '查看最近一场报告'}
+                  </Link>
+                ) : (
+                  <Link className="sidebar-link" to="/interview">开始第一场面试</Link>
+                )}
+              </div>
+            ) : (
+              <div className="timeline-item">
+                <strong>登录后显示你的推进状态</strong>
+                <p>首页会汇总今天练习、当前计划和最近面试，避免每次都从各频道单独查看。</p>
+              </div>
+            )}
+          </article>
+
+          <article className="section-card sidebar-card">
             <span className="section-kicker">热门方向</span>
             <div className="tag-cloud">
-              <span>Go 后端</span>
-              <span>算法高频</span>
-              <span>系统设计</span>
-              <span>前端性能</span>
-              <span>数据库</span>
-              <span>项目复盘</span>
+              {highlightedIndustries.map((industry) => (
+                <span key={`${industry.id}-${industry.code}`}>
+                  {industry.name}
+                  {industry.code === effectiveIndustryCode ? ' · 当前' : ''}
+                </span>
+              ))}
             </div>
+          </article>
+
+          <article className="section-card sidebar-card">
+            <span className="section-kicker">当前计划摘要</span>
+            {accessToken && currentPlanQuery.data ? (
+              <div className="timeline-item">
+                <strong>{currentPlanQuery.data.title}</strong>
+                <p>{truncateText(currentPlanQuery.data.description || '当前计划暂无说明。', 72)}</p>
+                <p>
+                  进度 {Math.round(planProgressQuery.data?.progress || currentPlanQuery.data.progress || 0)}% ·
+                  已完成 {planProgressQuery.data?.completed_tasks ?? currentPlanQuery.data.completed_tasks}/{planProgressQuery.data?.total_tasks ?? currentPlanQuery.data.total_tasks}
+                </p>
+                <p>{currentPlanNextTask ? `下一项：Day ${currentPlanNextTask.day_number} · ${currentPlanNextTask.title}` : '当前计划没有可展示任务。'}</p>
+              </div>
+            ) : (
+              <div className="sidebar-links">
+                <Link className="sidebar-link" to="/companion">生成学习计划</Link>
+                <Link className="sidebar-link" to="/companion">打开陪伴页</Link>
+                <Link className="sidebar-link" to="/practice/wrong">查看错题复盘</Link>
+                <Link className="sidebar-link" to="/practice/notes">查看学习笔记</Link>
+              </div>
+            )}
           </article>
 
           <article className="section-card sidebar-card">
@@ -1043,8 +1481,8 @@ function HomePage() {
           </article>
 
           <article className="section-card sidebar-card">
-            <span className="section-kicker">发布预留</span>
-            <p>顶部“发布”按钮先接到工作台，后续会扩成说说、论坛帖子、面经与学习动态发布。</p>
+            <span className="section-kicker">首页定位</span>
+            <p>这一版首页已经不只是文案占位，而是开始承接真实动态、题库推荐和个人推进状态。下一步再补独立社区页与发布流。</p>
           </article>
         </aside>
       </section>
@@ -1058,6 +1496,7 @@ function HomePage() {
 function PracticePage() {
   const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
+  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || DEFAULT_FRONTEND_INDUSTRY_CODE)
   const [keywordInput, setKeywordInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [difficulty, setDifficulty] = useState('')
@@ -1065,18 +1504,33 @@ function PracticePage() {
   const [page, setPage] = useState(1)
   const [examMessage, setExamMessage] = useState('等待组卷')
 
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const selectedIndustry = useMemo(
+    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], selectedIndustryCode),
+    [industriesQuery.data, selectedIndustryCode],
+  )
+  const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || DEFAULT_FRONTEND_INDUSTRY_CODE
+  const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
+
   const categoriesQuery = useQuery({
-    queryKey: ['practice-categories'],
-    queryFn: fetchCategories,
+    queryKey: ['practice-categories', effectiveIndustryCode],
+    queryFn: () => fetchCategories(effectiveIndustryCode),
+    enabled: Boolean(effectiveIndustryCode),
   })
 
   const questionsQuery = useQuery({
-    queryKey: ['practice-questions', page, difficulty, keyword, categoryId],
+    queryKey: ['practice-questions', page, effectiveIndustryCode, selectedIndustry?.id, difficulty, keyword, categoryId],
     queryFn: () => fetchQuestions({
       page,
       pageSize: PRACTICE_PAGE_SIZE,
       difficulty,
       keyword,
+      industryId: selectedIndustry?.id || null,
       categoryId,
     }),
   })
@@ -1097,6 +1551,21 @@ function PracticePage() {
     () => flattenCategories(categoriesQuery.data || []),
     [categoriesQuery.data],
   )
+
+  /**
+   * 在行业列表恢复后同步前台公共偏好，保证刷题、面试和陪伴使用同一方向上下文。
+   */
+  useEffect(() => {
+    const normalizedIndustryCode = effectiveIndustryCode.trim()
+    if (!normalizedIndustryCode) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(normalizedIndustryCode)
+    if (normalizedIndustryCode !== selectedIndustryCode) {
+      setSelectedIndustryCode(normalizedIndustryCode)
+    }
+  }, [effectiveIndustryCode, selectedIndustryCode])
 
   useEffect(() => {
     const pendingKeyword = consumePendingPracticeSearch()
@@ -1119,6 +1588,16 @@ function PracticePage() {
   }
 
   /**
+   * 切换刷题行业时重置分类和分页，避免沿用上一行业的筛选状态。
+   */
+  function handleIndustryChange(nextIndustryCode: string) {
+    setPage(1)
+    setCategoryId(null)
+    setSelectedIndustryCode(nextIndustryCode)
+    setExamMessage(`已切换到 ${formatFrontendIndustryLabel(resolvePreferredFrontendIndustry(industriesQuery.data || [], nextIndustryCode), nextIndustryCode)} 题库。`)
+  }
+
+  /**
    * 生成随机练习或限时模拟，并跳转到第一道题。
    */
   async function handleGenerateExam(mode: 'random' | 'timed') {
@@ -1134,6 +1613,7 @@ function PracticePage() {
         token: accessToken,
         mode,
         difficulty,
+        industryId: selectedIndustry?.id || null,
         categoryId,
       })
 
@@ -1160,7 +1640,7 @@ function PracticePage() {
       <span className="page-tag">刷题总览</span>
       <h1>刷题模式</h1>
       <p className="page-copy">
-        这一版已经接入真实题目列表、练习统计、错题本、收藏夹、笔记和代码题编辑器。
+        这一版已经接入真实题目列表、练习统计、错题本、收藏夹、笔记和代码题编辑器。当前题库方向：{effectiveIndustryLabel}。
       </p>
 
       <div className="channel-portal-grid">
@@ -1231,6 +1711,24 @@ function PracticePage() {
 
       <form className="stack-form" onSubmit={handleSearchSubmit}>
         <label className="field">
+          <span>行业筛选</span>
+          <select
+            value={effectiveIndustryCode}
+            disabled={industriesQuery.isLoading || !industriesQuery.data?.length}
+            onChange={(event) => handleIndustryChange(event.target.value)}
+          >
+            {industriesQuery.data?.map((industry) => (
+              <option key={industry.id} value={industry.code}>
+                {industry.name}
+              </option>
+            ))}
+            {!industriesQuery.data?.length ? (
+              <option value={effectiveIndustryCode}>{effectiveIndustryLabel}</option>
+            ) : null}
+          </select>
+        </label>
+
+        <label className="field">
           <span>搜索题目</span>
           <input
             value={keywordInput}
@@ -1271,6 +1769,12 @@ function PracticePage() {
           </select>
         </label>
 
+        {industriesQuery.isError ? (
+          <p className="companion-empty-text">
+            {extractErrorMessage(industriesQuery.error, '行业列表读取失败，当前将回退到默认题库方向。')}
+          </p>
+        ) : null}
+
         <div className="page-actions">
           <button className="primary-button" type="submit">
             搜索
@@ -1308,6 +1812,7 @@ function PracticePage() {
                   <span>{difficultyLabel(question.difficulty)}</span>
                 </div>
                 <h2>{question.title}</h2>
+                <p>行业：{formatFrontendIndustryLabel(findFrontendIndustryById(industriesQuery.data || [], question.industry_id), effectiveIndustryCode)}</p>
                 <p>题型：{questionTypeLabel(question.type)}</p>
                 <p>分类：{question.category_name || question.category_id}</p>
                 <p>通过率：{typeof question.pass_rate === 'number' ? `${question.pass_rate}%` : '暂无'}</p>
@@ -1370,9 +1875,21 @@ function PracticeQuestionPage() {
     queryKey: ['practice-question-detail', questionId],
     queryFn: () => fetchQuestionDetail(questionId),
   })
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const question = detailQuery.data
   const options = useMemo(() => parseQuestionOptions(question?.options_json), [question?.options_json])
+  const questionIndustry = useMemo(
+    () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
+    [industriesQuery.data, question?.industry_id],
+  )
+  const questionIndustryLabel = questionIndustry
+    ? formatFrontendIndustryLabel(questionIndustry, questionIndustry.code)
+    : (question?.industry_id ? `方向 #${question.industry_id}` : '未标注方向')
 
   useEffect(() => {
     setSingleAnswer('')
@@ -1386,6 +1903,14 @@ function PracticeQuestionPage() {
   useEffect(() => {
     setFavoriteState(Boolean(question?.is_favorited))
   }, [question?.is_favorited])
+
+  useEffect(() => {
+    if (!questionIndustry?.code) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(questionIndustry.code)
+  }, [questionIndustry?.code])
 
   /**
    * 切换多选题选项时，保持前端提交值与后端逗号分隔格式一致。
@@ -1488,6 +2013,7 @@ function PracticeQuestionPage() {
               <span>{difficultyLabel(question.difficulty)}</span>
             </div>
             <p>题型：{questionTypeLabel(question.type)}</p>
+            <p>行业：{questionIndustryLabel}</p>
             <p>分类：{question.category_name || question.category_id}</p>
             <div className="question-content">{question.content}</div>
             <div className="page-actions" style={{ marginTop: 16 }}>
@@ -1608,8 +2134,20 @@ function PracticeEditorPage() {
     queryKey: ['practice-code-question-detail', questionId],
     queryFn: () => fetchQuestionDetail(questionId),
   })
+  const industriesQuery = useQuery({
+    queryKey: ['frontend-industries'],
+    queryFn: fetchFrontendIndustries,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const question = detailQuery.data
+  const questionIndustry = useMemo(
+    () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
+    [industriesQuery.data, question?.industry_id],
+  )
+  const questionIndustryLabel = questionIndustry
+    ? formatFrontendIndustryLabel(questionIndustry, questionIndustry.code)
+    : (question?.industry_id ? `方向 #${question.industry_id}` : '未标注方向')
 
   useEffect(() => {
     setSubmitResult(null)
@@ -1620,6 +2158,14 @@ function PracticeEditorPage() {
   useEffect(() => {
     setFavoriteState(Boolean(question?.is_favorited))
   }, [question?.is_favorited])
+
+  useEffect(() => {
+    if (!questionIndustry?.code) {
+      return
+    }
+
+    persistSelectedFrontendIndustryCode(questionIndustry.code)
+  }, [questionIndustry?.code])
 
   useEffect(() => {
     if (!question || question.type !== 'code') {
@@ -1823,6 +2369,7 @@ function PracticeEditorPage() {
         <span className="page-tag">代码练习</span>
         <h1>{question?.title || `题目 #${questionId}`}</h1>
         <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
+        <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
         <div className="page-actions" style={{ marginTop: 16 }}>
           <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
             {favoriteState ? '取消收藏' : '加入收藏'}
@@ -2119,13 +2666,14 @@ function CompanionPage() {
  */
 function WorkspacePage() {
   const user = useAuthStore((state) => state.user)
+  const { effectiveIndustryLabel } = useFrontendIndustryPreference()
 
   return (
     <section className="page-panel">
       <span className="page-tag">已接管链路</span>
       <h1>用户工作台</h1>
       <p className="page-copy">
-        当前页面用于验证 React 前台已经具备登录、会话恢复和资料同步能力，后续会接入统计卡片、学习计划和最近练习记录。
+        当前页面用于验证 React 前台已经具备登录、会话恢复、资料同步和统一行业偏好能力，后续会接入统计卡片、学习计划和最近练习记录。
       </p>
       <div className="grid-cards">
         <article className="feature-card">
@@ -2139,6 +2687,10 @@ function WorkspacePage() {
         <article className="feature-card">
           <h2>角色</h2>
           <p>{user?.role || '-'}</p>
+        </article>
+        <article className="feature-card">
+          <h2>当前方向</h2>
+          <p>{effectiveIndustryLabel}</p>
         </article>
       </div>
     </section>

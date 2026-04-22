@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"makejob-backend/internal/ai"
@@ -31,7 +32,7 @@ type GeneratePlanRequest struct {
 	WeakTopics      []string `json:"weak_topics"`
 	GoalDescription string   `json:"goal_description"`
 	DurationDays    int      `json:"duration_days" binding:"required,min=7,max=90"`
-	IndustryID      uint     `json:"industry_id" binding:"required"`
+	IndustryID      uint     `json:"industry_id"`
 	IndustryCode    string   `json:"industry_code"`
 }
 
@@ -43,6 +44,8 @@ type UpdateTaskStatusRequest struct {
 // PlanDetailResponse 学习计划详情响应DTO
 type PlanDetailResponse struct {
 	ID             uint           `json:"id"`
+	IndustryID     uint           `json:"industry_id"`
+	IndustryCode   string         `json:"industry_code"`
 	Title          string         `json:"title"`
 	Description    string         `json:"description"`
 	Status         string         `json:"status"`
@@ -97,9 +100,10 @@ type TaskTypeStat struct {
 
 // planService 学习计划服务实现
 type planService struct {
-	planRepo  repository.PlanRepository
-	taskRepo  repository.PlanTaskRepository
-	planAgent ai.PlanAgent
+	planRepo     repository.PlanRepository
+	taskRepo     repository.PlanTaskRepository
+	planAgent    ai.PlanAgent
+	industryRepo repository.IndustryRepository
 }
 
 // NewPlanService 创建学习计划服务实例
@@ -107,16 +111,26 @@ func NewPlanService(
 	planRepo repository.PlanRepository,
 	taskRepo repository.PlanTaskRepository,
 	planAgent ai.PlanAgent,
+	industryRepo ...repository.IndustryRepository,
 ) PlanService {
-	return &planService{
+	s := &planService{
 		planRepo:  planRepo,
 		taskRepo:  taskRepo,
 		planAgent: planAgent,
 	}
+	if len(industryRepo) > 0 {
+		s.industryRepo = industryRepo[0]
+	}
+	return s
 }
 
 // GeneratePlan 生成学习计划
 func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *GeneratePlanRequest) (*PlanDetailResponse, error) {
+	industryID, industryCode, err := s.resolvePlanIndustry(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	// 构建用户画像
 	profile := ai.UserProfile{
 		Level:           req.Level,
@@ -127,11 +141,6 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 	}
 
 	// 调用AI生成学习计划
-	industryCode := req.IndustryCode
-	if industryCode == "" {
-		industryCode = "go" // 默认Go语言
-	}
-
 	aiPlan, err := s.planAgent.GeneratePlan(ctx, profile, industryCode)
 	if err != nil {
 		return nil, fmt.Errorf("AI生成学习计划失败: %w", err)
@@ -156,7 +165,7 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 	// 创建学习计划记录
 	plan := &model.LearningPlan{
 		UserID:         userID,
-		IndustryID:     req.IndustryID,
+		IndustryID:     industryID,
 		Title:          aiPlan.Title,
 		Description:    aiPlan.Description,
 		PlanJSON:       string(planJSON),
@@ -192,7 +201,60 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 	}
 
 	// 返回计划详情
-	return s.buildPlanDetailResponse(plan, tasks)
+	return s.buildPlanDetailResponse(ctx, plan, tasks)
+}
+
+// resolvePlanIndustry 解析学习计划使用的行业信息，优先按行业编码查真实主键并兼容旧版行业ID请求。
+func (s *planService) resolvePlanIndustry(ctx context.Context, req *GeneratePlanRequest) (uint, string, error) {
+	if req == nil {
+		return 0, "", common.NewBusinessError(common.CodeBadRequest, "学习计划参数不能为空")
+	}
+
+	requestedCode := strings.TrimSpace(req.IndustryCode)
+	if requestedCode != "" && s.industryRepo != nil {
+		industry, err := s.industryRepo.GetByCode(ctx, requestedCode)
+		if err != nil {
+			return 0, "", fmt.Errorf("查询行业失败: %w", err)
+		}
+		if industry != nil {
+			return industry.ID, industry.Code, nil
+		}
+	}
+
+	if req.IndustryID > 0 {
+		if s.industryRepo == nil {
+			if requestedCode == "" {
+				return req.IndustryID, "go", nil
+			}
+			return req.IndustryID, requestedCode, nil
+		}
+
+		industry, err := s.industryRepo.GetByID(ctx, req.IndustryID)
+		if err != nil {
+			return 0, "", fmt.Errorf("查询行业失败: %w", err)
+		}
+		if industry != nil {
+			return industry.ID, industry.Code, nil
+		}
+	}
+
+	if requestedCode != "" || req.IndustryID > 0 {
+		return 0, "", common.NewBusinessError(common.CodeBadRequest, "所选学习方向不存在")
+	}
+
+	if s.industryRepo == nil {
+		return 0, "", common.NewBusinessError(common.CodeBadRequest, "缺少有效的学习方向")
+	}
+
+	industry, err := s.industryRepo.GetByCode(ctx, "go")
+	if err != nil {
+		return 0, "", fmt.Errorf("查询默认行业失败: %w", err)
+	}
+	if industry == nil {
+		return 0, "", common.NewBusinessError(common.CodeBadRequest, "默认学习方向不存在，请先初始化行业数据")
+	}
+
+	return industry.ID, industry.Code, nil
 }
 
 // GetCurrentPlan 获取当前学习计划
@@ -210,7 +272,7 @@ func (s *planService) GetCurrentPlan(ctx context.Context, userID uint) (*PlanDet
 		return nil, err
 	}
 
-	return s.buildPlanDetailResponse(plan, tasks)
+	return s.buildPlanDetailResponse(ctx, plan, tasks)
 }
 
 // GetPlan 获取指定学习计划
@@ -233,7 +295,7 @@ func (s *planService) GetPlan(ctx context.Context, userID, planID uint) (*PlanDe
 		return nil, err
 	}
 
-	return s.buildPlanDetailResponse(plan, tasks)
+	return s.buildPlanDetailResponse(ctx, plan, tasks)
 }
 
 // ListPlans 获取学习计划列表
@@ -344,11 +406,13 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 
 	// 收集已完成任务和计算表现
 	completedTasks := make([]string, 0)
+	completedTaskModels := make([]model.LearningTask, 0)
 	performance := make(map[string]float64)
 	taskTypeScores := make(map[string][]float64)
 
 	for _, t := range tasks {
 		if t.Status == model.TaskStatusCompleted {
+			completedTaskModels = append(completedTaskModels, t)
 			completedTasks = append(completedTasks, t.Title)
 			// 简化：假设每种类型任务完成得分为80
 			taskTypeScores[t.TaskType] = append(taskTypeScores[t.TaskType], 80)
@@ -372,13 +436,17 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 		return nil, fmt.Errorf("AI调整学习计划失败: %w", err)
 	}
 
-	// 删除未完成的任务
-	if err := s.taskRepo.DeleteByPlan(ctx, planID); err != nil {
+	// 删除未完成的任务，保留已完成历史记录。
+	if err := s.taskRepo.DeleteIncompleteByPlan(ctx, planID); err != nil {
 		return nil, err
 	}
 
 	// 创建调整后的任务
 	newTasks := make([]model.LearningTask, 0, len(adjustedPlan.Tasks))
+	nextSortOrder := 0
+	if len(completedTaskModels) > 0 {
+		nextSortOrder = completedTaskModels[len(completedTaskModels)-1].SortOrder + 1
+	}
 	for i, t := range adjustedPlan.Tasks {
 		dueDate := time.Now().AddDate(0, 0, t.DayNumber-1)
 		task := model.LearningTask{
@@ -388,7 +456,7 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 			TaskType:    t.TaskType,
 			Status:      model.TaskStatusPending,
 			DueDate:     &dueDate,
-			SortOrder:   i,
+			SortOrder:   nextSortOrder + i,
 		}
 		newTasks = append(newTasks, task)
 	}
@@ -400,9 +468,15 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 	// 更新计划信息
 	plan.Title = adjustedPlan.Title
 	plan.Description = adjustedPlan.Description
-	plan.TotalTasks = len(adjustedPlan.Tasks)
+	plan.CompletedTasks = len(completedTaskModels)
+	plan.TotalTasks = len(completedTaskModels) + len(adjustedPlan.Tasks)
 	endDate := time.Now().AddDate(0, 0, adjustedPlan.Duration)
 	plan.EndDate = &endDate
+	if plan.CompletedTasks >= plan.TotalTasks && plan.TotalTasks > 0 {
+		plan.Status = model.PlanStatusCompleted
+	} else {
+		plan.Status = model.PlanStatusActive
+	}
 
 	// 更新计划JSON
 	planJSON, _ := json.Marshal(adjustedPlan)
@@ -412,7 +486,11 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 		return nil, err
 	}
 
-	return s.buildPlanDetailResponse(plan, newTasks)
+	allTasks := make([]model.LearningTask, 0, len(completedTaskModels)+len(newTasks))
+	allTasks = append(allTasks, completedTaskModels...)
+	allTasks = append(allTasks, newTasks...)
+
+	return s.buildPlanDetailResponse(ctx, plan, allTasks)
 }
 
 // GetProgress 获取学习进度统计
@@ -525,8 +603,8 @@ func (s *planService) GetProgress(ctx context.Context, userID, planID uint) (*Pl
 	}, nil
 }
 
-// buildPlanDetailResponse 构建计划详情响应
-func (s *planService) buildPlanDetailResponse(plan *model.LearningPlan, tasks []model.LearningTask) (*PlanDetailResponse, error) {
+// buildPlanDetailResponse 构建计划详情响应。
+func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.LearningPlan, tasks []model.LearningTask) (*PlanDetailResponse, error) {
 	taskResponses := make([]TaskResponse, 0, len(tasks))
 	for _, t := range tasks {
 		// 计算DayNumber
@@ -559,6 +637,8 @@ func (s *planService) buildPlanDetailResponse(plan *model.LearningPlan, tasks []
 
 	return &PlanDetailResponse{
 		ID:             plan.ID,
+		IndustryID:     plan.IndustryID,
+		IndustryCode:   s.resolvePlanIndustryCode(ctx, plan.IndustryID),
 		Title:          plan.Title,
 		Description:    plan.Description,
 		Status:         plan.Status,
@@ -570,6 +650,20 @@ func (s *planService) buildPlanDetailResponse(plan *model.LearningPlan, tasks []
 		Tasks:          taskResponses,
 		CreatedAt:      plan.CreatedAt,
 	}, nil
+}
+
+// resolvePlanIndustryCode 根据计划记录中的行业ID反查行业编码，失败时返回空字符串。
+func (s *planService) resolvePlanIndustryCode(ctx context.Context, industryID uint) string {
+	if industryID == 0 || s.industryRepo == nil {
+		return ""
+	}
+
+	industry, err := s.industryRepo.GetByID(ctx, industryID)
+	if err != nil || industry == nil {
+		return ""
+	}
+
+	return industry.Code
 }
 
 // dailyStat 每日统计数据

@@ -57,7 +57,7 @@ button {
 .topbar-inner,
 .topbar-status-inner,
 .site-main {
-  width: min(1240px, calc(100% - 32px));
+  width: min(1480px, calc(100% - 24px));
   margin: 0 auto;
 }
 
@@ -801,8 +801,8 @@ button {
 }
 
 .companion-page-panel {
-  max-width: 1240px;
-  padding: 22px;
+  max-width: 1460px;
+  padding: 16px;
 }
 
 .companion-room-shell {
@@ -1032,19 +1032,25 @@ button {
 
 .companion-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 2.7fr);
-  gap: 20px;
-  min-height: calc(100vh - 200px);
+  grid-template-columns: minmax(340px, 0.76fr) minmax(0, 3.44fr);
+  gap: 24px;
+  align-items: start;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .companion-sidebar,
 .companion-stage-shell {
   display: grid;
   gap: 16px;
+  min-height: 0;
 }
 
 .companion-sidebar {
   grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: visible;
+  padding-right: 6px;
 }
 
 .companion-sidebar-head h1,
@@ -1153,13 +1159,17 @@ button {
 }
 
 .companion-stage-shell {
-  grid-template-rows: minmax(0, 1fr) auto;
+  --companion-stage-height: clamp(613px, 76vh, 1006px);
+  grid-template-rows: auto auto;
+  overflow: visible;
 }
 
 .companion-stage-panel {
   display: grid;
+  grid-template-rows: auto auto;
   gap: 14px;
   min-height: 0;
+  overflow: visible;
 }
 
 .companion-stage-badges {
@@ -1207,6 +1217,7 @@ button {
 
 .companion-stage-canvas-wrap {
   position: relative;
+  height: var(--companion-stage-height);
   min-height: 0;
   overflow: hidden;
   border-radius: 30px;
@@ -1219,8 +1230,9 @@ button {
 
 .companion-stage-canvas {
   width: 100%;
-  height: min(72vh, 760px);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
 }
 
 .companion-stage-canvas canvas {
@@ -1332,6 +1344,8 @@ button {
 
   .companion-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .companion-hub-hero,
@@ -1347,7 +1361,7 @@ button {
   .topbar-inner,
   .topbar-status-inner,
   .site-main {
-    width: min(100% - 24px, 1240px);
+    width: min(100% - 24px, 1480px);
   }
 
   .search-form {
@@ -1388,6 +1402,16 @@ button {
     padding: 16px;
   }
 
+  .companion-sidebar,
+  .companion-stage-shell {
+    --companion-stage-height: min(520px, 50vh);
+    overflow: visible;
+  }
+
+  .companion-sidebar {
+    padding-right: 0;
+  }
+
   .companion-hub-meta,
   .companion-hub-quote,
   .companion-room-toolbar {
@@ -1412,8 +1436,7 @@ button {
   }
 
   .companion-stage-canvas {
-    min-height: 420px;
-    height: 58vh;
+    height: 100%;
   }
 
   .companion-stage-dialogue {

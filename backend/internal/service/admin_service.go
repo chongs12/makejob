@@ -12,6 +12,7 @@ import (
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
+	"makejob-backend/internal/scraper"
 )
 
 type DashboardResponse struct {
@@ -220,6 +221,8 @@ type AdminService interface {
 	UpdateQuestion(ctx context.Context, id uint, req *AdminUpdateQuestionRequest) error
 	DeleteQuestion(ctx context.Context, id uint) error
 	BatchImportQuestions(ctx context.Context, req *BatchImportRequest) (*BatchImportResponse, error)
+	GenerateQuestionPipeline(ctx context.Context, req *AdminQuestionPipelineGenerateRequest) (*AdminQuestionPipelineGenerateResponse, error)
+	ImportQuestionPipeline(ctx context.Context, req *AdminQuestionPipelineImportRequest) (*BatchImportResponse, error)
 
 	ListCategories(ctx context.Context) ([]model.Category, error)
 	CreateCategory(ctx context.Context, req *CreateCategoryRequest) (*model.Category, error)
@@ -263,6 +266,8 @@ type adminService struct {
 	live2DRepo        repository.Live2DModelRepository
 	ttsRepo           repository.TTSConfigRepository
 	mockInterviewRepo repository.MockInterviewRepository
+	scraperProvider   scraper.ScraperProvider
+	questionCleaner   scraper.QuestionCleaner
 	baseAIConfig      map[string]string
 }
 
@@ -278,6 +283,8 @@ func NewAdminService(
 	live2DRepo repository.Live2DModelRepository,
 	ttsRepo repository.TTSConfigRepository,
 	mockInterviewRepo repository.MockInterviewRepository,
+	scraperProvider scraper.ScraperProvider,
+	questionCleaner scraper.QuestionCleaner,
 	baseAIConfig map[string]string,
 ) AdminService {
 	return &adminService{
@@ -291,6 +298,8 @@ func NewAdminService(
 		live2DRepo:        live2DRepo,
 		ttsRepo:           ttsRepo,
 		mockInterviewRepo: mockInterviewRepo,
+		scraperProvider:   scraperProvider,
+		questionCleaner:   questionCleaner,
 		baseAIConfig:      ai.NormalizeRuntimeConfig(baseAIConfig),
 	}
 }

@@ -3,7 +3,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"makejob-backend/internal/ai"
@@ -156,8 +158,8 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 		return nil, fmt.Errorf("启动AI面试失败: %w", err)
 	}
 
-	// 保存sessionID到面试记录（通过AIFeedback字段临时存储）
-	interview.AIFeedback = sessionID
+	// 保存sessionID到独立字段，避免后续被报告摘要覆盖。
+	interview.AISessionID = sessionID
 	if err := s.interviewRepo.Update(ctx, interview); err != nil {
 		return nil, err
 	}
@@ -287,7 +289,7 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 	}
 
 	// 获取sessionID
-	sessionID := interview.AIFeedback
+	sessionID := resolveInterviewSessionID(interview)
 	if sessionID == "" {
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
@@ -389,7 +391,7 @@ func (s *interviewService) GetNextQuestion(ctx context.Context, userID, intervie
 	}
 
 	// 获取sessionID
-	sessionID := interview.AIFeedback
+	sessionID := resolveInterviewSessionID(interview)
 	if sessionID == "" {
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
@@ -459,7 +461,7 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 	}
 
 	// 获取sessionID
-	sessionID := interview.AIFeedback
+	sessionID := resolveInterviewSessionID(interview)
 	if sessionID == "" {
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
@@ -469,6 +471,10 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 	if err != nil {
 		return nil, fmt.Errorf("生成面试报告失败: %w", err)
 	}
+	reportJSON, err := serializeInterviewReport(report)
+	if err != nil {
+		return nil, fmt.Errorf("序列化面试报告失败: %w", err)
+	}
 
 	// 更新面试记录
 	now := time.Now()
@@ -476,10 +482,9 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 	interview.Score = report.OverallScore
 	interview.EndedAt = &now
 
-	// 生成报告摘要保存到AIFeedback
-	reportSummary := fmt.Sprintf("总分: %.0f, 正确: %d/%d",
-		report.OverallScore, report.CorrectCount, report.TotalQuestions)
-	interview.AIFeedback = reportSummary
+	// 保存完整报告与摘要，确保后续可稳定回放报告页。
+	interview.ReportJSON = reportJSON
+	interview.AIFeedback = buildInterviewReportSummary(report)
 
 	if err := s.interviewRepo.Update(ctx, interview); err != nil {
 		return nil, err
@@ -535,11 +540,13 @@ func (s *interviewService) GetReport(ctx context.Context, userID, interviewID ui
 		}
 	}
 
-	// 从AIFeedback解析报告信息或重新生成
-	report := &ai.InterviewReport{
-		OverallScore:   interview.Score,
-		TotalQuestions: interview.TotalQuestions,
-		Summary:        interview.AIFeedback,
+	// 优先读取持久化的完整报告，兼容历史数据时再回退到摘要结构。
+	report, err := parseStoredInterviewReport(interview.ReportJSON)
+	if err != nil {
+		return nil, fmt.Errorf("解析面试报告失败: %w", err)
+	}
+	if report == nil {
+		report = buildFallbackInterviewReport(interview)
 	}
 
 	return &InterviewReportResponse{
@@ -548,6 +555,56 @@ func (s *interviewService) GetReport(ctx context.Context, userID, interviewID ui
 		Duration:    duration,
 		CompletedAt: completedAt,
 	}, nil
+}
+
+// resolveInterviewSessionID 返回当前面试可用的 AI 会话 ID，并兼容历史字段回退。
+func resolveInterviewSessionID(interview *model.MockInterview) string {
+	if interview == nil {
+		return ""
+	}
+	if strings.TrimSpace(interview.AISessionID) != "" {
+		return strings.TrimSpace(interview.AISessionID)
+	}
+	if interview.IsOngoing() {
+		return strings.TrimSpace(interview.AIFeedback)
+	}
+	return ""
+}
+
+// serializeInterviewReport 将完整面试报告序列化为持久化字符串。
+func serializeInterviewReport(report ai.InterviewReport) (string, error) {
+	payload, err := json.Marshal(report)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+// parseStoredInterviewReport 解析数据库中保存的完整面试报告 JSON。
+func parseStoredInterviewReport(raw string) (*ai.InterviewReport, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var report ai.InterviewReport
+	if err := json.Unmarshal([]byte(raw), &report); err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+// buildInterviewReportSummary 生成报告摘要，供历史列表和兼容字段快速展示。
+func buildInterviewReportSummary(report ai.InterviewReport) string {
+	return fmt.Sprintf("总分: %.0f, 正确: %d/%d", report.OverallScore, report.CorrectCount, report.TotalQuestions)
+}
+
+// buildFallbackInterviewReport 为历史旧数据构造最小可用报告结构。
+func buildFallbackInterviewReport(interview *model.MockInterview) *ai.InterviewReport {
+	return &ai.InterviewReport{
+		OverallScore:   interview.Score,
+		TotalQuestions: interview.TotalQuestions,
+		Summary:        interview.AIFeedback,
+	}
 }
 
 // parseIndustryCode 解析行业代码为行业ID（简化实现）

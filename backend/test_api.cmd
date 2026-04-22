@@ -44,7 +44,7 @@ echo ============ Question APIs ============
 
 echo.
 echo [6] Categories
-curl -s "%BASE%/api/categories?industry_id=1"
+curl -s "%BASE%/api/categories?industry_code=go"
 echo.
 
 echo.

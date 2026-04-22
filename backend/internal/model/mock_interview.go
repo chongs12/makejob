@@ -19,7 +19,9 @@ type MockInterview struct {
 	IndustryID     uint       `json:"industry_id" gorm:"not null;index;comment:行业ID"`
 	Status         string     `json:"status" gorm:"size:20;not null;default:'ongoing';comment:状态(ongoing/completed/cancelled)"`
 	Score          float64    `json:"score" gorm:"type:decimal(5,2);comment:面试得分"`
+	AISessionID    string     `json:"ai_session_id" gorm:"type:text;comment:AI面试会话ID"`
 	AIFeedback     string     `json:"ai_feedback" gorm:"type:text;comment:AI反馈评价"`
+	ReportJSON     string     `json:"report_json" gorm:"type:text;comment:完整面试报告JSON"`
 	TotalQuestions int        `json:"total_questions" gorm:"comment:总题目数"`
 	StartedAt      *time.Time `json:"started_at" gorm:"comment:开始时间"`
 	EndedAt        *time.Time `json:"ended_at" gorm:"comment:结束时间"`
