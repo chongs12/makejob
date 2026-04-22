@@ -87,6 +87,31 @@ func (s *adminService) recordAICallLog(ctx context.Context, req *AIDebugRequest,
 	_ = s.aiCallLogRepo.Create(ctx, log)
 }
 
+// fillAIDebugResponseModelOutput 尝试按 trace_id 回填调试结果中的模型原始输出，避免流式告警缺失 raw_output。
+func (s *adminService) fillAIDebugResponseModelOutput(ctx context.Context, resp *AIDebugResponse) {
+	if s.aiCallLogRepo == nil || resp == nil {
+		return
+	}
+	if strings.TrimSpace(resp.ModelOutput) != "" || strings.TrimSpace(resp.TraceID) == "" {
+		return
+	}
+
+	log, err := s.aiCallLogRepo.GetLatestByTraceID(ctx, resp.TraceID)
+	if err != nil || log == nil {
+		return
+	}
+	resp.ModelOutput = strings.TrimSpace(log.ModelOutput)
+	if strings.TrimSpace(resp.ModelError) == "" {
+		resp.ModelError = strings.TrimSpace(log.ModelError)
+	}
+	if strings.TrimSpace(resp.Provider) == "" {
+		resp.Provider = strings.TrimSpace(log.Provider)
+	}
+	if strings.TrimSpace(resp.Model) == "" {
+		resp.Model = strings.TrimSpace(log.Model)
+	}
+}
+
 // marshalLogJSON 将调试结构安全编码为 JSON 字符串。
 func marshalLogJSON(value interface{}) string {
 	if value == nil {

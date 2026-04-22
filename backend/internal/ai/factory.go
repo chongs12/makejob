@@ -1,18 +1,12 @@
 // Package ai 提供AI能力抽象层
-// factory.go 提供AI组件的工厂函数，用于创建各种AI Agent实例
-//
-// 注意：工厂函数返回接口类型，具体实现在mock子包中
-// 使用示例：
-//
-//	client := ai.NewAIClient("mock", nil)
-//	sessionID, question, err := client.InterviewAgent.StartInterview(ctx, config)
+// factory.go 定义 AI Provider 类型与统一客户端结构，供运行时装配复用。
 package ai
 
 // ProviderType AI Provider类型
 type ProviderType string
 
 const (
-	// ProviderTypeMock Mock Provider（当前默认）
+	// ProviderTypeMock 历史遗留的 Mock Provider 标识，运行时已不再支持。
 	ProviderTypeMock ProviderType = "mock"
 	// ProviderTypeOpenAI OpenAI Provider（预留）
 	ProviderTypeOpenAI ProviderType = "openai"

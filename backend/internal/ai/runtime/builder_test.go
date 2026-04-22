@@ -36,7 +36,7 @@ func TestLoadRuntimeConfigPrefersBaseConfig(t *testing.T) {
 	builder := &Builder{
 		configRepo: &fakeAdminConfigRepo{
 			items: []model.AdminConfig{
-				{ConfigKey: "ai_provider", ConfigValue: "mock"},
+				{ConfigKey: "ai_provider", ConfigValue: "azure"},
 				{ConfigKey: "ai_model", ConfigValue: "db-model"},
 				{ConfigKey: "ai_timeout_seconds", ConfigValue: "45"},
 			},
@@ -45,7 +45,7 @@ func TestLoadRuntimeConfigPrefersBaseConfig(t *testing.T) {
 			"ai_provider":          "eino",
 			"ai_model":             "cfg-model",
 			"ai_timeout_seconds":   "30",
-			"ai_fallback_provider": "mock",
+			"ai_fallback_provider": "",
 		},
 	}
 

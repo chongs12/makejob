@@ -210,6 +210,48 @@ func TestDecodeQuestionPipelineCardsResponseSupportsThinkWrappedJSON(t *testing.
 	}
 }
 
+// TestDecodeQuestionPipelineCardsResponseSupportsTrailingJSONBlock 验证题卡解析会优先提取输出尾部真正的 JSON 结果块。
+func TestDecodeQuestionPipelineCardsResponseSupportsTrailingJSONBlock(t *testing.T) {
+	t.Parallel()
+
+	payload, err := decodeQuestionPipelineCardsResponse(`以下是示例格式，请忽略：
+{"cards":[{"title":"示例题","content":"示例题干","answer":"示例答案"}]}
+
+最终结果：
+{"cards":[{"title":"真实题卡","content":"请解释 Go channel 的同步语义。","answer":"无缓冲 channel 需要收发双方同步握手。","difficulty":"medium","category":"Go 并发"}]}`)
+	if err != nil {
+		t.Fatalf("decodeQuestionPipelineCardsResponse returned error: %v", err)
+	}
+	if payload == nil || len(payload.Cards) != 1 {
+		t.Fatalf("expected 1 card, got %#v", payload)
+	}
+	if payload.Cards[0].Title != "真实题卡" {
+		t.Fatalf("expected trailing real card, got %#v", payload.Cards[0])
+	}
+}
+
+// TestDecodeQuestionPipelineCardsResponseSupportsReasoningWrappedText 验证题卡解析在去除 think 标签后仍能回退解析普通文本题卡。
+func TestDecodeQuestionPipelineCardsResponseSupportsReasoningWrappedText(t *testing.T) {
+	t.Parallel()
+
+	payload, err := decodeQuestionPipelineCardsResponse(`<think>
+先分析用户要求，再给出单张题卡。
+</think>
+标题：slice 扩容策略
+题目：请说明 Go slice 扩容时容量增长策略与底层数组复制行为。
+参考答案：slice 扩容会按容量区间采用不同增长策略，并在需要时重新分配底层数组。
+解析：重点考察候选人是否真正理解 slice 的底层实现。`)
+	if err != nil {
+		t.Fatalf("decodeQuestionPipelineCardsResponse returned error: %v", err)
+	}
+	if payload == nil || len(payload.Cards) != 1 {
+		t.Fatalf("expected 1 card, got %#v", payload)
+	}
+	if payload.Cards[0].Title != "slice 扩容策略" {
+		t.Fatalf("unexpected card: %#v", payload.Cards[0])
+	}
+}
+
 // TestFilterQuestionPipelineCardsByIntentDropsGenericProjectQuestions 验证语言特性场景下会过滤明显跑偏的项目题。
 func TestFilterQuestionPipelineCardsByIntentDropsGenericProjectQuestions(t *testing.T) {
 	t.Parallel()
@@ -251,6 +293,40 @@ func TestBuildQuestionPipelineConstraintProfileExtractsLanguageQuota(t *testing.
 	}
 	if !profile.GoFeatureOnly {
 		t.Fatal("expected Go feature only constraint to be enabled")
+	}
+}
+
+// TestNormalizeQuestionPipelineGenerationMode 验证题目流水线生成模式会回退到已知枚举，避免非法值污染服务分支。
+func TestNormalizeQuestionPipelineGenerationMode(t *testing.T) {
+	t.Parallel()
+
+	if mode := normalizeQuestionPipelineGenerationMode("direct_single"); mode != questionPipelineModeDirect {
+		t.Fatalf("expected direct mode, got %s", mode)
+	}
+	if mode := normalizeQuestionPipelineGenerationMode("unexpected"); mode != questionPipelineModePlanned {
+		t.Fatalf("expected planned mode fallback, got %s", mode)
+	}
+}
+
+// TestBuildQuestionPipelineDirectTargetLanguages 验证逐张直生模式会按显式语言配额构造目标语言序列。
+func TestBuildQuestionPipelineDirectTargetLanguages(t *testing.T) {
+	t.Parallel()
+
+	targets := buildQuestionPipelineDirectTargetLanguages(questionPipelineConstraintProfile{
+		CandidateCount:      4,
+		ExactLanguageCounts: map[string]int{"java": 1},
+		ExactLanguageOrder:  []string{"java"},
+		RemainingLanguage:   "go",
+	}, 4)
+
+	if len(targets) != 4 {
+		t.Fatalf("expected 4 target languages, got %#v", targets)
+	}
+	if targets[0] != "java" {
+		t.Fatalf("expected first target to be java, got %#v", targets)
+	}
+	if targets[1] != "go" || targets[2] != "go" || targets[3] != "go" {
+		t.Fatalf("expected remaining targets to be go, got %#v", targets)
 	}
 }
 

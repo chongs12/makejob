@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"makejob-backend/internal/ai"
-	"makejob-backend/internal/ai/mock"
 	"makejob-backend/internal/model"
 )
 
@@ -17,7 +16,6 @@ import (
 type providerQuizAnalyzer struct {
 	provider ai.AIProvider
 	prompts  *promptResolver
-	fallback ai.QuizAnalyzer
 	logger   *aiCallLogRecorder
 }
 
@@ -51,16 +49,13 @@ func newQuizAnalyzer(provider ai.AIProvider, prompts *promptResolver, logger *ai
 		provider: provider,
 		prompts:  prompts,
 		logger:   logger,
-		fallback: mock.NewQuizAnalyzer(mock.NewAIProvider(string(ai.ProviderTypeMock), map[string]string{
-			ai.ConfigKeyModel: "quiz-mock",
-		})),
 	}
 }
 
 // AnalyzeCode 分析代码题或文本题答案。
 func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, language string, question string) (ai.CodeAnalysis, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.AnalyzeCode(ctx, code, language, question)
+		return ai.CodeAnalysis{}, fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -84,7 +79,7 @@ func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, lan
 	payload, response, err := callStructuredJSON[quizAnalysisPayload](ctx, a.provider, messages, quizAnalysisPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.AnalyzeCode(ctx, code, language, question)
+		return ai.CodeAnalysis{}, err
 	}
 
 	result := normalizeQuizAnalysis(payload, code, language, question)
@@ -95,7 +90,7 @@ func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, lan
 // ExplainAnswer 生成题目答案解析。
 func (a *providerQuizAnalyzer) ExplainAnswer(ctx context.Context, questionTitle string, questionContent string, correctAnswer string) (string, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.ExplainAnswer(ctx, questionTitle, questionContent, correctAnswer)
+		return "", fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -120,13 +115,13 @@ func (a *providerQuizAnalyzer) ExplainAnswer(ctx context.Context, questionTitle 
 	response, err := a.provider.Chat(ctx, messages)
 	if err != nil {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.ExplainAnswer(ctx, questionTitle, questionContent, correctAnswer)
+		return "", err
 	}
 
 	content := normalizePlainTextResponse(response)
 	if content == "" {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, fmt.Errorf("empty explain answer response"), startedAt)
-		return a.fallback.ExplainAnswer(ctx, questionTitle, questionContent, correctAnswer)
+		return "", fmt.Errorf("empty explain answer response")
 	}
 
 	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
@@ -136,7 +131,7 @@ func (a *providerQuizAnalyzer) ExplainAnswer(ctx context.Context, questionTitle 
 // GenerateHint 生成答题提示。
 func (a *providerQuizAnalyzer) GenerateHint(ctx context.Context, questionTitle string, questionContent string) (string, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.GenerateHint(ctx, questionTitle, questionContent)
+		return "", fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -160,27 +155,22 @@ func (a *providerQuizAnalyzer) GenerateHint(ctx context.Context, questionTitle s
 	response, err := a.provider.Chat(ctx, messages)
 	if err != nil {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.GenerateHint(ctx, questionTitle, questionContent)
+		return "", err
 	}
 
 	content := normalizePlainTextResponse(response)
 	if content == "" {
 		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, fmt.Errorf("empty quiz hint response"), startedAt)
-		return a.fallback.GenerateHint(ctx, questionTitle, questionContent)
+		return "", fmt.Errorf("empty quiz hint response")
 	}
 
 	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
 	return content, nil
 }
 
-// shouldUseFallback 判断当前是否应退回 mock 实现。
+// shouldUseFallback 判断当前是否缺少可用 Provider。
 func (a *providerQuizAnalyzer) shouldUseFallback() bool {
-	if a.provider == nil {
-		return true
-	}
-
-	_, isMock := a.provider.(*mock.MockProvider)
-	return isMock
+	return a.provider == nil
 }
 
 // resolvePromptDetails 解析题目分析场景的 Prompt 明细。

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"makejob-backend/internal/common"
@@ -17,6 +18,8 @@ const (
 	defaultQuestionPipelineCount = 8
 	maxQuestionPipelineCount     = 20
 	maxPipelineMaterialSources   = 6
+	questionPipelineModePlanned  = "planned"
+	questionPipelineModeDirect   = "direct_single"
 )
 
 // AdminQuestionPipelineGenerateRequest 描述后台题目流水线生成请求。
@@ -24,6 +27,7 @@ type AdminQuestionPipelineGenerateRequest struct {
 	IndustryCode     string   `json:"industry_code" binding:"required"`
 	Requirement      string   `json:"requirement" binding:"required"`
 	AgentPrompt      string   `json:"agent_prompt"`
+	GenerationMode   string   `json:"generation_mode"`
 	CandidateCount   int      `json:"candidate_count"`
 	IncludeScraped   bool     `json:"include_scraped"`
 	IncludeGenerated bool     `json:"include_generated"`
@@ -60,12 +64,28 @@ type AdminQuestionPipelineStats struct {
 
 // AdminQuestionPipelineGenerateResponse 描述后台题目流水线候选结果。
 type AdminQuestionPipelineGenerateResponse struct {
-	IndustryCode string                      `json:"industry_code"`
-	Requirement  string                      `json:"requirement"`
-	Cards        []AdminQuestionPipelineCard `json:"cards"`
-	Warnings     []string                    `json:"warnings,omitempty"`
-	Stats        AdminQuestionPipelineStats  `json:"stats"`
+	IndustryCode   string                      `json:"industry_code"`
+	Requirement    string                      `json:"requirement"`
+	GenerationMode string                      `json:"generation_mode"`
+	Cards          []AdminQuestionPipelineCard `json:"cards"`
+	Warnings       []string                    `json:"warnings,omitempty"`
+	Stats          AdminQuestionPipelineStats  `json:"stats"`
 }
+
+// AdminQuestionPipelineStreamEvent 描述题目流水线 SSE 推送事件的统一结构。
+type AdminQuestionPipelineStreamEvent struct {
+	Event      string                                 `json:"event"`
+	Message    string                                 `json:"message,omitempty"`
+	TraceID    string                                 `json:"trace_id,omitempty"`
+	RawOutput  string                                 `json:"raw_output,omitempty"`
+	SlotIndex  int                                    `json:"slot_index,omitempty"`
+	RetryIndex int                                    `json:"retry_index,omitempty"`
+	Card       *AdminQuestionPipelineCard             `json:"card,omitempty"`
+	Response   *AdminQuestionPipelineGenerateResponse `json:"response,omitempty"`
+}
+
+// AdminQuestionPipelineStreamEmitter 描述题目流水线流式推送回调。
+type AdminQuestionPipelineStreamEmitter func(event AdminQuestionPipelineStreamEvent) error
 
 // AdminQuestionPipelineImportRequest 描述后台题目流水线导入请求。
 type AdminQuestionPipelineImportRequest struct {
@@ -160,9 +180,10 @@ func (s *adminService) GenerateQuestionPipeline(ctx context.Context, req *AdminQ
 	}
 
 	response := &AdminQuestionPipelineGenerateResponse{
-		IndustryCode: strings.TrimSpace(req.IndustryCode),
-		Requirement:  requirement,
-		Warnings:     make([]string, 0),
+		IndustryCode:   strings.TrimSpace(req.IndustryCode),
+		Requirement:    requirement,
+		GenerationMode: normalizeQuestionPipelineGenerationMode(req.GenerationMode),
+		Warnings:       make([]string, 0),
 	}
 
 	candidateLimit := normalizeQuestionPipelineCount(req.CandidateCount)
@@ -200,16 +221,37 @@ func (s *adminService) GenerateQuestionPipeline(ctx context.Context, req *AdminQ
 	response.Stats.ScrapedCount = len(cards)
 
 	if includeGenerated {
-		generatedCards, generatedWarnings, generateErr := s.generateQuestionPipelineCardsWithAgent(
-			ctx,
-			industry,
-			categories,
-			requirement,
-			strings.TrimSpace(req.AgentPrompt),
-			constraints,
-			candidateLimit,
-			materials,
+		var (
+			generatedCards    []AdminQuestionPipelineCard
+			generatedWarnings []string
+			generateErr       error
 		)
+		switch response.GenerationMode {
+		case questionPipelineModeDirect:
+			generatedCards, generatedWarnings, generateErr = s.generateQuestionPipelineCardsDirectly(
+				ctx,
+				industry,
+				categories,
+				requirement,
+				strings.TrimSpace(req.AgentPrompt),
+				constraints,
+				candidateLimit,
+				materials,
+				nil,
+				nil,
+			)
+		default:
+			generatedCards, generatedWarnings, generateErr = s.generateQuestionPipelineCardsWithAgent(
+				ctx,
+				industry,
+				categories,
+				requirement,
+				strings.TrimSpace(req.AgentPrompt),
+				constraints,
+				candidateLimit,
+				materials,
+			)
+		}
 		response.Warnings = append(response.Warnings, generatedWarnings...)
 		if generateErr != nil {
 			response.Warnings = append(response.Warnings, generateErr.Error())
@@ -235,6 +277,188 @@ func (s *adminService) GenerateQuestionPipeline(ctx context.Context, req *AdminQ
 	response.Stats.CandidateCount = len(cards)
 	response.Stats.SelectedSources = len(resolveQuestionPipelineSources(s.scraperProvider, req.Sources))
 	return response, nil
+}
+
+// GenerateQuestionPipelineStream 以 SSE 事件形式推送题目流水线进度与候选题卡。
+func (s *adminService) GenerateQuestionPipelineStream(ctx context.Context, req *AdminQuestionPipelineGenerateRequest, emit AdminQuestionPipelineStreamEmitter) error {
+	if emit == nil {
+		return common.NewBusinessError(common.CodeBadRequest, "stream emitter is required")
+	}
+	if req == nil {
+		return common.NewBusinessError(common.CodeBadRequest, "pipeline request cannot be empty")
+	}
+
+	mode := normalizeQuestionPipelineGenerationMode(req.GenerationMode)
+	if mode != questionPipelineModeDirect {
+		response, err := s.GenerateQuestionPipeline(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		if err := emit(AdminQuestionPipelineStreamEvent{
+			Event:   "status",
+			Message: "两阶段规划模式已完成，正在同步候选题卡。",
+		}); err != nil {
+			return err
+		}
+		for _, card := range response.Cards {
+			cardCopy := card
+			if err := emit(AdminQuestionPipelineStreamEvent{
+				Event: "card",
+				Card:  &cardCopy,
+			}); err != nil {
+				return err
+			}
+		}
+		return emit(AdminQuestionPipelineStreamEvent{
+			Event:    "complete",
+			Response: response,
+		})
+	}
+
+	requirement := strings.TrimSpace(req.Requirement)
+	if requirement == "" {
+		return common.NewBusinessError(common.CodeBadRequest, "requirement is required")
+	}
+
+	includeScraped := req.IncludeScraped
+	includeGenerated := req.IncludeGenerated
+	if !includeScraped && !includeGenerated {
+		includeScraped = true
+		includeGenerated = true
+	}
+
+	industry, categories, err := s.loadPipelineIndustryContext(ctx, req.IndustryCode)
+	if err != nil {
+		return err
+	}
+
+	response := &AdminQuestionPipelineGenerateResponse{
+		IndustryCode:   strings.TrimSpace(req.IndustryCode),
+		Requirement:    requirement,
+		GenerationMode: mode,
+		Warnings:       make([]string, 0),
+	}
+
+	if err := emit(AdminQuestionPipelineStreamEvent{
+		Event:   "status",
+		Message: "已建立流式生成连接，准备加载行业、分类与约束。",
+	}); err != nil {
+		return err
+	}
+
+	candidateLimit := normalizeQuestionPipelineCount(req.CandidateCount)
+	constraints := buildQuestionPipelineConstraintProfile(requirement, strings.TrimSpace(req.AgentPrompt), candidateLimit)
+	materials := make([]questionPipelineMaterial, 0)
+	cards := make([]AdminQuestionPipelineCard, 0)
+
+	if includeScraped {
+		if err := emit(AdminQuestionPipelineStreamEvent{
+			Event:   "status",
+			Message: "正在抓取并清洗参考素材。",
+		}); err != nil {
+			return err
+		}
+
+		scrapedMaterials, searchedCount, materialErr := s.collectQuestionPipelineMaterials(ctx, req, candidateLimit)
+		response.Stats.SearchedCount = searchedCount
+		response.Stats.FetchedCount = len(scrapedMaterials)
+		if materialErr != nil {
+			response.Warnings = append(response.Warnings, materialErr.Error())
+			if emitErr := emit(AdminQuestionPipelineStreamEvent{
+				Event:   "warning",
+				Message: materialErr.Error(),
+			}); emitErr != nil {
+				return emitErr
+			}
+		}
+		materials = append(materials, scrapedMaterials...)
+	}
+
+	if len(materials) > 0 {
+		for _, material := range materials {
+			cleanResult, cleanErr := s.questionCleaner.Clean(ctx, scraper.CleanRequest{
+				Content:      material.Content,
+				IndustryCode: industry.Code,
+				Source:       material.Source,
+				SourceURL:    material.URL,
+			})
+			if cleanErr != nil {
+				warning := fmt.Sprintf("清洗素材失败: %v", cleanErr)
+				response.Warnings = append(response.Warnings, warning)
+				if emitErr := emit(AdminQuestionPipelineStreamEvent{
+					Event:   "warning",
+					Message: warning,
+				}); emitErr != nil {
+					return emitErr
+				}
+				continue
+			}
+			cards = append(cards, s.buildQuestionPipelineCards(cleanResult, material, categories, requirement)...)
+		}
+	}
+	cards = filterQuestionPipelineCardsByIntent(cards, requirement, strings.TrimSpace(req.AgentPrompt))
+	cards, enforceWarnings := enforceQuestionPipelineCardConstraints(cards, constraints, requirement, strings.TrimSpace(req.AgentPrompt))
+	response.Warnings = append(response.Warnings, enforceWarnings...)
+	response.Stats.ScrapedCount = len(cards)
+	for _, warning := range enforceWarnings {
+		if err := emit(AdminQuestionPipelineStreamEvent{
+			Event:   "warning",
+			Message: warning,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if includeGenerated {
+		if err := emit(AdminQuestionPipelineStreamEvent{
+			Event:   "status",
+			Message: "正在逐张生成候选题卡，生成结果会实时显示。",
+		}); err != nil {
+			return err
+		}
+
+		generatedCards, generatedWarnings, generateErr := s.generateQuestionPipelineCardsDirectly(
+			ctx,
+			industry,
+			categories,
+			requirement,
+			strings.TrimSpace(req.AgentPrompt),
+			constraints,
+			candidateLimit,
+			materials,
+			nil,
+			emit,
+		)
+		response.Warnings = append(response.Warnings, generatedWarnings...)
+		if generateErr != nil {
+			response.Warnings = append(response.Warnings, generateErr.Error())
+		} else {
+			response.Stats.GeneratedCount = len(generatedCards)
+			cards = append(cards, generatedCards...)
+		}
+	}
+
+	cards = dedupeQuestionPipelineCards(cards)
+	if len(cards) == 0 {
+		return common.NewBusinessError(common.CodeBadRequest, buildQuestionPipelineFailureMessage(response.Warnings))
+	}
+	if len(cards) > candidateLimit {
+		cards = cards[:candidateLimit]
+	}
+	for index := range cards {
+		if strings.TrimSpace(cards[index].ID) == "" {
+			cards[index].ID = fmt.Sprintf("pipeline-card-%d", index+1)
+		}
+	}
+
+	response.Cards = cards
+	response.Stats.CandidateCount = len(cards)
+	response.Stats.SelectedSources = len(resolveQuestionPipelineSources(s.scraperProvider, req.Sources))
+	return emit(AdminQuestionPipelineStreamEvent{
+		Event:    "complete",
+		Response: response,
+	})
 }
 
 // ImportQuestionPipeline 将前端确认后的候选题卡批量写入题库。
@@ -409,28 +633,11 @@ func (s *adminService) generateQuestionPipelineCardsWithAgent(
 
 	cards := make([]AdminQuestionPipelineCard, 0, len(cardsPayload.Cards))
 	for _, card := range cardsPayload.Cards {
-		title := strings.TrimSpace(card.Title)
-		content := strings.TrimSpace(card.Content)
-		answer := strings.TrimSpace(card.Answer)
-		if title == "" || content == "" || answer == "" {
+		normalizedCard, ok := buildQuestionPipelineGeneratedCard(card, categories, requirement)
+		if !ok {
 			continue
 		}
-
-		cards = append(cards, AdminQuestionPipelineCard{
-			Title:       title,
-			Content:     content,
-			Type:        normalizeQuestionPipelineType(card.Type),
-			Difficulty:  normalizeQuestionPipelineDifficulty(card.Difficulty),
-			Category:    matchQuestionPipelineCategory(categories, card.Category, requirement),
-			Answer:      answer,
-			Explanation: firstNonEmptyString(strings.TrimSpace(card.Explanation), buildQuestionPipelineExplanation(title)),
-			Tags:        buildQuestionPipelineTags(card.Tags, requirement),
-			Confidence:  0.94,
-			SourceType:  "generated",
-			SourceLabel: "AI 智能体生成",
-			SourceTitle: "智能体候选题卡",
-			SourceURL:   "",
-		})
+		cards = append(cards, normalizedCard)
 	}
 
 	cards = dedupeQuestionPipelineCards(cards)
@@ -457,6 +664,351 @@ func (s *adminService) generateQuestionPipelineCardsWithAgent(
 	}
 
 	return cards, warnings, nil
+}
+
+// generateQuestionPipelineCardsDirectly 通过逐张直生模式生成题卡，降低批量结构化任务的偏航概率。
+func (s *adminService) generateQuestionPipelineCardsDirectly(
+	ctx context.Context,
+	industry *model.Industry,
+	categories []model.Category,
+	requirement string,
+	agentPrompt string,
+	constraints questionPipelineConstraintProfile,
+	candidateLimit int,
+	materials []questionPipelineMaterial,
+	onAccepted func(card AdminQuestionPipelineCard, index int) error,
+	streamEmit AdminQuestionPipelineStreamEmitter,
+) ([]AdminQuestionPipelineCard, []string, error) {
+	targetLanguages := buildQuestionPipelineDirectTargetLanguages(constraints, candidateLimit)
+	cards := make([]AdminQuestionPipelineCard, 0, candidateLimit)
+	warnings := make([]string, 0)
+
+	for slot := 0; slot < candidateLimit; slot++ {
+		targetLanguage := ""
+		if slot < len(targetLanguages) {
+			targetLanguage = targetLanguages[slot]
+		}
+		if streamEmit != nil {
+			message := fmt.Sprintf("正在生成第 %d / %d 张题卡。", slot+1, candidateLimit)
+			if strings.TrimSpace(targetLanguage) != "" {
+				message = fmt.Sprintf("正在生成第 %d / %d 张题卡，目标语言：%s。", slot+1, candidateLimit, strings.ToUpper(targetLanguage))
+			}
+			if err := streamEmit(AdminQuestionPipelineStreamEvent{
+				Event:   "status",
+				Message: message,
+			}); err != nil {
+				return nil, warnings, err
+			}
+		}
+
+		slotSucceeded := false
+		for retry := 0; retry < 3; retry++ {
+			if streamEmit != nil && retry > 0 {
+				if err := streamEmit(AdminQuestionPipelineStreamEvent{
+					Event:   "status",
+					Message: fmt.Sprintf("第 %d 张题卡进入第 %d 次重试。", slot+1, retry+1),
+				}); err != nil {
+					return nil, warnings, err
+				}
+			}
+
+			generatedCards, trace, traceID, err := s.generateQuestionPipelineDirectSingleCard(
+				ctx,
+				industry,
+				categories,
+				requirement,
+				agentPrompt,
+				constraints,
+				materials,
+				cards,
+				slot,
+				targetLanguage,
+			)
+			if err != nil {
+				warning := fmt.Sprintf("第 %d 张题卡生成失败: %v", slot+1, err)
+				warnings = append(warnings, warning)
+				if streamEmit != nil {
+					if emitErr := streamEmit(AdminQuestionPipelineStreamEvent{
+						Event:      "warning",
+						Message:    warning,
+						TraceID:    strings.TrimSpace(traceID),
+						RawOutput:  strings.TrimSpace(trace),
+						SlotIndex:  slot + 1,
+						RetryIndex: retry + 1,
+					}); emitErr != nil {
+						return nil, warnings, emitErr
+					}
+				}
+				continue
+			}
+
+			nextCards := append([]AdminQuestionPipelineCard{}, cards...)
+			nextCards = append(nextCards, generatedCards...)
+			nextCards = dedupeQuestionPipelineCards(nextCards)
+			nextCards = filterQuestionPipelineCardsByIntent(nextCards, requirement, agentPrompt)
+			constrainedCards, constraintWarnings := enforceQuestionPipelineCardConstraints(nextCards, constraints, requirement, agentPrompt)
+			warnings = append(warnings, constraintWarnings...)
+			if streamEmit != nil {
+				for _, warning := range constraintWarnings {
+					if emitErr := streamEmit(AdminQuestionPipelineStreamEvent{
+						Event:   "warning",
+						Message: warning,
+					}); emitErr != nil {
+						return nil, warnings, emitErr
+					}
+				}
+			}
+			if len(constrainedCards) <= len(cards) {
+				if strings.TrimSpace(trace) != "" {
+					warning := fmt.Sprintf("第 %d 张题卡未通过约束校验，已丢弃。", slot+1)
+					warnings = append(warnings, warning)
+					if streamEmit != nil {
+						if emitErr := streamEmit(AdminQuestionPipelineStreamEvent{
+							Event:   "warning",
+							Message: warning,
+						}); emitErr != nil {
+							return nil, warnings, emitErr
+						}
+					}
+				}
+				continue
+			}
+
+			cards = constrainedCards
+			if len(cards) > 0 {
+				acceptedCard := cards[len(cards)-1]
+				acceptedCard.ID = fmt.Sprintf("pipeline-card-%d", len(cards))
+				cards[len(cards)-1].ID = acceptedCard.ID
+				if streamEmit != nil {
+					cardCopy := acceptedCard
+					if err := streamEmit(AdminQuestionPipelineStreamEvent{
+						Event:   "card",
+						Message: fmt.Sprintf("第 %d 张题卡已生成。", len(cards)),
+						Card:    &cardCopy,
+					}); err != nil {
+						return nil, warnings, err
+					}
+				}
+				if streamEmit != nil {
+					if err := streamEmit(AdminQuestionPipelineStreamEvent{
+						Event:   "status",
+						Message: fmt.Sprintf("已生成 %d / %d 张候选题卡。", len(cards), candidateLimit),
+					}); err != nil {
+						return nil, warnings, err
+					}
+				}
+			}
+			if onAccepted != nil && len(cards) > 0 {
+				acceptedCard := cards[len(cards)-1]
+				if err := onAccepted(acceptedCard, len(cards)-1); err != nil {
+					return nil, warnings, err
+				}
+			}
+			slotSucceeded = true
+			break
+		}
+
+		if !slotSucceeded {
+			warning := fmt.Sprintf("第 %d 张题卡在逐张直生模式下未能生成满足要求的结果。", slot+1)
+			warnings = append(warnings, warning)
+			if streamEmit != nil {
+				if err := streamEmit(AdminQuestionPipelineStreamEvent{
+					Event:   "warning",
+					Message: warning,
+				}); err != nil {
+					return nil, warnings, err
+				}
+			}
+		}
+	}
+
+	warnings = dedupeQuestionPipelineStrings(warnings)
+	if len(cards) == 0 {
+		if streamEmit != nil {
+			if err := streamEmit(AdminQuestionPipelineStreamEvent{
+				Event:   "warning",
+				Message: "逐张直生模式未返回可用题卡，请检查 AI 配置或调整提示词。",
+			}); err != nil {
+				return nil, warnings, err
+			}
+		}
+		return nil, warnings, fmt.Errorf("逐张直生模式未返回可用题卡，请检查 AI 配置或调整提示词")
+	}
+	if len(cards) < candidateLimit {
+		warning := fmt.Sprintf("逐张直生模式只生成了 %d 张满足约束的有效题卡，少于目标 %d 张。", len(cards), candidateLimit)
+		warnings = append(warnings, warning)
+		if streamEmit != nil {
+			if err := streamEmit(AdminQuestionPipelineStreamEvent{
+				Event:   "warning",
+				Message: warning,
+			}); err != nil {
+				return nil, warnings, err
+			}
+		}
+	}
+	return cards, dedupeQuestionPipelineStrings(warnings), nil
+}
+
+// generateQuestionPipelineDirectSingleCard 逐轮请求模型只生成一张题卡，并携带已有题卡摘要减少重复。
+func (s *adminService) generateQuestionPipelineDirectSingleCard(
+	ctx context.Context,
+	industry *model.Industry,
+	categories []model.Category,
+	requirement string,
+	agentPrompt string,
+	constraints questionPipelineConstraintProfile,
+	materials []questionPipelineMaterial,
+	existingCards []AdminQuestionPipelineCard,
+	slot int,
+	targetLanguage string,
+) ([]AdminQuestionPipelineCard, string, string, error) {
+	categoryHints := make([]string, 0, len(categories))
+	for _, category := range categories {
+		categoryHints = append(categoryHints, category.Name)
+	}
+
+	result, err := s.DebugAIRuntime(ctx, &AIDebugRequest{
+		Scene: model.PromptSceneInterview,
+		TemplateContent: strings.TrimSpace(`
+你是 MakeJob 的逐张题卡生成智能体。当前只允许生成 1 张中文面试题卡，请不要一次输出多张。
+
+严格要求：
+1. 只返回一个 JSON 对象，结构必须是 {"cards":[{...}]}。
+2. cards 数组里只能有 1 张题卡，不允许额外解释、Markdown、代码块或前后缀文本。
+3. 本轮题卡必须与已生成题卡考点明显不同，禁止同义改写。
+4. 如果指定了目标语言，必须严格按目标语言出题；不要输出项目经历、职业规划、微服务治理等凑数题。
+5. title、content、answer、explanation 都必须填写完整。
+
+行业：
+{{industry_name}}
+
+用户目标：
+{{requirement}}
+
+智能体指令：
+{{agent_prompt}}
+
+硬约束摘要：
+{{constraint_summary}}
+
+本轮目标语言：
+{{target_language}}
+
+当前是第 {{slot_index}} / {{candidate_count}} 张题卡。
+
+已生成题卡摘要：
+{{existing_cards}}
+
+现有分类：
+{{category_hints}}
+
+参考素材摘要：
+{{material_excerpt}}
+`),
+		Variables: map[string]string{
+			"industry_name":      industry.Name,
+			"requirement":        requirement,
+			"agent_prompt":       buildQuestionPipelineAgentPrompt(agentPrompt),
+			"constraint_summary": buildQuestionPipelineConstraintSummary(constraints),
+			"target_language":    buildQuestionPipelineDirectTargetLanguageLabel(targetLanguage),
+			"slot_index":         fmt.Sprintf("%d", slot+1),
+			"candidate_count":    fmt.Sprintf("%d", constraints.CandidateCount),
+			"existing_cards":     buildQuestionPipelineExistingCardsExcerpt(existingCards),
+			"category_hints":     strings.Join(categoryHints, "、"),
+			"material_excerpt":   buildQuestionPipelineMaterialExcerpt(materials),
+		},
+		RunModel:  true,
+		UserInput: "请严格返回只包含 1 张题卡的 JSON 对象。",
+	})
+	if err != nil {
+		return nil, "", "", fmt.Errorf("逐张直生调用失败: %w", err)
+	}
+	traceOutput := buildQuestionPipelineDebugTrace(result)
+	if isQuestionPipelineMockOutput(traceOutput) {
+		return nil, traceOutput, result.TraceID, fmt.Errorf("当前调用实际返回了 Mock Provider 输出，请检查 AI 配置中的主 provider、fallback provider 与 API Key")
+	}
+	if strings.TrimSpace(result.ModelError) != "" {
+		return nil, traceOutput, result.TraceID, fmt.Errorf("逐张直生模型调用失败: %s", strings.TrimSpace(result.ModelError))
+	}
+
+	payload, decodeErr := decodeQuestionPipelineCardsResponse(result.ModelOutput)
+	if decodeErr != nil {
+		if strings.EqualFold(strings.TrimSpace(result.Provider), "mock") {
+			return nil, traceOutput, result.TraceID, fmt.Errorf("当前 AI provider 仍为 mock，无法生成真实题卡，请先在后台 AI 配置页切换到可用模型")
+		}
+		repairedPayload, repairedTrace, repairErr := s.repairQuestionPipelineCardResponse(ctx, result.ModelOutput)
+		if repairErr != nil {
+			return nil, traceOutput, result.TraceID, fmt.Errorf("逐张直生返回内容无法解析: %w", decodeErr)
+		}
+		payload = repairedPayload
+		traceOutput = firstNonEmptyString(strings.TrimSpace(repairedTrace), traceOutput)
+	}
+	if payload == nil || len(payload.Cards) == 0 {
+		return nil, traceOutput, result.TraceID, fmt.Errorf("逐张直生未返回有效题卡")
+	}
+
+	normalizedCards := make([]AdminQuestionPipelineCard, 0, 1)
+	for _, card := range payload.Cards[:1] {
+		normalized, ok := buildQuestionPipelineGeneratedCard(card, categories, requirement)
+		if !ok {
+			continue
+		}
+		normalizedCards = append(normalizedCards, normalized)
+	}
+	if len(normalizedCards) == 0 {
+		return nil, traceOutput, result.TraceID, fmt.Errorf("逐张直生返回了内容，但未解析出可用题卡")
+	}
+
+	return normalizedCards, traceOutput, result.TraceID, nil
+}
+
+// repairQuestionPipelineCardResponse 在单卡输出解析失败时，追加一次轻量修复请求，尽量把原始内容整理成标准题卡 JSON。
+func (s *adminService) repairQuestionPipelineCardResponse(ctx context.Context, raw string) (*questionPipelineCardsResponse, string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, "", fmt.Errorf("raw model output is empty")
+	}
+
+	result, err := s.DebugAIRuntime(ctx, &AIDebugRequest{
+		Scene: model.PromptSceneInterview,
+		TemplateContent: strings.TrimSpace(`
+你是 MakeJob 的题卡 JSON 修复助手。
+你的任务不是重新出题，而是把已有内容整理成唯一合法的 JSON 对象。
+
+严格要求：
+1. 只能输出一个 JSON 对象，结构必须是 {"cards":[{...}]}。
+2. cards 数组最多只保留 1 张题卡。
+3. 不要输出解释、Markdown、代码块、前后缀、注释。
+4. 只保留原内容里可以稳定提取的信息，不要凭空扩写。
+5. 如果原内容里没有可靠答案，也必须尽量从原文提炼参考答案字段。
+`),
+		RunModel: true,
+		UserInput: fmt.Sprintf(
+			"目标 JSON 结构：\n%s\n\n待修复内容：\n%s",
+			buildQuestionPipelineSingleCardRepairSchema(),
+			raw,
+		),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	traceOutput := buildQuestionPipelineDebugTrace(result)
+	if isQuestionPipelineMockOutput(traceOutput) {
+		return nil, traceOutput, fmt.Errorf("当前修复链路实际返回了 Mock Provider 输出，请检查 AI 配置中的主 provider、fallback provider 与 API Key")
+	}
+	if strings.TrimSpace(result.ModelError) != "" {
+		return nil, traceOutput, fmt.Errorf("题卡修复调用失败: %s", strings.TrimSpace(result.ModelError))
+	}
+
+	payload, decodeErr := decodeQuestionPipelineCardsResponse(result.ModelOutput)
+	if decodeErr != nil {
+		return nil, traceOutput, decodeErr
+	}
+	if payload == nil || len(payload.Cards) == 0 {
+		return nil, traceOutput, fmt.Errorf("repair cards not found")
+	}
+
+	return payload, firstNonEmptyString(strings.TrimSpace(result.ModelOutput), traceOutput), nil
 }
 
 // generateQuestionPipelinePlan 先让模型拆出互不重复的考点计划。
@@ -517,24 +1069,28 @@ func (s *adminService) generateQuestionPipelinePlan(
 	if err != nil {
 		return nil, "", fmt.Errorf("智能体规划阶段失败: %w", err)
 	}
+	traceOutput := buildQuestionPipelineDebugTrace(result)
+	if strings.TrimSpace(result.ModelError) != "" {
+		return nil, traceOutput, fmt.Errorf("智能体规划阶段模型调用失败: %s", strings.TrimSpace(result.ModelError))
+	}
 
 	payload, decodeErr := decodeQuestionPipelinePlanResponse(result.ModelOutput)
 	if decodeErr != nil {
 		if strings.EqualFold(strings.TrimSpace(result.Provider), "mock") {
-			return nil, result.ModelOutput, fmt.Errorf("当前 AI provider 仍为 mock，无法生成真实题卡，请先在后台 AI 配置页切换到可用模型")
+			return nil, traceOutput, fmt.Errorf("当前 AI provider 仍为 mock，无法生成真实题卡，请先在后台 AI 配置页切换到可用模型")
 		}
-		return nil, result.ModelOutput, fmt.Errorf("智能体规划阶段返回内容无法解析: %w", decodeErr)
+		return nil, traceOutput, fmt.Errorf("智能体规划阶段返回内容无法解析: %w", decodeErr)
 	}
 
 	payload.Topics = dedupeQuestionPipelinePlan(payload.Topics)
 	if len(payload.Topics) == 0 {
-		return nil, result.ModelOutput, fmt.Errorf("智能体规划阶段未返回有效考点")
+		return nil, traceOutput, fmt.Errorf("智能体规划阶段未返回有效考点")
 	}
 	if len(payload.Topics) > candidateLimit {
 		payload.Topics = payload.Topics[:candidateLimit]
 	}
 
-	return payload, result.ModelOutput, nil
+	return payload, traceOutput, nil
 }
 
 // generateQuestionPipelineStructuredCards 根据拆解出的计划直接生成结构化题卡。
@@ -610,20 +1166,24 @@ func (s *adminService) generateQuestionPipelineStructuredCards(
 	if err != nil {
 		return nil, "", fmt.Errorf("智能体题卡生成阶段失败: %w", err)
 	}
+	traceOutput := buildQuestionPipelineDebugTrace(result)
+	if strings.TrimSpace(result.ModelError) != "" {
+		return nil, traceOutput, fmt.Errorf("智能体题卡生成阶段模型调用失败: %s", strings.TrimSpace(result.ModelError))
+	}
 
 	payload, decodeErr := decodeQuestionPipelineCardsResponse(result.ModelOutput)
 	if decodeErr != nil {
 		if strings.EqualFold(strings.TrimSpace(result.Provider), "mock") {
-			return nil, result.ModelOutput, fmt.Errorf("当前 AI provider 仍为 mock，无法生成真实题卡，请先在后台 AI 配置页切换到可用模型")
+			return nil, traceOutput, fmt.Errorf("当前 AI provider 仍为 mock，无法生成真实题卡，请先在后台 AI 配置页切换到可用模型")
 		}
-		return nil, result.ModelOutput, fmt.Errorf("智能体题卡生成阶段返回内容无法解析: %w", decodeErr)
+		return nil, traceOutput, fmt.Errorf("智能体题卡生成阶段返回内容无法解析: %w", decodeErr)
 	}
 
 	if len(payload.Cards) == 0 {
-		return nil, result.ModelOutput, fmt.Errorf("智能体题卡生成阶段未返回有效题卡")
+		return nil, traceOutput, fmt.Errorf("智能体题卡生成阶段未返回有效题卡")
 	}
 
-	return payload, result.ModelOutput, nil
+	return payload, traceOutput, nil
 }
 
 // buildQuestionPipelineCards 将清洗结果转换为前端可编辑的候选题卡。
@@ -694,6 +1254,42 @@ func normalizeQuestionPipelineCount(count int) int {
 	default:
 		return count
 	}
+}
+
+// normalizeQuestionPipelineGenerationMode 规范化题目流水线生成模式，避免前端回传非法值。
+func normalizeQuestionPipelineGenerationMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case questionPipelineModeDirect:
+		return questionPipelineModeDirect
+	default:
+		return questionPipelineModePlanned
+	}
+}
+
+// buildQuestionPipelineGeneratedCard 将模型返回的结构化题卡归一化为后台统一候选题卡。
+func buildQuestionPipelineGeneratedCard(card questionPipelineModelCard, categories []model.Category, requirement string) (AdminQuestionPipelineCard, bool) {
+	title := strings.TrimSpace(card.Title)
+	content := strings.TrimSpace(card.Content)
+	answer := strings.TrimSpace(card.Answer)
+	if title == "" || content == "" || answer == "" {
+		return AdminQuestionPipelineCard{}, false
+	}
+
+	return AdminQuestionPipelineCard{
+		Title:       title,
+		Content:     content,
+		Type:        normalizeQuestionPipelineType(card.Type),
+		Difficulty:  normalizeQuestionPipelineDifficulty(card.Difficulty),
+		Category:    matchQuestionPipelineCategory(categories, card.Category, requirement),
+		Answer:      answer,
+		Explanation: firstNonEmptyString(strings.TrimSpace(card.Explanation), buildQuestionPipelineExplanation(title)),
+		Tags:        buildQuestionPipelineTags(card.Tags, requirement),
+		Confidence:  0.94,
+		SourceType:  "generated",
+		SourceLabel: "AI 智能体生成",
+		SourceTitle: "智能体候选题卡",
+		SourceURL:   "",
+	}, true
 }
 
 // resolveQuestionPipelineSources 解析题目流水线允许使用的抓取来源。
@@ -879,6 +1475,75 @@ func normalizeQuestionPipelineLanguage(language string) string {
 	default:
 		return ""
 	}
+}
+
+// buildQuestionPipelineDirectTargetLanguages 按语言配额构造逐张直生模式的目标语言序列。
+func buildQuestionPipelineDirectTargetLanguages(profile questionPipelineConstraintProfile, candidateLimit int) []string {
+	targets := make([]string, 0, candidateLimit)
+	for _, language := range profile.ExactLanguageOrder {
+		for count := 0; count < profile.ExactLanguageCounts[language] && len(targets) < candidateLimit; count++ {
+			targets = append(targets, language)
+		}
+	}
+	for profile.RemainingLanguage != "" && len(targets) < candidateLimit {
+		targets = append(targets, profile.RemainingLanguage)
+	}
+	for len(targets) < candidateLimit {
+		targets = append(targets, "")
+	}
+	return targets
+}
+
+// buildQuestionPipelineDirectTargetLanguageLabel 为逐张直生模式生成可读目标语言说明。
+func buildQuestionPipelineDirectTargetLanguageLabel(language string) string {
+	switch strings.TrimSpace(language) {
+	case "go":
+		return "本轮必须生成 Go 语言特性或 Go 核心机制相关题卡。"
+	case "java":
+		return "本轮必须生成 Java 相关题卡，用于满足显式语言配额。"
+	default:
+		return "未指定单独语言配额，本轮遵循整体需求与智能体指令。"
+	}
+}
+
+// buildQuestionPipelineSingleCardRepairSchema 返回单张题卡修复阶段使用的目标 JSON 结构说明。
+func buildQuestionPipelineSingleCardRepairSchema() string {
+	return `{"cards":[{"title":"题目标题","content":"完整题干","type":"subjective","difficulty":"easy|medium|hard","category":"分类名称","answer":"参考答案","explanation":"考察意图","tags":["标签1","标签2"]}]}`
+}
+
+// isQuestionPipelineMockOutput 判断当前模型输出是否来自仓库内置的 Mock Provider，避免把假数据误判成真实模型格式问题。
+func isQuestionPipelineMockOutput(raw string) bool {
+	normalized := strings.TrimSpace(raw)
+	if normalized == "" {
+		return false
+	}
+
+	for _, marker := range []string{
+		"作为一个Mock AI",
+		"这是一个Mock流式响应",
+		"实际集成后将连接真实的AI模型",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildQuestionPipelineExistingCardsExcerpt 压缩已生成题卡摘要，帮助模型避免重复考点。
+func buildQuestionPipelineExistingCardsExcerpt(cards []AdminQuestionPipelineCard) string {
+	if len(cards) == 0 {
+		return "暂无已生成题卡，本轮可以从最重要的考点开始。"
+	}
+
+	parts := make([]string, 0, len(cards))
+	for index, card := range cards {
+		if index >= 6 {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%d. [%s] %s", index+1, strings.ToUpper(firstNonEmptyString(detectQuestionPipelineCardLanguage(card), "unknown")), strings.TrimSpace(card.Title)))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // buildQuestionPipelineCardsFromPlan 在题卡结构化解析失败时，根据规划阶段结果回退生成基础题卡。
@@ -1147,7 +1812,7 @@ func decodeQuestionPipelinePlanResponse(raw string) (*questionPipelinePlanRespon
 		}
 	}
 
-	topics := parseQuestionPipelinePlanText(raw)
+	topics := parseQuestionPipelinePlanText(sanitizeQuestionPipelineModelOutput(raw))
 	if len(topics) == 0 {
 		if err != nil {
 			return nil, err
@@ -1172,7 +1837,7 @@ func decodeQuestionPipelineCardsResponse(raw string) (*questionPipelineCardsResp
 		}
 	}
 
-	cards := parseQuestionPipelineCardsText(raw)
+	cards := parseQuestionPipelineCardsText(sanitizeQuestionPipelineModelOutput(raw))
 	if len(cards) == 0 {
 		if err != nil {
 			return nil, err
@@ -1183,6 +1848,48 @@ func decodeQuestionPipelineCardsResponse(raw string) (*questionPipelineCardsResp
 	return &questionPipelineCardsResponse{
 		Cards: cards,
 	}, nil
+}
+
+// sanitizeQuestionPipelineModelOutput 对模型原始输出做统一清洗，减少 think 标签、代码块和格式噪音对解析的干扰。
+func sanitizeQuestionPipelineModelOutput(raw string) string {
+	raw = strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+	raw = stripQuestionPipelineReasoningBlocks(stripQuestionPipelineCodeFence(raw))
+	if raw == "" {
+		return ""
+	}
+
+	lines := strings.Split(raw, "\n")
+	if len(lines) == 0 {
+		return raw
+	}
+
+	firstLine := normalizeQuestionPipelineFieldKey(lines[0])
+	switch firstLine {
+	case "json", "json输出", "outputjson", "resultjson":
+		return strings.TrimSpace(strings.Join(lines[1:], "\n"))
+	default:
+		return strings.TrimSpace(raw)
+	}
+}
+
+// buildQuestionPipelineDebugTrace 统一拼装题库流水线调试文本，优先保留模型原始输出，并在必要时补充模型错误。
+func buildQuestionPipelineDebugTrace(result *AIDebugResponse) string {
+	if result == nil {
+		return ""
+	}
+
+	modelOutput := strings.TrimSpace(result.ModelOutput)
+	modelError := strings.TrimSpace(result.ModelError)
+	switch {
+	case modelOutput != "" && modelError != "":
+		return "[model_output]\n" + modelOutput + "\n\n[model_error]\n" + modelError
+	case modelOutput != "":
+		return modelOutput
+	case modelError != "":
+		return "[model_error]\n" + modelError
+	default:
+		return ""
+	}
 }
 
 // decodeQuestionPipelineJSONValue 解析模型输出中的 JSON 值，兼容对象、数组和代码块包裹。
@@ -1200,23 +1907,46 @@ func decodeQuestionPipelineJSONValue(raw string) (any, error) {
 
 // buildQuestionPipelineJSONCandidates 构造若干候选 JSON 片段，提高模型输出解析成功率。
 func buildQuestionPipelineJSONCandidates(raw string) []string {
-	trimmed := stripQuestionPipelineReasoningBlocks(stripQuestionPipelineCodeFence(raw))
-	candidates := make([]string, 0, 3)
+	trimmed := sanitizeQuestionPipelineModelOutput(raw)
+	candidates := make([]string, 0, 8)
 	for _, candidate := range []string{
 		trimmed,
 		extractQuestionPipelineJSONObject(trimmed),
 		extractQuestionPipelineJSONArray(trimmed),
 	} {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
+		for _, expanded := range expandQuestionPipelineJSONCandidate(candidate) {
+			if !containsQuestionPipelineString(candidates, expanded) {
+				candidates = append(candidates, expanded)
+			}
 		}
-		if !containsQuestionPipelineString(candidates, candidate) {
-			candidates = append(candidates, candidate)
+	}
+
+	for _, candidate := range extractQuestionPipelineBalancedJSONSegments(trimmed) {
+		for _, expanded := range expandQuestionPipelineJSONCandidate(candidate) {
+			if !containsQuestionPipelineString(candidates, expanded) {
+				candidates = append(candidates, expanded)
+			}
 		}
 	}
 
 	return candidates
+}
+
+// expandQuestionPipelineJSONCandidate 展开单个候选 JSON 片段，并尝试处理被字符串包裹的 JSON 内容。
+func expandQuestionPipelineJSONCandidate(candidate string) []string {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return nil
+	}
+
+	values := []string{candidate}
+	if unquoted, err := strconv.Unquote(candidate); err == nil {
+		unquoted = strings.TrimSpace(unquoted)
+		if unquoted != "" && !containsQuestionPipelineString(values, unquoted) {
+			values = append(values, unquoted)
+		}
+	}
+	return values
 }
 
 // stripQuestionPipelineReasoningBlocks 清理模型输出中的 think/reasoning 片段，避免影响后续 JSON 或文本解析。
@@ -1301,6 +2031,68 @@ func extractQuestionPipelineJSONArray(raw string) string {
 	}
 
 	return strings.TrimSpace(raw[start : end+1])
+}
+
+// extractQuestionPipelineBalancedJSONSegments 从混杂文本中提取所有看起来完整闭合的 JSON 片段，并优先保留后出现的结果块。
+func extractQuestionPipelineBalancedJSONSegments(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	segments := make([]string, 0)
+	start := -1
+	depth := 0
+	inString := false
+	escaping := false
+
+	for index, char := range raw {
+		if escaping {
+			escaping = false
+			continue
+		}
+
+		if char == '\\' && inString {
+			escaping = true
+			continue
+		}
+
+		if char == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+
+		switch char {
+		case '{', '[':
+			if depth == 0 {
+				start = index
+			}
+			depth++
+		case '}', ']':
+			if depth == 0 {
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				candidate := strings.TrimSpace(raw[start : index+1])
+				if candidate != "" {
+					segments = append(segments, candidate)
+				}
+				start = -1
+			}
+		}
+	}
+
+	reversed := make([]string, 0, len(segments))
+	for index := len(segments) - 1; index >= 0; index-- {
+		if !containsQuestionPipelineString(reversed, segments[index]) {
+			reversed = append(reversed, segments[index])
+		}
+	}
+	return reversed
 }
 
 // normalizeQuestionPipelineTopics 将任意 JSON 值尽量归一化为考点计划数组。

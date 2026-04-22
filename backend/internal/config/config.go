@@ -183,7 +183,7 @@ func Load(configPath string) (*Config, error) {
 func (c *Config) AIRuntimeDefaults() map[string]string {
 	runtimeConfig := map[string]string{
 		"ai_provider":              firstNonEmpty(c.AI.Provider, "eino"),
-		"ai_fallback_provider":     firstNonEmpty(c.AI.FallbackProvider, "mock"),
+		"ai_fallback_provider":     firstNonEmpty(c.AI.FallbackProvider, ""),
 		"ai_model":                 firstNonEmpty(c.AI.Model, c.Volcengine.Ark.ChatModel),
 		"ai_api_key":               firstNonEmpty(c.AI.APIKey, c.Volcengine.Ark.APIKey),
 		"ai_base_url":              firstNonEmpty(c.AI.BaseURL, c.Volcengine.Ark.BaseURL),

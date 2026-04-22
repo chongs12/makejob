@@ -10,8 +10,8 @@ func TestAIRuntimeDefaultsUsesEinoAsPrimary(t *testing.T) {
 	if got := runtimeConfig["ai_provider"]; got != "eino" {
 		t.Fatalf("expected ai_provider to be %q, got %q", "eino", got)
 	}
-	if got := runtimeConfig["ai_fallback_provider"]; got != "mock" {
-		t.Fatalf("expected ai_fallback_provider to be %q, got %q", "mock", got)
+	if got := runtimeConfig["ai_fallback_provider"]; got != "" {
+		t.Fatalf("expected ai_fallback_provider to be empty, got %q", got)
 	}
 }
 
@@ -19,14 +19,14 @@ func TestAIRuntimeDefaultsUsesEinoAsPrimary(t *testing.T) {
 func TestAIRuntimeDefaultsPrefersExplicitProvider(t *testing.T) {
 	cfg := &Config{
 		AI: AIConfig{
-			Provider:         "mock",
+			Provider:         "azure",
 			FallbackProvider: "eino",
 		},
 	}
 
 	runtimeConfig := cfg.AIRuntimeDefaults()
-	if got := runtimeConfig["ai_provider"]; got != "mock" {
-		t.Fatalf("expected ai_provider to be %q, got %q", "mock", got)
+	if got := runtimeConfig["ai_provider"]; got != "azure" {
+		t.Fatalf("expected ai_provider to be %q, got %q", "azure", got)
 	}
 	if got := runtimeConfig["ai_fallback_provider"]; got != "eino" {
 		t.Fatalf("expected ai_fallback_provider to be %q, got %q", "eino", got)

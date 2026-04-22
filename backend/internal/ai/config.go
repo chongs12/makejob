@@ -29,7 +29,7 @@ var defaultRuntimeConfig = map[string]string{
 	ConfigKeyMaxTokens:        "2048",
 	ConfigKeyTimeoutSeconds:   "30",
 	ConfigKeyEnableStream:     "false",
-	ConfigKeyFallbackProvider: string(ProviderTypeMock),
+	ConfigKeyFallbackProvider: "",
 	ConfigKeyInterviewModel:   "",
 	ConfigKeyPlanModel:        "",
 	ConfigKeyCompanionModel:   "",
@@ -50,6 +50,7 @@ var legacyRuntimeAliases = map[string]string{
 	"quiz_model":      ConfigKeyQuizModel,
 }
 
+// DefaultRuntimeConfig 返回 AI runtime 的默认配置副本，避免调用方误改全局默认值。
 func DefaultRuntimeConfig() map[string]string {
 	result := make(map[string]string, len(defaultRuntimeConfig))
 	for key, value := range defaultRuntimeConfig {
@@ -58,10 +59,12 @@ func DefaultRuntimeConfig() map[string]string {
 	return result
 }
 
+// IsRuntimeConfigKey 判断配置键是否属于 AI runtime 命名空间。
 func IsRuntimeConfigKey(key string) bool {
 	return strings.HasPrefix(key, "ai_")
 }
 
+// NormalizeRuntimeConfig 统一整理 runtime 配置键和值，并补齐默认值。
 func NormalizeRuntimeConfig(raw map[string]string) map[string]string {
 	normalized := DefaultRuntimeConfig()
 
@@ -87,6 +90,7 @@ func NormalizeRuntimeConfig(raw map[string]string) map[string]string {
 	return normalized
 }
 
+// NormalizeProviderType 规范化 Provider 类型名称，无法识别时返回空字符串。
 func NormalizeProviderType(value string) string {
 	switch ProviderType(strings.ToLower(strings.TrimSpace(value))) {
 	case ProviderTypeEino:
@@ -98,6 +102,6 @@ func NormalizeProviderType(value string) string {
 	case ProviderTypeAzure:
 		return string(ProviderTypeAzure)
 	default:
-		return string(ProviderTypeMock)
+		return ""
 	}
 }

@@ -35,5 +35,6 @@ func (s *adminService) DebugAIRuntime(ctx context.Context, req *AIDebugRequest) 
 	}
 
 	s.recordAICallLog(ctx, req, result)
+	s.fillAIDebugResponseModelOutput(ctx, result)
 	return result, nil
 }

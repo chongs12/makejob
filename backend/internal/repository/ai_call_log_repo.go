@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -24,6 +25,7 @@ type AICallLogListParams struct {
 type AICallLogRepository interface {
 	Create(ctx context.Context, log *model.AICallLog) error
 	List(ctx context.Context, params AICallLogListParams) ([]model.AICallLog, int64, error)
+	GetLatestByTraceID(ctx context.Context, traceID string) (*model.AICallLog, error)
 }
 
 // aiCallLogRepository AI 调用日志仓库实现。
@@ -86,4 +88,26 @@ func (r *aiCallLogRepository) List(ctx context.Context, params AICallLogListPara
 	}
 
 	return logs, total, nil
+}
+
+// GetLatestByTraceID 按 trace_id 获取最近一条 AI 调用日志，便于运行时补齐原始输出。
+func (r *aiCallLogRepository) GetLatestByTraceID(ctx context.Context, traceID string) (*model.AICallLog, error) {
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return nil, nil
+	}
+
+	var log model.AICallLog
+	err := r.db.WithContext(ctx).
+		Where("trace_id = ?", traceID).
+		Order("created_at DESC").
+		First(&log).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("按 trace_id 查询 AI 调用日志失败: %w", err)
+	}
+
+	return &log, nil
 }

@@ -119,11 +119,21 @@ func (d *Debugger) Run(ctx context.Context, req DebugRequest) (*DebugResponse, e
 	response.RequestMessages = buildDebugMessages(scene, resolvedPrompt.Prompt, req.UserInput)
 
 	startedAt := time.Now()
-	content, runErr := buildProvider(ctx, sceneConfig).Chat(ctx, response.RequestMessages)
+	provider := buildProvider(ctx, sceneConfig)
+	content, runErr := provider.Chat(ctx, response.RequestMessages)
 	response.LatencyMS = time.Since(startedAt).Milliseconds()
 	response.ModelOutput = strings.TrimSpace(content)
 	if runErr != nil {
 		response.ModelError = runErr.Error()
+	}
+	if traced, ok := provider.(interface{ LastExecutionMeta() providerExecutionMeta }); ok {
+		meta := traced.LastExecutionMeta()
+		if strings.TrimSpace(meta.Provider) != "" {
+			response.Provider = strings.TrimSpace(meta.Provider)
+		}
+		if strings.TrimSpace(meta.Model) != "" {
+			response.Model = strings.TrimSpace(meta.Model)
+		}
 	}
 
 	logFields := []zap.Field{

@@ -9,8 +9,8 @@ func TestDefaultRuntimeConfigPrefersEino(t *testing.T) {
 	if got := config[ConfigKeyProvider]; got != string(ProviderTypeEino) {
 		t.Fatalf("expected default provider to be %q, got %q", ProviderTypeEino, got)
 	}
-	if got := config[ConfigKeyFallbackProvider]; got != string(ProviderTypeMock) {
-		t.Fatalf("expected default fallback provider to be %q, got %q", ProviderTypeMock, got)
+	if got := config[ConfigKeyFallbackProvider]; got != "" {
+		t.Fatalf("expected default fallback provider to be empty, got %q", got)
 	}
 }
 
@@ -21,7 +21,7 @@ func TestNormalizeRuntimeConfigKeepsRealFirstDefaults(t *testing.T) {
 	if got := config[ConfigKeyProvider]; got != string(ProviderTypeEino) {
 		t.Fatalf("expected normalized provider to be %q, got %q", ProviderTypeEino, got)
 	}
-	if got := config[ConfigKeyFallbackProvider]; got != string(ProviderTypeMock) {
-		t.Fatalf("expected normalized fallback provider to be %q, got %q", ProviderTypeMock, got)
+	if got := config[ConfigKeyFallbackProvider]; got != "" {
+		t.Fatalf("expected normalized fallback provider to be empty, got %q", got)
 	}
 }

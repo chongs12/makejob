@@ -1,6 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"makejob-backend/internal/common"
@@ -28,6 +33,50 @@ func (h *AdminHandler) GenerateQuestionPipeline(c *gin.Context) {
 	common.Success(c, result)
 }
 
+// GenerateQuestionPipelineStream 以 SSE 方式逐步推送后台题目流水线生成结果。
+func (h *AdminHandler) GenerateQuestionPipelineStream(c *gin.Context) {
+	var req service.AdminQuestionPipelineGenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.BadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		common.InternalError(c, "当前服务不支持流式响应")
+		return
+	}
+
+	headers := c.Writer.Header()
+	headers.Set("Content-Type", "text/event-stream; charset=utf-8")
+	headers.Set("Cache-Control", "no-cache, no-transform")
+	headers.Set("Connection", "keep-alive")
+	headers.Set("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.WriteHeaderNow()
+	if err := writeQuestionPipelineSSEPrelude(c, flusher); err != nil {
+		return
+	}
+	flusher.Flush()
+
+	writeEvent := func(event service.AdminQuestionPipelineStreamEvent) error {
+		select {
+		case <-c.Request.Context().Done():
+			return c.Request.Context().Err()
+		default:
+		}
+
+		return writeQuestionPipelineSSEEvent(c, flusher, event)
+	}
+
+	if err := h.adminService.GenerateQuestionPipelineStream(c.Request.Context(), &req, writeEvent); err != nil {
+		_ = writeQuestionPipelineSSEEvent(c, flusher, service.AdminQuestionPipelineStreamEvent{
+			Event:   "error",
+			Message: err.Error(),
+		})
+	}
+}
+
 // ImportQuestionPipeline 将后台确认后的候选题卡批量导入题库。
 func (h *AdminHandler) ImportQuestionPipeline(c *gin.Context) {
 	var req service.AdminQuestionPipelineImportRequest
@@ -47,4 +96,27 @@ func (h *AdminHandler) ImportQuestionPipeline(c *gin.Context) {
 	}
 
 	common.Success(c, result)
+}
+
+// writeQuestionPipelineSSEEvent 将题目流水线流式事件编码为标准 SSE 消息并立即刷新输出。
+func writeQuestionPipelineSSEEvent(c *gin.Context, flusher http.Flusher, event service.AdminQuestionPipelineStreamEvent) error {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal sse event failed: %w", err)
+	}
+	if _, err := c.Writer.Write([]byte(fmt.Sprintf("event: %s\ndata: %s\n\n", event.Event, payload))); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+// writeQuestionPipelineSSEPrelude 先写出一段预热注释，尽量降低代理和浏览器对小块 SSE 数据的缓冲概率。
+func writeQuestionPipelineSSEPrelude(c *gin.Context, flusher http.Flusher) error {
+	padding := ":" + strings.Repeat(" ", 2048) + "\n\n"
+	if _, err := c.Writer.Write([]byte(padding)); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
 }

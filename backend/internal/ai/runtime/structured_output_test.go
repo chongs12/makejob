@@ -109,11 +109,6 @@ func TestProviderQuizAnalyzerAnalyzeCodeRepairsInvalidJSON(t *testing.T) {
 	}
 	analyzer := &providerQuizAnalyzer{
 		provider: provider,
-		fallback: &stubQuizAnalyzer{
-			analysis: ai.CodeAnalysis{
-				Feedback: "fallback-analysis",
-			},
-		},
 	}
 
 	result, err := analyzer.AnalyzeCode(context.Background(), "func main() {}", "go", "分析这段代码")
@@ -125,8 +120,5 @@ func TestProviderQuizAnalyzerAnalyzeCodeRepairsInvalidJSON(t *testing.T) {
 	}
 	if result.Feedback != "repaired-analysis" {
 		t.Fatalf("expected repaired analysis, got %q", result.Feedback)
-	}
-	if result.Feedback == "fallback-analysis" {
-		t.Fatalf("expected analyzer not to use fallback result")
 	}
 }

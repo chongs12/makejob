@@ -92,8 +92,8 @@ func TestDebuggerRunUsesCustomTemplate(t *testing.T) {
 		nil,
 		nil,
 		map[string]string{
-			"ai_provider": "mock",
-			"ai_model":    "mock-model",
+			"ai_provider": "eino",
+			"ai_model":    "test-model",
 		},
 	)
 
@@ -145,7 +145,7 @@ func TestDebuggerRunPrefersIndustryPrompt(t *testing.T) {
 		},
 		&fakeIndustryRepo{},
 		map[string]string{
-			"ai_provider": "mock",
+			"ai_provider": "eino",
 		},
 	)
 
@@ -171,8 +171,8 @@ func TestDebuggerRunPrefersIndustryPrompt(t *testing.T) {
 	}
 }
 
-func TestDebuggerRunCanExecuteModel(t *testing.T) {
-	/* 验证调试器可执行一次模型试跑 */
+func TestDebuggerRunRejectsRemovedMockProvider(t *testing.T) {
+	/* 验证调试器在遇到已移除的 mock provider 时会返回明确错误 */
 	debugger := NewDebugger(
 		nil,
 		nil,
@@ -194,10 +194,13 @@ func TestDebuggerRunCanExecuteModel(t *testing.T) {
 	if len(result.RequestMessages) == 0 {
 		t.Fatalf("expected request messages to be built")
 	}
-	if result.ModelOutput == "" {
-		t.Fatalf("expected model output to be returned")
+	if result.ModelOutput != "" {
+		t.Fatalf("expected model output to be empty, got %q", result.ModelOutput)
 	}
-	if result.Provider != "mock" {
-		t.Fatalf("expected provider mock, got %q", result.Provider)
+	if result.ModelError == "" {
+		t.Fatalf("expected model error to be returned")
+	}
+	if result.Provider != "unavailable" {
+		t.Fatalf("expected provider unavailable, got %q", result.Provider)
 	}
 }

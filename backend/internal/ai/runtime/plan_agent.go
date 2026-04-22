@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	"makejob-backend/internal/ai"
-	"makejob-backend/internal/ai/mock"
 	"makejob-backend/internal/model"
 )
 
@@ -18,7 +17,6 @@ import (
 type providerPlanAgent struct {
 	provider ai.AIProvider
 	prompts  *promptResolver
-	fallback ai.PlanAgent
 	logger   *aiCallLogRecorder
 }
 
@@ -65,16 +63,13 @@ func newPlanAgent(provider ai.AIProvider, prompts *promptResolver, logger *aiCal
 		provider: provider,
 		prompts:  prompts,
 		logger:   logger,
-		fallback: mock.NewPlanAgent(mock.NewAIProvider(string(ai.ProviderTypeMock), map[string]string{
-			ai.ConfigKeyModel: "plan-mock",
-		})),
 	}
 }
 
 // GeneratePlan 根据用户画像生成学习计划。
 func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserProfile, industryCode string) (ai.LearningPlan, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.GeneratePlan(ctx, profile, industryCode)
+		return ai.LearningPlan{}, fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -96,13 +91,13 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.GeneratePlan(ctx, profile, industryCode)
+		return ai.LearningPlan{}, err
 	}
 
 	plan, err := normalizeLearningPlan(payload, profile, industryCode)
 	a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
 	if err != nil {
-		return a.fallback.GeneratePlan(ctx, profile, industryCode)
+		return ai.LearningPlan{}, err
 	}
 
 	return plan, nil
@@ -111,7 +106,7 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 // AdjustPlan 根据执行反馈调整学习计划。
 func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, completedTasks []string, performance map[string]float64) (ai.LearningPlan, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.AdjustPlan(ctx, planID, completedTasks, performance)
+		return ai.LearningPlan{}, fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -135,7 +130,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
 		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.AdjustPlan(ctx, planID, completedTasks, performance)
+		return ai.LearningPlan{}, err
 	}
 
 	profile := ai.UserProfile{
@@ -144,7 +139,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 	plan, err := normalizeLearningPlan(payload, profile, "")
 	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
 	if err != nil {
-		return a.fallback.AdjustPlan(ctx, planID, completedTasks, performance)
+		return ai.LearningPlan{}, err
 	}
 
 	return plan, nil
@@ -153,7 +148,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 // GetStudySuggestion 返回简短的学习建议。
 func (a *providerPlanAgent) GetStudySuggestion(ctx context.Context, profile ai.UserProfile) (string, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.GetStudySuggestion(ctx, profile)
+		return "", fmt.Errorf("ai provider is unavailable")
 	}
 
 	traceID := uuid.NewString()
@@ -177,27 +172,22 @@ func (a *providerPlanAgent) GetStudySuggestion(ctx context.Context, profile ai.U
 	response, err := a.provider.Chat(ctx, messages)
 	if err != nil {
 		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
-		return a.fallback.GetStudySuggestion(ctx, profile)
+		return "", err
 	}
 
 	content := strings.TrimSpace(response)
 	if content == "" {
 		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, fmt.Errorf("empty study suggestion response"), startedAt)
-		return a.fallback.GetStudySuggestion(ctx, profile)
+		return "", fmt.Errorf("empty study suggestion response")
 	}
 
 	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, nil, startedAt)
 	return content, nil
 }
 
-// shouldUseFallback 判断当前是否应退回 mock 实现。
+// shouldUseFallback 判断当前是否缺少可用 Provider。
 func (a *providerPlanAgent) shouldUseFallback() bool {
-	if a.provider == nil {
-		return true
-	}
-
-	_, isMock := a.provider.(*mock.MockProvider)
-	return isMock
+	return a.provider == nil
 }
 
 // resolvePromptDetails 解析学习计划场景的 Prompt 明细。

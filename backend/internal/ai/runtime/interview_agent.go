@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"makejob-backend/internal/ai"
-	"makejob-backend/internal/ai/mock"
 	"makejob-backend/internal/model"
 )
 
@@ -20,7 +19,6 @@ import (
 type providerInterviewAgent struct {
 	provider ai.AIProvider
 	prompts  *promptResolver
-	fallback ai.InterviewAgent
 	logger   *aiCallLogRecorder
 	sessions sync.Map
 }
@@ -118,16 +116,13 @@ func newInterviewAgent(provider ai.AIProvider, prompts *promptResolver, logger *
 		provider: provider,
 		prompts:  prompts,
 		logger:   logger,
-		fallback: mock.NewInterviewAgent(mock.NewAIProvider(string(ai.ProviderTypeMock), map[string]string{
-			ai.ConfigKeyModel: "interview-mock",
-		})),
 	}
 }
 
 // StartInterview 开始面试，并生成首题。
 func (a *providerInterviewAgent) StartInterview(ctx context.Context, config ai.InterviewConfig) (string, ai.InterviewQuestion, error) {
 	if a.shouldUseFallback() {
-		return a.fallback.StartInterview(ctx, config)
+		return "", ai.InterviewQuestion{}, fmt.Errorf("ai provider is unavailable")
 	}
 
 	session := &interviewSessionState{
@@ -142,7 +137,7 @@ func (a *providerInterviewAgent) StartInterview(ctx context.Context, config ai.I
 
 	firstQuestion, err := a.generateQuestion(ctx, session, 0)
 	if err != nil {
-		return a.fallback.StartInterview(ctx, config)
+		firstQuestion = buildLocalQuestion(session, 0)
 	}
 
 	session.Questions = append(session.Questions, firstQuestion)
@@ -157,7 +152,7 @@ func (a *providerInterviewAgent) StartInterview(ctx context.Context, config ai.I
 func (a *providerInterviewAgent) EvaluateAnswer(ctx context.Context, sessionID string, questionIndex int, answer string) (ai.AnswerFeedback, error) {
 	session, ok := a.getSession(sessionID)
 	if !ok {
-		return a.fallback.EvaluateAnswer(ctx, sessionID, questionIndex, answer)
+		return ai.AnswerFeedback{}, fmt.Errorf("session not found")
 	}
 
 	if err := validateInterviewSession(session, questionIndex); err != nil {
@@ -178,7 +173,7 @@ func (a *providerInterviewAgent) EvaluateAnswer(ctx context.Context, sessionID s
 func (a *providerInterviewAgent) GetNextQuestion(ctx context.Context, sessionID string) (ai.InterviewQuestion, bool, error) {
 	session, ok := a.getSession(sessionID)
 	if !ok {
-		return a.fallback.GetNextQuestion(ctx, sessionID)
+		return ai.InterviewQuestion{}, false, fmt.Errorf("session not found")
 	}
 
 	if !session.IsActive {
@@ -203,7 +198,7 @@ func (a *providerInterviewAgent) GetNextQuestion(ctx context.Context, sessionID 
 func (a *providerInterviewAgent) GenerateReport(ctx context.Context, sessionID string) (ai.InterviewReport, error) {
 	session, ok := a.getSession(sessionID)
 	if !ok {
-		return a.fallback.GenerateReport(ctx, sessionID)
+		return ai.InterviewReport{}, fmt.Errorf("session not found")
 	}
 
 	report, err := a.generateReport(ctx, session)
@@ -218,7 +213,7 @@ func (a *providerInterviewAgent) GenerateReport(ctx context.Context, sessionID s
 func (a *providerInterviewAgent) EndInterview(ctx context.Context, sessionID string) error {
 	session, ok := a.getSession(sessionID)
 	if !ok {
-		return a.fallback.EndInterview(ctx, sessionID)
+		return fmt.Errorf("session not found")
 	}
 
 	session.IsActive = false
@@ -254,14 +249,9 @@ func (a *providerInterviewAgent) resolveIndustryID(ctx context.Context, industry
 	return a.prompts.lookupIndustryID(ctx, industryCode)
 }
 
-// shouldUseFallback 判断当前是否只能走本地 mock 面试流程。
+// shouldUseFallback 判断当前是否缺少可用 Provider。
 func (a *providerInterviewAgent) shouldUseFallback() bool {
-	if a.provider == nil {
-		return true
-	}
-
-	_, isMock := a.provider.(*mock.MockProvider)
-	return isMock
+	return a.provider == nil
 }
 
 // getSession 获取真实面试会话。

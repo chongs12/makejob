@@ -1,12 +1,14 @@
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { extractErrorMessage, requestJson } from '@makejob/api-client'
+import { buildAuthorizationHeader, extractErrorMessage, getApiBaseUrl, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
+import { flushSync } from 'react-dom'
 import { useAdminAuthStore } from '../../state/auth'
 
 type QuestionType = 'choice' | 'multi' | 'code' | 'subjective'
 type QuestionDifficulty = 'easy' | 'medium' | 'hard'
+type QuestionPipelineGenerationMode = 'planned' | 'direct_single'
 
 interface Industry {
   id: number
@@ -58,6 +60,7 @@ interface QuestionPipelineStats {
 interface QuestionPipelineGenerateResponse {
   industry_code: string
   requirement: string
+  generation_mode: QuestionPipelineGenerationMode
   cards: QuestionPipelineCard[]
   warnings?: string[]
   stats: QuestionPipelineStats
@@ -83,9 +86,21 @@ interface RawQuestionPipelineCard {
 interface RawQuestionPipelineGenerateResponse {
   industry_code?: unknown
   requirement?: unknown
+  generation_mode?: unknown
   cards?: unknown
   warnings?: unknown
   stats?: unknown
+}
+
+interface RawQuestionPipelineStreamEvent {
+  event?: unknown
+  message?: unknown
+  trace_id?: unknown
+  raw_output?: unknown
+  slot_index?: unknown
+  retry_index?: unknown
+  card?: unknown
+  response?: unknown
 }
 
 interface BatchImportResponse {
@@ -99,6 +114,7 @@ interface PipelineFormState {
   industryCode: string
   requirement: string
   agentPrompt: string
+  generationMode: QuestionPipelineGenerationMode
   candidateCount: string
   includeScraped: boolean
   includeGenerated: boolean
@@ -108,6 +124,19 @@ interface PipelineFormState {
 interface EditablePipelineCard extends QuestionPipelineCard {
   selected: boolean
   tagsText: string
+}
+
+interface StreamErrorPayload {
+  message?: unknown
+}
+
+interface PipelineDebugEntry {
+  id: string
+  message: string
+  traceId: string
+  rawOutput: string
+  slotIndex: number
+  retryIndex: number
 }
 
 const QUESTION_TYPE_OPTIONS: Array<{ value: QuestionType; label: string }> = [
@@ -192,6 +221,168 @@ async function generateQuestionPipeline(
 }
 
 /**
+ * 以 SSE 方式读取题目流水线流式事件，让逐张直生模式可以边生成边落屏。
+ */
+async function streamQuestionPipeline(
+  token: string | null,
+  payload: Record<string, unknown>,
+  signal: AbortSignal,
+  callbacks: {
+    onStatus: (message: string) => void
+    onWarning: (warning: PipelineDebugEntry | null, message: string) => void
+    onError: (message: string) => void
+    onCard: (card: QuestionPipelineCard) => void
+    onComplete: (response: QuestionPipelineGenerateResponse) => void
+  },
+): Promise<void> {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, '')
+  const response = await fetch(`${baseUrl}/admin/question-pipeline/generate/stream`, {
+    method: 'POST',
+    headers: {
+      ...buildAuthorizationHeader(token),
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(await buildQuestionPipelineStreamErrorMessage(response))
+  }
+  if (!response.body) {
+    throw new Error('流式生成接口未返回可读取的数据流。')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+
+  const processEventBlock = (block: string): void => {
+    const normalizedBlock = block.trim()
+    if (!normalizedBlock) {
+      return
+    }
+
+    let eventName = ''
+    const dataLines: string[] = []
+    for (const line of normalizedBlock.split(/\r?\n/)) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice('event:'.length).trim()
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).trim())
+      }
+    }
+
+    if (dataLines.length === 0) {
+      return
+    }
+
+    const rawPayload = JSON.parse(dataLines.join('\n')) as RawQuestionPipelineStreamEvent
+    const effectiveEvent = typeof rawPayload.event === 'string' && rawPayload.event.trim()
+      ? rawPayload.event.trim()
+      : eventName
+    const message = typeof rawPayload.message === 'string' ? rawPayload.message.trim() : ''
+    const traceId = typeof rawPayload.trace_id === 'string' ? rawPayload.trace_id.trim() : ''
+    const rawOutput = typeof rawPayload.raw_output === 'string' ? rawPayload.raw_output.trim() : ''
+    const slotIndex = typeof rawPayload.slot_index === 'number' ? rawPayload.slot_index : 0
+    const retryIndex = typeof rawPayload.retry_index === 'number' ? rawPayload.retry_index : 0
+
+    switch (effectiveEvent) {
+      case 'status':
+        if (message) {
+          callbacks.onStatus(message)
+        }
+        return
+      case 'warning':
+        if (message) {
+          callbacks.onWarning(
+            rawOutput || traceId
+              ? {
+                  id: `${traceId || 'warning'}-${slotIndex || 0}-${retryIndex || 0}-${message}`,
+                  message,
+                  traceId,
+                  rawOutput,
+                  slotIndex,
+                  retryIndex,
+                }
+              : null,
+            message,
+          )
+        }
+        return
+      case 'error':
+        if (message) {
+          callbacks.onError(message)
+        }
+        return
+      case 'card':
+        if (rawPayload.card && typeof rawPayload.card === 'object') {
+          callbacks.onCard(normalizeQuestionPipelineCard(rawPayload.card as RawQuestionPipelineCard, 0))
+        }
+        return
+      case 'complete':
+        callbacks.onComplete(
+          normalizeQuestionPipelineGenerateResponse(
+            (rawPayload.response || null) as RawQuestionPipelineGenerateResponse | null,
+          ),
+        )
+        return
+      default:
+        if (message) {
+          callbacks.onStatus(message)
+        }
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+
+    let separatorMatch = buffer.match(/\r?\n\r?\n/)
+    while (separatorMatch && typeof separatorMatch.index === 'number') {
+      const block = buffer.slice(0, separatorMatch.index)
+      buffer = buffer.slice(separatorMatch.index + separatorMatch[0].length)
+      processEventBlock(block)
+      separatorMatch = buffer.match(/\r?\n\r?\n/)
+    }
+
+    if (done) {
+      const remaining = decoder.decode()
+      if (remaining) {
+        buffer += remaining
+      }
+      if (buffer.trim()) {
+        processEventBlock(buffer)
+      }
+      break
+    }
+  }
+}
+
+/**
+ * 解析流式生成接口的失败响应，优先提取后端返回的明确错误消息。
+ */
+async function buildQuestionPipelineStreamErrorMessage(response: Response): Promise<string> {
+  const fallback = `流式生成失败，状态码：${response.status}`
+  const rawText = (await response.text()).trim()
+  if (!rawText) {
+    return fallback
+  }
+
+  try {
+    const payload = JSON.parse(rawText) as StreamErrorPayload
+    if (typeof payload.message === 'string' && payload.message.trim()) {
+      return payload.message.trim()
+    }
+  } catch {
+    // 保持回退文案即可，这里无需额外处理。
+  }
+
+  return rawText
+}
+
+/**
  * 导入当前勾选后的候选题卡到正式题库。
  */
 async function importQuestionPipeline(
@@ -219,6 +410,7 @@ function buildInitialPipelineForm(): PipelineFormState {
     industryCode: '',
     requirement: '',
     agentPrompt: '确保每张题卡考察不同考点，优先生成真正区分度高的问答题，避免模板化和重复表述。',
+    generationMode: 'planned',
     candidateCount: '8',
     includeScraped: true,
     includeGenerated: true,
@@ -235,6 +427,63 @@ function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard
     selected: true,
     tagsText: (card.tags || []).join(', '),
   }))
+}
+
+/**
+ * 将流式到达的新题卡合并进当前列表，避免完成事件重复插入相同卡片。
+ */
+function mergeEditableCards(current: EditablePipelineCard[], incoming: EditablePipelineCard[]): EditablePipelineCard[] {
+  const merged = [...current]
+  for (const card of incoming) {
+    const index = merged.findIndex((item) => item.id === card.id)
+    if (index >= 0) {
+      merged[index] = {
+        ...merged[index],
+        ...card,
+      }
+    } else {
+      merged.push(card)
+    }
+  }
+  return merged
+}
+
+/**
+ * 合并流式调试记录，便于页面展示每次失败调用的 trace_id 与原始输出。
+ */
+function mergePipelineDebugEntries(current: PipelineDebugEntry[], incoming: PipelineDebugEntry): PipelineDebugEntry[] {
+  const index = current.findIndex((item) => item.id === incoming.id)
+  if (index >= 0) {
+    const next = [...current]
+    next[index] = incoming
+    return next
+  }
+  return [...current, incoming]
+}
+
+/**
+ * 按后端最终返回顺序重建题卡列表，同时保留用户已修改过的勾选与编辑内容。
+ */
+function reconcileEditableCards(current: EditablePipelineCard[], incoming: EditablePipelineCard[]): EditablePipelineCard[] {
+  return incoming.map((card) => {
+    const existing = current.find((item) => item.id === card.id)
+    if (!existing) {
+      return card
+    }
+
+    return {
+      ...card,
+      selected: existing.selected,
+      title: existing.title,
+      content: existing.content,
+      type: existing.type,
+      difficulty: existing.difficulty,
+      category: existing.category,
+      answer: existing.answer,
+      explanation: existing.explanation,
+      tagsText: existing.tagsText,
+    }
+  })
 }
 
 /**
@@ -269,6 +518,13 @@ function normalizeQuestionDifficulty(value: unknown): QuestionDifficulty {
     return value
   }
   return 'medium'
+}
+
+/**
+ * 规范化题目流水线生成模式，避免接口返回未知值导致页面状态不一致。
+ */
+function normalizeQuestionPipelineGenerationMode(value: unknown): QuestionPipelineGenerationMode {
+  return value === 'direct_single' ? 'direct_single' : 'planned'
 }
 
 /**
@@ -322,6 +578,7 @@ function normalizeQuestionPipelineGenerateResponse(
   return {
     industry_code: typeof payload.industry_code === 'string' ? payload.industry_code.trim() : '',
     requirement: typeof payload.requirement === 'string' ? payload.requirement.trim() : '',
+    generation_mode: normalizeQuestionPipelineGenerationMode(payload.generation_mode),
     cards,
     warnings: normalizeStringList(payload.warnings),
     stats: {
@@ -333,6 +590,13 @@ function normalizeQuestionPipelineGenerateResponse(
       selected_sources: typeof rawStats.selected_sources === 'number' ? rawStats.selected_sources : 0,
     },
   }
+}
+
+/**
+ * 为题目流水线生成模式返回简洁中文文案，方便页面提示当前链路。
+ */
+function questionPipelineGenerationModeLabel(mode: QuestionPipelineGenerationMode): string {
+  return mode === 'direct_single' ? '逐张直生' : '两阶段规划'
 }
 
 /**
@@ -387,11 +651,16 @@ function buildPipelineFormError(form: PipelineFormState): string {
 export function QuestionPipelinePage() {
   const token = useAdminAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const freshCardTimerRef = useRef<Record<string, number>>({})
   const [form, setForm] = useState<PipelineFormState>(() => buildInitialPipelineForm())
   const [cards, setCards] = useState<EditablePipelineCard[]>([])
+  const [freshCardIds, setFreshCardIds] = useState<string[]>([])
+  const [debugEntries, setDebugEntries] = useState<PipelineDebugEntry[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [stats, setStats] = useState<QuestionPipelineStats | null>(null)
   const [message, setMessage] = useState('填写岗位要求后即可生成候选题卡。')
+  const [isStreaming, setIsStreaming] = useState(false)
 
   const industriesQuery = useQuery({
     queryKey: ['admin-industries'],
@@ -436,6 +705,11 @@ export function QuestionPipelinePage() {
     }))
   }, [form.industryCode, industriesQuery.data])
 
+  useEffect(() => () => {
+    streamAbortRef.current?.abort()
+    Object.values(freshCardTimerRef.current).forEach((timer) => window.clearTimeout(timer))
+  }, [])
+
   const categoryOptions = useMemo(
     () => filterCategoriesByIndustry(categoriesQuery.data || [], industriesQuery.data || [], form.industryCode),
     [categoriesQuery.data, industriesQuery.data, form.industryCode],
@@ -450,6 +724,7 @@ export function QuestionPipelinePage() {
         industry_code: form.industryCode,
         requirement: form.requirement.trim(),
         agent_prompt: form.agentPrompt.trim(),
+        generation_mode: form.generationMode,
         candidate_count: Number(form.candidateCount) || 8,
         include_scraped: form.includeScraped,
         include_generated: form.includeGenerated,
@@ -457,9 +732,10 @@ export function QuestionPipelinePage() {
       }),
     onSuccess: (result) => {
       setCards(buildEditableCards(result.cards))
+      setDebugEntries([])
       setWarnings(result.warnings || [])
       setStats(result.stats)
-      setMessage(`已生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+      setMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
     },
     onError: (error) => {
       setMessage(extractErrorMessage(error, '生成题目流水线失败'))
@@ -497,11 +773,125 @@ export function QuestionPipelinePage() {
   })
 
   /**
+   * 为刚到达的流式题卡添加短暂高亮，强化逐张落屏的视觉反馈。
+   */
+  function markFreshCard(cardId: string): void {
+    if (!cardId) {
+      return
+    }
+
+    const currentTimer = freshCardTimerRef.current[cardId]
+    if (currentTimer) {
+      window.clearTimeout(currentTimer)
+    }
+
+    setFreshCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]))
+    freshCardTimerRef.current[cardId] = window.setTimeout(() => {
+      setFreshCardIds((current) => current.filter((item) => item !== cardId))
+      delete freshCardTimerRef.current[cardId]
+    }, 1600)
+  }
+
+  /**
+   * 取消当前流式生成请求，避免继续占用模型调用与页面状态。
+   */
+  function handleCancelStream(): void {
+    streamAbortRef.current?.abort()
+    setIsStreaming(false)
+    setMessage('已取消本次流式生成。')
+  }
+
+  /**
    * 提交流水线生成表单，请求后台返回候选题卡。
    */
   function handleGenerate(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    if (form.generationMode === 'direct_single' && form.includeGenerated) {
+      const controller = new AbortController()
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = controller
+      Object.values(freshCardTimerRef.current).forEach((timer) => window.clearTimeout(timer))
+      freshCardTimerRef.current = {}
+      setCards([])
+      setFreshCardIds([])
+      setDebugEntries([])
+      setWarnings([])
+      setStats({
+        searched_count: 0,
+        fetched_count: 0,
+        scraped_count: 0,
+        generated_count: 0,
+        candidate_count: 0,
+        selected_sources: 0,
+      })
+      setMessage('正在建立流式生成连接。')
+      setIsStreaming(true)
+
+      void streamQuestionPipeline(
+        token,
+        {
+          industry_code: form.industryCode,
+          requirement: form.requirement.trim(),
+          agent_prompt: form.agentPrompt.trim(),
+          generation_mode: form.generationMode,
+          candidate_count: Number(form.candidateCount) || 8,
+          include_scraped: form.includeScraped,
+          include_generated: form.includeGenerated,
+          sources: form.includeScraped ? form.sources : [],
+        },
+        controller.signal,
+        {
+          onStatus: (nextMessage) => {
+            setMessage(nextMessage)
+          },
+          onWarning: (debugEntry, warning) => {
+            setWarnings((current) => (current.includes(warning) ? current : [...current, warning]))
+            if (debugEntry) {
+              setDebugEntries((current) => mergePipelineDebugEntries(current, debugEntry))
+            }
+          },
+          onError: (errorMessage) => {
+            setMessage(errorMessage)
+          },
+          onCard: (card) => {
+            flushSync(() => {
+              setCards((current) => mergeEditableCards(current, buildEditableCards([card])))
+              setStats((current) => ({
+                searched_count: current?.searched_count || 0,
+                fetched_count: current?.fetched_count || 0,
+                scraped_count: current?.scraped_count || 0,
+                generated_count: (current?.generated_count || 0) + 1,
+                candidate_count: current?.candidate_count || 0,
+                selected_sources: current?.selected_sources || 0,
+              }))
+            })
+            markFreshCard(card.id)
+          },
+          onComplete: (result) => {
+            setCards((current) => reconcileEditableCards(current, buildEditableCards(result.cards)))
+            setWarnings((current) => Array.from(new Set([...current, ...(result.warnings || [])])))
+            setStats(result.stats)
+            setMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+          },
+        },
+      )
+        .catch((error) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          setMessage(extractErrorMessage(error, '流式生成题目流水线失败'))
+        })
+        .finally(() => {
+          if (streamAbortRef.current === controller) {
+            streamAbortRef.current = null
+          }
+          setIsStreaming(false)
+        })
+      return
+    }
+
     setMessage('正在生成候选题卡。')
+    setDebugEntries([])
     setWarnings([])
     generateMutation.mutate()
   }
@@ -577,19 +967,19 @@ export function QuestionPipelinePage() {
   }
 
   return (
-    <section className="admin-panel admin-question-pipeline-page">
+    <section className={`admin-panel admin-question-pipeline-page ${isStreaming ? 'admin-question-pipeline-page--streaming' : ''}`}>
       <div className="admin-question-pipeline-page__hero">
         <div>
           <span className="admin-tag">题目流水线</span>
           <h2>大模型题库流水线</h2>
           <p className="admin-copy">
-            输入岗位要求和智能体命令后，系统会先拆解考点，再按考点生成结构化候选题卡。你可以在导入前逐张调整题目、答案和分类。
+            输入岗位要求和智能体命令后，你可以切换“两阶段规划”或“逐张直生”两种模式。前者先拆解考点再批量生成，后者按单卡循环生成，便于对比稳定性与指令遵循效果。
           </p>
         </div>
         <div className="admin-question-pipeline-page__summary">
           <strong>{cards.length}</strong>
           <span>候选题卡</span>
-          <small>已勾选 {selectedCount} 张</small>
+          <small>{isStreaming ? '逐张落屏中' : `已勾选 ${selectedCount} 张`}</small>
         </div>
       </div>
 
@@ -620,6 +1010,22 @@ export function QuestionPipelinePage() {
               <option value="8">8 张</option>
               <option value="12">12 张</option>
               <option value="16">16 张</option>
+            </select>
+          </label>
+
+          <label className="admin-field">
+            <span>生成模式</span>
+            <select
+              value={form.generationMode}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  generationMode: normalizeQuestionPipelineGenerationMode(event.target.value),
+                }))
+              }
+            >
+              <option value="planned">两阶段规划</option>
+              <option value="direct_single">逐张直生</option>
             </select>
           </label>
         </div>
@@ -683,9 +1089,29 @@ export function QuestionPipelinePage() {
             <strong>流水线状态</strong>
             <span>{formError || message}</span>
           </div>
-          <button className="admin-link" type="submit" disabled={Boolean(formError) || generateMutation.isPending}>
-            {generateMutation.isPending ? '生成中...' : '生成候选题卡'}
-          </button>
+          <div className="admin-question-pipeline-composer__status-actions">
+            {isStreaming ? (
+              <span className="admin-question-pipeline-progress">
+                <i className="admin-question-pipeline-progress__dot" />
+                正在逐张生成
+              </span>
+            ) : null}
+            <button
+              className="admin-link"
+              type="button"
+              onClick={handleCancelStream}
+              disabled={!isStreaming}
+            >
+              停止生成
+            </button>
+            <button
+              className="admin-link"
+              type="submit"
+              disabled={Boolean(formError) || generateMutation.isPending || isStreaming}
+            >
+              {generateMutation.isPending || isStreaming ? '生成中...' : '生成候选题卡'}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -714,6 +1140,27 @@ export function QuestionPipelinePage() {
         <div className="admin-question-pipeline-warnings">
           {warnings.map((warning) => (
             <p key={warning}>{warning}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {debugEntries.length > 0 ? (
+        <div className="admin-question-pipeline-debug">
+          <div className="admin-question-pipeline-debug__head">
+            <strong>原始输出调试</strong>
+            <span>共记录 {debugEntries.length} 次失败调用，可直接查看模型原始输出。</span>
+          </div>
+          {debugEntries.map((entry) => (
+            <details key={entry.id} className="admin-question-pipeline-debug__item">
+              <summary>
+                {entry.slotIndex > 0 ? `第 ${entry.slotIndex} 张` : '未定位卡位'}
+                {entry.retryIndex > 0 ? ` · 第 ${entry.retryIndex} 次尝试` : ''}
+                {entry.traceId ? ` · trace_id: ${entry.traceId}` : ''}
+              </summary>
+              <p>{entry.message}</p>
+              {entry.traceId ? <p>你也可以去 AI 调用日志页按 trace_id 检索这次调用。</p> : null}
+              <pre>{entry.rawOutput || '当前事件未携带原始输出。'}</pre>
+            </details>
           ))}
         </div>
       ) : null}
@@ -747,7 +1194,7 @@ export function QuestionPipelinePage() {
           {cards.map((card) => (
             <article
               key={card.id}
-              className={`admin-question-pipeline-card ${card.selected ? 'admin-question-pipeline-card--active' : ''}`}
+              className={`admin-question-pipeline-card ${card.selected ? 'admin-question-pipeline-card--active' : ''} ${freshCardIds.includes(card.id) ? 'admin-question-pipeline-card--fresh' : ''}`}
             >
               <div className="admin-question-pipeline-card__head">
                 <label className="admin-question-pipeline-card__checkbox">

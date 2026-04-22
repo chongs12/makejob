@@ -821,7 +821,7 @@ func seedAdminConfigs(db *gorm.DB) error {
 	configs := []AdminConfig{
 		{
 			ConfigKey:   "ai_provider",
-			ConfigValue: "mock",
+			ConfigValue: "eino",
 			ConfigType:  ConfigTypeString,
 			Description: "AI runtime provider",
 		},
@@ -851,7 +851,7 @@ func seedAdminConfigs(db *gorm.DB) error {
 		},
 		{
 			ConfigKey:   "ai_fallback_provider",
-			ConfigValue: "mock",
+			ConfigValue: "",
 			ConfigType:  ConfigTypeString,
 			Description: "Fallback provider when primary provider fails",
 		},
