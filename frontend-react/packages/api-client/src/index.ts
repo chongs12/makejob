@@ -6,6 +6,8 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
+export const AUTH_EXPIRED_EVENT_NAME = 'makejob:web-auth-expired'
+
 /**
  * 读取当前运行环境中的 API 根地址，默认回退到本地代理入口。
  */
@@ -40,6 +42,17 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback
+}
+
+/**
+ * 在浏览器环境广播登录态失效事件，供前端应用统一清理会话并执行跳转。
+ */
+function dispatchAuthExpiredEvent(): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+    return
+  }
+
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT_NAME))
 }
 
 /**
@@ -90,10 +103,33 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     body,
     signal: options.signal,
   })
+  let authExpiredNotified = false
+
+  /**
+   * 确保单次请求里最多广播一次登录态失效事件，避免重复触发前端清理逻辑。
+   */
+  function notifyAuthExpiredOnce(): void {
+    if (authExpiredNotified) {
+      return
+    }
+
+    authExpiredNotified = true
+    dispatchAuthExpiredEvent()
+  }
+
+  if (response.status === 401) {
+    notifyAuthExpiredOnce()
+  }
 
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
-    return (await response.json()) as T
+    const payload = (await response.json()) as T
+    const envelope = payload as { code?: unknown } | null
+    if (envelope && Number(envelope.code) === 401) {
+      notifyAuthExpiredOnce()
+    }
+
+    return payload
   }
 
   throw new Error(`接口未返回 JSON，状态码：${response.status}`)

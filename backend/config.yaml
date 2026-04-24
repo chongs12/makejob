@@ -41,6 +41,27 @@ ai:
   companion_model: ""
   quiz_model: ""
 
+minimax:
+  group_id: "2045005272065249730"               # 必填，按 MiniMax 控制台中的 GroupId 配置
+  api_key: "sk-cp-2lV8WHkir8LNFEzkVEZIOfhdjr90rngNZu_nioVJk2Dr0SlfngE_r0SXuPxsDl31C5O--OpHYqfLdQnCU4OBaprWRofhtTxDxqHNtk0ZrCdEQke6412mUuU"                # 可复用与你当前大模型一致的 MiniMax API Key
+  base_url: "https://api.minimaxi.com/v1"               # 当前可留空，TTS 会默认走官方接口
+  tts:
+    enabled: false
+    base_url: "https://api.minimaxi.com/v1/t2a_v2"
+    model: "speech-02-hd"
+    voice_id: "female-tianmei-jingpin"
+    emotion: "neutral"
+    format: "mp3"
+    sample_rate: 32000
+    bitrate: 128000
+    channel: 1
+    speed: 1.0
+    volume: 1.0
+    pitch: 0
+    subtitle_enable: false
+    output_format: "hex"
+    timeout_seconds: 45
+
 volcengine:
   region: "cn-beijing"
   access_key: ""
@@ -65,13 +86,14 @@ volcengine:
     sample_rate: 16000
     language: "zh-CN"
   tts:
-    enabled: false
-    base_url: ""
-    app_id: ""
-    access_token: ""
+    enabled: true
+    base_url: "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+    api_key: "cb261532-200d-4b1c-bfbd-74491865d0a9"       # 新版豆包语音控制台使用单独 API Key 时填这里
+    app_id: ""         # 豆包语音控制台的 AppID
+    access_token: ""   # 豆包语音控制台的 API Key / Access Key
     cluster: ""
-    resource_id: ""
-    voice_type: ""
+    resource_id: "seed-tts-2.0"
+    voice_type: "zh_female_vv_uranus_bigtts"
     encoding: "mp3"
     speed_ratio: 100
     volume_ratio: 100

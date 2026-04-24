@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -37,22 +38,12 @@ type JWTClaims struct {
 // 验证Authorization头中的Bearer Token，并将用户信息存入上下文
 func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			common.Unauthorized(c, "缺少Authorization请求头")
+		tokenString, err := extractAuthToken(c.Request)
+		if err != nil {
+			common.Unauthorized(c, err.Error())
 			c.Abort()
 			return
 		}
-
-		// 提取Bearer Token
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			common.Unauthorized(c, "Authorization格式错误，应为Bearer {token}")
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 		claims, err := ParseToken(tokenString)
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
@@ -162,19 +153,11 @@ func GetUsername(c *gin.Context) (string, bool) {
 // 验证Token但不强制要求，用于需要获取用户信息但允许匿名访问的接口
 func OptionalAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		tokenString, err := extractAuthToken(c.Request)
+		if err != nil || tokenString == "" {
 			c.Next()
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			c.Next()
-			return
-		}
-
-		tokenString := parts[1]
 		claims, err := ParseToken(tokenString)
 		if err == nil {
 			c.Set(string(ContextKeyUserID), claims.UserID)
@@ -184,4 +167,34 @@ func OptionalAuth() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// extractAuthToken 提取请求中的访问令牌，并兼容 WebSocket 查询参数透传。
+func extractAuthToken(r *http.Request) (string, error) {
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			return "", errors.New("Authorization格式错误，应为Bearer {token}")
+		}
+		if strings.TrimSpace(parts[1]) == "" {
+			return "", errors.New("Authorization格式错误，应为Bearer {token}")
+		}
+		return strings.TrimSpace(parts[1]), nil
+	}
+
+	if isWebSocketUpgradeRequest(r) {
+		for _, key := range []string{"token", "access_token"} {
+			if token := strings.TrimSpace(r.URL.Query().Get(key)); token != "" {
+				return token, nil
+			}
+		}
+	}
+
+	return "", errors.New("缺少Authorization请求头")
+}
+
+// isWebSocketUpgradeRequest 判断当前请求是否为 WebSocket 升级请求。
+func isWebSocketUpgradeRequest(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket")
 }

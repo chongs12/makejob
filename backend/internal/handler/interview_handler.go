@@ -3,16 +3,24 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"makejob-backend/internal/ai"
+	"makejob-backend/internal/asr"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/middleware"
 	"makejob-backend/internal/service"
+	"makejob-backend/internal/tts"
 	applogger "makejob-backend/pkg/logger"
 
 	"go.uber.org/zap"
@@ -21,12 +29,16 @@ import (
 // InterviewHandler 面试处理器
 type InterviewHandler struct {
 	interviewService service.InterviewService
+	ttsProvider      tts.TTSProvider
+	asrProvider      asr.ASRProvider
 }
 
 // NewInterviewHandler 创建面试处理器实例
-func NewInterviewHandler(svc service.InterviewService) *InterviewHandler {
+func NewInterviewHandler(svc service.InterviewService, ttsProvider tts.TTSProvider, asrProvider asr.ASRProvider) *InterviewHandler {
 	return &InterviewHandler{
 		interviewService: svc,
+		ttsProvider:      ttsProvider,
+		asrProvider:      asrProvider,
 	}
 }
 
@@ -156,7 +168,7 @@ func (h *InterviewHandler) GetInterview(c *gin.Context) {
 
 // SubmitAnswer 提交回答
 // @Summary 提交面试回答
-// @Description 提交当前题目的回答并获取AI评估
+// @Description 提交当前题目的回答，并由系统直接推进到下一题
 // @Tags 面试
 // @Accept json
 // @Produce json
@@ -309,39 +321,120 @@ func (h *InterviewHandler) GetReport(c *gin.Context) {
 	common.Success(c, resp)
 }
 
-// WebSocket消息类型定义
+// WebSocket消息类型定义。
 type WSMessageType string
 
 const (
-	WSMessageTypeUserAnswer WSMessageType = "user_answer"
-	WSMessageTypeAIQuestion WSMessageType = "ai_question"
-	WSMessageTypeAIFeedback WSMessageType = "ai_feedback"
-	WSMessageTypeError      WSMessageType = "error"
-	WSMessageTypeConnected  WSMessageType = "connected"
-	WSMessageTypeFinished   WSMessageType = "finished"
+	WSMessageTypeConnected        WSMessageType = "connected"
+	WSMessageTypeSessionReady     WSMessageType = "session_ready"
+	WSMessageTypeInterviewState   WSMessageType = "interview_state"
+	WSMessageTypeUserAnswer       WSMessageType = "user_answer"
+	WSMessageTypeAIQuestion       WSMessageType = "ai_question"
+	WSMessageTypeASRPartial       WSMessageType = "asr_partial"
+	WSMessageTypeASRFinal         WSMessageType = "asr_final"
+	WSMessageTypeTTSAudio         WSMessageType = "tts_audio"
+	WSMessageTypeLive2DExpression WSMessageType = "live2d_expression"
+	WSMessageTypeAudioStart       WSMessageType = "audio_start"
+	WSMessageTypeAudioChunk       WSMessageType = "audio_chunk"
+	WSMessageTypeAudioEnd         WSMessageType = "audio_end"
+	WSMessageTypePing             WSMessageType = "ping"
+	WSMessageTypeError            WSMessageType = "error"
+	WSMessageTypeFinished         WSMessageType = "finished"
 )
 
-// WebSocket消息结构
+// WSMessage 描述服务端推送给前端的统一 WebSocket 事件。
 type WSMessage struct {
-	Type      WSMessageType `json:"type"`
-	Content   string        `json:"content,omitempty"`
-	Data      interface{}   `json:"data,omitempty"`
-	Timestamp int64         `json:"timestamp"`
+	Type        WSMessageType `json:"type"`
+	Content     string        `json:"content,omitempty"`
+	Data        interface{}   `json:"data,omitempty"`
+	Timestamp   int64         `json:"timestamp"`
+	TraceID     string        `json:"trace_id,omitempty"`
+	InterviewID uint          `json:"interview_id,omitempty"`
 }
 
-// WebSocket upgrader配置
+// wsClientMessage 描述前端发给后端的 WebSocket 事件。
+type wsClientMessage struct {
+	Type    WSMessageType    `json:"type"`
+	Content string           `json:"content,omitempty"`
+	Data    *json.RawMessage `json:"data,omitempty"`
+}
+
+// wsInterviewStatePayload 描述当前会话阶段状态。
+type wsInterviewStatePayload struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+// wsAudioStartPayload 描述一轮语音识别的启动参数。
+type wsAudioStartPayload struct {
+	Language string `json:"language"`
+	Engine   string `json:"engine,omitempty"`
+}
+
+// wsAudioChunkPayload 描述浏览器上传的一段 PCM 音频。
+type wsAudioChunkPayload struct {
+	AudioBase64 string `json:"audio_base64"`
+}
+
+// wsASRPayload 描述流式语音识别文本片段。
+type wsASRPayload struct {
+	Text       string  `json:"text"`
+	IsFinal    bool    `json:"is_final"`
+	Confidence float64 `json:"confidence"`
+}
+
+// wsQuestionPayload 描述当前题目和题号。
+type wsQuestionPayload struct {
+	Question   string `json:"question"`
+	QuestionNo int    `json:"question_no"`
+	Type       string `json:"type"`
+	Hints      string `json:"hints,omitempty"`
+}
+
+// wsTTSAudioPayload 描述面试官当前播报文本对应的语音资源。
+type wsTTSAudioPayload struct {
+	Kind       string  `json:"kind"`
+	Text       string  `json:"text"`
+	AudioURL   string  `json:"audio_url"`
+	Duration   float64 `json:"duration"`
+	Format     string  `json:"format"`
+	SampleRate int     `json:"sample_rate"`
+}
+
+// wsLive2DExpressionPayload 描述前端应切换到的表情状态。
+type wsLive2DExpressionPayload struct {
+	Emotion string `json:"emotion"`
+	Action  string `json:"action"`
+	Source  string `json:"source"`
+}
+
+// wsInterviewSession 管理单个面试连接的实时状态与写入串行化。
+type wsInterviewSession struct {
+	handler          *InterviewHandler
+	conn             *websocket.Conn
+	userID           uint
+	interviewID      uint
+	traceID          string
+	writeMu          sync.Mutex
+	asrMu            sync.Mutex
+	asrStream        asr.StreamSession
+	asrLanguage      string
+	asrEngine        string
+	latestTranscript string
+}
+
+// WebSocket upgrader配置。
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// 允许所有来源，生产环境应该根据配置限制
 		return true
 	},
 }
 
-// WebSocket WebSocket实时消息流
+// WebSocket 提供实时面试通信链路，并补齐题目、语音和表情事件。
 // @Summary WebSocket实时面试通信
-// @Description 用于面试过程中的实时消息推送，支持发送答案和接收AI回复
+// @Description 用于面试过程中的实时消息推送，支持发送答案、语音片段和接收AI回复
 // @Tags 面试
 // @Security Bearer
 // @Param id path int true "面试ID"
@@ -365,98 +458,427 @@ func (h *InterviewHandler) WebSocket(c *gin.Context) {
 		return
 	}
 
-	// 升级HTTP连接为WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		applogger.Error("WebSocket升级失败", zap.Error(err))
 		return
 	}
-	defer conn.Close()
+	applogger.Info("interview websocket connected",
+		zap.Uint("user_id", userID),
+		zap.Uint64("interview_id", interviewID),
+	)
 
-	// 发送连接成功消息
-	sendWSMessage(conn, WSMessage{
-		Type:      WSMessageTypeConnected,
-		Content:   "连接成功",
-		Timestamp: time.Now().Unix(),
+	session := &wsInterviewSession{
+		handler:     h,
+		conn:        conn,
+		userID:      userID,
+		interviewID: uint(interviewID),
+		traceID:     uuid.NewString(),
+		asrLanguage: "zh-CN",
+	}
+	defer session.close()
+
+	session.send(WSMessage{
+		Type:    WSMessageTypeConnected,
+		Content: "实时面试连接已建立",
 	})
+	session.sendState("ready", "面试会话已连接，正在恢复当前题目。")
 
-	// 主循环处理消息
+	session.bootstrap()
+
 	for {
-		var msg WSMessage
-		err := conn.ReadJSON(&msg)
-		if err != nil {
+		var msg wsClientMessage
+		if err := conn.ReadJSON(&msg); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				applogger.Error("WebSocket读取错误", zap.Error(err))
+				applogger.Error("WebSocket读取错误", zap.Error(err), zap.String("trace_id", session.traceID))
 			}
-			break
+			return
 		}
 
 		switch msg.Type {
 		case WSMessageTypeUserAnswer:
-			// 处理用户答案
-			h.handleUserAnswer(conn, userID, uint(interviewID), msg.Content)
+			session.handleUserAnswer(strings.TrimSpace(msg.Content))
+		case WSMessageTypeAudioStart:
+			session.handleAudioStart(msg.Data)
+		case WSMessageTypeAudioChunk:
+			session.handleAudioChunk(msg.Data)
+		case WSMessageTypeAudioEnd:
+			session.handleAudioEnd()
+		case WSMessageTypePing:
+			session.sendState("ready", "心跳已收到，实时链路保持活跃。")
 		default:
-			sendWSMessage(conn, WSMessage{
-				Type:      WSMessageTypeError,
-				Content:   "未知的消息类型: " + string(msg.Type),
-				Timestamp: time.Now().Unix(),
-			})
+			session.sendError("未知的消息类型: " + string(msg.Type))
 		}
 	}
 }
 
-// handleUserAnswer 处理用户通过WebSocket发送的答案
-func (h *InterviewHandler) handleUserAnswer(conn *websocket.Conn, userID, interviewID uint, answer string) {
-	req := service.InterviewAnswerRequest{
-		Answer: answer,
+// bootstrap 恢复会话当前状态，并补发未完成题目和初始表情。
+func (s *wsInterviewSession) bootstrap() {
+	detail, err := s.handler.interviewService.GetInterview(context.Background(), s.userID, s.interviewID)
+	if err != nil {
+		s.sendError("恢复面试详情失败: " + err.Error())
+		return
 	}
 
-	resp, err := h.interviewService.SubmitAnswer(context.Background(), userID, interviewID, &req)
+	s.send(WSMessage{
+		Type: WSMessageTypeSessionReady,
+		Data: wsInterviewStatePayload{
+			Status:  detail.Status,
+			Message: "当前面试实时链路已就绪。",
+		},
+	})
+	s.sendExpression("neutral", "idle", "bootstrap")
+
+	question, questionNo, ok := resolveCurrentInterviewQuestion(detail)
+	if !ok {
+		if detail.Status == "completed" {
+			s.sendState("finished", "本场面试已结束，可直接查看报告。")
+			s.send(WSMessage{
+				Type:    WSMessageTypeFinished,
+				Content: "面试已完成",
+			})
+			return
+		}
+		s.sendState("ready", "当前没有待回答题目，可继续作答或结束面试。")
+		return
+	}
+
+	s.sendQuestion(question, questionNo)
+}
+
+// handleUserAnswer 处理用户提交的文本答案，并在成功后直接推进下一题。
+func (s *wsInterviewSession) handleUserAnswer(answer string) {
+	if answer == "" {
+		s.sendError("回答内容不能为空")
+		return
+	}
+
+	s.closeASRSession()
+	s.sendState("thinking", "AI 正在整理你的回答并准备下一题。")
+
+	resp, err := s.handler.interviewService.SubmitAnswer(context.Background(), s.userID, s.interviewID, &service.InterviewAnswerRequest{
+		Answer: answer,
+	})
 	if err != nil {
-		sendWSMessage(conn, WSMessage{
-			Type:      WSMessageTypeError,
-			Content:   err.Error(),
-			Timestamp: time.Now().Unix(),
+		s.sendError(err.Error())
+		return
+	}
+
+	if resp.NextQuestion != nil {
+		s.sendQuestion(*resp.NextQuestion, 0)
+	}
+
+	if resp.IsFinished {
+		s.sendState("finished", "本场面试已完成，可以生成最终报告。")
+		s.sendExpression("neutral", "idle", "finished")
+		s.send(WSMessage{
+			Type:    WSMessageTypeFinished,
+			Content: "面试已完成",
 		})
 		return
 	}
 
-	// 发送AI反馈
-	sendWSMessage(conn, WSMessage{
-		Type:      WSMessageTypeAIFeedback,
-		Content:   resp.Feedback.Feedback,
-		Data:      resp.Feedback,
-		Timestamp: time.Now().Unix(),
-	})
+	s.sendState("ready", "下一题已准备好，可继续作答。")
+}
 
-	// 如果有下一题，发送下一题
-	if resp.NextQuestion != nil {
-		sendWSMessage(conn, WSMessage{
-			Type:      WSMessageTypeAIQuestion,
-			Content:   resp.NextQuestion.Question,
-			Data:      resp.NextQuestion,
-			Timestamp: time.Now().Unix(),
-		})
+// handleAudioStart 启动一轮流式语音识别，并把文本片段持续推送给前端。
+func (s *wsInterviewSession) handleAudioStart(rawData *json.RawMessage) {
+	if s.handler.asrProvider == nil {
+		s.sendError("ASR 服务未配置，当前无法使用语音识别。")
+		return
 	}
 
-	// 如果面试结束，发送结束消息
-	if resp.IsFinished {
-		sendWSMessage(conn, WSMessage{
-			Type:      WSMessageTypeFinished,
-			Content:   "面试已完成",
-			Timestamp: time.Now().Unix(),
+	payload := wsAudioStartPayload{
+		Language: "zh-CN",
+	}
+	if rawData != nil && len(*rawData) > 0 {
+		if err := json.Unmarshal(*rawData, &payload); err != nil {
+			s.sendError("语音识别启动参数错误: " + err.Error())
+			return
+		}
+	}
+	if strings.TrimSpace(payload.Language) == "" {
+		payload.Language = "zh-CN"
+	}
+
+	s.closeASRSession()
+
+	stream, err := s.handler.asrProvider.StartStream(context.Background(), strings.TrimSpace(payload.Engine), strings.TrimSpace(payload.Language))
+	if err != nil {
+		s.sendError("启动语音识别失败: " + err.Error())
+		return
+	}
+
+	s.asrMu.Lock()
+	s.asrStream = stream
+	s.asrLanguage = payload.Language
+	s.asrEngine = payload.Engine
+	s.latestTranscript = ""
+	s.asrMu.Unlock()
+
+	s.sendState("listening", "正在实时识别你的回答，请继续说。")
+	go s.consumeASRResults(stream)
+}
+
+// handleAudioChunk 接收并转发浏览器上传的 PCM 音频块。
+func (s *wsInterviewSession) handleAudioChunk(rawData *json.RawMessage) {
+	if rawData == nil || len(*rawData) == 0 {
+		s.sendError("缺少语音音频数据")
+		return
+	}
+
+	var payload wsAudioChunkPayload
+	if err := json.Unmarshal(*rawData, &payload); err != nil {
+		s.sendError("语音音频数据解析失败: " + err.Error())
+		return
+	}
+	chunk, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload.AudioBase64))
+	if err != nil {
+		s.sendError("语音音频数据解码失败: " + err.Error())
+		return
+	}
+
+	s.asrMu.Lock()
+	stream := s.asrStream
+	s.asrMu.Unlock()
+	if stream == nil {
+		s.sendError("语音识别会话尚未启动")
+		return
+	}
+	if err := stream.SendAudio(chunk); err != nil {
+		s.sendError("发送语音音频失败: " + err.Error())
+		return
+	}
+}
+
+// handleAudioEnd 结束当前识别会话，并等待最终文本回传。
+func (s *wsInterviewSession) handleAudioEnd() {
+	s.closeASRSession()
+	s.sendState("ready", "语音识别已结束，可检查文本后继续提交。")
+}
+
+// consumeASRResults 持续消费 ASR 结果并推送 partial/final 事件。
+func (s *wsInterviewSession) consumeASRResults(stream asr.StreamSession) {
+	for result := range stream.ReceiveText() {
+		if strings.TrimSpace(result.Text) == "" {
+			continue
+		}
+
+		msgType := WSMessageTypeASRPartial
+		if result.IsFinal {
+			msgType = WSMessageTypeASRFinal
+			s.asrMu.Lock()
+			s.latestTranscript = result.Text
+			s.asrMu.Unlock()
+		}
+
+		s.send(WSMessage{
+			Type:    msgType,
+			Content: result.Text,
+			Data: wsASRPayload{
+				Text:       result.Text,
+				IsFinal:    result.IsFinal,
+				Confidence: result.Confidence,
+			},
 		})
 	}
 }
 
-// sendWSMessage 发送WebSocket消息
-func sendWSMessage(conn *websocket.Conn, msg WSMessage) error {
+// sendQuestion 推送当前题目、面试状态、表情以及对应语音。
+func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questionNo int) {
+	s.sendExpression("serious", "ask", "question")
+	s.send(WSMessage{
+		Type:    WSMessageTypeAIQuestion,
+		Content: question.Question,
+		Data: wsQuestionPayload{
+			Question:   question.Question,
+			QuestionNo: questionNo,
+			Type:       firstNonEmpty(question.Type, "technical"),
+			Hints:      question.Hints,
+		},
+	})
+	s.sendState("speaking", "面试官正在播报当前题目。")
+	s.synthesizeSpeech(question.Question, "question")
+}
+
+// synthesizeSpeech 为当前文本生成语音资源，并在成功后推送给前端播放。
+func (s *wsInterviewSession) synthesizeSpeech(text string, kind string) {
+	if s.handler.ttsProvider == nil || strings.TrimSpace(text) == "" {
+		if s.handler.ttsProvider == nil {
+			applogger.Warn("interview tts skipped because provider is nil",
+				zap.String("trace_id", s.traceID),
+				zap.String("kind", kind),
+			)
+		}
+		return
+	}
+
+	engine := resolveTTSEngine(s.handler.ttsProvider)
+	applogger.Info("interview tts requested",
+		zap.String("trace_id", s.traceID),
+		zap.String("kind", kind),
+		zap.String("engine", engine),
+		zap.Int("text_length", len([]rune(strings.TrimSpace(text)))),
+	)
+	result, err := s.handler.ttsProvider.Synthesize(context.Background(), tts.SynthesizeRequest{
+		Text:   text,
+		Engine: engine,
+		Format: "mp3",
+	})
+	if err != nil {
+		s.sendState("ready", "TTS 当前不可用，已自动回退到文本模式。")
+		applogger.Warn("interview tts failed", zap.Error(err), zap.String("trace_id", s.traceID))
+		return
+	}
+
+	s.send(WSMessage{
+		Type: WSMessageTypeTTSAudio,
+		Data: wsTTSAudioPayload{
+			Kind:       kind,
+			Text:       text,
+			AudioURL:   result.AudioURL,
+			Duration:   result.Duration,
+			Format:     result.Format,
+			SampleRate: result.SampleRate,
+		},
+	})
+	applogger.Info("interview tts pushed to client",
+		zap.String("trace_id", s.traceID),
+		zap.String("kind", kind),
+		zap.String("format", result.Format),
+		zap.Float64("duration", result.Duration),
+	)
+}
+
+// resolveTTSEngine 返回当前 TTS Provider 首选的引擎标识。
+func resolveTTSEngine(provider tts.TTSProvider) string {
+	if provider == nil {
+		return ""
+	}
+	supportedEngines := provider.GetSupportedEngines()
+	if len(supportedEngines) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(supportedEngines[0])
+}
+
+// sendExpression 推送当前应展示的 Live2D 表情和动作状态。
+func (s *wsInterviewSession) sendExpression(emotion string, action string, source string) {
+	s.send(WSMessage{
+		Type: WSMessageTypeLive2DExpression,
+		Data: wsLive2DExpressionPayload{
+			Emotion: emotion,
+			Action:  action,
+			Source:  source,
+		},
+	})
+}
+
+// sendState 推送当前面试链路所处的阶段状态。
+func (s *wsInterviewSession) sendState(status string, message string) {
+	s.send(WSMessage{
+		Type:    WSMessageTypeInterviewState,
+		Content: message,
+		Data: wsInterviewStatePayload{
+			Status:  status,
+			Message: message,
+		},
+	})
+}
+
+// sendError 推送错误事件，并在服务端记录对应 trace 信息。
+func (s *wsInterviewSession) sendError(message string) {
+	s.send(WSMessage{
+		Type:    WSMessageTypeError,
+		Content: message,
+	})
+	applogger.Warn("interview websocket error", zap.String("trace_id", s.traceID), zap.String("message", message))
+}
+
+// send 统一写入 WebSocket 事件，并保证 trace_id 与 interview_id 始终透传。
+func (s *wsInterviewSession) send(msg WSMessage) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	if msg.Timestamp == 0 {
 		msg.Timestamp = time.Now().Unix()
 	}
-	err := conn.WriteJSON(msg)
-	if err != nil {
-		applogger.Error("WebSocket写入错误", zap.Error(err))
+	if msg.TraceID == "" {
+		msg.TraceID = s.traceID
 	}
-	return err
+	if msg.InterviewID == 0 {
+		msg.InterviewID = s.interviewID
+	}
+
+	if err := s.conn.WriteJSON(msg); err != nil {
+		applogger.Error("WebSocket写入错误", zap.Error(err), zap.String("trace_id", s.traceID))
+		return err
+	}
+	return nil
+}
+
+// close 释放当前连接占用的识别会话和底层 WebSocket。
+func (s *wsInterviewSession) close() {
+	s.closeASRSession()
+	_ = s.conn.Close()
+	applogger.Info("interview websocket closed",
+		zap.String("trace_id", s.traceID),
+		zap.Uint("user_id", s.userID),
+		zap.Uint("interview_id", s.interviewID),
+	)
+}
+
+// closeASRSession 关闭当前流式识别会话，避免同一连接残留旧流。
+func (s *wsInterviewSession) closeASRSession() {
+	s.asrMu.Lock()
+	defer s.asrMu.Unlock()
+
+	if s.asrStream == nil {
+		return
+	}
+	if err := s.asrStream.Close(); err != nil {
+		applogger.Warn("close interview asr stream failed", zap.Error(err), zap.String("trace_id", s.traceID))
+	}
+	s.asrStream = nil
+}
+
+// resolveCurrentInterviewQuestion 从历史消息中恢复当前仍待回答的题目。
+func resolveCurrentInterviewQuestion(detail *service.InterviewDetailResponse) (ai.InterviewQuestion, int, bool) {
+	if detail == nil || detail.Status != "ongoing" {
+		return ai.InterviewQuestion{}, 0, false
+	}
+
+	answerCount := 0
+	for _, item := range detail.Messages {
+		if item.Role == "user" {
+			answerCount++
+		}
+	}
+	if answerCount >= detail.TotalQuestions {
+		return ai.InterviewQuestion{}, 0, false
+	}
+
+	for i := len(detail.Messages) - 1; i >= 0; i-- {
+		item := detail.Messages[i]
+		if item.Role != "ai" || item.MessageType != "text" || strings.TrimSpace(item.Content) == "" {
+			continue
+		}
+
+		return ai.InterviewQuestion{
+			Question: item.Content,
+			Type:     "technical",
+		}, answerCount + 1, true
+	}
+
+	return ai.InterviewQuestion{}, 0, false
+}
+
+// firstNonEmpty 返回第一个非空字符串，用于兜底事件字段值。
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"makejob-backend/internal/asr"
-	"makejob-backend/internal/asr/mock"
 	asrvolc "makejob-backend/internal/asr/volcengine"
 	"makejob-backend/internal/config"
 )
@@ -18,12 +17,8 @@ const (
 )
 
 // NewASRProvider 使用全局配置创建 ASR Provider。
-func NewASRProvider(providerType string) asr.ASRProvider {
-	provider, err := NewASRProviderWithConfig(providerType, config.GetConfig())
-	if err == nil {
-		return provider
-	}
-	return mock.NewMockASRProvider()
+func NewASRProvider(providerType string) (asr.ASRProvider, error) {
+	return NewASRProviderWithConfig(providerType, config.GetConfig())
 }
 
 // NewASRProviderWithConfig 根据显式配置创建 ASR Provider。
@@ -35,9 +30,9 @@ func NewASRProviderWithConfig(providerType string, cfg *config.Config) (asr.ASRP
 		}
 		return asrvolc.NewProvider(cfg.Volcengine)
 	case ProviderTypeMock:
-		return mock.NewMockASRProvider(), nil
+		return nil, fmt.Errorf("asr provider mock is disabled")
 	default:
-		return mock.NewMockASRProvider(), nil
+		return nil, fmt.Errorf("asr provider is not configured")
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	aiRuntime "makejob-backend/internal/ai/runtime"
+	asrfactory "makejob-backend/internal/asr/factory"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/config"
 	"makejob-backend/internal/handler"
@@ -25,6 +26,7 @@ import (
 	"makejob-backend/internal/scraper"
 	scraperMock "makejob-backend/internal/scraper/mock"
 	"makejob-backend/internal/service"
+	ttsfactory "makejob-backend/internal/tts/factory"
 	applogger "makejob-backend/pkg/logger"
 )
 
@@ -205,10 +207,18 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
+		ttsProvider, err := ttsfactory.NewTTSProviderWithConfig("", cfg)
+		if err != nil {
+			applogger.Warn("interview tts provider not ready", zap.Error(err))
+		}
+		asrProvider, err := asrfactory.NewASRProviderWithConfig("", cfg)
+		if err != nil {
+			applogger.Warn("interview asr provider not ready", zap.Error(err))
+		}
 
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
 		deps.MembershipHandler = handler.NewMembershipHandler(deps.MembershipService)
-		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService)
+		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsProvider, asrProvider)
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)

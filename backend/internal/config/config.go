@@ -18,6 +18,7 @@ type Config struct {
 	JWT            JWTConfig            `mapstructure:"jwt"`
 	Casbin         CasbinConfig         `mapstructure:"casbin"`
 	AI             AIConfig             `mapstructure:"ai"`
+	MiniMax        MiniMaxConfig        `mapstructure:"minimax"`
 	Volcengine     VolcengineConfig     `mapstructure:"volcengine"`
 	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
 }
@@ -87,6 +88,33 @@ type AIConfig struct {
 	QuizModel        string  `mapstructure:"quiz_model"`
 }
 
+// MiniMaxConfig MiniMax 公共配置。
+type MiniMaxConfig struct {
+	GroupID string           `mapstructure:"group_id"`
+	APIKey  string           `mapstructure:"api_key"`
+	BaseURL string           `mapstructure:"base_url"`
+	TTS     MiniMaxTTSConfig `mapstructure:"tts"`
+}
+
+// MiniMaxTTSConfig MiniMax TTS 配置。
+type MiniMaxTTSConfig struct {
+	Enabled        bool    `mapstructure:"enabled"`
+	BaseURL        string  `mapstructure:"base_url"`
+	Model          string  `mapstructure:"model"`
+	VoiceID        string  `mapstructure:"voice_id"`
+	Emotion        string  `mapstructure:"emotion"`
+	Format         string  `mapstructure:"format"`
+	SampleRate     int     `mapstructure:"sample_rate"`
+	Bitrate        int     `mapstructure:"bitrate"`
+	Channel        int     `mapstructure:"channel"`
+	Speed          float64 `mapstructure:"speed"`
+	Volume         float64 `mapstructure:"volume"`
+	Pitch          int     `mapstructure:"pitch"`
+	SubtitleEnable bool    `mapstructure:"subtitle_enable"`
+	OutputFormat   string  `mapstructure:"output_format"`
+	TimeoutSeconds int     `mapstructure:"timeout_seconds"`
+}
+
 // VolcengineConfig 火山云公共配置
 type VolcengineConfig struct {
 	Region    string        `mapstructure:"region"`
@@ -126,6 +154,7 @@ type VolcASRConfig struct {
 type VolcTTSConfig struct {
 	Enabled     bool   `mapstructure:"enabled"`
 	BaseURL     string `mapstructure:"base_url"`
+	APIKey      string `mapstructure:"api_key"`
 	AppID       string `mapstructure:"app_id"`
 	AccessToken string `mapstructure:"access_token"`
 	Cluster     string `mapstructure:"cluster"`
@@ -241,6 +270,22 @@ func GetConfig() *Config {
 					MaxTokens:        2048,
 					TimeoutSeconds:   30,
 					EnableStream:     false,
+				},
+				MiniMax: MiniMaxConfig{
+					TTS: MiniMaxTTSConfig{
+						Model:          "speech-2.8-turbo",
+						VoiceID:        "male-qn-jingying",
+						Format:         "mp3",
+						SampleRate:     32000,
+						Bitrate:        128000,
+						Channel:        1,
+						Speed:          1,
+						Volume:         1,
+						Pitch:          0,
+						SubtitleEnable: false,
+						OutputFormat:   "hex",
+						TimeoutSeconds: 45,
+					},
 				},
 				Volcengine: VolcengineConfig{
 					Ark: VolcArkConfig{},

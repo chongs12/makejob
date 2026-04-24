@@ -72,6 +72,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&UserFavorite{},
 		&UserNote{},
 		&CommunityPost{},
+		&CommunityComment{},
+		&CommunityPostLike{},
 		&MembershipOrder{},
 		&AdminConfig{},
 		&AICallLog{},

@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import type { Application } from 'pixi.js'
 import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubism4'
 import { requestJson, extractErrorMessage } from '@makejob/api-client'
@@ -16,6 +16,7 @@ import {
   resolvePreferredFrontendIndustry as resolveCompanionIndustry,
   type FrontendIndustry as CompanionIndustry,
 } from '../../shared/industryContext'
+import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
 
 const MAX_CHAT_HISTORY = 12
 const COMPANION_SESSION_SUMMARY_KEY = 'makejob.companion.session-summary'
@@ -404,6 +405,7 @@ function buildContinueHint(plan: CompanionPlanDetail | null, summary: CompanionS
  * 提供学习陪伴的二级入口页，避免顶栏导航直接命中重型 Live2D 页面。
  */
 export function CompanionHubPage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
   const [sessionSummary, setSessionSummary] = useState<CompanionSessionSummary | null>(() => readCompanionSessionSummary())
@@ -554,7 +556,10 @@ export function CompanionHubPage() {
     event.preventDefault()
 
     if (!accessToken) {
-      setPlanFormMessage('请先登录，再让陪伴助手根据你的情况生成学习计划。')
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/companion'),
+      })
       return
     }
 
@@ -565,7 +570,16 @@ export function CompanionHubPage() {
     }
 
     setPlanFormMessage('陪伴助手正在整理你的阶段计划...')
-    await createPlanMutation.mutateAsync(payload)
+    try {
+      await createPlanMutation.mutateAsync(payload)
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/companion'),
+        })
+      }
+    }
   }
 
   return (
@@ -1562,6 +1576,7 @@ function GoalList(props: {
  * 提供学习陪伴核心页面，整合 Ariu 舞台、计划侧栏和聊天输入区。
  */
 export function CompanionWorkspacePage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
@@ -1670,30 +1685,64 @@ export function CompanionWorkspacePage() {
    * 在陪伴页直接切换任务状态，让计划推进不必退回入口页操作。
    */
   async function handleTaskStatusChange(task: CompanionPlanTask, status: CompanionTaskStatus) {
-    if (!accessToken || !currentPlanQuery.data?.id) {
+    if (!accessToken) {
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/companion/room'),
+      })
+      return
+    }
+
+    if (!currentPlanQuery.data?.id) {
       setPlanActionMessage('请先登录并确保当前存在可操作的学习计划。')
       return
     }
 
     setTaskActionTaskId(task.id)
     setPlanActionMessage(`正在把「${task.title}」更新为「${taskStatusLabel(status)}」...`)
-    await updateTaskMutation.mutateAsync({
-      taskId: task.id,
-      status,
-    })
+    try {
+      await updateTaskMutation.mutateAsync({
+        taskId: task.id,
+        status,
+      })
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/companion/room'),
+        })
+      }
+    }
   }
 
   /**
    * 触发后端动态调整计划，适合在任务阻塞或节奏需要重排时使用。
    */
   async function handleAdjustPlan() {
-    if (!accessToken || !currentPlanQuery.data?.id) {
+    if (!accessToken) {
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/companion/room'),
+      })
+      return
+    }
+
+    if (!currentPlanQuery.data?.id) {
       setPlanActionMessage('请先登录并生成学习计划后再调整。')
       return
     }
 
     setPlanActionMessage('陪伴助手正在重新整理你的计划节奏...')
-    await adjustPlanMutation.mutateAsync()
+    try {
+      await adjustPlanMutation.mutateAsync()
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/companion/room'),
+        })
+      }
+    }
   }
 
   /**
@@ -1708,6 +1757,14 @@ export function CompanionWorkspacePage() {
       return
     }
 
+    if (!accessToken) {
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/companion/room'),
+      })
+      return
+    }
+
     const userMessage: CompanionHistoryItem = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -1718,21 +1775,6 @@ export function CompanionWorkspacePage() {
     setComposer('')
     setComposerMessage('')
     setHistory((current) => [...current, userMessage])
-
-    if (!accessToken) {
-      setHistory((current) => [
-        ...current,
-        {
-          id: `assistant-login-${Date.now()}`,
-          role: 'assistant',
-          content: '先登录，我就能结合你的学习计划来安排今天的节奏。',
-          emotion: 'reminder',
-          action: 'idle',
-          createdAt: Date.now(),
-        },
-      ])
-      return
-    }
 
     setSending(true)
 
@@ -1750,8 +1792,15 @@ export function CompanionWorkspacePage() {
           action: reply.action || '',
           createdAt: Date.now(),
         },
-      ])
+        ])
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setComposerMessage(extractErrorMessage(error, '陪伴助手暂时没接上服务，请稍后重试'))
     } finally {
       setSending(false)

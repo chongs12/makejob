@@ -294,14 +294,13 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
 
-	// 获取当前消息数量来确定题目索引
-	msgCount, err := s.interviewMessageRepo.CountByInterview(ctx, interviewID)
+	// 获取当前消息列表并基于用户已回答数确定题目索引，避免反馈消息打乱计数。
+	messages, err := s.interviewMessageRepo.ListByInterview(ctx, interviewID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 计算当前题目索引（每轮包含AI问题和用户回答，所以题目索引 = msgCount / 2）
-	questionIndex := int(msgCount) / 2
+	questionIndex := countAnsweredInterviewQuestions(messages)
 	if questionIndex >= interview.TotalQuestions {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "已完成所有题目")
 	}
@@ -314,25 +313,6 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 		MessageType: model.MessageTypeText,
 	}
 	if err := s.interviewMessageRepo.Create(ctx, answerMsg); err != nil {
-		return nil, err
-	}
-
-	// 调用AI评估答案
-	feedback, err := s.interviewAgent.EvaluateAnswer(ctx, sessionID, questionIndex, req.Answer)
-	if err != nil {
-		return nil, fmt.Errorf("评估答案失败: %w", err)
-	}
-
-	// 保存AI反馈
-	feedbackContent := fmt.Sprintf("评分: %.0f分\n%s\n\n改进建议: %s",
-		feedback.Score, feedback.Feedback, feedback.Suggestions)
-	feedbackMsg := &model.InterviewMessage{
-		InterviewID: interviewID,
-		Role:        model.MessageRoleAI,
-		Content:     feedbackContent,
-		MessageType: model.MessageTypeFeedback,
-	}
-	if err := s.interviewMessageRepo.Create(ctx, feedbackMsg); err != nil {
 		return nil, err
 	}
 
@@ -364,7 +344,7 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 	}
 
 	return &InterviewAnswerResponse{
-		Feedback:     &feedback,
+		Feedback:     nil,
 		NextQuestion: nextQuestion,
 		IsFinished:   isFinished,
 	}, nil
@@ -396,14 +376,13 @@ func (s *interviewService) GetNextQuestion(ctx context.Context, userID, intervie
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
 
-	// 获取当前消息数量来确定下一题编号
-	msgCount, err := s.interviewMessageRepo.CountByInterview(ctx, interviewID)
+	// 获取当前消息列表并基于已回答数量确定下一题编号，避免反馈消息影响编号。
+	messages, err := s.interviewMessageRepo.ListByInterview(ctx, interviewID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 计算下一题编号
-	nextQuestionNo := int(msgCount)/2 + 1
+	nextQuestionNo := countAnsweredInterviewQuestions(messages) + 1
 	if nextQuestionNo > interview.TotalQuestions {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "已完成所有题目")
 	}
@@ -466,6 +445,11 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
 	}
 
+	// 在面试结束时统一补做评分，避免过程内打断节奏，同时保证报告仍有完整依据。
+	if err := s.evaluateInterviewAnswersForReport(ctx, interviewID, sessionID); err != nil {
+		return nil, fmt.Errorf("补全作答评分失败: %w", err)
+	}
+
 	// 生成面试报告
 	report, err := s.interviewAgent.GenerateReport(ctx, sessionID)
 	if err != nil {
@@ -508,6 +492,36 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 		Duration:    duration,
 		CompletedAt: now,
 	}, nil
+}
+
+// evaluateInterviewAnswersForReport 在结束面试前按回答顺序补齐评分结果，供报告生成使用。
+func (s *interviewService) evaluateInterviewAnswersForReport(ctx context.Context, interviewID uint, sessionID string) error {
+	// 某些测试或精简场景不会注入消息仓库，此时直接跳过补评分，保持结束流程可继续执行。
+	if s.interviewMessageRepo == nil {
+		return nil
+	}
+
+	messages, err := s.interviewMessageRepo.ListByInterview(ctx, interviewID)
+	if err != nil {
+		return err
+	}
+
+	answeredCount := 0
+	for _, item := range messages {
+		if item.Role != model.MessageRoleUser {
+			continue
+		}
+		answer := strings.TrimSpace(item.Content)
+		if answer == "" {
+			continue
+		}
+		if _, err := s.interviewAgent.EvaluateAnswer(ctx, sessionID, answeredCount, answer); err != nil {
+			return err
+		}
+		answeredCount++
+	}
+
+	return nil
 }
 
 // GetReport 获取面试报告
@@ -605,6 +619,17 @@ func buildFallbackInterviewReport(interview *model.MockInterview) *ai.InterviewR
 		TotalQuestions: interview.TotalQuestions,
 		Summary:        interview.AIFeedback,
 	}
+}
+
+// countAnsweredInterviewQuestions 统计当前面试中用户已经完成作答的题目数量。
+func countAnsweredInterviewQuestions(messages []model.InterviewMessage) int {
+	count := 0
+	for _, item := range messages {
+		if item.Role == model.MessageRoleUser {
+			count++
+		}
+	}
+	return count
 }
 
 // parseIndustryCode 解析行业代码为行业ID（简化实现）

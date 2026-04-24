@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { createApiClient, extractErrorMessage, requestJson } from '@makejob/api-client'
+import { AUTH_EXPIRED_EVENT_NAME, createApiClient, extractErrorMessage, requestJson } from '@makejob/api-client'
 import {
   isSuccessCode,
   normalizeUserProfile,
@@ -29,6 +29,7 @@ interface AuthState {
 }
 
 let profilePromise: Promise<boolean> | null = null
+let authExpiredListenerBound = false
 
 /**
  * 读取浏览器本地保存的访问令牌。
@@ -124,6 +125,20 @@ function getApi() {
   return createApiClient(() => useAuthStore.getState().accessToken)
 }
 
+/**
+ * 监听全局登录态失效事件，并在收到后统一清空当前前台会话。
+ */
+function bindAuthExpiredListener(clearSession: () => void): void {
+  if (authExpiredListenerBound || typeof window === 'undefined') {
+    return
+  }
+
+  window.addEventListener(AUTH_EXPIRED_EVENT_NAME, () => {
+    clearSession()
+  })
+  authExpiredListenerBound = true
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   refreshToken: null,
@@ -137,9 +152,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    */
   initAuth() {
     if (get().initialized) {
+      bindAuthExpiredListener(get().clearSession)
       return
     }
 
+    bindAuthExpiredListener(get().clearSession)
     const accessToken = readToken()
     const refreshToken = readRefreshToken()
     const user = readStoredUser()

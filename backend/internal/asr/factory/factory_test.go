@@ -3,7 +3,6 @@ package factory
 import (
 	"testing"
 
-	"makejob-backend/internal/asr/mock"
 	realasr "makejob-backend/internal/asr/volcengine"
 	"makejob-backend/internal/config"
 )
@@ -27,13 +26,13 @@ func TestNewASRProviderWithConfigUsesVolcengine(t *testing.T) {
 	}
 }
 
-// TestNewASRProviderWithConfigFallsBackToMock 验证未启用真实配置时继续回退 Mock。
-func TestNewASRProviderWithConfigFallsBackToMock(t *testing.T) {
+// TestNewASRProviderWithConfigReturnsErrorWithoutRealConfig 验证未启用真实配置时直接返回错误。
+func TestNewASRProviderWithConfigReturnsErrorWithoutRealConfig(t *testing.T) {
 	provider, err := NewASRProviderWithConfig("", &config.Config{})
-	if err != nil {
-		t.Fatalf("NewASRProviderWithConfig returned error: %v", err)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
-	if _, ok := provider.(*mock.MockASRProvider); !ok {
-		t.Fatalf("expected mock asr provider, got %T", provider)
+	if provider != nil {
+		t.Fatalf("expected nil provider, got %T", provider)
 	}
 }

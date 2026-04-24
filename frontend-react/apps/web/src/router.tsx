@@ -16,6 +16,13 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
 import { CompanionHubPage, CompanionWorkspacePage } from './features/companion/CompanionPage'
+import {
+  CommunityCreatePostPage,
+  CommunityEditPostPage,
+  CommunityMyPostsPage,
+  CommunityPage,
+  CommunityPostDetailPage,
+} from './features/community/CommunityPages'
 import { InterviewHubPage, InterviewReportPage, InterviewSessionPage } from './features/interview/InterviewPage'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE,
@@ -27,6 +34,13 @@ import {
   resolvePreferredFrontendIndustry,
   subscribeFrontendIndustryCodeChange,
 } from './shared/industryContext'
+import {
+  buildCurrentLocationPath,
+  buildLoginRedirectSearch,
+  isProtectedWebPath,
+  readCurrentBrowserPath,
+  resolveLoginRedirectTarget,
+} from './shared/authRedirect'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -56,6 +70,15 @@ interface PageResult<T> {
   total: number
   page: number
   page_size: number
+}
+
+/**
+ * 初始化前台登录态并返回最新的访问令牌，避免路由守卫读取到旧快照。
+ */
+function getLatestAccessToken(): string | null {
+  const authStore = useAuthStore.getState()
+  authStore.initAuth()
+  return useAuthStore.getState().accessToken
 }
 
 interface QuestionOption {
@@ -884,6 +907,7 @@ function AuthBootstrap() {
  * 提供题目页与编辑器页共用的笔记面板，支持创建、更新和删除。
  */
 function QuestionNotePanel(props: { questionId: number; questionTitle: string; token: string | null }) {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(props.questionTitle)
   const [content, setContent] = useState('')
@@ -906,7 +930,10 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
    */
   async function handleSave() {
     if (!props.token) {
-      setMessage('请先登录后再保存笔记')
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+      })
       return
     }
 
@@ -927,6 +954,13 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
       await queryClient.invalidateQueries({ queryKey: ['practice-question-note', props.questionId, props.token] })
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setMessage(extractErrorMessage(error, '保存笔记失败'))
     } finally {
       setSaving(false)
@@ -937,7 +971,15 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
    * 删除当前题目的已有笔记，并同步清空编辑内容。
    */
   async function handleDelete() {
-    if (!props.token || !noteQuery.data?.id) {
+    if (!props.token) {
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+      })
+      return
+    }
+
+    if (!noteQuery.data?.id) {
       setMessage('当前没有可删除的笔记')
       return
     }
@@ -951,6 +993,13 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
       await queryClient.invalidateQueries({ queryKey: ['practice-question-note', props.questionId, props.token] })
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setMessage(extractErrorMessage(error, '删除笔记失败'))
     } finally {
       setSaving(false)
@@ -1004,6 +1053,9 @@ function RootLayout() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
+  const searchStr = useRouterState({
+    select: (state) => state.location.searchStr,
+  })
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
@@ -1022,17 +1074,41 @@ function RootLayout() {
   }
 
   /**
-   * 处理顶部“发布”入口，当前阶段统一引导到登录或工作台，后续再接入说说与论坛发布流。
+   * 处理顶部“发布”入口，统一跳到社区发帖页并保留登录回跳。
    */
   function handlePublish() {
+    if (accessToken) {
+      navigate({
+        to: '/community/create',
+      })
+      return
+    }
+
     navigate({
-      to: accessToken ? '/workspace' : '/auth/login',
+      to: '/auth/login',
+      search: buildLoginRedirectSearch('/community/create'),
     })
   }
+
+  /**
+   * 当受保护页面上的登录态被后端判定失效后，立即跳回登录页并保留原始地址。
+   */
+  useEffect(() => {
+    if (accessToken || !isProtectedWebPath(pathname)) {
+      return
+    }
+
+    navigate({
+      to: '/auth/login',
+      search: buildLoginRedirectSearch(buildCurrentLocationPath(pathname, searchStr || '')),
+      replace: true,
+    })
+  }, [accessToken, navigate, pathname, searchStr])
 
   const navigationItems = [
     { to: '/', label: '首页', match: pathname === '/' },
     { to: '/practice', label: '题库', match: pathname.startsWith('/practice') },
+    { to: '/community', label: '社区', match: pathname.startsWith('/community') },
     { to: '/interview', label: '面试', match: pathname.startsWith('/interview') },
     { to: '/companion', label: '学习陪伴', match: pathname.startsWith('/companion') },
   ]
@@ -1130,7 +1206,7 @@ function HomePage() {
     queryKey: ['home-practice-preview', effectiveIndustryCode],
     queryFn: () => fetchQuestions({
       page: 1,
-      pageSize: 4,
+      pageSize: 3,
       difficulty: '',
       keyword: '',
       industryId: highlightedIndustries.find((item) => item.code === effectiveIndustryCode)?.id || null,
@@ -1176,7 +1252,6 @@ function HomePage() {
     enabled: Boolean(accessToken && currentPlanQuery.data?.id),
     retry: false,
   })
-  const currentPlanNextTask = currentPlanQuery.data?.tasks.find((task) => task.status !== 'completed' && task.status !== 'skipped') || currentPlanQuery.data?.tasks[0] || null
   const latestInterview = interviewHistoryQuery.data?.list?.[0]
 
   return (
@@ -1186,7 +1261,7 @@ function HomePage() {
           <span className="page-tag">{effectiveIndustryLabel} Offer 导向学习平台</span>
           <h1>围绕 {effectiveIndustryLabel} 把题库训练、AI 面试和学习陪伴放在同一条成长链路里</h1>
           <p className="page-copy">
-            当前首页会沿用你最近选择的行业方向，把题库、面试和学习陪伴统一收拢到同一条主线里；后续继续补说说、论坛、面经和动态流时，也会默认围绕这条方向展开。
+            当前首页会沿用你最近选择的行业方向，把题库、社区、AI 面试和学习陪伴统一收拢到同一条主线里；首页只保留轻入口，完整互动统一沉淀到独立社区频道。
           </p>
 
           <div className="hero-actions">
@@ -1223,65 +1298,12 @@ function HomePage() {
           <div className="section-card mini-feed-card">
             <span className="section-kicker">近期规划</span>
             <ul className="mini-feed-list">
-              <li>{effectiveIndustryLabel} 题库体验统一收口到 React 版前台</li>
-              <li>首页内容流按当前方向给出更贴近的引导</li>
-              <li>{effectiveIndustryLabel} 面试页挂载 AI 流式交互</li>
+              <li>{effectiveIndustryLabel} 社区已经支持发帖、评论、点赞和我的帖子管理</li>
+              <li>首页动态流只展示精简精选，完整浏览在独立社区页</li>
+              <li>{effectiveIndustryLabel} 面试页继续补流式交互与报告体验</li>
             </ul>
           </div>
         </aside>
-      </section>
-
-      <section className="channel-grid">
-        <article className="channel-card channel-card-practice">
-          <span className="section-kicker">题库</span>
-          <h2>把 {effectiveIndustryLabel} 刷题、复盘、错题本串起来</h2>
-          <p>这里承接当前方向的题目列表、筛选、代码题、收藏、错题、笔记和模拟练习。</p>
-          <Link className="secondary-link" to="/practice">前往题库</Link>
-        </article>
-        <article className="channel-card channel-card-interview">
-          <span className="section-kicker">面试</span>
-          <h2>{effectiveIndustryLabel} AI 面试页面入口</h2>
-          <p>后续承接岗位定制追问、语音链路、流式输出和结构化点评。</p>
-          <Link className="secondary-link" to="/interview">查看入口</Link>
-        </article>
-        <article className="channel-card channel-card-companion">
-          <span className="section-kicker">学习陪伴</span>
-          <h2>{effectiveIndustryLabel} 学习计划与 Live2D</h2>
-          <p>学习计划、提醒机制、陪伴角色和学习反馈都会沿用当前方向聚合在这里。</p>
-          <Link className="secondary-link" to="/companion">进入陪伴区</Link>
-        </article>
-      </section>
-
-      <section className="section-card section-card-large">
-        <div className="section-head">
-          <div>
-            <span className="section-kicker">站点主结构</span>
-            <h2>一级栏目按照学习闭环来组织，而不是按照后台菜单来组织</h2>
-          </div>
-        </div>
-
-        <div className="site-map-grid">
-          <article className="architecture-card">
-            <span className="section-kicker">首页</span>
-            <h3>内容流与发布入口</h3>
-            <p>承接说说、论坛、面经、推荐内容和用户动态，先让站点具备“社区首页”的内容氛围。</p>
-          </article>
-          <article className="architecture-card">
-            <span className="section-kicker">题库</span>
-            <h3>训练与复盘主战场</h3>
-            <p>题目列表、做题、错题、收藏、笔记、模拟练习全部聚合到同一业务域，形成高频使用区。</p>
-          </article>
-          <article className="architecture-card">
-            <span className="section-kicker">面试</span>
-            <h3>AI 面试与面经沉淀</h3>
-            <p>后续承接岗位模拟、实时追问、结构化报告和面经内容，不再作为边角功能存在。</p>
-          </article>
-          <article className="architecture-card">
-            <span className="section-kicker">学习陪伴</span>
-            <h3>计划、提醒与陪伴角色</h3>
-            <p>学习计划、学习状态、Live2D 和反馈机制集中在一个入口，避免功能分散。</p>
-          </article>
-        </div>
       </section>
 
       <section className="home-board">
@@ -1289,10 +1311,10 @@ function HomePage() {
           <article className="section-card section-card-large">
             <div className="section-head">
               <div>
-                <span className="section-kicker">首页动态流</span>
-                <h2>{effectiveIndustryLabel} 首页动态流已经开始接真实内容</h2>
+                <span className="section-kicker">社区精选</span>
+                <h2>{effectiveIndustryLabel} 社区最新内容</h2>
               </div>
-              <Link className="secondary-button hero-link-button" to="/practice">进入题库主战场</Link>
+              <Link className="secondary-button hero-link-button" to="/community">进入社区广场</Link>
             </div>
 
             {communityQuery.isLoading ? <p className="companion-empty-text">首页动态加载中...</p> : null}
@@ -1314,50 +1336,18 @@ function HomePage() {
                       <span>{post.author?.username || '匿名用户'} · {post.post_type === 'article' ? '文章' : '动态'}</span>
                       <span>浏览 {post.view_count} · 点赞 {post.like_count}</span>
                     </div>
+                    <Link className="secondary-link" to="/community/$postId" params={{ postId: String(post.id) }}>
+                      查看帖子
+                    </Link>
                   </article>
                 ))}
               </div>
             ) : (
               <div className="timeline-item">
                 <strong>内容流还没有帖子</strong>
-                <p>当前接口已经接通，等社区内容开始沉淀后，这里会直接展示真实动态，而不是继续写死演示文案。</p>
+                <p>社区闭环已经接通，后续有人发帖后首页这里会直接显示真实内容。</p>
               </div>
             )}
-          </article>
-
-          <article className="section-card section-card-large">
-            <div className="section-head">
-              <div>
-                <span className="section-kicker">当前推进</span>
-                <h2>围绕 {effectiveIndustryLabel} 的下一步操作</h2>
-              </div>
-            </div>
-            <div className="timeline-list">
-              <div className="timeline-item">
-                <strong>1. 进入 {effectiveIndustryLabel} 题库开始练习</strong>
-                <p>
-                  {practicePreviewQuery.data?.total
-                    ? `当前方向已经可用 ${practicePreviewQuery.data.total} 道题，先从首页推荐题单切入。`
-                    : '按难度、分类、关键词快速筛出当前阶段该刷的题。'}
-                </p>
-              </div>
-              <div className="timeline-item">
-                <strong>2. 用学习计划把训练节奏固定下来</strong>
-                <p>
-                  {currentPlanQuery.data
-                    ? `当前计划《${currentPlanQuery.data.title}》正在推进，${Math.round(planProgressQuery.data?.progress || currentPlanQuery.data.progress || 0)}% 已完成。`
-                    : '如果还没有计划，直接进入学习陪伴页生成一份当前方向的学习计划。'}
-                </p>
-              </div>
-              <div className="timeline-item">
-                <strong>3. 把刷题结果带到 {effectiveIndustryLabel} AI 面试</strong>
-                <p>
-                  {latestInterview
-                    ? `最近一场面试状态为${latestInterview.status === 'ongoing' ? '进行中' : '已完成'}，可以继续进入面试链路做追问和复述训练。`
-                    : '等题库链路稳定后，再进入 AI 面试页做追问与复述训练。'}
-                </p>
-              </div>
-            </div>
           </article>
 
           <article className="section-card section-card-large">
@@ -1376,7 +1366,7 @@ function HomePage() {
               </p>
             ) : null}
             {practicePreviewQuery.data?.list?.length ? (
-              <div className="grid-cards">
+              <div className="home-practice-preview-grid">
                 {practicePreviewQuery.data.list.map((question) => (
                   <article className="feature-card" key={question.id}>
                     <div className="card-inline">
@@ -1449,25 +1439,17 @@ function HomePage() {
           </article>
 
           <article className="section-card sidebar-card">
-            <span className="section-kicker">当前计划摘要</span>
-            {accessToken && currentPlanQuery.data ? (
-              <div className="timeline-item">
-                <strong>{currentPlanQuery.data.title}</strong>
-                <p>{truncateText(currentPlanQuery.data.description || '当前计划暂无说明。', 72)}</p>
-                <p>
-                  进度 {Math.round(planProgressQuery.data?.progress || currentPlanQuery.data.progress || 0)}% ·
-                  已完成 {planProgressQuery.data?.completed_tasks ?? currentPlanQuery.data.completed_tasks}/{planProgressQuery.data?.total_tasks ?? currentPlanQuery.data.total_tasks}
-                </p>
-                <p>{currentPlanNextTask ? `下一项：Day ${currentPlanNextTask.day_number} · ${currentPlanNextTask.title}` : '当前计划没有可展示任务。'}</p>
-              </div>
-            ) : (
-              <div className="sidebar-links">
-                <Link className="sidebar-link" to="/companion">生成学习计划</Link>
-                <Link className="sidebar-link" to="/companion">打开陪伴页</Link>
-                <Link className="sidebar-link" to="/practice/wrong">查看错题复盘</Link>
-                <Link className="sidebar-link" to="/practice/notes">查看学习笔记</Link>
-              </div>
-            )}
+            <span className="section-kicker">社区入口</span>
+            <div className="sidebar-links">
+              <Link className="sidebar-link" to="/community">浏览全部帖子</Link>
+              <Link className="sidebar-link" to="/community/create">发布刷题复盘</Link>
+              {accessToken ? (
+                <Link className="sidebar-link" to="/community/mine">管理我的帖子</Link>
+              ) : (
+                <Link className="sidebar-link" to="/auth/login" search={buildLoginRedirectSearch('/community/create')}>登录后发帖</Link>
+              )}
+              <Link className="sidebar-link" to="/practice/notes">把笔记整理成帖子</Link>
+            </div>
           </article>
 
           <article className="section-card sidebar-card">
@@ -1478,11 +1460,6 @@ function HomePage() {
               <Link className="sidebar-link" to="/practice/wrong">错题复盘</Link>
               <Link className="sidebar-link" to="/practice/notes">学习笔记</Link>
             </div>
-          </article>
-
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">首页定位</span>
-            <p>这一版首页已经不只是文案占位，而是开始承接真实动态、题库推荐和个人推进状态。下一步再补独立社区页与发布流。</p>
           </article>
         </aside>
       </section>
@@ -1604,6 +1581,7 @@ function PracticePage() {
     if (!accessToken) {
       navigate({
         to: '/auth/login',
+        search: buildLoginRedirectSearch('/practice'),
       })
       return
     }
@@ -1631,6 +1609,13 @@ function PracticePage() {
         },
       })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/practice'),
+        })
+        return
+      }
       setExamMessage(extractErrorMessage(error, '组卷失败'))
     }
   }
@@ -1936,6 +1921,7 @@ function PracticeQuestionPage() {
     if (!accessToken) {
       navigate({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
       })
       return
     }
@@ -1963,6 +1949,13 @@ function PracticeQuestionPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setSubmitMessage(extractErrorMessage(error, '提交答案失败'))
     } finally {
       setSubmitting(false)
@@ -1976,6 +1969,7 @@ function PracticeQuestionPage() {
     if (!accessToken || !question) {
       navigate({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
       })
       return
     }
@@ -1986,6 +1980,13 @@ function PracticeQuestionPage() {
       setFavoriteMessage(nextState ? '已加入收藏夹' : '已移出收藏夹')
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setFavoriteMessage(extractErrorMessage(error, '收藏操作失败'))
     }
   }
@@ -2268,6 +2269,20 @@ function PracticeEditorPage() {
   }
 
   /**
+   * 从代码题编辑器返回上一页；若没有可用历史记录，则退回题库首页。
+   */
+  function handleGoBackFromEditor() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back()
+      return
+    }
+
+    navigate({
+      to: '/practice',
+    })
+  }
+
+  /**
    * 提交代码题答案，并返回后端当前的分析结果。
    */
   async function handleEvaluate(label: '运行代码' | '提交代码') {
@@ -2278,6 +2293,7 @@ function PracticeEditorPage() {
     if (!accessToken) {
       navigate({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
       })
       return
     }
@@ -2303,6 +2319,13 @@ function PracticeEditorPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setSubmitMessage(extractErrorMessage(error, `${label}失败`))
     } finally {
       setSubmitting(false)
@@ -2316,6 +2339,7 @@ function PracticeEditorPage() {
     if (!accessToken || !question) {
       navigate({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
       })
       return
     }
@@ -2326,6 +2350,13 @@ function PracticeEditorPage() {
       setFavoriteMessage(nextState ? '已加入收藏夹' : '已移出收藏夹')
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
+        })
+        return
+      }
       setFavoriteMessage(extractErrorMessage(error, '收藏操作失败'))
     }
   }
@@ -2364,63 +2395,77 @@ function PracticeEditorPage() {
   }
 
   return (
-    <section className="editor-layout">
-      <div className="editor-sidebar">
-        <span className="page-tag">代码练习</span>
-        <h1>{question?.title || `题目 #${questionId}`}</h1>
-        <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
-        <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
-        <div className="page-actions" style={{ marginTop: 16 }}>
-          <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
-            {favoriteState ? '取消收藏' : '加入收藏'}
+    <>
+      <div className="companion-room-toolbar" style={{ marginBottom: 20 }}>
+        <div className="page-actions">
+          <button className="ghost-button" type="button" onClick={handleGoBackFromEditor}>
+            返回上一页
           </button>
-          <Link className="secondary-link" to="/practice/$questionId" params={{ questionId }}>
-            查看题目详情
+          <Link className="ghost-button" to="/practice">
+            返回题库
           </Link>
         </div>
-        <div style={{ marginTop: 12 }}>收藏状态：{favoriteMessage}</div>
-        {question ? (
-          <QuestionNotePanel questionId={question.id} questionTitle={question.title} token={accessToken} />
-        ) : null}
+        <span className="companion-room-note">代码题编辑器 · {questionIndustryLabel}</span>
       </div>
 
-      <div className="editor-main">
-        <div className="editor-toolbar">
-          <select value={editorLanguage} onChange={(event) => handleLanguageChange(event.target.value)}>
-            <option value="go">Go</option>
-            <option value="python">Python</option>
-            <option value="javascript">JavaScript</option>
-            <option value="java">Java</option>
-            <option value="cpp">C++</option>
-          </select>
-          <div className="page-actions">
-            <button className="secondary-button" type="button" onClick={handleResetCode}>重置代码</button>
-            <button className="secondary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('运行代码')}>
-              运行代码
+      <section className="editor-layout">
+        <div className="editor-sidebar">
+          <span className="page-tag">代码练习</span>
+          <h1>{question?.title || `题目 #${questionId}`}</h1>
+          <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
+          <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
+          <div className="page-actions" style={{ marginTop: 16 }}>
+            <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
+              {favoriteState ? '取消收藏' : '加入收藏'}
             </button>
-            <button className="primary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('提交代码')}>
-              提交代码
-            </button>
+            <Link className="secondary-link" to="/practice/$questionId" params={{ questionId }}>
+              查看题目详情
+            </Link>
           </div>
-        </div>
-
-        <div className="editor-surface" ref={editorContainerRef} />
-
-        <div className="status-card" style={{ marginTop: 16 }}>
-          <div>执行状态：{submitMessage}</div>
-          {submitResult ? (
-            <>
-              <div>判定结果：{submitResult.is_correct ? '正确' : '错误'}</div>
-              <div>正确答案：{submitResult.correct_answer || '未返回'}</div>
-              <div>解析说明：{submitResult.explanation || '暂无解析'}</div>
-              {submitResult.ai_analysis ? (
-                <pre className="analysis-block">{submitResult.ai_analysis}</pre>
-              ) : null}
-            </>
+          <div style={{ marginTop: 12 }}>收藏状态：{favoriteMessage}</div>
+          {question ? (
+            <QuestionNotePanel questionId={question.id} questionTitle={question.title} token={accessToken} />
           ) : null}
         </div>
-      </div>
-    </section>
+
+        <div className="editor-main">
+          <div className="editor-toolbar">
+            <select value={editorLanguage} onChange={(event) => handleLanguageChange(event.target.value)}>
+              <option value="go">Go</option>
+              <option value="python">Python</option>
+              <option value="javascript">JavaScript</option>
+              <option value="java">Java</option>
+              <option value="cpp">C++</option>
+            </select>
+            <div className="page-actions">
+              <button className="secondary-button" type="button" onClick={handleResetCode}>重置代码</button>
+              <button className="secondary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('运行代码')}>
+                运行代码
+              </button>
+              <button className="primary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('提交代码')}>
+                提交代码
+              </button>
+            </div>
+          </div>
+
+          <div className="editor-surface" ref={editorContainerRef} />
+
+          <div className="status-card" style={{ marginTop: 16 }}>
+            <div>执行状态：{submitMessage}</div>
+            {submitResult ? (
+              <>
+                <div>判定结果：{submitResult.is_correct ? '正确' : '错误'}</div>
+                <div>正确答案：{submitResult.correct_answer || '未返回'}</div>
+                <div>解析说明：{submitResult.explanation || '暂无解析'}</div>
+                {submitResult.ai_analysis ? (
+                  <pre className="analysis-block">{submitResult.ai_analysis}</pre>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -2578,7 +2623,10 @@ function PracticeNotesPage() {
    */
   async function handleDelete(noteId: number) {
     if (!accessToken) {
-      setMessage('请先登录')
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/practice/notes'),
+      })
       return
     }
 
@@ -2587,6 +2635,13 @@ function PracticeNotesPage() {
       setMessage('笔记已删除')
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/practice/notes'),
+        })
+        return
+      }
       setMessage(extractErrorMessage(error, '删除笔记失败'))
     }
   }
@@ -2702,6 +2757,9 @@ function WorkspacePage() {
  */
 function LoginPage() {
   const navigate = useNavigate()
+  const redirectTarget = useRouterState({
+    select: (state) => resolveLoginRedirectTarget((state.location.search as Record<string, unknown> | undefined)?.redirect),
+  })
   const login = useAuthStore((state) => state.login)
   const loading = useAuthStore((state) => state.loading)
   const accessToken = useAuthStore((state) => state.accessToken)
@@ -2721,8 +2779,14 @@ function LoginPage() {
     setMessage(result.message)
 
     if (result.ok) {
+      if (typeof window !== 'undefined') {
+        window.location.replace(redirectTarget)
+        return
+      }
+
       navigate({
         to: '/workspace',
+        replace: true,
       })
     }
   }
@@ -2790,6 +2854,60 @@ const indexRoute = createRoute({
   component: HomePage,
 })
 
+const communityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'community',
+  component: CommunityPage,
+})
+
+const communityCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'community/create',
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: CommunityCreatePostPage,
+})
+
+const communityMineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'community/mine',
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: CommunityMyPostsPage,
+})
+
+const communityEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'community/$postId/edit',
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: CommunityEditPostPage,
+})
+
+const communityDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'community/$postId',
+  component: CommunityPostDetailPage,
+})
+
 const practiceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice',
@@ -2805,13 +2923,11 @@ const practiceQuestionRoute = createRoute({
 const practiceEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/editor/$questionId',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2821,13 +2937,11 @@ const practiceEditorRoute = createRoute({
 const practiceWrongRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/wrong',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2837,13 +2951,11 @@ const practiceWrongRoute = createRoute({
 const practiceFavoritesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/favorites',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2853,13 +2965,11 @@ const practiceFavoritesRoute = createRoute({
 const practiceNotesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/notes',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2875,13 +2985,11 @@ const interviewRoute = createRoute({
 const interviewSessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2891,13 +2999,11 @@ const interviewSessionRoute = createRoute({
 const interviewReportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId/report',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2919,19 +3025,20 @@ const companionRoomRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth/login',
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
+  }),
   component: LoginPage,
 })
 
 const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'workspace',
-  beforeLoad: async () => {
-    const authStore = useAuthStore.getState()
-    authStore.initAuth()
-
-    if (!authStore.accessToken) {
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
 
@@ -2939,6 +3046,7 @@ const workspaceRoute = createRoute({
     if (!ready) {
       throw redirect({
         to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
       })
     }
   },
@@ -2947,6 +3055,11 @@ const workspaceRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  communityRoute,
+  communityCreateRoute,
+  communityMineRoute,
+  communityEditRoute,
+  communityDetailRoute,
   practiceRoute,
   practiceQuestionRoute,
   practiceEditorRoute,

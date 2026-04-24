@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -23,6 +24,7 @@ const (
 	defaultASRURL            = "wss://openspeech.bytedance.com/api/v2/asr"
 	defaultASRCluster        = "volcengine_streaming_common"
 	defaultASRFormat         = "wav"
+	defaultASRStreamFormat   = "pcm"
 	defaultASRSampleRate     = 16000
 	defaultASRLanguage       = "zh-CN"
 	defaultChunkSize         = 3200
@@ -68,6 +70,7 @@ type streamSession struct {
 	closeOnce  sync.Once
 	writeMu    sync.Mutex
 	closed     chan struct{}
+	done       chan struct{}
 	readErr    error
 }
 
@@ -211,7 +214,7 @@ func (p *Provider) Recognize(ctx context.Context, req asr.RecognizeRequest) (asr
 
 // StartStream 创建真实火山云流式识别会话。
 func (p *Provider) StartStream(ctx context.Context, engine string, language string) (asr.StreamSession, error) {
-	cfg := p.buildSessionConfig(engine, language)
+	cfg := p.buildStreamSessionConfig(engine, language)
 	conn, err := p.openConnection(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -221,6 +224,7 @@ func (p *Provider) StartStream(ctx context.Context, engine string, language stri
 		conn:       conn,
 		resultChan: make(chan asr.StreamResult, 16),
 		closed:     make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 	go session.readLoop()
 	return session, nil
@@ -256,6 +260,15 @@ func (p *Provider) buildSessionConfig(engine string, language string) sessionCon
 		sampleRate: p.sampleRate,
 		requestID:  uuid.NewString(),
 	}
+}
+
+// buildStreamSessionConfig 构造适合浏览器 PCM 流式上传的识别会话参数。
+func (p *Provider) buildStreamSessionConfig(engine string, language string) sessionConfig {
+	cfg := p.buildSessionConfig(engine, language)
+	if normalized := strings.TrimSpace(strings.ToLower(cfg.audioFmt)); normalized == "" || normalized == defaultASRFormat {
+		cfg.audioFmt = defaultASRStreamFormat
+	}
+	return cfg
 }
 
 // buildHandshakePayload 构造流式识别初始化请求。
@@ -313,6 +326,10 @@ func (s *streamSession) Close() error {
 		if err := s.writeFrame(buildAudioFrame(nil, true)); err != nil {
 			closeErr = err
 		}
+		select {
+		case <-s.done:
+		case <-time.After(3 * time.Second):
+		}
 		close(s.closed)
 		if err := s.conn.Close(); err != nil && closeErr == nil {
 			closeErr = err
@@ -324,6 +341,7 @@ func (s *streamSession) Close() error {
 // readLoop 持续读取火山云返回并转成统一结果。
 func (s *streamSession) readLoop() {
 	defer close(s.resultChan)
+	defer close(s.done)
 
 	for {
 		_, message, err := s.conn.ReadMessage()
