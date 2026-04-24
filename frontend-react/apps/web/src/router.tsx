@@ -23,6 +23,7 @@ import {
   CommunityPage,
   CommunityPostDetailPage,
 } from './features/community/CommunityPages'
+import GrowthPage from './features/growth/GrowthPage'
 import { InterviewHubPage, InterviewReportPage, InterviewSessionPage } from './features/interview/InterviewPage'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE,
@@ -41,6 +42,7 @@ import {
   readCurrentBrowserPath,
   resolveLoginRedirectTarget,
 } from './shared/authRedirect'
+import { consumePendingPracticeSearch, persistPendingPracticeSearch } from './shared/practiceSearch'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -210,7 +212,6 @@ interface HomeInterviewHistoryItem {
 
 const PRACTICE_PAGE_SIZE = 10
 const NOTE_PAGE_SIZE = 20
-const PENDING_PRACTICE_SEARCH_KEY = 'makejob.practice.pending-search'
 
 /**
  * 将树形分类拍平成选项列表，便于首版 React 页面快速挂接筛选器。
@@ -456,34 +457,6 @@ func main() {
  */
 function buildCodeDraftStorageKey(questionId: number | string, language: string): string {
   return `makejob.practice.code-draft.${questionId}.${language}`
-}
-
-/**
- * 暂存顶部导航发起的题库搜索词，供题库页在跳转后立即接管并执行筛选。
- */
-function persistPendingPracticeSearch(keyword: string): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  if (keyword.trim()) {
-    window.localStorage.setItem(PENDING_PRACTICE_SEARCH_KEY, keyword.trim())
-  } else {
-    window.localStorage.removeItem(PENDING_PRACTICE_SEARCH_KEY)
-  }
-}
-
-/**
- * 读取并清空待执行的题库搜索词，避免同一关键字在后续页面切换中反复触发。
- */
-function consumePendingPracticeSearch(): string {
-  if (typeof window === 'undefined') {
-    return ''
-  }
-
-  const keyword = window.localStorage.getItem(PENDING_PRACTICE_SEARCH_KEY) || ''
-  window.localStorage.removeItem(PENDING_PRACTICE_SEARCH_KEY)
-  return keyword.trim()
 }
 
 /**
@@ -1111,8 +1084,9 @@ function RootLayout() {
     { to: '/community', label: '社区', match: pathname.startsWith('/community') },
     { to: '/interview', label: '面试', match: pathname.startsWith('/interview') },
     { to: '/companion', label: '学习陪伴', match: pathname.startsWith('/companion') },
+    { to: '/growth', label: '成长档案', match: pathname.startsWith('/growth') || pathname.startsWith('/workspace') },
   ]
-  const accountLabel = accessToken ? (user?.username || '工作台') : '登录'
+  const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
 
   if (isStandaloneCompanionRoom) {
@@ -1157,7 +1131,7 @@ function RootLayout() {
           </form>
 
           <div className="nav-actions">
-            <Link className="nav-action-link" to={accessToken ? '/workspace' : '/auth/login'}>
+            <Link className="nav-action-link" to={accessToken ? '/growth' : '/auth/login'}>
               {accountLabel}
             </Link>
             <button className="primary-button nav-publish-button" type="button" onClick={handlePublish}>
@@ -2717,43 +2691,7 @@ function CompanionPage() {
 }
 
 /**
- * 展示登录后已经同步到前端的用户资料，验证工作台主链路是否打通。
- */
-function WorkspacePage() {
-  const user = useAuthStore((state) => state.user)
-  const { effectiveIndustryLabel } = useFrontendIndustryPreference()
-
-  return (
-    <section className="page-panel">
-      <span className="page-tag">已接管链路</span>
-      <h1>用户工作台</h1>
-      <p className="page-copy">
-        当前页面用于验证 React 前台已经具备登录、会话恢复、资料同步和统一行业偏好能力，后续会接入统计卡片、学习计划和最近练习记录。
-      </p>
-      <div className="grid-cards">
-        <article className="feature-card">
-          <h2>用户名</h2>
-          <p>{user?.username || '-'}</p>
-        </article>
-        <article className="feature-card">
-          <h2>邮箱</h2>
-          <p>{user?.email || '-'}</p>
-        </article>
-        <article className="feature-card">
-          <h2>角色</h2>
-          <p>{user?.role || '-'}</p>
-        </article>
-        <article className="feature-card">
-          <h2>当前方向</h2>
-          <p>{effectiveIndustryLabel}</p>
-        </article>
-      </div>
-    </section>
-  )
-}
-
-/**
- * 提供前台登录页面，并在成功后跳转到用户工作台。
+ * 提供前台登录页面，并在成功后跳转到成长档案页。
  */
 function LoginPage() {
   const navigate = useNavigate()
@@ -2771,7 +2709,7 @@ function LoginPage() {
   const [message, setMessage] = useState('等待提交')
 
   /**
-   * 提交登录表单，并在成功后进入已受保护的工作台页面。
+   * 提交登录表单，并在成功后进入已受保护的成长档案页面。
    */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2785,7 +2723,7 @@ function LoginPage() {
       }
 
       navigate({
-        to: '/workspace',
+        to: '/growth',
         replace: true,
       })
     }
@@ -3022,6 +2960,28 @@ const companionRoomRoute = createRoute({
   component: CompanionWorkspacePage,
 })
 
+const growthRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'growth',
+  beforeLoad: async ({ location }) => {
+    if (!getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+
+    const ready = await useAuthStore.getState().ensureProfile()
+    if (!ready) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: GrowthPage,
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth/login',
@@ -3050,7 +3010,7 @@ const workspaceRoute = createRoute({
       })
     }
   },
-  component: WorkspacePage,
+  component: GrowthPage,
 })
 
 const routeTree = rootRoute.addChildren([
@@ -3071,6 +3031,7 @@ const routeTree = rootRoute.addChildren([
   interviewReportRoute,
   companionRoute,
   companionRoomRoute,
+  growthRoute,
   loginRoute,
   workspaceRoute,
 ])

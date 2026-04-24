@@ -44,6 +44,7 @@ type AppDependencies struct {
 	NoteRepo             repository.NoteRepository
 	PlanRepo             repository.PlanRepository
 	PlanTaskRepo         repository.PlanTaskRepository
+	StudyLogRepo         repository.StudyLogRepository
 
 	AuthService       service.AuthService
 	MembershipService service.MembershipService
@@ -51,6 +52,7 @@ type AppDependencies struct {
 	QuestionService   service.QuestionService
 	PlanService       service.PlanService
 	CompanionService  service.CompanionService
+	GrowthService     service.GrowthService
 	Live2DService     service.Live2DService
 	CasbinService     service.CasbinService
 
@@ -60,6 +62,7 @@ type AppDependencies struct {
 	QuestionHandler   *handler.QuestionHandler
 	PlanHandler       *handler.PlanHandler
 	CompanionHandler  *handler.CompanionHandler
+	GrowthHandler     *handler.GrowthHandler
 	Live2DHandler     *handler.Live2DHandler
 	AdminHandler      *handler.AdminHandler
 	ScraperHandler    *handler.ScraperHandler
@@ -164,6 +167,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.NoteRepo = repository.NewNoteRepository(db)
 		deps.PlanRepo = repository.NewPlanRepository(db)
 		deps.PlanTaskRepo = repository.NewPlanTaskRepository(db)
+		deps.StudyLogRepo = repository.NewStudyLogRepository(db)
 
 		industryRepo = repository.NewIndustryRepository(db)
 		adminConfigRepo := repository.NewAdminConfigRepository(db)
@@ -205,6 +209,13 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			industryRepo,
 		)
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)
+		deps.GrowthService = service.NewGrowthService(
+			deps.StudyLogRepo,
+			deps.RecordRepo,
+			deps.InterviewRepo,
+			deps.PlanRepo,
+			deps.PlanTaskRepo,
+		)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
 		ttsProvider, err := ttsfactory.NewTTSProviderWithConfig("", cfg)
@@ -222,6 +233,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)
+		deps.GrowthHandler = handler.NewGrowthHandler(deps.GrowthService)
 		deps.Live2DHandler = handler.NewLive2DHandler(deps.Live2DService)
 		deps.CommunityHandler = handler.NewCommunityHandler(communityService)
 
@@ -356,6 +368,9 @@ func registerRoutes(r *gin.Engine, deps *AppDependencies) {
 		}
 		if deps.CompanionHandler != nil {
 			deps.CompanionHandler.RegisterRoutes(protected)
+		}
+		if deps.GrowthHandler != nil {
+			deps.GrowthHandler.RegisterRoutes(protected)
 		}
 		if deps.QuestionHandler != nil {
 			deps.QuestionHandler.RegisterRoutes(nil, protected)

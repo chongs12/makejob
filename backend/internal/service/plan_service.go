@@ -356,6 +356,8 @@ func (s *planService) UpdateTaskStatus(ctx context.Context, userID, planID, task
 	if req.Status == model.TaskStatusCompleted {
 		now := time.Now()
 		task.CompletedAt = &now
+	} else {
+		task.CompletedAt = nil
 	}
 
 	if err := s.taskRepo.Update(ctx, task); err != nil {
@@ -379,6 +381,8 @@ func (s *planService) UpdateTaskStatus(ctx context.Context, userID, planID, task
 	// 如果所有任务都完成了，更新计划状态为completed
 	if completedCount >= plan.TotalTasks {
 		plan.Status = model.PlanStatusCompleted
+	} else {
+		plan.Status = model.PlanStatusActive
 	}
 
 	return s.planRepo.Update(ctx, plan)

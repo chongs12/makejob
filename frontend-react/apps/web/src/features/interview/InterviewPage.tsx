@@ -16,6 +16,12 @@ import {
   subscribeFrontendIndustryCodeChange,
 } from '../../shared/industryContext'
 import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
+import {
+  buildInterviewCompanionContextDraft,
+  persistCompanionPlanContext,
+} from '../../shared/companionContext'
+import { persistCommunityDraft } from '../../shared/communityDraft'
+import { persistPendingPracticeSearch } from '../../shared/practiceSearch'
 
 interface InterviewConfigForm {
   difficulty: string
@@ -279,6 +285,158 @@ function formatInterviewDuration(seconds: number): string {
 
   const minutes = Math.max(Math.round(seconds / 60), 1)
   return `${minutes} 分钟`
+}
+
+/**
+ * 将维度键名转换成更适合报告页展示的中文标签。
+ */
+function interviewDimensionLabel(key: string): string {
+  const normalizedKey = key.trim().toLowerCase()
+  const map: Record<string, string> = {
+    foundation: '基础知识',
+    basics: '基础知识',
+    knowledge: '知识掌握',
+    technical: '技术深度',
+    coding: '编码能力',
+    communication: '表达沟通',
+    architecture: '架构理解',
+    problem_solving: '问题分析',
+    'problem-solving': '问题分析',
+    behavioral: '行为表达',
+  }
+
+  return map[normalizedKey] || key || '未命名维度'
+}
+
+/**
+ * 根据总分生成更适合报告总览展示的准备度结论。
+ */
+function buildInterviewReadiness(score: number): { label: string; description: string } {
+  if (score >= 85) {
+    return {
+      label: '可直接冲刺',
+      description: '整体表现已经具备较强竞争力，建议开始强化追问深度和临场表达稳定性。',
+    }
+  }
+
+  if (score >= 70) {
+    return {
+      label: '接近可投递',
+      description: '主体能力已形成，但仍有若干薄弱点需要集中补强后再去冲高质量面试。',
+    }
+  }
+
+  if (score >= 55) {
+    return {
+      label: '需要补强',
+      description: '当前更适合先回到题库和学习计划，把关键薄弱项补齐后再继续模拟面试。',
+    }
+  }
+
+  return {
+    label: '建议先夯实基础',
+    description: '基础稳定性还不够，优先回练核心知识点，再用面试场景验证提升效果。',
+  }
+}
+
+/**
+ * 将维度评分整理成排序后的数组，便于报告页同时展示优势项和薄弱项。
+ */
+function normalizeInterviewDimensions(report?: InterviewReport | null): Array<{ key: string; label: string; score: number }> {
+  return Object.entries(report?.dimension_scores || {})
+    .map(([key, value]) => ({
+      key,
+      label: interviewDimensionLabel(key),
+      score: Math.round(value || 0),
+    }))
+    .sort((left, right) => right.score - left.score)
+}
+
+/**
+ * 从面试消息历史中还原题目与回答轨迹，供报告页做复盘回放。
+ */
+function buildInterviewReplayItems(messages: InterviewMessage[]): Array<{
+  question: string
+  answer: string
+  askedAt: string
+  answeredAt: string
+}> {
+  const result: Array<{
+    question: string
+    answer: string
+    askedAt: string
+    answeredAt: string
+  }> = []
+
+  let currentQuestion: InterviewMessage | null = null
+
+  for (const item of messages) {
+    if (item.role === 'ai' && item.message_type === 'text' && item.content.trim()) {
+      currentQuestion = item
+      continue
+    }
+
+    if (item.role === 'user' && currentQuestion) {
+      result.push({
+        question: currentQuestion.content,
+        answer: item.content,
+        askedAt: currentQuestion.created_at,
+        answeredAt: item.created_at,
+      })
+      currentQuestion = null
+    }
+  }
+
+  return result
+}
+
+/**
+ * 生成可直接带入社区发帖页的面试复盘草稿。
+ */
+function buildInterviewReviewDraft(report: InterviewReport, detail: InterviewDetailResponse | undefined, industryLabel: string): {
+  postType: string
+  title: string
+  content: string
+  tags: string[]
+} {
+  const topWeaknesses = (report.weaknesses || []).slice(0, 3)
+  const topSuggestions = (report.suggestions || []).slice(0, 3)
+  const topDimensions = normalizeInterviewDimensions(report).slice(-3).map((item) => `${item.label} ${item.score}分`)
+
+  return {
+    postType: 'article',
+    title: `${industryLabel} 面试复盘：第 ${detail?.id || '-'} 场`,
+    content: [
+      `这次 ${industryLabel} 模拟面试已经结束，先记录本场复盘。`,
+      '',
+      `一、结果概览`,
+      `- 总分：${Math.round(report.overall_score || 0)}`,
+      `- 题量：${report.total_questions || detail?.total_questions || 0}`,
+      `- 命中题数：${report.correct_count || 0}`,
+      `- 总结：${report.summary || '暂无总结'}`,
+      '',
+      `二、当前最需要补强的点`,
+      ...(topWeaknesses.length ? topWeaknesses.map((item) => `- ${item}`) : ['- 暂无明确薄弱项，后续可继续挑战更深问题。']),
+      '',
+      `三、低分维度`,
+      ...(topDimensions.length ? topDimensions.map((item) => `- ${item}`) : ['- 暂无维度评分数据']),
+      '',
+      `四、下一步行动`,
+      ...(topSuggestions.length ? topSuggestions.map((item) => `- ${item}`) : ['- 先回题库补强，再进行下一场模拟面试。']),
+    ].join('\n'),
+    tags: Array.from(new Set([industryLabel, '面试复盘', 'AI面试', ...topWeaknesses.slice(0, 2)])).slice(0, 5),
+  }
+}
+
+/**
+ * 优先使用浏览器剪贴板能力复制文本，失败时让上层统一兜底提示。
+ */
+async function copyInterviewText(text: string): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    throw new Error('当前浏览器不支持剪贴板写入')
+  }
+
+  await navigator.clipboard.writeText(text)
 }
 
 /**
@@ -1639,10 +1797,12 @@ export function InterviewSessionPage() {
  * 渲染 AI 面试报告页，集中展示得分、维度、优势与待改进点。
  */
 export function InterviewReportPage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const params = useParams({ strict: false })
   const interviewId = String(params.interviewId || '')
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
+  const [reportMessage, setReportMessage] = useState('这份报告已经升级为可执行版本，你可以直接继续补弱项或生成复盘。')
 
   const reportQuery = useQuery({
     queryKey: ['interview-report', accessToken, interviewId],
@@ -1669,6 +1829,16 @@ export function InterviewReportPage() {
     [industriesQuery.data, reportIndustryCode],
   )
   const reportIndustryLabel = formatFrontendIndustryLabel(reportIndustry, reportIndustryCode)
+  const report = reportQuery.data?.report || null
+  const reportDuration = reportQuery.data?.duration_seconds || 0
+  const reportCompletedAt = reportQuery.data?.completed_at
+  const dimensionItems = useMemo(() => normalizeInterviewDimensions(report), [report])
+  const strongestDimensions = dimensionItems.slice(0, 3)
+  const weakestDimensions = [...dimensionItems].reverse().slice(0, 3)
+  const replayItems = useMemo(() => buildInterviewReplayItems(detailQuery.data?.messages || []), [detailQuery.data?.messages])
+  const readiness = buildInterviewReadiness(report?.overall_score || 0)
+  const primaryWeakKeyword = weakestDimensions[0]?.label || report?.weaknesses?.[0] || ''
+  const reviewDraft = report ? buildInterviewReviewDraft(report, detailQuery.data, reportIndustryLabel) : null
 
   /**
    * 订阅前台行业偏好变化，让报告页在同页切换方向后也能同步显示最新名称。
@@ -1693,6 +1863,77 @@ export function InterviewReportPage() {
     setSelectedIndustryCode(detailQuery.data.industry_code)
   }, [detailQuery.data?.industry_code])
 
+  /**
+   * 将当前最弱项带到题库页，便于直接进入针对性补题。
+   */
+  function handlePracticeFollowUp(keyword: string): void {
+    persistPendingPracticeSearch(keyword)
+    navigate({
+      to: '/practice',
+    })
+  }
+
+  /**
+   * 把当前报告生成的复盘模板写入社区草稿，并直接跳到发帖页。
+   */
+  function handleCreateCommunityReview(): void {
+    if (!reviewDraft) {
+      setReportMessage('当前报告还未准备好复盘草稿。')
+      return
+    }
+
+    persistCommunityDraft(reviewDraft)
+    navigate({
+      to: '/community/create',
+    })
+  }
+
+  /**
+   * 复制当前复盘草稿正文，方便用户在站外或其他位置继续编辑。
+   */
+  async function handleCopyReviewDraft(): Promise<void> {
+    if (!reviewDraft) {
+      setReportMessage('当前报告还未准备好复盘草稿。')
+      return
+    }
+
+    try {
+      await copyInterviewText(reviewDraft.content)
+      setReportMessage('复盘草稿正文已复制，可以直接粘贴到社区或外部文档。')
+    } catch (error) {
+      setReportMessage(extractErrorMessage(error, '复制复盘草稿失败'))
+    }
+  }
+
+  /**
+   * 将当前面试报告提炼为学习陪伴计划上下文，并跳转到陪伴入口页继续补强。
+   */
+  function handleCompanionFollowUp(): void {
+    if (!report) {
+      setReportMessage('当前报告还未加载完成，暂时无法生成强化计划上下文。')
+      return
+    }
+
+    persistCompanionPlanContext(
+      buildInterviewCompanionContextDraft({
+        interviewId,
+        industryCode: reportIndustryCode,
+        industryLabel: reportIndustryLabel,
+        overallScore: report.overall_score || 0,
+        summary: report.summary || '',
+        readinessLabel: readiness.label,
+        weakTopics: [
+          ...weakestDimensions.map((item) => item.label),
+          ...(report.weaknesses || []),
+        ],
+        suggestions: report.suggestions || [],
+      }),
+    )
+    navigate({
+      to: '/companion',
+    })
+  }
+
   return (
     <section className="page-panel interview-page-panel">
       <div className="companion-room-toolbar">
@@ -1711,7 +1952,7 @@ export function InterviewReportPage() {
               <p className="companion-empty-text">所属方向：{reportIndustryLabel}</p>
             </div>
             <span className="companion-card-note">
-              {reportQuery.data?.completed_at ? `完成于 ${formatInterviewDateTime(reportQuery.data.completed_at)}` : '等待报告加载'}
+              {reportCompletedAt ? `完成于 ${formatInterviewDateTime(reportCompletedAt)}` : '等待报告加载'}
             </span>
           </div>
 
@@ -1726,38 +1967,71 @@ export function InterviewReportPage() {
             </div>
           ) : null}
 
-          {reportQuery.data?.report ? (
+          {report ? (
             <>
               <div className="interview-report-metrics">
                 <article className="metric-card">
-                  <strong>{Math.round(reportQuery.data.report.overall_score || 0)}</strong>
+                  <strong>{Math.round(report.overall_score || 0)}</strong>
                   <span>总分</span>
                 </article>
                 <article className="metric-card">
-                  <strong>{reportQuery.data.report.correct_count}</strong>
+                  <strong>{report.correct_count}</strong>
                   <span>命中题数</span>
                 </article>
                 <article className="metric-card">
-                  <strong>{reportQuery.data.report.total_questions}</strong>
+                  <strong>{report.total_questions}</strong>
                   <span>总题量</span>
                 </article>
                 <article className="metric-card">
-                  <strong>{formatInterviewDuration(reportQuery.data.duration_seconds)}</strong>
+                  <strong>{formatInterviewDuration(reportDuration)}</strong>
                   <span>面试时长</span>
                 </article>
               </div>
 
+              <div className="interview-report-action-grid">
+                <article className="timeline-item">
+                  <strong>当前准备度</strong>
+                  <p>{readiness.label}</p>
+                  <p>{readiness.description}</p>
+                </article>
+                <article className="timeline-item">
+                  <strong>优先补强项</strong>
+                  {weakestDimensions.length ? (
+                    <div className="community-tag-row">
+                      {weakestDimensions.map((item) => (
+                        <span key={item.key}>{item.label} {item.score} 分</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p>当前没有维度评分数据，建议优先复盘总结和建议区内容。</p>
+                  )}
+                </article>
+                <article className="timeline-item">
+                  <strong>下一步动作</strong>
+                  <div className="page-actions">
+                    <button className="secondary-button" type="button" onClick={() => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel)}>
+                      去题库补弱项
+                    </button>
+                    <button className="secondary-button" type="button" onClick={handleCompanionFollowUp}>
+                      去生成强化计划
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <div className="status-card">{reportMessage}</div>
+
               <div className="timeline-item">
                 <strong>总结</strong>
-                <p>{reportQuery.data.report.summary || '当前报告未生成总结。'}</p>
+                <p>{report.summary || '当前报告未生成总结。'}</p>
               </div>
 
               <div className="interview-report-sections">
                 <article className="timeline-item">
                   <strong>优势</strong>
-                  {reportQuery.data.report.strengths?.length ? (
+                  {report.strengths?.length ? (
                     <ul className="interview-bullet-list">
-                      {reportQuery.data.report.strengths.map((item) => <li key={item}>{item}</li>)}
+                      {report.strengths.map((item) => <li key={item}>{item}</li>)}
                     </ul>
                   ) : (
                     <p>当前没有返回优势项。</p>
@@ -1766,9 +2040,9 @@ export function InterviewReportPage() {
 
                 <article className="timeline-item">
                   <strong>待加强点</strong>
-                  {reportQuery.data.report.weaknesses?.length ? (
+                  {report.weaknesses?.length ? (
                     <ul className="interview-bullet-list">
-                      {reportQuery.data.report.weaknesses.map((item) => <li key={item}>{item}</li>)}
+                      {report.weaknesses.map((item) => <li key={item}>{item}</li>)}
                     </ul>
                   ) : (
                     <p>当前没有返回待加强项。</p>
@@ -1777,9 +2051,9 @@ export function InterviewReportPage() {
 
                 <article className="timeline-item">
                   <strong>后续建议</strong>
-                  {reportQuery.data.report.suggestions?.length ? (
+                  {report.suggestions?.length ? (
                     <ul className="interview-bullet-list">
-                      {reportQuery.data.report.suggestions.map((item) => <li key={item}>{item}</li>)}
+                      {report.suggestions.map((item) => <li key={item}>{item}</li>)}
                     </ul>
                   ) : (
                     <p>当前没有返回建议项。</p>
@@ -1789,17 +2063,83 @@ export function InterviewReportPage() {
 
               <article className="timeline-item">
                 <strong>维度评分</strong>
-                {Object.keys(reportQuery.data.report.dimension_scores || {}).length ? (
+                {dimensionItems.length ? (
                   <div className="interview-dimension-grid">
-                    {Object.entries(reportQuery.data.report.dimension_scores).map(([key, value]) => (
-                      <div className="companion-stat-chip" key={key}>
-                        <strong>{Math.round(value)}</strong>
-                        <span>{key}</span>
+                    {dimensionItems.map((item) => (
+                      <div className="companion-stat-chip" key={item.key}>
+                        <strong>{item.score}</strong>
+                        <span>{item.label}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p>当前报告没有返回维度评分。</p>
+                )}
+              </article>
+
+              <div className="interview-report-sections">
+                <article className="timeline-item">
+                  <strong>最强维度</strong>
+                  {strongestDimensions.length ? (
+                    <ul className="interview-bullet-list">
+                      {strongestDimensions.map((item) => <li key={item.key}>{item.label} {item.score} 分</li>)}
+                    </ul>
+                  ) : (
+                    <p>当前没有维度评分数据。</p>
+                  )}
+                </article>
+
+                <article className="timeline-item">
+                  <strong>优先补强维度</strong>
+                  {weakestDimensions.length ? (
+                    <ul className="interview-bullet-list">
+                      {weakestDimensions.map((item) => <li key={item.key}>{item.label} {item.score} 分</li>)}
+                    </ul>
+                  ) : (
+                    <p>当前没有维度评分数据。</p>
+                  )}
+                </article>
+              </div>
+
+              <article className="timeline-item">
+                <div className="section-head">
+                  <div>
+                    <strong>社区复盘模板</strong>
+                    <p className="companion-empty-text">把这场面试的结果整理成帖子，后续可以继续在社区里补充复盘和讨论。</p>
+                  </div>
+                  <div className="page-actions">
+                    <button className="secondary-button" type="button" onClick={() => void handleCopyReviewDraft()}>
+                      复制草稿
+                    </button>
+                    <button className="primary-button" type="button" onClick={handleCreateCommunityReview}>
+                      去社区发复盘
+                    </button>
+                  </div>
+                </div>
+                {reviewDraft ? (
+                  <div className="analysis-block">{reviewDraft.content}</div>
+                ) : (
+                  <p>当前没有可生成的复盘模板。</p>
+                )}
+              </article>
+
+              <article className="timeline-item">
+                <strong>答题轨迹</strong>
+                {replayItems.length ? (
+                  <div className="interview-replay-list">
+                    {replayItems.map((item, index) => (
+                      <article className="interview-message-item" key={`${item.askedAt}-${index}`}>
+                        <div className="interview-message-head">
+                          <strong>第 {index + 1} 题</strong>
+                          <span>{formatInterviewDateTime(item.answeredAt || item.askedAt)}</span>
+                        </div>
+                        <p><strong>问题：</strong>{item.question}</p>
+                        <p><strong>回答：</strong>{item.answer || '本题未记录到用户回答。'}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>当前没有可回放的答题轨迹。</p>
                 )}
               </article>
             </>
@@ -1810,10 +2150,26 @@ export function InterviewReportPage() {
           <article className="section-card sidebar-card">
             <span className="section-kicker">下一步建议</span>
             <div className="sidebar-links">
-              <Link className="sidebar-link" to="/practice">先去补题库弱项</Link>
-              <Link className="sidebar-link" to="/companion">去学习陪伴继续推进计划</Link>
-              <Link className="sidebar-link" to="/interview">再开一场新的面试</Link>
+              <button className="sidebar-link sidebar-link-button" type="button" onClick={() => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel)}>
+                先去补题库弱项
+              </button>
+              <button className="sidebar-link sidebar-link-button" type="button" onClick={handleCompanionFollowUp}>
+                去学习陪伴继续推进计划
+              </button>
+              <button className="sidebar-link sidebar-link-button" type="button" onClick={() => navigate({ to: '/interview' })}>
+                再开一场新的面试
+              </button>
+              <button className="sidebar-link sidebar-link-button" type="button" onClick={handleCreateCommunityReview}>
+                去社区发复盘
+              </button>
             </div>
+          </article>
+
+          <article className="section-card sidebar-card">
+            <span className="section-kicker">报告提示</span>
+            <p>
+              这版报告会把强弱项、后续建议、题库补练和社区复盘串成一条动作链，建议优先处理最低分维度。
+            </p>
           </article>
         </aside>
       </div>

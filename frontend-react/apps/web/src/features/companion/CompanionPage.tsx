@@ -17,12 +17,20 @@ import {
   type FrontendIndustry as CompanionIndustry,
 } from '../../shared/industryContext'
 import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
+import {
+  clearCompanionPlanContext,
+  readCompanionPlanContext,
+  type CompanionPlanContextDraft,
+} from '../../shared/companionContext'
 
 const MAX_CHAT_HISTORY = 12
 const COMPANION_SESSION_SUMMARY_KEY = 'makejob.companion.session-summary'
 const COMPANION_SELECTED_MODEL_KEY_PREFIX = 'makejob.companion.selected-live2d:'
+const COMPANION_FOCUS_TASK_KEY = 'makejob.companion.focus-task'
+const COMPANION_DAILY_DIGEST_KEY = 'makejob.companion.daily-digest'
 
 type CompanionMessageRole = 'assistant' | 'user'
+type CompanionTaskActionSource = 'hub' | 'room'
 
 interface CompanionPlanTask {
   id: number
@@ -75,6 +83,35 @@ interface CompanionSessionSummary {
   latestUserMessage: string
   planTitle: string
   progress: number
+}
+
+interface CompanionFocusTaskDraft {
+  planId: number
+  taskId: number
+  title: string
+  status: string
+  source: CompanionTaskActionSource
+  updatedAt: number
+}
+
+interface CompanionDailyDigest {
+  dateKey: string
+  updatedAt: number
+  completedTitles: string[]
+  skippedTitles: string[]
+  latestActionText: string
+}
+
+interface CompanionStudyLogPayload {
+  date_key: string
+  plan_id?: number
+  summary: string
+  focus_task_title: string
+  completed_count: number
+  skipped_count: number
+  completed_titles: string[]
+  skipped_titles: string[]
+  latest_action_text: string
 }
 
 interface CompanionPracticeStats {
@@ -174,6 +211,144 @@ function persistCompanionSessionSummary(summary: CompanionSessionSummary): void 
   }
 
   window.localStorage.setItem(COMPANION_SESSION_SUMMARY_KEY, JSON.stringify(summary))
+}
+
+/**
+ * 生成学习陪伴执行闭环使用的本地日期键，避免跨天复用旧的今日摘要。
+ */
+function buildCompanionLocalDateKey(date = new Date()): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+/**
+ * 读取当前被标记为“继续推进”的任务草稿，供入口页和陪伴房间共用。
+ */
+function readCompanionFocusTask(): CompanionFocusTaskDraft | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(COMPANION_FOCUS_TASK_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as Partial<CompanionFocusTaskDraft>
+    const planId = Number(parsed.planId)
+    const taskId = Number(parsed.taskId)
+    if (!planId || !taskId) {
+      clearCompanionFocusTask()
+      return null
+    }
+
+    return {
+      planId,
+      taskId,
+      title: parsed.title?.trim() || '',
+      status: parsed.status?.trim() || 'pending',
+      source: parsed.source === 'hub' ? 'hub' : 'room',
+      updatedAt: Number(parsed.updatedAt) || Date.now(),
+    }
+  } catch {
+    clearCompanionFocusTask()
+    return null
+  }
+}
+
+/**
+ * 记住当前最值得继续推进的任务，便于跨页面返回时直接续接。
+ */
+function persistCompanionFocusTask(task: CompanionFocusTaskDraft): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(COMPANION_FOCUS_TASK_KEY, JSON.stringify(task))
+}
+
+/**
+ * 清空当前任务续接草稿，避免已完成或已失效任务继续污染入口提示。
+ */
+function clearCompanionFocusTask(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(COMPANION_FOCUS_TASK_KEY)
+}
+
+/**
+ * 构造今日执行摘要的默认骨架，保证首次进入时也能稳定写入本地缓存。
+ */
+function buildInitialCompanionDailyDigest(): CompanionDailyDigest {
+  return {
+    dateKey: buildCompanionLocalDateKey(),
+    updatedAt: Date.now(),
+    completedTitles: [],
+    skippedTitles: [],
+    latestActionText: '',
+  }
+}
+
+/**
+ * 读取学习陪伴页的今日执行摘要，并在跨天时自动重置为新的一天。
+ */
+function readCompanionDailyDigest(): CompanionDailyDigest | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(COMPANION_DAILY_DIGEST_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as Partial<CompanionDailyDigest>
+    const todayKey = buildCompanionLocalDateKey()
+    if (parsed.dateKey !== todayKey) {
+      clearCompanionDailyDigest()
+      return null
+    }
+
+    return {
+      dateKey: todayKey,
+      updatedAt: Number(parsed.updatedAt) || Date.now(),
+      completedTitles: Array.isArray(parsed.completedTitles) ? parsed.completedTitles.map((item) => String(item).trim()).filter(Boolean) : [],
+      skippedTitles: Array.isArray(parsed.skippedTitles) ? parsed.skippedTitles.map((item) => String(item).trim()).filter(Boolean) : [],
+      latestActionText: parsed.latestActionText?.trim() || '',
+    }
+  } catch {
+    clearCompanionDailyDigest()
+    return null
+  }
+}
+
+/**
+ * 持久化今日执行摘要，供入口页和陪伴房间同步展示今天的推进情况。
+ */
+function persistCompanionDailyDigest(digest: CompanionDailyDigest): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(COMPANION_DAILY_DIGEST_KEY, JSON.stringify(digest))
+}
+
+/**
+ * 清空过期或无效的今日执行摘要，避免旧日期数据继续显示在当前页面。
+ */
+function clearCompanionDailyDigest(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(COMPANION_DAILY_DIGEST_KEY)
 }
 
 /**
@@ -281,6 +456,40 @@ function buildGeneratePlanPayload(form: CompanionGeneratePlanForm, industryCode:
     duration_days: Number(form.durationDays) || 14,
     industry_code: industryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE,
   }
+}
+
+/**
+ * 将跨页带入的学习陪伴上下文合并进计划表单，尽量保留用户已经手动输入的内容。
+ */
+function applyCompanionPlanContextToForm(
+  form: CompanionGeneratePlanForm,
+  draft: CompanionPlanContextDraft,
+): CompanionGeneratePlanForm {
+  const initialForm = buildInitialPlanForm()
+  const mergedWeakTopics = Array.from(new Set([...draft.weakTopics, ...form.weakTopics])).slice(0, 12)
+  const mergedWeakTopicsText = form.weakTopicsText.trim() || draft.weakTopics.join('，')
+
+  return {
+    level: !form.level || form.level === initialForm.level ? draft.recommendedLevel : form.level,
+    dailyStudyTime:
+      !form.dailyStudyTime || form.dailyStudyTime === initialForm.dailyStudyTime
+        ? String(draft.recommendedDailyStudyTime)
+        : form.dailyStudyTime,
+    durationDays:
+      !form.durationDays || form.durationDays === initialForm.durationDays
+        ? String(draft.recommendedDurationDays)
+        : form.durationDays,
+    goalDescription: form.goalDescription.trim() || draft.goalDescription,
+    weakTopics: mergedWeakTopics,
+    weakTopicsText: mergedWeakTopicsText,
+  }
+}
+
+/**
+ * 将陪伴上下文的推荐参数整理成入口页提示文案，帮助用户理解当前预填依据。
+ */
+function buildCompanionContextPresetText(draft: CompanionPlanContextDraft): string {
+  return `${planLevelLabel(draft.recommendedLevel)} · ${draft.recommendedDailyStudyTime} 分钟/天 · ${draft.recommendedDurationDays} 天`
 }
 
 /**
@@ -408,10 +617,15 @@ export function CompanionHubPage() {
   const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
+  const hasAppliedPlanContextRef = useRef(false)
   const [sessionSummary, setSessionSummary] = useState<CompanionSessionSummary | null>(() => readCompanionSessionSummary())
+  const [dailyDigest, setDailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
+  const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
+  const [planContextDraft, setPlanContextDraft] = useState<CompanionPlanContextDraft | null>(() => readCompanionPlanContext())
   const [planForm, setPlanForm] = useState<CompanionGeneratePlanForm>(() => buildInitialPlanForm())
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
   const [planFormMessage, setPlanFormMessage] = useState('先选择学习方向，再让陪伴助手生成对应计划。')
+  const [taskActionTaskId, setTaskActionTaskId] = useState<number | null>(null)
 
   const industriesQuery = useQuery({
     queryKey: ['frontend-industries'],
@@ -461,6 +675,8 @@ export function CompanionHubPage() {
   const createPlanMutation = useMutation({
     mutationFn: (payload: CompanionGeneratePlanPayload) => createCompanionPlan(accessToken as string, payload),
     onSuccess: async (plan) => {
+      clearCompanionPlanContext()
+      setPlanContextDraft(null)
       setPlanForm(buildInitialPlanForm())
       if (plan.industry_code) {
         setSelectedIndustryCode(plan.industry_code)
@@ -478,12 +694,43 @@ export function CompanionHubPage() {
     },
   })
 
+  const updateTaskMutation = useMutation({
+    mutationFn: (payload: { task: CompanionPlanTask; status: CompanionTaskStatus }) =>
+      updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status),
+    onSuccess: async (_, variables) => {
+      const { nextDigest, nextFocusTask } = persistCompanionExecutionUpdate(
+        currentPlanQuery.data || null,
+        variables.task,
+        variables.status,
+        'hub',
+        dailyDigest,
+      )
+      setTaskActionTaskId(null)
+      setDailyDigest(nextDigest)
+      setFocusTaskDraft(nextFocusTask)
+      setPlanFormMessage(`任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['companion-hub-current-plan'] }),
+        queryClient.invalidateQueries({ queryKey: ['companion-hub-plan-progress'] }),
+        queryClient.invalidateQueries({ queryKey: ['companion-current-plan'] }),
+        queryClient.invalidateQueries({ queryKey: ['companion-current-plan-progress'] }),
+      ])
+    },
+    onError: (error) => {
+      setTaskActionTaskId(null)
+      setPlanFormMessage(extractErrorMessage(error, '更新任务状态失败，请稍后重试'))
+    },
+  })
+
   /**
    * 当用户从独立陪伴页返回入口页时，重新读取最近一次本地会话摘要。
    */
   useEffect(() => {
     function handleFocus(): void {
       setSessionSummary(readCompanionSessionSummary())
+      setDailyDigest(readCompanionDailyDigest())
+      setFocusTaskDraft(readCompanionFocusTask())
     }
 
     handleFocus()
@@ -508,11 +755,35 @@ export function CompanionHubPage() {
     }
   }, [effectiveIndustryCode, selectedIndustryCode])
 
+  /**
+   * 首次进入学习陪伴入口页时，自动把跨页带来的上下文草稿写入计划表单。
+   */
+  useEffect(() => {
+    if (!planContextDraft || hasAppliedPlanContextRef.current) {
+      return
+    }
+
+    hasAppliedPlanContextRef.current = true
+    setSelectedIndustryCode(planContextDraft.industryCode || DEFAULT_COMPANION_INDUSTRY_CODE)
+    setPlanForm((current) => applyCompanionPlanContextToForm(current, planContextDraft))
+    setPlanFormMessage(`已根据面试报告 #${planContextDraft.interviewId || '-'} 自动带入强化计划上下文。`)
+  }, [planContextDraft])
+
   const progressText = currentPlanQuery.data
     ? `${Math.round(currentPlanQuery.data.progress || 0)}%`
     : (sessionSummary ? `${sessionSummary.progress}%` : '--')
   const latestCompletedTask = useMemo(() => deriveLatestCompletedTask(currentPlanQuery.data || null), [currentPlanQuery.data])
   const upcomingTasks = useMemo(() => deriveUpcomingTasks(currentPlanQuery.data || null), [currentPlanQuery.data])
+  const todayGoals = useMemo(() => deriveTodayGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
+  const focusedTask = useMemo(
+    () => resolveFocusedCompanionTask(currentPlanQuery.data || null, focusTaskDraft),
+    [currentPlanQuery.data, focusTaskDraft],
+  )
+  const dailyDigestText = useMemo(
+    () => buildCompanionDailyDigestText(currentPlanQuery.data || null, dailyDigest, focusedTask),
+    [currentPlanQuery.data, dailyDigest, focusedTask],
+  )
+  useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
   const continueHint = useMemo(
     () => buildContinueHint(currentPlanQuery.data || null, sessionSummary),
     [currentPlanQuery.data, sessionSummary],
@@ -547,6 +818,87 @@ export function CompanionHubPage() {
           : [...current.weakTopics, topicName],
       }
     })
+  }
+
+  /**
+   * 从入口页直接进入陪伴房间，并把当前最值得继续的任务写入续接草稿。
+   */
+  function handleContinueTask(task?: CompanionPlanTask | null): void {
+    const targetTask = task || focusedTask
+    if (currentPlanQuery.data?.id && targetTask) {
+      persistCompanionFocusTask({
+        planId: currentPlanQuery.data.id,
+        taskId: targetTask.id,
+        title: targetTask.title,
+        status: targetTask.status,
+        source: 'hub',
+        updatedAt: Date.now(),
+      })
+      setFocusTaskDraft(readCompanionFocusTask())
+    }
+
+    navigate({
+      to: '/companion/room',
+    })
+  }
+
+  /**
+   * 在入口页直接推进今日任务，减少用户为了改状态来回切页的成本。
+   */
+  async function handleHubTaskStatusChange(task: CompanionPlanTask, status: CompanionTaskStatus) {
+    if (!accessToken) {
+      navigate({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch('/companion'),
+      })
+      return
+    }
+
+    if (!currentPlanQuery.data?.id) {
+      setPlanFormMessage('请先登录并确保当前存在可推进的学习计划。')
+      return
+    }
+
+    setTaskActionTaskId(task.id)
+    setPlanFormMessage(`正在把「${task.title}」更新为「${taskStatusLabel(status)}」...`)
+    try {
+      await updateTaskMutation.mutateAsync({
+        task,
+        status,
+      })
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        navigate({
+          to: '/auth/login',
+          search: buildLoginRedirectSearch('/companion'),
+        })
+      }
+    }
+  }
+
+  /**
+   * 重新将当前上下文草稿带入计划表单，便于用户在修改后快速恢复推荐内容。
+   */
+  function handleApplyPlanContextDraft(): void {
+    if (!planContextDraft) {
+      return
+    }
+
+    setSelectedIndustryCode(planContextDraft.industryCode || DEFAULT_COMPANION_INDUSTRY_CODE)
+    setPlanForm(() => applyCompanionPlanContextToForm(buildInitialPlanForm(), {
+      ...planContextDraft,
+      weakTopics: Array.from(new Set(planContextDraft.weakTopics)),
+    }))
+    setPlanFormMessage(`已重新带入面试报告 #${planContextDraft.interviewId || '-'} 的强化计划上下文。`)
+  }
+
+  /**
+   * 清空当前学习陪伴上下文草稿，避免旧报告继续影响后续手动生成计划。
+   */
+  function handleClearPlanContextDraft(): void {
+    clearCompanionPlanContext()
+    setPlanContextDraft(null)
+    setPlanFormMessage('已清除面试报告上下文，当前计划表单将按你手动填写的内容继续。')
   }
 
   /**
@@ -674,6 +1026,46 @@ export function CompanionHubPage() {
                当前已接通真实行业列表、分类筛选和计划生成链路。先选定方向，再让陪伴助手围绕这一领域拆出阶段计划和重点弱项。
               </p>
 
+              {planContextDraft ? (
+                <article className="timeline-item companion-context-card">
+                  <div className="companion-card-head">
+                    <div>
+                      <span className="section-kicker">来自面试报告</span>
+                      <h3>报告 #{planContextDraft.interviewId || '-'} 已接入学习陪伴入口</h3>
+                    </div>
+                    <span className="companion-card-note">{planContextDraft.industryLabel}</span>
+                  </div>
+
+                  <p>{planContextDraft.summary || '当前报告未提供总结，已优先带入低分维度和后续建议。'}</p>
+
+                  <div className="companion-hub-meta">
+                    <span>准备度：{planContextDraft.readinessLabel || '待补强'}</span>
+                    <span>推荐计划：{buildCompanionContextPresetText(planContextDraft)}</span>
+                  </div>
+
+                  {planContextDraft.weakTopics.length ? (
+                    <div className="community-tag-row">
+                      {planContextDraft.weakTopics.map((item) => <span key={item}>{item}</span>)}
+                    </div>
+                  ) : null}
+
+                  {planContextDraft.suggestions.length ? (
+                    <ul className="interview-bullet-list companion-context-list">
+                      {planContextDraft.suggestions.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  ) : null}
+
+                  <div className="page-actions">
+                    <button className="secondary-button" type="button" onClick={handleApplyPlanContextDraft}>
+                      重新带入表单
+                    </button>
+                    <button className="ghost-button" type="button" onClick={handleClearPlanContextDraft}>
+                      清除上下文
+                    </button>
+                  </div>
+                </article>
+              ) : null}
+
             <form className="stack-form companion-plan-form" onSubmit={handleGeneratePlan}>
               <div className="companion-plan-form-grid">
                 <label className="field">
@@ -789,6 +1181,39 @@ export function CompanionHubPage() {
           </section>
 
           <div className="companion-hub-main">
+            <section className="status-card companion-hub-execution">
+              <div className="companion-card-head">
+                <div>
+                  <span className="section-kicker">今日执行</span>
+                  <h2>先把今天真正要推进的任务抓出来</h2>
+                </div>
+                <span className="companion-card-note">{focusedTask ? '已找到续接任务' : '等待任务接入'}</span>
+              </div>
+
+              <article className="timeline-item">
+                <strong>{focusedTask ? `继续「${focusedTask.title}」` : '当前还没有明确续接任务'}</strong>
+                <p>{dailyDigestText}</p>
+                <div className="page-actions">
+                  <button className="primary-button" type="button" onClick={() => handleContinueTask(focusedTask)}>
+                    {focusedTask ? '进入陪伴页继续' : '进入陪伴页'}
+                  </button>
+                  {focusedTask ? (
+                    <button className="secondary-button" type="button" onClick={() => void handleHubTaskStatusChange(focusedTask, 'completed')}>
+                      直接记为完成
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+
+              <GoalList
+                items={todayGoals}
+                emptyText={accessToken ? '今天没有待推进任务，当前计划可能已经推进完毕。' : '登录后会在这里显示今天最该推进的任务。'}
+                onStatusChange={handleHubTaskStatusChange}
+                pendingTaskId={taskActionTaskId}
+                onContinueTask={handleContinueTask}
+              />
+            </section>
+
             <section className="status-card companion-plan-overview">
               <div className="companion-card-head">
                 <div>
@@ -947,6 +1372,21 @@ async function fetchCompanionPracticeStats(token: string): Promise<CompanionPrac
 }
 
 /**
+ * 将当前学习陪伴页的每日执行摘要同步到服务端，供成长档案页跨设备查看。
+ */
+async function syncCompanionStudyLog(token: string, payload: CompanionStudyLogPayload): Promise<void> {
+  const response = await requestJson<ApiEnvelope<unknown>>('/user/study-logs/daily', {
+    method: 'PUT',
+    token,
+    body: payload,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '同步学习日志失败')
+  }
+}
+
+/**
  * 按当前学习方向读取题库分类，为计划生成表单提供弱项建议标签。
  */
 async function fetchCompanionCategoryOptions(industryCode: string): Promise<CompanionCategoryOption[]> {
@@ -1038,6 +1478,8 @@ async function sendCompanionChatRequest(
   token: string,
   history: CompanionHistoryItem[],
   plan: CompanionPlanDetail | null,
+  focusedTask: CompanionPlanTask | null,
+  dailyDigest: CompanionDailyDigest | null,
 ): Promise<CompanionChatReply> {
   const response = await requestJson<ApiEnvelope<CompanionChatReply>>('/companion/chat', {
     method: 'POST',
@@ -1049,6 +1491,11 @@ async function sendCompanionChatRequest(
         current_plan_progress: plan?.progress || 0,
         today_goals: deriveTodayGoals(plan).map((item) => item.title),
         active_goals: deriveActiveGoals(plan).map((item) => item.title),
+        focused_task_title: focusedTask?.title || '',
+        focused_task_description: focusedTask?.description || '',
+        completed_today_count: dailyDigest?.completedTitles.length || 0,
+        skipped_today_count: dailyDigest?.skippedTitles.length || 0,
+        latest_task_action: dailyDigest?.latestActionText || '',
       },
     },
   })
@@ -1058,6 +1505,71 @@ async function sendCompanionChatRequest(
   }
 
   return response.data
+}
+
+/**
+ * 将本地今日执行摘要整理成服务端学习日志接口可直接消费的请求体。
+ */
+function buildCompanionStudyLogPayload(
+  plan: CompanionPlanDetail | null,
+  digest: CompanionDailyDigest | null,
+  focusedTask: CompanionPlanTask | null,
+): CompanionStudyLogPayload | null {
+  if (!digest || digest.dateKey !== buildCompanionLocalDateKey()) {
+    return null
+  }
+
+  return {
+    date_key: digest.dateKey,
+    plan_id: plan?.id,
+    summary: buildCompanionDailyDigestText(plan, digest, focusedTask),
+    focus_task_title: focusedTask?.title || '',
+    completed_count: digest.completedTitles.length,
+    skipped_count: digest.skippedTitles.length,
+    completed_titles: digest.completedTitles,
+    skipped_titles: digest.skippedTitles,
+    latest_action_text: digest.latestActionText,
+  }
+}
+
+/**
+ * 在陪伴入口页和房间页内复用每日摘要自动同步逻辑，避免重复提交相同内容。
+ */
+function useCompanionStudyLogSync(
+  accessToken: string | null,
+  plan: CompanionPlanDetail | null,
+  digest: CompanionDailyDigest | null,
+  focusedTask: CompanionPlanTask | null,
+): void {
+  const syncedSignatureRef = useRef('')
+  const pendingSignatureRef = useRef('')
+
+  useEffect(() => {
+    const payload = accessToken ? buildCompanionStudyLogPayload(plan, digest, focusedTask) : null
+    if (!accessToken || !payload) {
+      pendingSignatureRef.current = ''
+      return
+    }
+
+    const signature = JSON.stringify(payload)
+    if (syncedSignatureRef.current === signature || pendingSignatureRef.current === signature) {
+      return
+    }
+
+    pendingSignatureRef.current = signature
+    void syncCompanionStudyLog(accessToken, payload)
+      .then(() => {
+        syncedSignatureRef.current = signature
+      })
+      .catch(() => {
+        // 后台静默同步失败时不打断当前陪伴流程，后续有新动作会再次尝试。
+      })
+      .finally(() => {
+        if (pendingSignatureRef.current === signature) {
+          pendingSignatureRef.current = ''
+        }
+      })
+  }, [accessToken, digest, focusedTask, plan])
 }
 
 /**
@@ -1082,6 +1594,32 @@ function isSameLocalDay(value?: string): boolean {
 }
 
 /**
+ * 按执行优先级对任务排序，让进行中任务和更靠前的任务优先浮到列表顶部。
+ */
+function sortCompanionTasksForExecution(tasks: CompanionPlanTask[]): CompanionPlanTask[] {
+  const statusPriority: Record<string, number> = {
+    in_progress: 0,
+    pending: 1,
+    skipped: 2,
+    completed: 3,
+  }
+
+  return [...tasks].sort((left, right) => {
+    const statusDelta = (statusPriority[left.status] ?? 9) - (statusPriority[right.status] ?? 9)
+    if (statusDelta !== 0) {
+      return statusDelta
+    }
+
+    const dayDelta = (left.day_number || 0) - (right.day_number || 0)
+    if (dayDelta !== 0) {
+      return dayDelta
+    }
+
+    return (left.sort_order || 0) - (right.sort_order || 0)
+  })
+}
+
+/**
  * 从当前计划中提炼“今日目标”，优先展示今天到期的任务，再回退到最靠前的未完成任务。
  */
 function deriveTodayGoals(plan: CompanionPlanDetail | null): CompanionPlanTask[] {
@@ -1089,12 +1627,14 @@ function deriveTodayGoals(plan: CompanionPlanDetail | null): CompanionPlanTask[]
     return []
   }
 
-  const todayTasks = plan.tasks.filter((item) => isSameLocalDay(item.due_date))
+  const todayTasks = sortCompanionTasksForExecution(
+    plan.tasks.filter((item) => isSameLocalDay(item.due_date) && item.status !== 'completed' && item.status !== 'skipped'),
+  )
   if (todayTasks.length > 0) {
     return todayTasks.slice(0, 3)
   }
 
-  return plan.tasks.filter((item) => item.status !== 'completed').slice(0, 3)
+  return sortCompanionTasksForExecution(plan.tasks.filter((item) => item.status !== 'completed' && item.status !== 'skipped')).slice(0, 3)
 }
 
 /**
@@ -1107,11 +1647,238 @@ function deriveActiveGoals(plan: CompanionPlanDetail | null): CompanionPlanTask[
 
   const inProgressTasks = plan.tasks.filter((item) => item.status === 'in_progress')
   if (inProgressTasks.length > 0) {
-    return inProgressTasks.slice(0, 2)
+    return sortCompanionTasksForExecution(inProgressTasks).slice(0, 2)
   }
 
-  const pendingTask = plan.tasks.find((item) => item.status !== 'completed')
+  const pendingTask = sortCompanionTasksForExecution(plan.tasks).find((item) => item.status !== 'completed' && item.status !== 'skipped')
   return pendingTask ? [pendingTask] : []
+}
+
+/**
+ * 在前端本地投影任务状态更新结果，便于立即生成续接提示和今日小结。
+ */
+function applyCompanionTaskStatusLocally(
+  plan: CompanionPlanDetail | null,
+  taskId: number,
+  status: CompanionTaskStatus,
+): CompanionPlanDetail | null {
+  if (!plan) {
+    return null
+  }
+
+  const tasks = plan.tasks.map((item) => {
+    if (item.id !== taskId) {
+      return item
+    }
+
+    return {
+      ...item,
+      status,
+      completed_at: status === 'completed' ? new Date().toISOString() : undefined,
+    }
+  })
+  const completedTasks = tasks.filter((item) => item.status === 'completed').length
+  const progress = tasks.length > 0 ? (completedTasks / tasks.length) * 100 : 0
+
+  return {
+    ...plan,
+    tasks,
+    completed_tasks: completedTasks,
+    progress,
+    status: completedTasks >= tasks.length && tasks.length > 0 ? 'completed' : 'active',
+  }
+}
+
+/**
+ * 根据当前计划和本地续接草稿找出最应该继续推进的任务。
+ */
+function resolveFocusedCompanionTask(
+  plan: CompanionPlanDetail | null,
+  draft: CompanionFocusTaskDraft | null,
+): CompanionPlanTask | null {
+  if (!plan?.tasks?.length) {
+    return null
+  }
+
+  if (draft && draft.planId === plan.id) {
+    const matchedTask = plan.tasks.find((item) => item.id === draft.taskId)
+    if (matchedTask && matchedTask.status !== 'completed' && matchedTask.status !== 'skipped') {
+      return matchedTask
+    }
+  }
+
+  return deriveActiveGoals(plan)[0] || deriveTodayGoals(plan)[0] || null
+}
+
+/**
+ * 将任务动作写入今日执行摘要，供入口页和房间页同步展示最新推进记录。
+ */
+function recordCompanionTaskAction(
+  task: CompanionPlanTask,
+  status: CompanionTaskStatus,
+  digest: CompanionDailyDigest | null,
+): CompanionDailyDigest {
+  const todayDigest = digest && digest.dateKey === buildCompanionLocalDateKey() ? digest : buildInitialCompanionDailyDigest()
+  const completedTitles = todayDigest.completedTitles.filter((item) => item !== task.title)
+  const skippedTitles = todayDigest.skippedTitles.filter((item) => item !== task.title)
+
+  if (status === 'completed') {
+    completedTitles.unshift(task.title)
+  }
+  if (status === 'skipped') {
+    skippedTitles.unshift(task.title)
+  }
+
+  const nextDigest: CompanionDailyDigest = {
+    ...todayDigest,
+    updatedAt: Date.now(),
+    completedTitles: Array.from(new Set(completedTitles)).slice(0, 8),
+    skippedTitles: Array.from(new Set(skippedTitles)).slice(0, 8),
+    latestActionText: `已将「${task.title}」更新为${taskStatusLabel(status)}。`,
+  }
+  persistCompanionDailyDigest(nextDigest)
+  return nextDigest
+}
+
+/**
+ * 同步写入任务续接草稿与今日执行摘要，保证入口页和房间页对推进状态的感知一致。
+ */
+function persistCompanionExecutionUpdate(
+  plan: CompanionPlanDetail | null,
+  task: CompanionPlanTask,
+  status: CompanionTaskStatus,
+  source: CompanionTaskActionSource,
+  digest: CompanionDailyDigest | null,
+): { projectedPlan: CompanionPlanDetail | null; nextDigest: CompanionDailyDigest; nextFocusTask: CompanionFocusTaskDraft | null } {
+  const projectedPlan = applyCompanionTaskStatusLocally(plan, task.id, status)
+  const nextDigest = recordCompanionTaskAction(task, status, digest)
+  const focusedTask = projectedPlan ? resolveFocusedCompanionTask(projectedPlan, null) : null
+
+  if (projectedPlan && focusedTask) {
+    const nextFocusTask: CompanionFocusTaskDraft = {
+      planId: projectedPlan.id,
+      taskId: focusedTask.id,
+      title: focusedTask.title,
+      status: focusedTask.status,
+      source,
+      updatedAt: Date.now(),
+    }
+    persistCompanionFocusTask(nextFocusTask)
+    return {
+      projectedPlan,
+      nextDigest,
+      nextFocusTask,
+    }
+  }
+
+  clearCompanionFocusTask()
+  return {
+    projectedPlan,
+    nextDigest,
+    nextFocusTask: null,
+  }
+}
+
+/**
+ * 根据当前执行情况生成“今日小结”文案，帮助用户一眼判断今天还剩什么。
+ */
+function buildCompanionDailyDigestText(
+  plan: CompanionPlanDetail | null,
+  digest: CompanionDailyDigest | null,
+  focusedTask?: CompanionPlanTask | null,
+): string {
+  if (!plan) {
+    return '登录并生成计划后，这里会汇总你今天完成了什么、还剩什么。'
+  }
+
+  const completedToday = digest?.completedTitles.length || 0
+  const skippedToday = digest?.skippedTitles.length || 0
+  const remainingToday = deriveTodayGoals(plan).length
+  const effectiveFocusedTask = focusedTask || resolveFocusedCompanionTask(plan, readCompanionFocusTask())
+
+  if (completedToday === 0 && skippedToday === 0 && remainingToday === 0) {
+    return '今天没有待推进的任务，当前计划已经收口，可以考虑开始新阶段。'
+  }
+
+  if (completedToday === 0 && remainingToday > 0) {
+    return `今天还没有记到完成项，建议先从「${effectiveFocusedTask?.title || deriveTodayGoals(plan)[0]?.title || '当前首个任务'}」开始。`
+  }
+
+  const segments = [`今天已完成 ${completedToday} 项`]
+  if (skippedToday > 0) {
+    segments.push(`跳过 ${skippedToday} 项`)
+  }
+  if (remainingToday > 0) {
+    segments.push(`还剩 ${remainingToday} 项待推进`)
+  }
+  if (effectiveFocusedTask) {
+    segments.push(`下一步继续「${effectiveFocusedTask.title}」`)
+  }
+
+  return segments.join('，') + '。'
+}
+
+/**
+ * 根据当前聚焦任务生成可直接发送给陪伴助手的快捷提问入口。
+ */
+function buildCompanionQuickPrompts(focusedTask: CompanionPlanTask | null): Array<{ label: string; content: string }> {
+  if (!focusedTask) {
+    return [
+      { label: '总结今天差什么', content: '结合我当前的学习计划，帮我总结今天还差什么没完成。' },
+      { label: '安排今晚顺序', content: '请结合我当前计划，帮我安排今晚的推进顺序和时间分配。' },
+    ]
+  }
+
+  return [
+    { label: '拆解当前任务', content: `请把「${focusedTask.title}」拆成 3 个 20 分钟内可完成的小步骤。` },
+    { label: '我卡住了', content: `我现在卡在「${focusedTask.title}」这项任务上了，请帮我定位阻塞点并给出下一步。` },
+    { label: '总结今天差什么', content: `结合我当前聚焦的「${focusedTask.title}」，帮我总结今天还差什么没完成。` },
+  ]
+}
+
+/**
+ * 为陪伴房间生成首条续接提示，让用户打开页面后立即知道今天该接着做什么。
+ */
+function buildCompanionWorkspaceResumeMessage(
+  plan: CompanionPlanDetail | null,
+  focusedTask: CompanionPlanTask | null,
+  digest: CompanionDailyDigest | null,
+): string {
+  if (!plan) {
+    return '还没有接入学习计划。先去入口页生成一份计划，我再陪你把今天的节奏推进下去。'
+  }
+
+  const digestText = buildCompanionDailyDigestText(plan, digest, focusedTask)
+  if (!focusedTask) {
+    return `当前计划是「${plan.title}」。${digestText}`
+  }
+
+  return `继续今天的推进：先盯住「${focusedTask.title}」。${digestText}`
+}
+
+/**
+ * 根据任务动作生成陪伴房间内的即时反馈文案，让状态变化不会显得生硬。
+ */
+function buildCompanionTaskActionFeedback(
+  task: CompanionPlanTask,
+  status: CompanionTaskStatus,
+  projectedPlan: CompanionPlanDetail | null,
+  digest: CompanionDailyDigest | null,
+): string {
+  const focusedTask = resolveFocusedCompanionTask(projectedPlan, null)
+  if (status === 'completed') {
+    return `已记录你完成「${task.title}」。${buildCompanionDailyDigestText(projectedPlan, digest, focusedTask)}`
+  }
+
+  if (status === 'in_progress') {
+    return `已开始推进「${task.title}」。先把这项任务收口，再决定是否切下一项。`
+  }
+
+  if (status === 'skipped') {
+    return `已把「${task.title}」标记为跳过。${buildCompanionDailyDigestText(projectedPlan, digest, focusedTask)}`
+  }
+
+  return `已把「${task.title}」重新放回待办。${buildCompanionDailyDigestText(projectedPlan, digest, focusedTask)}`
 }
 
 /**
@@ -1533,6 +2300,7 @@ function GoalList(props: {
   emptyText: string
   onStatusChange?: (task: CompanionPlanTask, status: CompanionTaskStatus) => void
   pendingTaskId?: number | null
+  onContinueTask?: (task: CompanionPlanTask) => void
 }) {
   if (props.items.length === 0) {
     return <p className="companion-empty-text">{props.emptyText}</p>
@@ -1551,6 +2319,13 @@ function GoalList(props: {
             <span>类型：{item.task_type || 'study'}</span>
             <span>Day {item.day_number || 1}</span>
           </div>
+          {props.onContinueTask ? (
+            <div className="card-inline">
+              <button className="ghost-button" type="button" onClick={() => props.onContinueTask?.(item)}>
+                围绕这项继续
+              </button>
+            </div>
+          ) : null}
           {props.onStatusChange ? (
             <div className="companion-task-actions">
               {buildTaskStatusActions(item.status).map((action) => (
@@ -1580,6 +2355,7 @@ export function CompanionWorkspacePage() {
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
+  const hasInjectedResumeMessageRef = useRef(false)
   const [history, setHistory] = useState<CompanionHistoryItem[]>(() => buildInitialHistory())
   const [composer, setComposer] = useState('')
   const [sending, setSending] = useState(false)
@@ -1587,6 +2363,8 @@ export function CompanionWorkspacePage() {
   const [taskActionTaskId, setTaskActionTaskId] = useState<number | null>(null)
   const [planActionMessage, setPlanActionMessage] = useState('')
   const [preferredIndustryCode, setPreferredIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
+  const [dailyDigest, setDailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
+  const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
 
   const industriesQuery = useQuery({
     queryKey: ['frontend-industries'],
@@ -1610,6 +2388,16 @@ export function CompanionWorkspacePage() {
 
   const todayGoals = useMemo(() => deriveTodayGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
   const activeGoals = useMemo(() => deriveActiveGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
+  const focusedTask = useMemo(
+    () => resolveFocusedCompanionTask(currentPlanQuery.data || null, focusTaskDraft),
+    [currentPlanQuery.data, focusTaskDraft],
+  )
+  const dailyDigestText = useMemo(
+    () => buildCompanionDailyDigestText(currentPlanQuery.data || null, dailyDigest, focusedTask),
+    [currentPlanQuery.data, dailyDigest, focusedTask],
+  )
+  useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
+  const quickPrompts = useMemo(() => buildCompanionQuickPrompts(focusedTask), [focusedTask])
   const currentDialogue = useMemo(() => resolveCurrentDialogue(history), [history])
   const stageFeedback = useMemo(() => resolveStageFeedback(history), [history])
   const planProgressHint = useMemo(() => buildPlanProgressHint(planProgressQuery.data), [planProgressQuery.data])
@@ -1621,11 +2409,31 @@ export function CompanionWorkspacePage() {
   const workspaceIndustryLabel = formatCompanionIndustryLabel(workspaceIndustry, workspaceIndustryCode)
 
   const updateTaskMutation = useMutation({
-    mutationFn: (payload: { taskId: number; status: CompanionTaskStatus }) =>
-      updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.taskId, payload.status),
+    mutationFn: (payload: { task: CompanionPlanTask; status: CompanionTaskStatus }) =>
+      updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status),
     onSuccess: async (_, variables) => {
+      const { projectedPlan, nextDigest, nextFocusTask } = persistCompanionExecutionUpdate(
+        currentPlanQuery.data || null,
+        variables.task,
+        variables.status,
+        'room',
+        dailyDigest,
+      )
       setTaskActionTaskId(null)
+      setDailyDigest(nextDigest)
+      setFocusTaskDraft(nextFocusTask)
       setPlanActionMessage(`任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
+      setHistory((current) => [
+        ...current,
+        {
+          id: `assistant-task-${Date.now()}`,
+          role: 'assistant',
+          content: buildCompanionTaskActionFeedback(variables.task, variables.status, projectedPlan, nextDigest),
+          emotion: variables.status === 'completed' ? 'encouraging' : 'steady',
+          action: variables.status === 'completed' ? 'celebrate' : 'nod',
+          createdAt: Date.now(),
+        },
+      ])
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['companion-current-plan'] }),
         queryClient.invalidateQueries({ queryKey: ['companion-current-plan-progress'] }),
@@ -1668,6 +2476,28 @@ export function CompanionWorkspacePage() {
   }, [history, currentPlanQuery.data])
 
   /**
+   * 当房间拿到当前计划后，自动注入一条续接提示，避免每次进入都像从零开始。
+   */
+  useEffect(() => {
+    if (hasInjectedResumeMessageRef.current || !accessToken || !currentPlanQuery.data) {
+      return
+    }
+
+    hasInjectedResumeMessageRef.current = true
+    setHistory((current) => [
+      ...current,
+      {
+        id: `assistant-resume-${currentPlanQuery.data.id}`,
+        role: 'assistant',
+        content: buildCompanionWorkspaceResumeMessage(currentPlanQuery.data, focusedTask, dailyDigest),
+        emotion: 'steady',
+        action: 'nod',
+        createdAt: Date.now(),
+      },
+    ])
+  }, [accessToken, currentPlanQuery.data, dailyDigest, focusedTask])
+
+  /**
    * 当当前计划或入口页偏好发生变化时，同步持久化当前陪伴场景应使用的行业上下文。
    */
   useEffect(() => {
@@ -1680,6 +2510,28 @@ export function CompanionWorkspacePage() {
       setPreferredIndustryCode(workspaceIndustryCode)
     }
   }, [preferredIndustryCode, workspaceIndustryCode])
+
+  /**
+   * 当房间识别到新的聚焦任务时，同步更新本地续接草稿，保证返回入口页仍能接上当前任务。
+   */
+  useEffect(() => {
+    if (!currentPlanQuery.data?.id || !focusedTask) {
+      clearCompanionFocusTask()
+      setFocusTaskDraft(null)
+      return
+    }
+
+    const nextDraft: CompanionFocusTaskDraft = {
+      planId: currentPlanQuery.data.id,
+      taskId: focusedTask.id,
+      title: focusedTask.title,
+      status: focusedTask.status,
+      source: 'room',
+      updatedAt: Date.now(),
+    }
+    persistCompanionFocusTask(nextDraft)
+    setFocusTaskDraft(nextDraft)
+  }, [currentPlanQuery.data?.id, focusedTask])
 
   /**
    * 在陪伴页直接切换任务状态，让计划推进不必退回入口页操作。
@@ -1702,7 +2554,7 @@ export function CompanionWorkspacePage() {
     setPlanActionMessage(`正在把「${task.title}」更新为「${taskStatusLabel(status)}」...`)
     try {
       await updateTaskMutation.mutateAsync({
-        taskId: task.id,
+        task,
         status,
       })
     } catch {
@@ -1779,7 +2631,7 @@ export function CompanionWorkspacePage() {
     setSending(true)
 
     try {
-      const reply = await sendCompanionChatRequest(accessToken, [...history, userMessage], currentPlanQuery.data || null)
+      const reply = await sendCompanionChatRequest(accessToken, [...history, userMessage], currentPlanQuery.data || null, focusedTask, dailyDigest)
       const replyContent = reply.reply || reply.content || '我在，你继续说。'
 
       setHistory((current) => [
@@ -1805,6 +2657,14 @@ export function CompanionWorkspacePage() {
     } finally {
       setSending(false)
     }
+  }
+
+  /**
+   * 将快捷提问模板写入输入框，帮助用户围绕当前任务更快开始一轮推进。
+   */
+  function handleApplyQuickPrompt(content: string): void {
+    setComposer(content)
+    setComposerMessage('已带入快捷提问，你可以直接发送，也可以再补充细节。')
   }
 
   return (
@@ -1883,18 +2743,43 @@ export function CompanionWorkspacePage() {
           <article className="status-card companion-goal-card">
             <div className="companion-card-head">
               <div>
+                <span className="section-kicker">当前续接</span>
+                <h2>{focusedTask ? focusedTask.title : '等待任务接入'}</h2>
+              </div>
+              <span className="companion-card-note">{focusedTask ? taskStatusLabel(focusedTask.status) : '暂无聚焦任务'}</span>
+            </div>
+            <p className="companion-empty-text">
+              {focusedTask?.description || dailyDigestText}
+            </p>
+            <div className="companion-hub-meta">
+              <span>{dailyDigestText}</span>
+              {focusTaskDraft?.updatedAt ? <span>最近续接：{formatCompanionDateTime(focusTaskDraft.updatedAt)}</span> : null}
+            </div>
+            <div className="companion-quick-actions">
+              {quickPrompts.map((item) => (
+                <button className="secondary-button" key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="status-card companion-goal-card">
+            <div className="companion-card-head">
+              <div>
                 <span className="section-kicker">今日目标</span>
                 <h2>今天优先推进这些内容</h2>
               </div>
               <strong>{currentPlanQuery.data ? `${Math.round(currentPlanQuery.data.progress || 0)}%` : '--'}</strong>
             </div>
-            <GoalList
-              items={todayGoals}
-              emptyText={accessToken ? '当前没有识别到今日目标，可以先去生成学习计划。' : '登录后会自动同步你的今日学习目标。'}
-              onStatusChange={handleTaskStatusChange}
-              pendingTaskId={taskActionTaskId}
-            />
-          </article>
+              <GoalList
+                items={todayGoals}
+                emptyText={accessToken ? '当前没有识别到今日目标，可以先去生成学习计划。' : '登录后会自动同步你的今日学习目标。'}
+                onStatusChange={handleTaskStatusChange}
+                pendingTaskId={taskActionTaskId}
+                onContinueTask={(task) => handleApplyQuickPrompt(`请帮我继续推进「${task.title}」，先告诉我下一步最该做什么。`)}
+              />
+            </article>
 
           <article className="status-card companion-goal-card">
             <div className="companion-card-head">
@@ -1904,13 +2789,14 @@ export function CompanionWorkspacePage() {
               </div>
               <span className="companion-card-note">{currentPlanQuery.data?.title || '等待计划接入'}</span>
             </div>
-            <GoalList
-              items={activeGoals}
-              emptyText={accessToken ? '当前没有进行中的任务，陪伴助手会把下一项未完成目标顶上来。' : '登录后会显示你当前正在推进的任务。'}
-              onStatusChange={handleTaskStatusChange}
-              pendingTaskId={taskActionTaskId}
-            />
-          </article>
+              <GoalList
+                items={activeGoals}
+                emptyText={accessToken ? '当前没有进行中的任务，陪伴助手会把下一项未完成目标顶上来。' : '登录后会显示你当前正在推进的任务。'}
+                onStatusChange={handleTaskStatusChange}
+                pendingTaskId={taskActionTaskId}
+                onContinueTask={(task) => handleApplyQuickPrompt(`围绕「${task.title}」这项任务，帮我安排接下来的推进顺序。`)}
+              />
+            </article>
 
           <article className="status-card companion-history-card">
             <div className="companion-card-head">
@@ -1956,9 +2842,16 @@ export function CompanionWorkspacePage() {
               <textarea
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
-                placeholder="例如：帮我安排今晚的 Go 并发复习顺序，或者总结一下今天还差什么没完成。"
+                placeholder={focusedTask ? `例如：帮我继续推进「${focusedTask.title}」，或者总结一下今天还差什么没完成。` : '例如：帮我安排今晚的 Go 并发复习顺序，或者总结一下今天还差什么没完成。'}
                 rows={4}
               />
+              <div className="companion-quick-actions">
+                {quickPrompts.map((item) => (
+                  <button className="secondary-button" key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
               <div className="companion-composer-actions">
                 <p className="companion-composer-message">
                   {composerMessage || (accessToken ? '已登录，可直接使用 AI 陪伴接口。' : '未登录时会显示本地提示，不会请求后端陪伴接口。')}

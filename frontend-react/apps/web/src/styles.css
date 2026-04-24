@@ -491,6 +491,14 @@ button {
   color: #1f3f67;
 }
 
+.sidebar-link-button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -962,6 +970,21 @@ button {
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
 }
 
+.interview-report-action-grid,
+.interview-replay-list {
+  display: grid;
+  gap: 16px;
+}
+
+.interview-report-action-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.interview-replay-list {
+  margin-top: 16px;
+}
+
 .interview-bullet-list {
   margin: 10px 0 0;
   padding-left: 18px;
@@ -984,6 +1007,7 @@ button {
 
 .companion-hub-shell,
 .companion-hub-main,
+.companion-hub-execution,
 .companion-plan-builder,
 .companion-plan-overview,
 .companion-hub-tasklist,
@@ -1085,6 +1109,25 @@ button {
 .companion-plan-builder,
 .companion-plan-overview {
   align-content: start;
+}
+
+.companion-hub-execution {
+  align-content: start;
+}
+
+.companion-context-card {
+  gap: 14px;
+  margin-top: 4px;
+  background: linear-gradient(180deg, rgba(233, 243, 255, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.companion-context-card h3 {
+  margin: 10px 0 0;
+  color: #16263c;
+}
+
+.companion-context-list {
+  margin-top: 4px;
 }
 
 .companion-plan-form {
@@ -1289,6 +1332,12 @@ button {
 .companion-history-head span {
   color: #718198;
   font-size: 13px;
+}
+
+.companion-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .companion-task-actions {
@@ -1509,7 +1558,8 @@ button {
   .interview-metrics,
   .interview-report-metrics,
   .interview-dimension-grid,
-  .interview-overview-stats {
+  .interview-overview-stats,
+  .interview-report-action-grid {
     grid-template-columns: 1fr;
   }
 

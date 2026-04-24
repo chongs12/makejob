@@ -51,7 +51,7 @@ export function buildLoginRedirectSearch(redirectTarget: string): LoginRedirectS
 /**
  * 解析登录页中的回跳参数，并在无效时回退到默认页面。
  */
-export function resolveLoginRedirectTarget(redirectTarget: unknown, fallback = '/workspace'): string {
+export function resolveLoginRedirectTarget(redirectTarget: unknown, fallback = '/growth'): string {
   if (typeof redirectTarget !== 'string') {
     return fallback
   }
@@ -63,7 +63,7 @@ export function resolveLoginRedirectTarget(redirectTarget: unknown, fallback = '
  * 判断当前是否处于必须维持登录态的受保护页面。
  */
 export function isProtectedWebPath(pathname: string): boolean {
-  if (pathname === '/workspace') {
+  if (pathname === '/workspace' || pathname === '/growth') {
     return true
   }
 

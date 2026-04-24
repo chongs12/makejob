@@ -1,10 +1,11 @@
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
+import { clearCommunityDraft, readCommunityDraft } from '../../shared/communityDraft'
 import { useAuthStore } from '../../state/auth'
 
 interface PageResult<T> {
@@ -301,21 +302,22 @@ function CommunityPostEditor(props: {
   subtitle: string
   submitLabel: string
   initialData?: CommunityPostItem | null
+  initialPayload?: Partial<CommunityPostPayload> | null
   pending?: boolean
   onSubmit: (payload: CommunityPostPayload) => Promise<void>
 }) {
-  const [postType, setPostType] = useState(props.initialData?.post_type || 'article')
-  const [title, setTitle] = useState(props.initialData?.title || '')
-  const [content, setContent] = useState(props.initialData?.content || '')
-  const [tagsInput, setTagsInput] = useState((props.initialData?.tags || []).join(', '))
+  const [postType, setPostType] = useState(props.initialData?.post_type || props.initialPayload?.post_type || 'article')
+  const [title, setTitle] = useState(props.initialData?.title || props.initialPayload?.title || '')
+  const [content, setContent] = useState(props.initialData?.content || props.initialPayload?.content || '')
+  const [tagsInput, setTagsInput] = useState((props.initialData?.tags || props.initialPayload?.tags || []).join(', '))
   const [message, setMessage] = useState('填写完成后即可提交')
 
   useEffect(() => {
-    setPostType(props.initialData?.post_type || 'article')
-    setTitle(props.initialData?.title || '')
-    setContent(props.initialData?.content || '')
-    setTagsInput((props.initialData?.tags || []).join(', '))
-  }, [props.initialData])
+    setPostType(props.initialData?.post_type || props.initialPayload?.post_type || 'article')
+    setTitle(props.initialData?.title || props.initialPayload?.title || '')
+    setContent(props.initialData?.content || props.initialPayload?.content || '')
+    setTagsInput((props.initialData?.tags || props.initialPayload?.tags || []).join(', '))
+  }, [props.initialData, props.initialPayload])
 
   /**
    * 提交帖子表单，并将表单校验信息反馈给用户。
@@ -813,6 +815,23 @@ export function CommunityCreatePostPage() {
   const queryClient = useQueryClient()
   const accessToken = useAuthStore((state) => state.accessToken)
   const [pending, setPending] = useState(false)
+  const [draftPayload, setDraftPayload] = useState(() => readCommunityDraft())
+  const initialPayload = useMemo(() => {
+    if (!draftPayload) {
+      return null
+    }
+
+    return {
+      post_type: draftPayload.postType,
+      title: draftPayload.title,
+      content: draftPayload.content,
+      tags: draftPayload.tags,
+    }
+  }, [draftPayload])
+
+  useEffect(() => {
+    setDraftPayload(readCommunityDraft())
+  }, [])
 
   /**
    * 提交新帖子并在成功后跳转到对应详情页。
@@ -826,6 +845,7 @@ export function CommunityCreatePostPage() {
     setPending(true)
     try {
       const post = await createCommunityPost(accessToken, payload)
+      clearCommunityDraft()
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['community-posts'] }),
         queryClient.invalidateQueries({ queryKey: ['community-my-posts'] }),
@@ -845,6 +865,7 @@ export function CommunityCreatePostPage() {
       title="发布社区帖子"
       subtitle="支持文章和动态两种内容形态，适合沉淀刷题复盘、问题讨论和面经总结。"
       submitLabel="立即发布"
+      initialPayload={initialPayload}
       pending={pending}
       onSubmit={handleCreatePost}
     />

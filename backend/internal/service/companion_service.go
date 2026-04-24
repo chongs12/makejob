@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	"makejob-backend/internal/ai"
@@ -67,9 +69,17 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 	}, nil
 }
 
+// normalizeCompanionMessages 统一整理陪伴对话历史，并在有上下文时自动注入一条 system 消息。
 func normalizeCompanionMessages(req *CompanionChatRequest) []ai.Message {
+	contextMessage := buildCompanionContextMessage(req.Context)
 	if len(req.Messages) > 0 {
-		messages := make([]ai.Message, 0, len(req.Messages))
+		messages := make([]ai.Message, 0, len(req.Messages)+1)
+		if contextMessage != "" {
+			messages = append(messages, ai.Message{
+				Role:    "system",
+				Content: contextMessage,
+			})
+		}
 		for _, item := range req.Messages {
 			if strings.TrimSpace(item.Content) == "" {
 				continue
@@ -93,10 +103,48 @@ func normalizeCompanionMessages(req *CompanionChatRequest) []ai.Message {
 		return nil
 	}
 
-	return []ai.Message{{
+	messages := make([]ai.Message, 0, 2)
+	if contextMessage != "" {
+		messages = append(messages, ai.Message{
+			Role:    "system",
+			Content: contextMessage,
+		})
+	}
+	messages = append(messages, ai.Message{
 		Role:    "user",
 		Content: message,
-	}}
+	})
+
+	return messages
+}
+
+// buildCompanionContextMessage 将前端传入的陪伴上下文整理成一条稳定的系统消息，帮助模型回复更贴近当前计划与任务。
+func buildCompanionContextMessage(contextMap map[string]any) string {
+	if len(contextMap) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(contextMap))
+	for key := range contextMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	lines := make([]string, 0, len(keys)+1)
+	lines = append(lines, "当前学习陪伴上下文：")
+	for _, key := range keys {
+		valueText := strings.TrimSpace(fmt.Sprint(contextMap[key]))
+		if valueText == "" || valueText == "[]" || valueText == "<nil>" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("- %s: %s", key, valueText))
+	}
+
+	if len(lines) == 1 {
+		return ""
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // sanitizeCompanionReply 清理陪伴回复中的思维链标签，避免直接显示在 Live2D 对话框中。

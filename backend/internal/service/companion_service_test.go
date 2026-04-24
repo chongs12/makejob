@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"makejob-backend/internal/ai"
@@ -41,6 +42,34 @@ func TestCompanionServiceChatSanitizesReply(t *testing.T) {
 	}
 	if resp.Reply != resp.Content {
 		t.Fatalf("expected reply alias to match content, got %#v", resp)
+	}
+}
+
+// TestNormalizeCompanionMessagesInjectsContext 验证陪伴上下文会被整理成 system 消息并注入到对话历史前面。
+func TestNormalizeCompanionMessagesInjectsContext(t *testing.T) {
+	t.Parallel()
+
+	messages := normalizeCompanionMessages(&CompanionChatRequest{
+		Messages: []ai.Message{
+			{Role: "user", Content: "继续今天的任务"},
+		},
+		Context: map[string]any{
+			"current_plan_title":  "Go 强化计划",
+			"focused_task_title":  "并发复习",
+			"completed_today_count": 1,
+		},
+	})
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages after context injection, got %d", len(messages))
+	}
+	if messages[0].Role != "system" {
+		t.Fatalf("expected first message role system, got %s", messages[0].Role)
+	}
+	if !strings.Contains(messages[0].Content, "current_plan_title") || !strings.Contains(messages[0].Content, "focused_task_title") {
+		t.Fatalf("expected context message to contain context keys, got %q", messages[0].Content)
+	}
+	if messages[1].Role != "user" || messages[1].Content != "继续今天的任务" {
+		t.Fatalf("unexpected user message: %#v", messages[1])
 	}
 }
 

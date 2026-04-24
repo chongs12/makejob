@@ -69,6 +69,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&InterviewMessage{},
 		&LearningPlan{},
 		&LearningTask{},
+		&StudyLog{},
 		&UserFavorite{},
 		&UserNote{},
 		&CommunityPost{},
