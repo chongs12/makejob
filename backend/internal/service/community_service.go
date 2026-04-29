@@ -116,9 +116,11 @@ func NewCommunityService(
 
 // ListPosts 返回社区帖子分页结果，并附带当前用户的点赞/作者状态。
 func (s *communityService) ListPosts(ctx context.Context, params CommunityPostListParams, currentUserID *uint) (*common.PageResult, error) {
+	pageParam := common.PageParam{Page: params.Page, PageSize: params.PageSize}
+	pageParam.Normalize()
 	repoParams := repository.CommunityPostListParams{
-		Page:     params.Page,
-		PageSize: params.PageSize,
+		Page:     pageParam.Page,
+		PageSize: pageParam.PageSize,
 		PostType: strings.TrimSpace(params.PostType),
 		Keyword:  strings.TrimSpace(params.Keyword),
 		Tag:      strings.TrimSpace(params.Tag),
@@ -139,21 +141,7 @@ func (s *communityService) ListPosts(ctx context.Context, params CommunityPostLi
 		items = append(items, buildCommunityPostItem(&post, likedMap[post.ID], isCommunityAuthor(post.AuthorID, currentUserID)))
 	}
 
-	page := repoParams.Page
-	if page <= 0 {
-		page = 1
-	}
-	pageSize := repoParams.PageSize
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-
-	return &common.PageResult{
-		List:     items,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(items, total, pageParam), nil
 }
 
 // GetPostDetail 返回帖子详情，并在读取后增加浏览量。
@@ -220,9 +208,11 @@ func (s *communityService) CreatePost(ctx context.Context, userID uint, req *Cre
 
 // ListMyPosts 返回当前用户自己的帖子列表。
 func (s *communityService) ListMyPosts(ctx context.Context, userID uint, params CommunityPostListParams) (*common.PageResult, error) {
+	pageParam := common.PageParam{Page: params.Page, PageSize: params.PageSize}
+	pageParam.Normalize()
 	repoParams := repository.CommunityPostListParams{
-		Page:     params.Page,
-		PageSize: params.PageSize,
+		Page:     pageParam.Page,
+		PageSize: pageParam.PageSize,
 		PostType: strings.TrimSpace(params.PostType),
 		Keyword:  strings.TrimSpace(params.Keyword),
 		Tag:      strings.TrimSpace(params.Tag),
@@ -245,21 +235,7 @@ func (s *communityService) ListMyPosts(ctx context.Context, userID uint, params 
 		items = append(items, buildCommunityPostItem(&post, likedMap[post.ID], true))
 	}
 
-	page := repoParams.Page
-	if page <= 0 {
-		page = 1
-	}
-	pageSize := repoParams.PageSize
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-
-	return &common.PageResult{
-		List:     items,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(items, total, pageParam), nil
 }
 
 // UpdatePost 更新当前用户自己的社区帖子。

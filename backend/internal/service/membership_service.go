@@ -172,18 +172,11 @@ func (s *membershipService) GetOrder(ctx context.Context, userID uint, orderID u
 
 // ListOrders 获取订单列表
 func (s *membershipService) ListOrders(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	// 规范化分页参数
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	// 统一规范化分页参数，确保会员订单列表与其他后台列表接口保持一致。
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
 
-	orders, total, err := s.membershipRepo.ListByUser(ctx, userID, page, pageSize)
+	orders, total, err := s.membershipRepo.ListByUser(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -194,12 +187,7 @@ func (s *membershipService) ListOrders(ctx context.Context, userID uint, page, p
 		list[i] = *convertToOrderResponse(&order)
 	}
 
-	return &common.PageResult{
-		List:     list,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(list, total, pageParam), nil
 }
 
 // MockPayCallback Mock支付回调

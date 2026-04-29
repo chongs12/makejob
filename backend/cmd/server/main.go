@@ -248,6 +248,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			live2DRepo,
 			ttsRepo,
 			mockInterviewRepo,
+			scraperTaskRepo,
 			scraperProvider,
 			questionCleaner,
 			cfg.AIRuntimeDefaults(),

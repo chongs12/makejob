@@ -75,11 +75,10 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 func (h *QuestionHandler) ListQuestions(c *gin.Context) {
 	var params repository.QuestionListParams
 
-	// 解析分页参数
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	params.Page = page
-	params.PageSize = pageSize
+	// 统一读取并规范化分页参数，避免题库相关列表接口行为不一致。
+	pageParam := common.ReadPageParam(c)
+	params.Page = pageParam.Page
+	params.PageSize = pageParam.PageSize
 
 	// 解析筛选参数
 	if categoryIDStr := c.Query("category_id"); categoryIDStr != "" {
@@ -297,10 +296,9 @@ func (h *QuestionHandler) GetFavorites(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.questionService.GetFavorites(c.Request.Context(), userID, page, pageSize)
+	result, err := h.questionService.GetFavorites(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)
@@ -331,10 +329,9 @@ func (h *QuestionHandler) GetWrongQuestions(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.questionService.GetWrongQuestions(c.Request.Context(), userID, page, pageSize)
+	result, err := h.questionService.GetWrongQuestions(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)
@@ -365,10 +362,9 @@ func (h *QuestionHandler) ListNotes(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.questionService.ListNotes(c.Request.Context(), userID, page, pageSize)
+	result, err := h.questionService.ListNotes(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)

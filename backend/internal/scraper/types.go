@@ -92,13 +92,48 @@ type ImportResult struct {
 	Errors       []string `json:"errors,omitempty"`
 }
 
+// TaskListFilter 抓取任务列表筛选条件，供后台运行态页面按状态与任务类型缩小范围。
+type TaskListFilter struct {
+	Status   string `json:"status,omitempty" form:"status"`
+	TaskType string `json:"task_type,omitempty" form:"task_type"`
+}
+
+// TaskDetail 抓取任务详情结构，显式暴露异步任务载荷与执行结果，方便后台排查。
+type TaskDetail struct {
+	ID            uint       `json:"id"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	TaskType      string     `json:"task_type"`
+	SourceURL     string     `json:"source_url"`
+	SourceTitle   string     `json:"source_title"`
+	Source        string     `json:"source"`
+	Status        string     `json:"status"`
+	QuestionCount int        `json:"question_count"`
+	ImportedCount int        `json:"imported_count"`
+	RetryCount    int        `json:"retry_count"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	FinishedAt    *time.Time `json:"finished_at,omitempty"`
+	ErrorMsg      string     `json:"error_msg,omitempty"`
+	PayloadJSON   string     `json:"payload_json,omitempty"`
+	ResultJSON    string     `json:"result_json,omitempty"`
+}
+
 // TaskStatus 任务状态常量
 const (
-	TaskStatusPending  = "pending"  // 待处理
-	TaskStatusFetched  = "fetched"  // 已爬取
-	TaskStatusCleaned  = "cleaned"  // 已清洗
-	TaskStatusImported = "imported" // 已导入
-	TaskStatusFailed   = "failed"   // 失败
+	TaskStatusPending   = "pending"   // 待处理
+	TaskStatusRunning   = "running"   // 执行中
+	TaskStatusFetched   = "fetched"   // 已爬取
+	TaskStatusCleaned   = "cleaned"   // 已清洗
+	TaskStatusImported  = "imported"  // 已导入
+	TaskStatusSucceeded = "succeeded" // 已完成
+	TaskStatusFailed    = "failed"    // 失败
+)
+
+// TaskType 任务类型常量。
+const (
+	TaskTypeFetchSnapshot         = "fetch_snapshot"          // 同步抓取后留痕的快照任务
+	TaskTypeImportQuestions       = "import_questions"        // 异步导入题目任务
+	TaskTypeQuestionPipelineBuild = "question_pipeline_build" // 异步生成题目流水线候选题卡任务
 )
 
 // 支持的数据源常量

@@ -28,6 +28,16 @@ type PageParam struct {
 	PageSize int `form:"page_size" json:"page_size"`
 }
 
+// ReadPageParam 从请求中读取并规范化分页参数，统一后台列表接口的 page/page_size 行为。
+func ReadPageParam(c *gin.Context) PageParam {
+	param := PageParam{
+		Page:     parseIntOrDefault(c.Query("page"), 1),
+		PageSize: parseIntOrDefault(c.Query("page_size"), 10),
+	}
+	param.Normalize()
+	return param
+}
+
 // GetOffset 计算分页偏移量
 func (p PageParam) GetOffset() int {
 	if p.Page <= 0 {
@@ -60,6 +70,17 @@ func (p *PageParam) Normalize() {
 	}
 	if p.PageSize > 100 {
 		p.PageSize = 100
+	}
+}
+
+// NewPageResult 根据统一分页参数构造分页返回结构。
+func NewPageResult(list interface{}, total int64, param PageParam) *PageResult {
+	param.Normalize()
+	return &PageResult{
+		List:     list,
+		Total:    total,
+		Page:     param.Page,
+		PageSize: param.PageSize,
 	}
 }
 
@@ -156,4 +177,26 @@ func InternalError(c *gin.Context, message string) {
 		message = GetMessage(CodeInternalError)
 	}
 	ErrorWithHTTPStatus(c, http.StatusInternalServerError, CodeInternalError, message)
+}
+
+// parseIntOrDefault 将字符串转成整数，失败时回退为默认值。
+func parseIntOrDefault(raw string, fallback int) int {
+	if raw == "" {
+		return fallback
+	}
+
+	value := 0
+	for index, ch := range raw {
+		if ch < '0' || ch > '9' {
+			if index == 0 {
+				return fallback
+			}
+			return fallback
+		}
+		value = value*10 + int(ch-'0')
+	}
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }

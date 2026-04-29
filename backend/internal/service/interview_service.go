@@ -245,27 +245,15 @@ func (s *interviewService) resolveInterviewIndustryCode(ctx context.Context, ind
 
 // ListInterviews 获取面试列表
 func (s *interviewService) ListInterviews(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
 
-	interviews, total, err := s.interviewRepo.ListByUser(ctx, userID, page, pageSize)
+	interviews, total, err := s.interviewRepo.ListByUser(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     interviews,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(interviews, total, pageParam), nil
 }
 
 // SubmitAnswer 提交回答
@@ -436,6 +424,9 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 
 	// 验证面试状态
 	if !interview.IsOngoing() {
+		if interview.IsCompleted() {
+			return s.GetReport(ctx, userID, interviewID)
+		}
 		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
 	}
 

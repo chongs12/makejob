@@ -12,6 +12,7 @@ const (
 type AICallLog struct {
 	BaseModel
 	TraceID            string `json:"trace_id" gorm:"size:64;not null;index;comment:调用链路ID"`
+	TaskID             *uint  `json:"task_id,omitempty" gorm:"index;comment:关联异步任务ID"`
 	Source             string `json:"source" gorm:"size:32;not null;index;comment:调用来源"`
 	Scene              string `json:"scene" gorm:"size:32;not null;index;comment:场景"`
 	IndustryID         *uint  `json:"industry_id,omitempty" gorm:"index;comment:行业ID"`

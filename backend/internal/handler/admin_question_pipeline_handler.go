@@ -33,6 +33,27 @@ func (h *AdminHandler) GenerateQuestionPipeline(c *gin.Context) {
 	common.Success(c, result)
 }
 
+// GenerateQuestionPipelineAsync 创建一条异步题目流水线生成任务，交给后台 worker 稍后生成候选题卡。
+func (h *AdminHandler) GenerateQuestionPipelineAsync(c *gin.Context) {
+	var req service.AdminQuestionPipelineGenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.BadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	task, err := h.adminService.CreateQuestionPipelineTask(c.Request.Context(), &req)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "创建题目流水线任务失败: "+err.Error())
+		}
+		return
+	}
+
+	common.SuccessWithMessage(c, "题目流水线任务已创建", task)
+}
+
 // GenerateQuestionPipelineStream 以 SSE 方式逐步推送后台题目流水线生成结果。
 func (h *AdminHandler) GenerateQuestionPipelineStream(c *gin.Context) {
 	var req service.AdminQuestionPipelineGenerateRequest

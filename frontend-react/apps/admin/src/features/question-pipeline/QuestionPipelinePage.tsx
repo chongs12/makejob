@@ -5,6 +5,8 @@ import { buildAuthorizationHeader, extractErrorMessage, getApiBaseUrl, requestJs
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { flushSync } from 'react-dom'
 import { useAdminAuthStore } from '../../state/auth'
+import { fetchScraperTaskDetail } from '../runtime/runtimeApi'
+import type { ScraperTaskDetail } from '../runtime/runtimeTypes'
 
 type QuestionType = 'choice' | 'multi' | 'code' | 'subjective'
 type QuestionDifficulty = 'easy' | 'medium' | 'hard'
@@ -108,6 +110,12 @@ interface BatchImportResponse {
   success_count: number
   fail_count: number
   errors?: string[]
+}
+
+interface AdminAsyncTaskResponse {
+  id: number
+  status: string
+  task_type?: string
 }
 
 interface PipelineFormState {
@@ -218,6 +226,22 @@ async function generateQuestionPipeline(
   }
 
   return normalizeQuestionPipelineGenerateResponse(response.data)
+}
+
+/**
+ * 将当前表单转换为后台题目流水线生成请求载荷，供同步生成与异步入队复用。
+ */
+function buildQuestionPipelineGeneratePayload(form: PipelineFormState): Record<string, unknown> {
+  return {
+    industry_code: form.industryCode,
+    requirement: form.requirement.trim(),
+    agent_prompt: form.agentPrompt.trim(),
+    generation_mode: form.generationMode,
+    candidate_count: Number(form.candidateCount) || 8,
+    include_scraped: form.includeScraped,
+    include_generated: form.includeGenerated,
+    sources: form.includeScraped ? form.sources : [],
+  }
 }
 
 /**
@@ -383,6 +407,26 @@ async function buildQuestionPipelineStreamErrorMessage(response: Response): Prom
 }
 
 /**
+ * 创建异步题目流水线生成任务，交给后台 worker 延后执行。
+ */
+async function queueQuestionPipelineGenerateTask(
+  token: string | null,
+  payload: Record<string, unknown>,
+): Promise<AdminAsyncTaskResponse> {
+  const response = await requestJson<ApiEnvelope<AdminAsyncTaskResponse>>('/admin/question-pipeline/generate/async', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '创建异步题目流水线任务失败')
+  }
+
+  return response.data
+}
+
+/**
  * 导入当前勾选后的候选题卡到正式题库。
  */
 async function importQuestionPipeline(
@@ -397,6 +441,26 @@ async function importQuestionPipeline(
 
   if (!isSuccessCode(response.code)) {
     throw new Error(response.message || '导入题目流水线失败')
+  }
+
+  return response.data
+}
+
+/**
+ * 将当前勾选题卡入队为异步导入任务，交给后台 worker 后续消费。
+ */
+async function queueQuestionPipelineImportTask(
+  token: string | null,
+  payload: Record<string, unknown>,
+): Promise<AdminAsyncTaskResponse> {
+  const response = await requestJson<ApiEnvelope<AdminAsyncTaskResponse>>('/admin/scraper/import/async', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '创建异步导入任务失败')
   }
 
   return response.data
@@ -427,6 +491,73 @@ function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard
     selected: true,
     tagsText: (card.tags || []).join(', '),
   }))
+}
+
+/**
+ * 将勾选题卡整理成统一导入载荷，供同步导入与异步入队共用。
+ */
+function buildSelectedImportPayload(cards: EditablePipelineCard[]) {
+  return cards
+    .filter((item) => item.selected)
+    .map((item) => ({
+      title: item.title.trim(),
+      content: item.content.trim(),
+      type: item.type,
+      difficulty: item.difficulty,
+      category: item.category,
+      answer: item.answer.trim(),
+      explanation: item.explanation.trim(),
+      tags: parseTagsInput(item.tagsText),
+    }))
+}
+
+/**
+ * 根据异步任务载荷恢复流水线表单，便于后台任务完成后回到当前页面继续筛题和导入。
+ */
+function restoreQuestionPipelineFormFromTaskPayload(
+  current: PipelineFormState,
+  payloadJSON?: string,
+): PipelineFormState {
+  if (!payloadJSON?.trim()) {
+    return current
+  }
+
+  try {
+    const payload = JSON.parse(payloadJSON) as Record<string, unknown>
+    const candidateCount = typeof payload.candidate_count === 'number'
+      ? String(payload.candidate_count)
+      : current.candidateCount
+    return {
+      ...current,
+      industryCode: typeof payload.industry_code === 'string' ? payload.industry_code.trim() : current.industryCode,
+      requirement: typeof payload.requirement === 'string' ? payload.requirement.trim() : current.requirement,
+      agentPrompt: typeof payload.agent_prompt === 'string' ? payload.agent_prompt.trim() : current.agentPrompt,
+      generationMode: normalizeQuestionPipelineGenerationMode(payload.generation_mode),
+      candidateCount,
+      includeScraped: typeof payload.include_scraped === 'boolean' ? payload.include_scraped : current.includeScraped,
+      includeGenerated: typeof payload.include_generated === 'boolean' ? payload.include_generated : current.includeGenerated,
+      sources: Array.isArray(payload.sources)
+        ? payload.sources.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+        : current.sources,
+    }
+  } catch {
+    return current
+  }
+}
+
+/**
+ * 将异步任务详情中的结果 JSON 还原为前端统一的题目流水线结果结构。
+ */
+function restoreQuestionPipelineResponseFromTask(task: ScraperTaskDetail): QuestionPipelineGenerateResponse {
+  if (!task.result_json?.trim()) {
+    throw new Error('当前任务还没有可恢复的候选题卡结果')
+  }
+
+  try {
+    return normalizeQuestionPipelineGenerateResponse(JSON.parse(task.result_json) as RawQuestionPipelineGenerateResponse)
+  } catch {
+    throw new Error('题目流水线任务结果解析失败')
+  }
 }
 
 /**
@@ -661,6 +792,7 @@ export function QuestionPipelinePage() {
   const [stats, setStats] = useState<QuestionPipelineStats | null>(null)
   const [message, setMessage] = useState('填写岗位要求后即可生成候选题卡。')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [asyncGenerateTaskId, setAsyncGenerateTaskId] = useState('')
 
   const industriesQuery = useQuery({
     queryKey: ['admin-industries'],
@@ -719,19 +851,10 @@ export function QuestionPipelinePage() {
   const formError = useMemo(() => buildPipelineFormError(form), [form])
 
   const generateMutation = useMutation({
-    mutationFn: async () =>
-      generateQuestionPipeline(token, {
-        industry_code: form.industryCode,
-        requirement: form.requirement.trim(),
-        agent_prompt: form.agentPrompt.trim(),
-        generation_mode: form.generationMode,
-        candidate_count: Number(form.candidateCount) || 8,
-        include_scraped: form.includeScraped,
-        include_generated: form.includeGenerated,
-        sources: form.includeScraped ? form.sources : [],
-      }),
+    mutationFn: async () => generateQuestionPipeline(token, buildQuestionPipelineGeneratePayload(form)),
     onSuccess: (result) => {
       setCards(buildEditableCards(result.cards))
+      setFreshCardIds([])
       setDebugEntries([])
       setWarnings(result.warnings || [])
       setStats(result.stats)
@@ -742,22 +865,26 @@ export function QuestionPipelinePage() {
     },
   })
 
+  const queueGenerateTaskMutation = useMutation({
+    mutationFn: async () => queueQuestionPipelineGenerateTask(token, buildQuestionPipelineGeneratePayload(form)),
+    onSuccess: async (task) => {
+      setAsyncGenerateTaskId(String(task.id))
+      setMessage(`已创建异步题目流水线任务 #${task.id}，可稍后按任务 ID 恢复结果或前往运行任务页查看状态。`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
+      ])
+    },
+    onError: (error) => {
+      setMessage(extractErrorMessage(error, '创建异步题目流水线任务失败'))
+    },
+  })
+
   const importMutation = useMutation({
     mutationFn: async () =>
       importQuestionPipeline(token, {
         industry_code: form.industryCode,
-        cards: cards
-          .filter((item) => item.selected)
-          .map((item) => ({
-            title: item.title.trim(),
-            content: item.content.trim(),
-            type: item.type,
-            difficulty: item.difficulty,
-            category: item.category,
-            answer: item.answer.trim(),
-            explanation: item.explanation.trim(),
-            tags: parseTagsInput(item.tagsText),
-          })),
+        cards: buildSelectedImportPayload(cards),
       }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-questions'] })
@@ -769,6 +896,63 @@ export function QuestionPipelinePage() {
     },
     onError: (error) => {
       setMessage(extractErrorMessage(error, '导入题目流水线失败'))
+    },
+  })
+
+  const queueImportTaskMutation = useMutation({
+    mutationFn: async () =>
+      queueQuestionPipelineImportTask(token, {
+        industry_code: form.industryCode,
+        source_title: form.requirement.trim().slice(0, 120) || '题目流水线候选题卡',
+        questions: buildSelectedImportPayload(cards),
+      }),
+    onSuccess: async (task) => {
+      setMessage(`已创建异步导入任务 #${task.id}，可前往运行任务页查看执行状态。`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
+      ])
+    },
+    onError: (error) => {
+      setMessage(extractErrorMessage(error, '创建异步导入任务失败'))
+    },
+  })
+
+  const loadGenerateTaskResultMutation = useMutation({
+    mutationFn: async () => {
+      const taskID = Number(asyncGenerateTaskId)
+      if (!Number.isFinite(taskID) || taskID <= 0) {
+        throw new Error('请输入有效的异步任务 ID')
+      }
+      return fetchScraperTaskDetail(token, taskID)
+    },
+    onSuccess: (task) => {
+      if (task.task_type !== 'question_pipeline_build') {
+        setMessage(`任务 #${task.id} 不是题目流水线生成任务，请确认任务 ID。`)
+        return
+      }
+
+      setForm((current) => restoreQuestionPipelineFormFromTaskPayload(current, task.payload_json))
+      if (task.status === 'pending' || task.status === 'running') {
+        setMessage(`任务 #${task.id} 当前状态为 ${task.status}，请稍后重新读取结果。`)
+        return
+      }
+      if (task.status === 'failed') {
+        setWarnings(task.error_msg ? [task.error_msg] : [])
+        setMessage(`任务 #${task.id} 执行失败，可前往运行任务页查看详情后重试。`)
+        return
+      }
+
+      const result = restoreQuestionPipelineResponseFromTask(task)
+      setCards(buildEditableCards(result.cards))
+      setFreshCardIds([])
+      setDebugEntries([])
+      setWarnings(result.warnings || [])
+      setStats(result.stats)
+      setMessage(`已从异步任务 #${task.id} 恢复 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+    },
+    onError: (error) => {
+      setMessage(extractErrorMessage(error, '读取异步题目流水线结果失败'))
     },
   })
 
@@ -829,16 +1013,7 @@ export function QuestionPipelinePage() {
 
       void streamQuestionPipeline(
         token,
-        {
-          industry_code: form.industryCode,
-          requirement: form.requirement.trim(),
-          agent_prompt: form.agentPrompt.trim(),
-          generation_mode: form.generationMode,
-          candidate_count: Number(form.candidateCount) || 8,
-          include_scraped: form.includeScraped,
-          include_generated: form.includeGenerated,
-          sources: form.includeScraped ? form.sources : [],
-        },
+        buildQuestionPipelineGeneratePayload(form),
         controller.signal,
         {
           onStatus: (nextMessage) => {
@@ -897,11 +1072,36 @@ export function QuestionPipelinePage() {
   }
 
   /**
+   * 将当前流水线请求入队为异步生成任务，适合耗时较长或希望脱离页面等待的场景。
+   */
+  function handleQueueGenerateTask(): void {
+    setMessage('正在创建异步题目流水线任务。')
+    queueGenerateTaskMutation.mutate()
+  }
+
+  /**
+   * 按任务 ID 重新读取异步生成结果，便于任务完成后恢复候选题卡继续人工确认。
+   */
+  function handleLoadGenerateTaskResult(): void {
+    setMessage('正在读取异步题目流水线结果。')
+    setWarnings([])
+    loadGenerateTaskResultMutation.mutate()
+  }
+
+  /**
    * 提交当前勾选题卡，将其批量写入正式题库。
    */
   function handleImportSelected(): void {
     setMessage('正在导入已选题卡。')
     importMutation.mutate()
+  }
+
+  /**
+   * 将当前勾选题卡创建为异步导入任务，适合批量导入或交给独立 worker 后台处理。
+   */
+  function handleQueueImportSelected(): void {
+    setMessage('正在创建异步导入任务。')
+    queueImportTaskMutation.mutate()
   }
 
   /**
@@ -1107,11 +1307,38 @@ export function QuestionPipelinePage() {
             <button
               className="admin-link"
               type="submit"
-              disabled={Boolean(formError) || generateMutation.isPending || isStreaming}
+              disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
             >
               {generateMutation.isPending || isStreaming ? '生成中...' : '生成候选题卡'}
             </button>
+            <button
+              className="admin-link"
+              type="button"
+              onClick={handleQueueGenerateTask}
+              disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
+            >
+              {queueGenerateTaskMutation.isPending ? '入队中...' : '异步生成候选题卡'}
+            </button>
           </div>
+        </div>
+
+        <div className="admin-question-pipeline-composer__task-restore">
+          <label className="admin-field">
+            <span>异步任务 ID</span>
+            <input
+              value={asyncGenerateTaskId}
+              onChange={(event) => setAsyncGenerateTaskId(event.target.value.replace(/[^\d]/g, ''))}
+              placeholder="输入题目流水线任务 ID"
+            />
+          </label>
+          <button
+            className="admin-link"
+            type="button"
+            onClick={handleLoadGenerateTaskResult}
+            disabled={!asyncGenerateTaskId || loadGenerateTaskResultMutation.isPending}
+          >
+            {loadGenerateTaskResultMutation.isPending ? '读取中...' : '恢复异步结果'}
+          </button>
         </div>
       </form>
 
@@ -1178,9 +1405,17 @@ export function QuestionPipelinePage() {
           className="admin-link"
           type="button"
           onClick={handleImportSelected}
-          disabled={selectedCount === 0 || importMutation.isPending}
+          disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
         >
           {importMutation.isPending ? '导入中...' : `导入已选 ${selectedCount} 张`}
+        </button>
+        <button
+          className="admin-link"
+          type="button"
+          onClick={handleQueueImportSelected}
+          disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
+        >
+          {queueImportTaskMutation.isPending ? '入队中...' : `异步入队 ${selectedCount} 张`}
         </button>
       </div>
 

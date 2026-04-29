@@ -300,27 +300,15 @@ func (s *planService) GetPlan(ctx context.Context, userID, planID uint) (*PlanDe
 
 // ListPlans 获取学习计划列表
 func (s *planService) ListPlans(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
 
-	plans, total, err := s.planRepo.ListByUser(ctx, userID, page, pageSize)
+	plans, total, err := s.planRepo.ListByUser(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     plans,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(plans, total, pageParam), nil
 }
 
 // UpdateTaskStatus 更新任务状态

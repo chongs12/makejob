@@ -2,12 +2,21 @@ package service
 
 import (
 	"makejob-backend/internal/ai"
+	aiRuntime "makejob-backend/internal/ai/runtime"
 	"makejob-backend/internal/model"
 )
 
+type AIConfigSupport struct {
+	PrimaryProviders  []string `json:"primary_providers"`
+	FallbackProviders []string `json:"fallback_providers"`
+	Notes             []string `json:"notes"`
+}
+
 type AIConfigResponse struct {
-	Configs map[string]string   `json:"configs"`
-	Items   []model.AdminConfig `json:"items"`
+	Configs  map[string]string   `json:"configs"`
+	Items    []model.AdminConfig `json:"items"`
+	Support  AIConfigSupport     `json:"support"`
+	Warnings []string            `json:"warnings"`
 }
 
 // buildAIConfigResponse 构建 AI 配置响应，并把配置文件默认值合并进返回结果。
@@ -16,7 +25,7 @@ func buildAIConfigResponse(items []model.AdminConfig, baseConfig map[string]stri
 	configMap := ai.NormalizeRuntimeConfig(baseConfig)
 
 	for _, item := range items {
-		if !ai.IsRuntimeConfigKey(item.ConfigKey) {
+		if !ai.IsKnownRuntimeConfigKey(item.ConfigKey) {
 			continue
 		}
 
@@ -24,9 +33,12 @@ func buildAIConfigResponse(items []model.AdminConfig, baseConfig map[string]stri
 		configMap[item.ConfigKey] = item.ConfigValue
 	}
 
+	normalized := ai.NormalizeRuntimeConfig(configMap)
 	return &AIConfigResponse{
-		Configs: ai.NormalizeRuntimeConfig(configMap),
-		Items:   filtered,
+		Configs:  normalized,
+		Items:    filtered,
+		Support:  buildAIConfigSupport(),
+		Warnings: aiRuntime.RuntimeConfigIssues(normalized),
 	}
 }
 
@@ -34,7 +46,7 @@ func buildAIConfigResponse(items []model.AdminConfig, baseConfig map[string]stri
 func buildAIConfigItems(configs map[string]string) []model.AdminConfig {
 	items := make([]model.AdminConfig, 0, len(configs))
 	for key, value := range ai.NormalizeRuntimeConfig(configs) {
-		if !ai.IsRuntimeConfigKey(key) {
+		if !ai.IsKnownRuntimeConfigKey(key) {
 			continue
 		}
 
@@ -49,6 +61,17 @@ func buildAIConfigItems(configs map[string]string) []model.AdminConfig {
 	return items
 }
 
+// buildAIConfigSupport 返回后台 AI 配置页所需的当前支持范围说明。
+func buildAIConfigSupport() AIConfigSupport {
+	summary := aiRuntime.SupportedProviderSummary()
+	return AIConfigSupport{
+		PrimaryProviders:  summary.PrimaryProviders,
+		FallbackProviders: summary.FallbackProviders,
+		Notes:             summary.Notes,
+	}
+}
+
+// inferAIConfigType 根据配置键推导后台表单应使用的字段类型。
 func inferAIConfigType(key string) string {
 	switch key {
 	case ai.ConfigKeyTemperature, ai.ConfigKeyTopP, ai.ConfigKeyMaxTokens, ai.ConfigKeyTimeoutSeconds:
@@ -60,6 +83,7 @@ func inferAIConfigType(key string) string {
 	}
 }
 
+// describeAIConfig 为后台配置项生成简短说明文本。
 func describeAIConfig(key string) string {
 	switch key {
 	case ai.ConfigKeyProvider:

@@ -16,6 +16,8 @@ import { Live2DPage } from './features/live2d/Live2DPage'
 import { PromptPage } from './features/prompt/PromptPage'
 import { QuestionPipelinePage } from './features/question-pipeline/QuestionPipelinePage'
 import { QuestionPage } from './features/question/QuestionPage'
+import { RuntimeOverviewPage } from './features/runtime/RuntimeOverviewPage'
+import { RuntimeTasksPage } from './features/runtime/RuntimeTasksPage'
 import { TaxonomyPage } from './features/taxonomy/TaxonomyPage'
 import { TTSPage } from './features/tts/TTSPage'
 
@@ -65,6 +67,7 @@ function AdminLayout() {
         <p>后台管理 React 主干</p>
         <nav className="admin-nav">
           <Link className="admin-link" to="/dashboard">总览</Link>
+          <Link className="admin-link" to="/runtime">运行任务</Link>
           <Link className="admin-link" to="/ai-configs">AI 配置</Link>
           <Link className="admin-link" to="/prompts">Prompt 管理</Link>
           <Link className="admin-link" to="/live2d">Live2D 管理</Link>
@@ -170,23 +173,6 @@ function LoginPage() {
 }
 
 /**
- * 预留后台总览页，验证管理员链路已经打通。
- */
-function DashboardPage() {
-  const user = useAdminAuthStore((state) => state.user)
-
-  return (
-    <section className="admin-panel">
-      <span className="admin-tag">优先迁移</span>
-      <h2>后台总览</h2>
-      <p className="admin-copy">这里后续接入仪表盘、系统状态、订单与用户统计。</p>
-      <p>当前管理员：{user?.username || '-'}</p>
-      <p>邮箱：{user?.email || '-'}</p>
-    </section>
-  )
-}
-
-/**
  * 统一校验后台受保护路由的管理员权限，避免每个页面重复实现守卫逻辑。
  */
 async function ensureAdminRouteAccess() {
@@ -221,7 +207,14 @@ const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'dashboard',
   beforeLoad: ensureAdminRouteAccess,
-  component: DashboardPage,
+  component: RuntimeOverviewPage,
+})
+
+const runtimeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'runtime',
+  beforeLoad: ensureAdminRouteAccess,
+  component: RuntimeTasksPage,
 })
 
 const aiConfigsRoute = createRoute({
@@ -276,6 +269,7 @@ const questionPipelineRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   dashboardRoute,
+  runtimeRoute,
   aiConfigsRoute,
   promptsRoute,
   live2DRoute,

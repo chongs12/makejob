@@ -431,3 +431,45 @@ func TestBuildQuestionPipelineFailureMessageUsesWarnings(t *testing.T) {
 		t.Fatalf("unexpected failure message: %s", message)
 	}
 }
+
+// TestBuildQuestionPipelineDebugTracePrefersModelOutputAndError 验证调试文本会同时保留模型原始输出和底层错误。
+func TestBuildQuestionPipelineDebugTracePrefersModelOutputAndError(t *testing.T) {
+	t.Parallel()
+
+	trace := buildQuestionPipelineDebugTrace(&AIDebugResponse{
+		ModelOutput: "```json\n{\"topics\":[]}\n```",
+		ModelError:  "invalid character 'x' looking for beginning of value",
+	})
+	expected := "[model_output]\n```json\n{\"topics\":[]}\n```\n\n[model_error]\ninvalid character 'x' looking for beginning of value"
+	if trace != expected {
+		t.Fatalf("unexpected debug trace: %q", trace)
+	}
+}
+
+// TestBuildQuestionPipelineDebugTraceFallsBackToModelError 验证缺少原始输出时仍会回传模型错误，便于失败重放定位。
+func TestBuildQuestionPipelineDebugTraceFallsBackToModelError(t *testing.T) {
+	t.Parallel()
+
+	trace := buildQuestionPipelineDebugTrace(&AIDebugResponse{
+		ModelError: "model timeout",
+	})
+	if trace != "[model_error]\nmodel timeout" {
+		t.Fatalf("unexpected debug trace fallback: %q", trace)
+	}
+}
+
+// TestBuildQuestionPipelineFailureMessageDedupesAndCaps 验证失败提示会去重并限制长度，避免前台出现冗长噪音。
+func TestBuildQuestionPipelineFailureMessageDedupesAndCaps(t *testing.T) {
+	t.Parallel()
+
+	message := buildQuestionPipelineFailureMessage([]string{
+		"",
+		"没有抓取到可用面经素材",
+		"没有抓取到可用面经素材",
+		"智能体题卡生成阶段返回内容无法解析",
+		"题卡补齐阶段未生成有效结果",
+	})
+	if message != "没有抓取到可用面经素材；智能体题卡生成阶段返回内容无法解析" {
+		t.Fatalf("unexpected capped failure message: %s", message)
+	}
+}

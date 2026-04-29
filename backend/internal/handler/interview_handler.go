@@ -113,10 +113,9 @@ func (h *InterviewHandler) ListInterviews(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.interviewService.ListInterviews(c.Request.Context(), userID, page, pageSize)
+	result, err := h.interviewService.ListInterviews(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)
@@ -651,10 +650,23 @@ func (s *wsInterviewSession) handleAudioChunk(rawData *json.RawMessage) {
 	}
 }
 
-// handleAudioEnd 结束当前识别会话，并等待最终文本回传。
+// handleAudioEnd 结束当前识别会话，并在拿到有效转写后自动提交本轮语音回答。
 func (s *wsInterviewSession) handleAudioEnd() {
+	s.asrMu.Lock()
+	recognizedText := strings.TrimSpace(s.latestTranscript)
+	s.asrMu.Unlock()
 	s.closeASRSession()
-	s.sendState("ready", "语音识别已结束，可检查文本后继续提交。")
+
+	if recognizedText == "" {
+		s.sendState("ready", "本轮未识别到有效回答，请重新开始语音作答或手动输入。")
+		return
+	}
+
+	s.send(WSMessage{
+		Type:    WSMessageTypeUserAnswer,
+		Content: recognizedText,
+	})
+	s.handleUserAnswer(recognizedText)
 }
 
 // consumeASRResults 持续消费 ASR 结果并推送 partial/final 事件。
@@ -665,11 +677,11 @@ func (s *wsInterviewSession) consumeASRResults(stream asr.StreamSession) {
 		}
 
 		msgType := WSMessageTypeASRPartial
+		s.asrMu.Lock()
+		s.latestTranscript = result.Text
+		s.asrMu.Unlock()
 		if result.IsFinal {
 			msgType = WSMessageTypeASRFinal
-			s.asrMu.Lock()
-			s.latestTranscript = result.Text
-			s.asrMu.Unlock()
 		}
 
 		s.send(WSMessage{

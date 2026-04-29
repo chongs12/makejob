@@ -19,12 +19,14 @@ type AICallLogListParams struct {
 	Source   string
 	Status   string
 	TraceID  string
+	TaskID   *uint
 }
 
 // AICallLogRepository AI 调用日志仓库接口。
 type AICallLogRepository interface {
 	Create(ctx context.Context, log *model.AICallLog) error
 	List(ctx context.Context, params AICallLogListParams) ([]model.AICallLog, int64, error)
+	GetByID(ctx context.Context, id uint) (*model.AICallLog, error)
 	GetLatestByTraceID(ctx context.Context, traceID string) (*model.AICallLog, error)
 }
 
@@ -67,6 +69,9 @@ func (r *aiCallLogRepository) List(ctx context.Context, params AICallLogListPara
 	if params.TraceID != "" {
 		query = query.Where("trace_id LIKE ?", "%"+params.TraceID+"%")
 	}
+	if params.TaskID != nil && *params.TaskID > 0 {
+		query = query.Where("task_id = ?", *params.TaskID)
+	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("统计 AI 调用日志失败: %w", err)
@@ -88,6 +93,24 @@ func (r *aiCallLogRepository) List(ctx context.Context, params AICallLogListPara
 	}
 
 	return logs, total, nil
+}
+
+// GetByID 按主键获取单条 AI 调用日志详情，供管理端展开原始调试信息。
+func (r *aiCallLogRepository) GetByID(ctx context.Context, id uint) (*model.AICallLog, error) {
+	if id == 0 {
+		return nil, nil
+	}
+
+	var log model.AICallLog
+	err := r.db.WithContext(ctx).First(&log, id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("按 ID 查询 AI 调用日志失败: %w", err)
+	}
+
+	return &log, nil
 }
 
 // GetLatestByTraceID 按 trace_id 获取最近一条 AI 调用日志，便于运行时补齐原始输出。

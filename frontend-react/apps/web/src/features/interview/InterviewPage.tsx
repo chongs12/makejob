@@ -2,10 +2,60 @@ import type { FormEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { extractErrorMessage, getApiBaseUrl, requestJson } from '@makejob/api-client'
-import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
+import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
 import { InterviewLive2DStage } from './InterviewLive2DStage'
+import {
+  createInterviewRequest,
+  fetchInterviewDetail,
+  fetchInterviewHistory,
+  fetchInterviewReport,
+  fetchNextInterviewQuestion,
+  finishInterviewRequest,
+  submitInterviewAnswer,
+} from './interviewApi'
+import {
+  appendInterviewMessage,
+  buildDefaultInterviewTopics,
+  buildInitialInterviewForm,
+  buildInterviewReadiness,
+  buildInterviewReplayItems,
+  buildInterviewReviewDraft,
+  buildInterviewWebSocketUrl,
+  buildRealtimeInterviewMessage,
+  encodePCM16Base64,
+  estimateInterviewDialogueDurationMs,
+  formatInterviewDateTime,
+  formatInterviewDuration,
+  interviewDifficultyLabel,
+  interviewQuestionTypeLabel,
+  interviewStatusLabel,
+  INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD,
+  INTERVIEW_AUTO_STOP_SILENCE_MS,
+  normalizeInterviewDimensions,
+  parseInterviewTopics,
+  resolveCurrentInterviewQuestion,
+  resolveCurrentInterviewQuestionFromMessages,
+  splitInterviewDialogueUnits,
+} from './interviewHelpers'
+import type {
+  InterviewAnswerResponse,
+  InterviewConfigForm,
+  InterviewDetailResponse,
+  InterviewFeedback,
+  InterviewHistoryItem,
+  InterviewMessage,
+  InterviewNextQuestionResponse,
+  InterviewQuestion,
+  InterviewReport,
+  InterviewReportResponse,
+  InterviewSocketASRPayload,
+  InterviewSocketEvent,
+  InterviewSocketExpressionPayload,
+  InterviewSocketQuestionPayload,
+  InterviewSocketStatePayload,
+  InterviewSocketTTSPayload,
+} from './interviewTypes'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
   fetchFrontendIndustries,
@@ -15,418 +65,14 @@ import {
   resolvePreferredFrontendIndustry,
   subscribeFrontendIndustryCodeChange,
 } from '../../shared/industryContext'
-import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
+import { readCurrentBrowserPath } from '../../shared/authRedirect'
 import {
   buildInterviewCompanionContextDraft,
   persistCompanionPlanContext,
 } from '../../shared/companionContext'
 import { persistCommunityDraft } from '../../shared/communityDraft'
+import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { persistPendingPracticeSearch } from '../../shared/practiceSearch'
-
-interface InterviewConfigForm {
-  difficulty: string
-  questionCount: string
-  topicsText: string
-}
-
-interface InterviewQuestion {
-  question: string
-  topic: string
-  difficulty: string
-  type: string
-  hints?: string
-}
-
-interface InterviewFeedback {
-  score: number
-  is_correct: boolean
-  feedback: string
-  key_points: string[]
-  suggestions: string
-  follow_up: string
-}
-
-interface InterviewReport {
-  overall_score: number
-  total_questions: number
-  correct_count: number
-  dimension_scores: Record<string, number>
-  strengths: string[]
-  weaknesses: string[]
-  suggestions: string[]
-  summary: string
-}
-
-interface InterviewCreateResponse {
-  interview_id: number
-  status: string
-  first_question?: InterviewQuestion | null
-  created_at: string
-}
-
-interface InterviewHistoryItem {
-  id: number
-  status: string
-  score: number
-  total_questions: number
-  started_at?: string
-  ended_at?: string
-  created_at?: string
-}
-
-interface InterviewMessage {
-  role: string
-  content: string
-  message_type: string
-  created_at: string
-}
-
-interface InterviewDetailResponse {
-  id: number
-  industry_code: string
-  status: string
-  score: number
-  total_questions: number
-  messages: InterviewMessage[]
-  started_at?: string
-  ended_at?: string
-}
-
-interface InterviewAnswerResponse {
-  feedback?: InterviewFeedback | null
-  next_question?: InterviewQuestion | null
-  is_finished: boolean
-}
-
-interface InterviewNextQuestionResponse {
-  question?: InterviewQuestion | null
-  question_no: number
-  is_last: boolean
-}
-
-interface InterviewReportResponse {
-  interview_id: number
-  report?: InterviewReport | null
-  duration_seconds: number
-  completed_at: string
-}
-
-interface PageResult<T> {
-  list: T[]
-  total: number
-  page: number
-  page_size: number
-}
-
-type InterviewSocketEventType =
-  | 'connected'
-  | 'session_ready'
-  | 'interview_state'
-  | 'user_answer'
-  | 'ai_question'
-  | 'asr_partial'
-  | 'asr_final'
-  | 'tts_audio'
-  | 'live2d_expression'
-  | 'audio_start'
-  | 'audio_chunk'
-  | 'audio_end'
-  | 'error'
-  | 'finished'
-
-interface InterviewSocketEvent<T = Record<string, unknown>> {
-  type: InterviewSocketEventType
-  content?: string
-  data?: T
-  timestamp?: number
-  trace_id?: string
-  interview_id?: number
-}
-
-interface InterviewSocketStatePayload {
-  status: string
-  message: string
-}
-
-interface InterviewSocketQuestionPayload {
-  question: string
-  question_no: number
-  type: string
-  hints?: string
-}
-
-interface InterviewSocketASRPayload {
-  text: string
-  is_final: boolean
-  confidence: number
-}
-
-interface InterviewSocketTTSPayload {
-  kind: string
-  text: string
-  audio_url: string
-  duration: number
-  format: string
-  sample_rate: number
-}
-
-interface InterviewSocketExpressionPayload {
-  emotion: string
-  action: string
-  source: string
-}
-
-/**
- * 根据当前行业生成更贴近方向语境的默认面试主题，减少用户首次填写成本。
- */
-function buildDefaultInterviewTopics(industryCode: string): string {
-  const topicMap: Record<string, string> = {
-    go: 'Go基础, 并发编程, Gin, 数据库',
-    java: 'Java基础, JVM, Spring, 数据库',
-    frontend: 'HTML/CSS, JavaScript, React, 工程化',
-  }
-
-  return topicMap[industryCode.trim()] || '基础概念, 核心框架, 数据结构, 工程实践'
-}
-
-/**
- * 创建 AI 面试入口页默认表单，保证首次进入时就能直接提交。
- */
-function buildInitialInterviewForm(): InterviewConfigForm {
-  return {
-    difficulty: 'medium',
-    questionCount: '5',
-    topicsText: buildDefaultInterviewTopics(INTERVIEW_DEFAULT_INDUSTRY_CODE),
-  }
-}
-
-/**
- * 将主题输入拆成后端需要的数组结构，兼容逗号和换行分隔。
- */
-function parseInterviewTopics(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\n,，]/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  )
-}
-
-/**
- * 将面试难度枚举转换为前台可读文案。
- */
-function interviewDifficultyLabel(difficulty: string): string {
-  const map: Record<string, string> = {
-    easy: '简单',
-    medium: '中等',
-    hard: '困难',
-    mixed: '混合',
-  }
-
-  return map[difficulty] || difficulty || '未知'
-}
-
-/**
- * 将面试状态转换成更清晰的中文标签。
- */
-function interviewStatusLabel(status: string): string {
-  const map: Record<string, string> = {
-    ongoing: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
-  }
-
-  return map[status] || status || '未知状态'
-}
-
-/**
- * 将题目类型转换成前台可读标签。
- */
-function interviewQuestionTypeLabel(type: string): string {
-  const map: Record<string, string> = {
-    technical: '技术题',
-    behavioral: '行为题',
-    coding: '编程题',
-  }
-
-  return map[type] || type || '未分类'
-}
-
-/**
- * 格式化面试页面中的时间文本，保持整体显示口径一致。
- */
-function formatInterviewDateTime(value?: string): string {
-  if (!value) {
-    return '--'
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-/**
- * 将秒数转换为更易读的分钟文本，用于面试报告展示。
- */
-function formatInterviewDuration(seconds: number): string {
-  if (!seconds) {
-    return '不足 1 分钟'
-  }
-
-  const minutes = Math.max(Math.round(seconds / 60), 1)
-  return `${minutes} 分钟`
-}
-
-/**
- * 将维度键名转换成更适合报告页展示的中文标签。
- */
-function interviewDimensionLabel(key: string): string {
-  const normalizedKey = key.trim().toLowerCase()
-  const map: Record<string, string> = {
-    foundation: '基础知识',
-    basics: '基础知识',
-    knowledge: '知识掌握',
-    technical: '技术深度',
-    coding: '编码能力',
-    communication: '表达沟通',
-    architecture: '架构理解',
-    problem_solving: '问题分析',
-    'problem-solving': '问题分析',
-    behavioral: '行为表达',
-  }
-
-  return map[normalizedKey] || key || '未命名维度'
-}
-
-/**
- * 根据总分生成更适合报告总览展示的准备度结论。
- */
-function buildInterviewReadiness(score: number): { label: string; description: string } {
-  if (score >= 85) {
-    return {
-      label: '可直接冲刺',
-      description: '整体表现已经具备较强竞争力，建议开始强化追问深度和临场表达稳定性。',
-    }
-  }
-
-  if (score >= 70) {
-    return {
-      label: '接近可投递',
-      description: '主体能力已形成，但仍有若干薄弱点需要集中补强后再去冲高质量面试。',
-    }
-  }
-
-  if (score >= 55) {
-    return {
-      label: '需要补强',
-      description: '当前更适合先回到题库和学习计划，把关键薄弱项补齐后再继续模拟面试。',
-    }
-  }
-
-  return {
-    label: '建议先夯实基础',
-    description: '基础稳定性还不够，优先回练核心知识点，再用面试场景验证提升效果。',
-  }
-}
-
-/**
- * 将维度评分整理成排序后的数组，便于报告页同时展示优势项和薄弱项。
- */
-function normalizeInterviewDimensions(report?: InterviewReport | null): Array<{ key: string; label: string; score: number }> {
-  return Object.entries(report?.dimension_scores || {})
-    .map(([key, value]) => ({
-      key,
-      label: interviewDimensionLabel(key),
-      score: Math.round(value || 0),
-    }))
-    .sort((left, right) => right.score - left.score)
-}
-
-/**
- * 从面试消息历史中还原题目与回答轨迹，供报告页做复盘回放。
- */
-function buildInterviewReplayItems(messages: InterviewMessage[]): Array<{
-  question: string
-  answer: string
-  askedAt: string
-  answeredAt: string
-}> {
-  const result: Array<{
-    question: string
-    answer: string
-    askedAt: string
-    answeredAt: string
-  }> = []
-
-  let currentQuestion: InterviewMessage | null = null
-
-  for (const item of messages) {
-    if (item.role === 'ai' && item.message_type === 'text' && item.content.trim()) {
-      currentQuestion = item
-      continue
-    }
-
-    if (item.role === 'user' && currentQuestion) {
-      result.push({
-        question: currentQuestion.content,
-        answer: item.content,
-        askedAt: currentQuestion.created_at,
-        answeredAt: item.created_at,
-      })
-      currentQuestion = null
-    }
-  }
-
-  return result
-}
-
-/**
- * 生成可直接带入社区发帖页的面试复盘草稿。
- */
-function buildInterviewReviewDraft(report: InterviewReport, detail: InterviewDetailResponse | undefined, industryLabel: string): {
-  postType: string
-  title: string
-  content: string
-  tags: string[]
-} {
-  const topWeaknesses = (report.weaknesses || []).slice(0, 3)
-  const topSuggestions = (report.suggestions || []).slice(0, 3)
-  const topDimensions = normalizeInterviewDimensions(report).slice(-3).map((item) => `${item.label} ${item.score}分`)
-
-  return {
-    postType: 'article',
-    title: `${industryLabel} 面试复盘：第 ${detail?.id || '-'} 场`,
-    content: [
-      `这次 ${industryLabel} 模拟面试已经结束，先记录本场复盘。`,
-      '',
-      `一、结果概览`,
-      `- 总分：${Math.round(report.overall_score || 0)}`,
-      `- 题量：${report.total_questions || detail?.total_questions || 0}`,
-      `- 命中题数：${report.correct_count || 0}`,
-      `- 总结：${report.summary || '暂无总结'}`,
-      '',
-      `二、当前最需要补强的点`,
-      ...(topWeaknesses.length ? topWeaknesses.map((item) => `- ${item}`) : ['- 暂无明确薄弱项，后续可继续挑战更深问题。']),
-      '',
-      `三、低分维度`,
-      ...(topDimensions.length ? topDimensions.map((item) => `- ${item}`) : ['- 暂无维度评分数据']),
-      '',
-      `四、下一步行动`,
-      ...(topSuggestions.length ? topSuggestions.map((item) => `- ${item}`) : ['- 先回题库补强，再进行下一场模拟面试。']),
-    ].join('\n'),
-    tags: Array.from(new Set([industryLabel, '面试复盘', 'AI面试', ...topWeaknesses.slice(0, 2)])).slice(0, 5),
-  }
-}
 
 /**
  * 优先使用浏览器剪贴板能力复制文本，失败时让上层统一兜底提示。
@@ -437,273 +83,6 @@ async function copyInterviewText(text: string): Promise<void> {
   }
 
   await navigator.clipboard.writeText(text)
-}
-
-/**
- * 统计消息列表中用户已回答的题目数，用于推导当前进度。
- */
-function countInterviewAnswers(messages: InterviewMessage[]): number {
-  return messages.filter((item) => item.role === 'user').length
-}
-
-/**
- * 从详情消息里提取当前仍待回答的问题。
- */
-function resolveCurrentInterviewQuestion(detail: InterviewDetailResponse | undefined): InterviewQuestion | null {
-  if (!detail || detail.status !== 'ongoing') {
-    return null
-  }
-
-  const answeredCount = countInterviewAnswers(detail.messages)
-  if (answeredCount >= detail.total_questions) {
-    return null
-  }
-
-  const latestQuestionMessage = [...detail.messages]
-    .reverse()
-    .find((item) => item.role === 'ai' && item.message_type === 'text')
-
-  if (!latestQuestionMessage) {
-    return null
-  }
-
-  return {
-    question: latestQuestionMessage.content,
-    topic: '',
-    difficulty: '',
-    type: 'technical',
-    hints: '',
-  }
-}
-
-/**
- * 从运行时消息列表恢复当前待回答题目，兼容 WebSocket 实时追加的新消息。
- */
-function resolveCurrentInterviewQuestionFromMessages(messages: InterviewMessage[], status: string, totalQuestions: number): InterviewQuestion | null {
-  if (status !== 'ongoing') {
-    return null
-  }
-
-  const answeredCount = countInterviewAnswers(messages)
-  if (answeredCount >= totalQuestions) {
-    return null
-  }
-
-  const latestQuestionMessage = [...messages]
-    .reverse()
-    .find((item) => item.role === 'ai' && item.message_type === 'text')
-
-  if (!latestQuestionMessage) {
-    return null
-  }
-
-  return {
-    question: latestQuestionMessage.content,
-    topic: '',
-    difficulty: '',
-    type: 'technical',
-    hints: '',
-  }
-}
-
-/**
- * 生成浏览器可直连的面试 WebSocket 地址，并通过查询参数透传访问令牌。
- */
-function buildInterviewWebSocketUrl(interviewId: string, token: string): string {
-  const baseUrl = getApiBaseUrl().replace(/\/+$/, '')
-  const requestBase = typeof window !== 'undefined' ? new URL(baseUrl, window.location.origin) : new URL(baseUrl, 'http://localhost')
-  requestBase.protocol = requestBase.protocol === 'https:' ? 'wss:' : 'ws:'
-  requestBase.pathname = `${requestBase.pathname.replace(/\/+$/, '')}/interviews/${interviewId}/ws`
-  requestBase.searchParams.set('token', token)
-  return requestBase.toString()
-}
-
-/**
- * 为前端本地追加的实时消息生成统一结构，保证和后端历史消息字段兼容。
- */
-function buildRealtimeInterviewMessage(role: string, messageType: string, content: string): InterviewMessage {
-  return {
-    role,
-    content,
-    message_type: messageType,
-    created_at: new Date().toISOString(),
-  }
-}
-
-/**
- * 追加实时消息时做一次尾部去重，避免恢复消息与实时事件重复渲染。
- */
-function appendInterviewMessage(messages: InterviewMessage[], nextMessage: InterviewMessage): InterviewMessage[] {
-  const lastMessage = messages[messages.length - 1]
-  if (
-    lastMessage &&
-    lastMessage.role === nextMessage.role &&
-    lastMessage.message_type === nextMessage.message_type &&
-    lastMessage.content === nextMessage.content
-  ) {
-    return messages
-  }
-
-  return [...messages, nextMessage]
-}
-
-/**
- * 将 Float32 单声道音频转换为 16bit PCM 并编码成 base64，供 WebSocket 直接上传。
- */
-function encodePCM16Base64(channelData: Float32Array): string {
-  const pcmBuffer = new Int16Array(channelData.length)
-  for (let index = 0; index < channelData.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, channelData[index] || 0))
-    pcmBuffer[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
-  }
-
-  const bytes = new Uint8Array(pcmBuffer.buffer)
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    const slice = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length))
-    binary += String.fromCharCode(...slice)
-  }
-
-  return window.btoa(binary)
-}
-
-/**
- * 将字幕文本拆成逐步显示的最小单元，兼容中文字符和常见 emoji。
- */
-function splitInterviewDialogueUnits(text: string): string[] {
-  return Array.from(text)
-}
-
-/**
- * 按文本长度与标点停顿粗略估算字幕播放时长，供无音频时兜底同步。
- */
-function estimateInterviewDialogueDurationMs(text: string): number {
-  const units = splitInterviewDialogueUnits(text)
-  const punctuationCount = units.filter((unit) => /[，。！？；：,.!?]/.test(unit)).length
-  const baseDurationMs = units.length * 110 + punctuationCount * 140
-  return Math.min(Math.max(baseDurationMs, 1400), 12000)
-}
-
-/**
- * 拉取用户面试历史，为入口页提供最近记录和继续入口。
- */
-async function fetchInterviewHistory(token: string): Promise<PageResult<InterviewHistoryItem>> {
-  const response = await requestJson<ApiEnvelope<PageResult<InterviewHistoryItem>>>('/interviews?page=1&page_size=6', {
-    token,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '获取面试历史失败')
-  }
-
-  return response.data
-}
-
-/**
- * 创建新的 AI 面试会话，并返回首题信息。
- */
-async function createInterviewRequest(
-  token: string,
-  payload: {
-    industry_code: string
-    difficulty: string
-    topics: string[]
-    question_count: number
-  },
-): Promise<InterviewCreateResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewCreateResponse>>('/interviews', {
-    method: 'POST',
-    token,
-    body: payload,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '创建面试失败')
-  }
-
-  return response.data
-}
-
-/**
- * 拉取面试详情，用于进行页恢复当前对话与状态。
- */
-async function fetchInterviewDetail(token: string, interviewId: string): Promise<InterviewDetailResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewDetailResponse>>(`/interviews/${interviewId}`, {
-    token,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '获取面试详情失败')
-  }
-
-  return response.data
-}
-
-/**
- * 提交当前问题的回答，并在后端直接推进到下一题。
- */
-async function submitInterviewAnswer(token: string, interviewId: string, answer: string): Promise<InterviewAnswerResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewAnswerResponse>>(`/interviews/${interviewId}/answer`, {
-    method: 'POST',
-    token,
-    body: {
-      answer,
-    },
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '提交回答失败')
-  }
-
-  return response.data
-}
-
-/**
- * 手动获取下一题，作为自动推进失败时的恢复入口。
- */
-async function fetchNextInterviewQuestion(token: string, interviewId: string): Promise<InterviewNextQuestionResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewNextQuestionResponse>>(`/interviews/${interviewId}/next`, {
-    token,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '获取下一题失败')
-  }
-
-  return response.data
-}
-
-/**
- * 结束当前面试并触发后端生成报告。
- */
-async function finishInterviewRequest(token: string, interviewId: string): Promise<InterviewReportResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewReportResponse>>(`/interviews/${interviewId}/finish`, {
-    method: 'POST',
-    token,
-    body: {},
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '结束面试失败')
-  }
-
-  return response.data
-}
-
-/**
- * 获取已完成面试的报告详情。
- */
-async function fetchInterviewReport(token: string, interviewId: string): Promise<InterviewReportResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewReportResponse>>(`/interviews/${interviewId}/report`, {
-    token,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '获取面试报告失败')
-  }
-
-  return response.data
 }
 
 /**
@@ -799,10 +178,7 @@ export function InterviewHubPage() {
     event.preventDefault()
 
     if (!accessToken) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch('/interview'),
-      })
+      requestLoginPrompt('/interview', 'missing')
       return
     }
 
@@ -822,10 +198,7 @@ export function InterviewHubPage() {
       })
     } catch {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch('/interview'),
-        })
+        requestLoginPrompt('/interview', 'expired')
       }
     }
   }
@@ -946,7 +319,7 @@ export function InterviewHubPage() {
             </label>
 
             <div className="page-actions">
-              <button className="primary-button" type="submit" disabled={!accessToken || createMutation.isPending}>
+              <button className="primary-button" type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? '创建中...' : '开始这场面试'}
               </button>
               {ongoingInterview ? (
@@ -978,7 +351,9 @@ export function InterviewHubPage() {
             <div className="timeline-item">
               <strong>请先登录</strong>
               <p>面试接口需要登录态。登录后你可以创建新会话，也能回到上次尚未完成的面试。</p>
-              <Link className="secondary-link" to="/auth/login" search={buildLoginRedirectSearch('/interview')}>前往登录</Link>
+              <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/interview', 'missing')}>
+                前往登录
+              </button>
             </div>
           ) : null}
 
@@ -1040,6 +415,7 @@ export function InterviewSessionPage() {
   const params = useParams({ strict: false })
   const interviewId = String(params.interviewId || '')
   const [answer, setAnswer] = useState('')
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false)
   const [message, setMessage] = useState('实时面试链路初始化中。')
   const [runtimeMessages, setRuntimeMessages] = useState<InterviewMessage[]>([])
   const [sessionState, setSessionState] = useState<InterviewSocketStatePayload>({
@@ -1066,6 +442,9 @@ export function InterviewSessionPage() {
   const recordAudioContextRef = useRef<AudioContext | null>(null)
   const recordSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const recordProcessorRef = useRef<ScriptProcessorNode | null>(null)
+  const recordSilenceTimeoutRef = useRef<number | null>(null)
+  const recordSpeechDetectedRef = useRef(false)
+  const recordStopRequestedRef = useRef(false)
 
   const detailQuery = useQuery({
     queryKey: ['interview-detail', accessToken, interviewId],
@@ -1074,12 +453,6 @@ export function InterviewSessionPage() {
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-  })
-
   const submitMutation = useMutation({
     mutationFn: (content: string) => submitInterviewAnswer(accessToken as string, interviewId, content),
     onSuccess: async (data) => {
@@ -1133,15 +506,8 @@ export function InterviewSessionPage() {
     () => resolveCurrentInterviewQuestionFromMessages(effectiveMessages, effectiveStatus, detailQuery.data?.total_questions || 0),
     [detailQuery.data?.total_questions, effectiveMessages, effectiveStatus],
   )
-  const answerCount = useMemo(() => countInterviewAnswers(effectiveMessages), [effectiveMessages])
   const sessionIndustryCode = detailQuery.data?.industry_code || readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE
-  const sessionIndustry = useMemo(
-    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], sessionIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),
-    [industriesQuery.data, sessionIndustryCode],
-  )
-  const sessionIndustryLabel = formatFrontendIndustryLabel(sessionIndustry, sessionIndustryCode)
   const canRecord = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
-
   /**
    * 当面试详情恢复成功后，同步写回当前会话所属行业，供其他频道复用同一方向偏好。
    */
@@ -1329,13 +695,20 @@ export function InterviewSessionPage() {
     } catch (error) {
       stopCurrentPlayback(dialogueText)
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '自动播放语音失败，请检查浏览器音频权限'))
+    }
+  }
+
+  /**
+   * 清理当前自动判停定时器，避免旧的静音任务误触发下一轮录音。
+   */
+  function clearRecordSilenceTimer(): void {
+    if (recordSilenceTimeoutRef.current !== null) {
+      window.clearTimeout(recordSilenceTimeoutRef.current)
+      recordSilenceTimeoutRef.current = null
     }
   }
 
@@ -1372,14 +745,36 @@ export function InterviewSessionPage() {
         }),
       )
 
+      recordStopRequestedRef.current = false
+      recordSpeechDetectedRef.current = false
+      clearRecordSilenceTimer()
       source.connect(processor)
       processor.connect(recordContext.destination)
       processor.onaudioprocess = (event) => {
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        if (recordStopRequestedRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           return
         }
 
         const channelData = event.inputBuffer.getChannelData(0)
+        let signalEnergy = 0
+        for (const sample of channelData) {
+          signalEnergy += sample * sample
+        }
+        const rms = Math.sqrt(signalEnergy / Math.max(channelData.length, 1))
+        if (rms >= INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD) {
+          recordSpeechDetectedRef.current = true
+          clearRecordSilenceTimer()
+        } else if (recordSpeechDetectedRef.current && recordSilenceTimeoutRef.current === null) {
+          recordSilenceTimeoutRef.current = window.setTimeout(() => {
+            recordSilenceTimeoutRef.current = null
+            if (recordStopRequestedRef.current || !recordSpeechDetectedRef.current) {
+              return
+            }
+
+            setMessage('检测到你已停顿，正在自动结束并提交本轮回答。')
+            stopVoiceCapture('auto')
+          }, INTERVIEW_AUTO_STOP_SILENCE_MS)
+        }
         wsRef.current.send(
           JSON.stringify({
             type: 'audio_chunk',
@@ -1397,16 +792,28 @@ export function InterviewSessionPage() {
       setRecognitionPartial('')
       setRecognitionFinal('')
       setIsRecording(true)
-      setMessage('正在实时识别你的回答，请继续说。')
+      setMessage('正在实时识别你的回答，请继续说；停顿后会自动提交。')
     } catch (error) {
       setMessage(extractErrorMessage(error, '麦克风权限申请失败，请检查浏览器设置'))
     }
   }
 
   /**
-   * 停止当前麦克风采集，并通知后端结束本轮 ASR。
+   * 停止当前麦克风采集，并按来源决定是否通知后端结束并自动提交本轮 ASR。
    */
-  function stopVoiceCapture(): void {
+  function stopVoiceCapture(reason: 'manual' | 'auto' | 'cleanup' = 'manual'): void {
+    const hasActiveRecording = Boolean(
+      recordProcessorRef.current || recordSourceRef.current || recordStreamRef.current || recordAudioContextRef.current,
+    )
+    clearRecordSilenceTimer()
+    recordSpeechDetectedRef.current = false
+    if (!hasActiveRecording) {
+      recordStopRequestedRef.current = false
+      setIsRecording(false)
+      return
+    }
+
+    recordStopRequestedRef.current = true
     if (recordProcessorRef.current) {
       recordProcessorRef.current.disconnect()
       recordProcessorRef.current.onaudioprocess = null
@@ -1424,14 +831,20 @@ export function InterviewSessionPage() {
       void recordAudioContextRef.current.close()
       recordAudioContextRef.current = null
     }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (reason !== 'cleanup' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
           type: 'audio_end',
         }),
       )
+      setMessage(
+        reason === 'auto'
+          ? '检测到你已停顿，正在自动提交你的语音回答。'
+          : '录音已结束，正在自动提交你的语音回答。',
+      )
     }
     setIsRecording(false)
+    recordStopRequestedRef.current = false
   }
 
   /**
@@ -1473,6 +886,20 @@ export function InterviewSessionPage() {
               setSessionState(statePayload)
               setMessage(statePayload.message || '')
             }
+            break
+          }
+          case 'user_answer': {
+            const answerText = (payload.content || '').trim()
+            if (!answerText) {
+              break
+            }
+
+            setRuntimeMessages((current) =>
+              appendInterviewMessage(current, buildRealtimeInterviewMessage('user', 'text', answerText)),
+            )
+            setAnswer('')
+            setRecognitionPartial('')
+            setRecognitionFinal('')
             break
           }
           case 'ai_question': {
@@ -1554,7 +981,7 @@ export function InterviewSessionPage() {
   useEffect(() => {
     return () => {
       stopCurrentPlayback()
-      stopVoiceCapture()
+      stopVoiceCapture('cleanup')
     }
   }, [])
 
@@ -1592,140 +1019,39 @@ export function InterviewSessionPage() {
   }
 
   return (
-    <section className="page-panel interview-page-panel">
-      <div className="companion-room-toolbar">
-        <Link className="ghost-button companion-room-back" to="/interview">
-          返回面试入口
-        </Link>
-        <span className="companion-room-note">当前为 Live2D 实时面试进行页 · {sessionIndustryLabel}</span>
-      </div>
-
+    <section className="page-panel interview-page-panel interview-session-page-panel">
       <div className="interview-session-layout">
-        <aside className="interview-session-sidebar">
-          <article className="status-card">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">当前状态</span>
-                <h2>面试 #{interviewId}</h2>
-              </div>
-              <span className="companion-card-note">{interviewStatusLabel(detailQuery.data?.status || 'ongoing')}</span>
-            </div>
-            <div className="interview-overview-stats">
-              <div className="companion-stat-chip">
-                <strong>{answerCount}</strong>
-                <span>已回答</span>
-              </div>
-              <div className="companion-stat-chip">
-                <strong>{detailQuery.data?.total_questions || '--'}</strong>
-                <span>总题数</span>
-              </div>
-              <div className="companion-stat-chip">
-                <strong>{currentQuestion ? answerCount + 1 : '--'}</strong>
-                <span>当前题号</span>
-              </div>
-              <div className="companion-stat-chip">
-                <strong>{wsConnected ? '已连接' : '已断开'}</strong>
-                <span>实时链路</span>
-              </div>
-            </div>
-            <p className="companion-empty-text">
-              {detailQuery.data?.started_at ? `开始时间：${formatInterviewDateTime(detailQuery.data.started_at)}` : '面试开始时间待同步'}
-            </p>
-          </article>
-
-          <article className="status-card">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">当前题目</span>
-                <h2>{currentQuestion ? `第 ${answerCount + 1} 题` : '等待题目恢复'}</h2>
-              </div>
-              <span className="companion-card-note">
-                {currentQuestion ? interviewQuestionTypeLabel(currentQuestion.type) : '无活动题目'}
-              </span>
-            </div>
-            <p className="question-content">{currentQuestion?.question || '如果当前没有题目，可尝试点击“恢复下一题”或直接结束面试。'}</p>
-            {currentQuestion?.hints ? <p className="companion-empty-text">提示：{currentQuestion.hints}</p> : null}
-          </article>
-
-          <article className="status-card">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">面试规则</span>
-                <h2>当前不会逐题点评</h2>
-              </div>
-            </div>
-            <p className="question-content">
-              回答提交后，系统会直接组织并播报下一题，逐题反馈统一保留到最终面试报告中展示。
-            </p>
-          </article>
-
-          <article className="status-card">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">实时状态</span>
-                <h2>{sessionState.status || 'idle'}</h2>
-              </div>
-              <span className="companion-card-note">{wsTraceId ? `trace: ${wsTraceId.slice(0, 8)}` : 'trace 待建立'}</span>
-            </div>
-            <p className="question-content">{sessionState.message || message}</p>
-            {recognitionPartial ? <p className="companion-empty-text">实时识别：{recognitionPartial}</p> : null}
-            {recognitionFinal ? <p className="companion-empty-text">最终识别：{recognitionFinal}</p> : null}
-          </article>
-        </aside>
-
-        <div className="interview-session-main">
+        <div className="interview-stage-shell">
+          <Link className="ghost-button interview-stage-floating-back" to="/interview">
+            返回面试入口
+          </Link>
           <InterviewLive2DStage
             industryCode={sessionIndustryCode}
             dialogue={liveDialogue}
             isTyping={isDialogueTyping}
             emotion={stageEmotion}
             mouthOpen={mouthOpen}
-            statusText={message}
           />
+        </div>
 
-          <section className="status-card interview-message-panel">
-            <div className="companion-card-head">
-              <div>
-                <span className="section-kicker">对话历史</span>
-                <h2>面试过程完整记录</h2>
-              </div>
-              <span className="companion-card-note">{effectiveMessages.length || 0} 条</span>
-            </div>
-
-            {detailQuery.isLoading ? <p className="companion-empty-text">正在恢复面试记录...</p> : null}
-            {detailQuery.isError ? (
-              <p className="companion-empty-text">
-                {detailQuery.error instanceof Error ? detailQuery.error.message : '面试记录加载失败'}
-              </p>
-            ) : null}
-
-            {effectiveMessages.length ? (
-              <div className="interview-message-list">
-                {effectiveMessages.map((item, index) => (
-                  <article className={`interview-message-item interview-message-item-${item.role}`} key={`${item.role}-${item.created_at}-${index}`}>
-                    <div className="interview-message-head">
-                      <strong>{item.role === 'ai' ? (item.message_type === 'feedback' ? 'AI 反馈' : 'AI 面试官') : '你'}</strong>
-                      <span>{formatInterviewDateTime(item.created_at)}</span>
-                    </div>
-                    <p>{item.content}</p>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </section>
-
+        <div className="interview-session-main">
           <section className="status-card interview-answer-panel">
             <div className="companion-card-head">
               <div>
                 <span className="section-kicker">回答输入</span>
-                <h2>支持文字与语音双模作答</h2>
+                <h2>直接回答当前问题</h2>
               </div>
               <span className="companion-card-note">
-                {isRecording ? '麦克风采集中...' : (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式')}
+                {isRecording ? '麦克风采集中，停顿后自动提交...' : (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式')}
               </span>
             </div>
 
             <form className="companion-composer" onSubmit={handleSubmitAnswer}>
+              <div className="interview-answer-status-stack">
+                <p className="interview-answer-status-primary">{sessionState.message || message}</p>
+                {recognitionPartial ? <p className="interview-answer-status-secondary">实时识别：{recognitionPartial}</p> : null}
+                {recognitionFinal ? <p className="interview-answer-status-secondary">识别结果：{recognitionFinal}</p> : null}
+              </div>
               <textarea
                 rows={7}
                 value={answer}
@@ -1734,8 +1060,14 @@ export function InterviewSessionPage() {
                 disabled={detailQuery.data?.status !== 'ongoing'}
               />
               <div className="interview-answer-actions">
-                <p className="companion-composer-message">{message}</p>
                 <div className="page-actions">
+                  <button
+                    className="ghost-button interview-history-trigger"
+                    type="button"
+                    onClick={() => setIsHistoryExpanded(true)}
+                  >
+                    {effectiveMessages.length ? `查看记录 (${effectiveMessages.length})` : '查看记录'}
+                  </button>
                   <button
                     className="secondary-button"
                     type="button"
@@ -1748,7 +1080,7 @@ export function InterviewSessionPage() {
                       void startVoiceCapture()
                     }}
                   >
-                    {isRecording ? '停止录音' : '开始语音回答'}
+                    {isRecording ? '手动停止并提交' : '开始语音回答'}
                   </button>
                   <button
                     className="secondary-button"
@@ -1769,9 +1101,9 @@ export function InterviewSessionPage() {
                   <button
                     className="primary-button"
                     type="submit"
-                    disabled={submitMutation.isPending || detailQuery.data?.status !== 'ongoing'}
+                    disabled={isRecording || submitMutation.isPending || detailQuery.data?.status !== 'ongoing'}
                   >
-                    {submitMutation.isPending ? '提交中...' : '提交答案'}
+                    {submitMutation.isPending ? '提交中...' : '手动提交答案'}
                   </button>
                 </div>
               </div>
@@ -1789,6 +1121,54 @@ export function InterviewSessionPage() {
           </section>
         </div>
       </div>
+
+      {isHistoryExpanded ? (
+        <button
+          aria-label="关闭面试记录抽屉"
+          className="interview-history-drawer-backdrop"
+          type="button"
+          onClick={() => setIsHistoryExpanded(false)}
+        />
+      ) : null}
+
+      <aside
+        aria-hidden={!isHistoryExpanded}
+        className={`status-card interview-history-drawer${isHistoryExpanded ? ' is-open' : ''}`}
+      >
+        <div className="companion-card-head">
+          <div>
+            <span className="section-kicker">面试记录</span>
+            <h2>完整过程回看</h2>
+          </div>
+          <div className="page-actions">
+            <span className="companion-card-note">{effectiveMessages.length || 0} 条</span>
+            <button className="ghost-button interview-history-close" type="button" onClick={() => setIsHistoryExpanded(false)}>
+              关闭
+            </button>
+          </div>
+        </div>
+
+        {detailQuery.isLoading ? <p className="companion-empty-text">正在恢复面试记录...</p> : null}
+        {detailQuery.isError ? (
+          <p className="companion-empty-text">
+            {detailQuery.error instanceof Error ? detailQuery.error.message : '面试记录加载失败'}
+          </p>
+        ) : null}
+
+        {effectiveMessages.length ? (
+          <div className="interview-message-list interview-history-drawer-list">
+            {effectiveMessages.map((item, index) => (
+              <article className={`interview-message-item interview-message-item-${item.role}`} key={`${item.role}-${item.created_at}-${index}`}>
+                <div className="interview-message-head">
+                  <strong>{item.role === 'ai' ? (item.message_type === 'feedback' ? 'AI 反馈' : 'AI 面试官') : '你'}</strong>
+                  <span>{formatInterviewDateTime(item.created_at)}</span>
+                </div>
+                <p>{item.content}</p>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </aside>
     </section>
   )
 }
@@ -1879,6 +1259,11 @@ export function InterviewReportPage() {
   function handleCreateCommunityReview(): void {
     if (!reviewDraft) {
       setReportMessage('当前报告还未准备好复盘草稿。')
+      return
+    }
+
+    if (!useAuthStore.getState().accessToken) {
+      requestLoginPrompt('/community/create', 'missing')
       return
     }
 

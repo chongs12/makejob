@@ -23,18 +23,21 @@ func (s *adminService) DebugAIRuntime(ctx context.Context, req *AIDebugRequest) 
 		return nil, common.NewBusinessError(common.CodeBadRequest, "scene is required")
 	}
 
+	normalizedReq := *req
+	normalizedReq.TaskID = resolveAIDebugTaskID(ctx, req.TaskID)
+
 	debugger := aiRuntime.NewDebugger(
 		s.adminConfigRepo,
 		s.promptRepo,
 		s.industryRepo,
 		s.baseAIConfig,
 	)
-	result, err := debugger.Run(ctx, *req)
+	result, err := debugger.Run(ctx, normalizedReq)
 	if err != nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, err.Error())
 	}
 
-	s.recordAICallLog(ctx, req, result)
+	s.recordAICallLog(ctx, &normalizedReq, result)
 	s.fillAIDebugResponseModelOutput(ctx, result)
 	return result, nil
 }

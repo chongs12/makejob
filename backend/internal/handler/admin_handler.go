@@ -42,6 +42,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.DELETE("/questions/:id", h.DeleteQuestion)
 	r.POST("/questions/import", h.BatchImportQuestions)
 	r.POST("/question-pipeline/generate", h.GenerateQuestionPipeline)
+	r.POST("/question-pipeline/generate/async", h.GenerateQuestionPipelineAsync)
 	r.POST("/question-pipeline/generate/stream", h.GenerateQuestionPipelineStream)
 	r.POST("/question-pipeline/import", h.ImportQuestionPipeline)
 
@@ -67,6 +68,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/ai-configs", h.UpdateAIConfigs)
 	r.POST("/prompts/test-render", h.TestRenderPrompt)
 	r.GET("/ai-call-logs", h.ListAICallLogs)
+	r.GET("/ai-call-logs/:id", h.GetAICallLog)
 
 	// Live2D模型管理
 	r.GET("/live2d-models", h.ListLive2DModels)
@@ -123,12 +125,11 @@ func (h *AdminHandler) GetDashboard(c *gin.Context) {
 // @Success 200 {object} common.Response{data=common.PageResult}
 // @Router /api/admin/users [get]
 func (h *AdminHandler) ListUsers(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 	keyword := c.Query("keyword")
 	role := c.Query("role")
 
-	result, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, keyword, role)
+	result, err := h.adminService.ListUsers(c.Request.Context(), pageParam.Page, pageParam.PageSize, keyword, role)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)
@@ -224,8 +225,7 @@ func (h *AdminHandler) DisableUser(c *gin.Context) {
 // @Success 200 {object} common.Response{data=model.Question}
 // @Router /api/admin/questions [post]
 func (h *AdminHandler) ListQuestions(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 	keyword := c.Query("keyword")
 	difficulty := c.Query("difficulty")
 
@@ -239,7 +239,7 @@ func (h *AdminHandler) ListQuestions(c *gin.Context) {
 		categoryID = uint(id)
 	}
 
-	result, err := h.adminService.ListQuestions(c.Request.Context(), page, pageSize, keyword, difficulty, categoryID)
+	result, err := h.adminService.ListQuestions(c.Request.Context(), pageParam.Page, pageParam.PageSize, keyword, difficulty, categoryID)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)

@@ -200,37 +200,6 @@ function applyInterviewExpression(model: Cubism4Live2DModel | null, emotion: str
 }
 
 /**
- * 将模型来源转换成更适合前端展示的中文说明。
- */
-function live2DSourceLabel(source: string): string {
-  if (source === 'database') {
-    return '后台模型'
-  }
-  if (source === 'bundled') {
-    return '内置回退'
-  }
-  return source || '未知来源'
-}
-
-/**
- * 将模型匹配策略转换为面试页可读标签。
- */
-function live2DMatchTypeLabel(matchType: string): string {
-  switch (matchType) {
-    case 'industry':
-      return '行业推荐'
-    case 'generic':
-      return '通用模型'
-    case 'other':
-      return '其他可选'
-    case 'bundled':
-      return '内置回退'
-    default:
-      return '可用模型'
-  }
-}
-
-/**
  * 渲染面试页 Live2D 舞台，并实时响应情绪和嘴型状态变化。
  */
 export function InterviewLive2DStage(props: {
@@ -239,7 +208,6 @@ export function InterviewLive2DStage(props: {
   isTyping: boolean
   emotion: string
   mouthOpen: number
-  statusText: string
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const modelRef = useRef<Cubism4Live2DModel | null>(null)
@@ -267,9 +235,6 @@ export function InterviewLive2DStage(props: {
     return modelOptions.find((item) => item.is_recommended) || modelOptions[0] || null
   }, [modelOptions, selectedModelKey])
   const currentModelName = currentModel?.name || '面试官'
-  const stageStatusText = currentModel
-    ? `当前模型：${currentModelName} · ${live2DSourceLabel(currentModel.source)} / ${live2DMatchTypeLabel(currentModel.match_type)}`
-    : '当前暂无可用模型'
   const errorMessage = modelOptionsQuery.isError
     ? extractErrorMessage(modelOptionsQuery.error, '读取面试 Live2D 模型失败')
     : stageError
@@ -400,29 +365,6 @@ export function InterviewLive2DStage(props: {
 
   return (
     <section className="interview-live2d-panel">
-      <div className="interview-live2d-topbar">
-        <div className="interview-live2d-badges">
-          <span className="page-tag">当前模型：{currentModelName}</span>
-          <span className="companion-state-pill">情绪：{props.emotion || 'neutral'}</span>
-          <span className="companion-state-pill">嘴型：{Math.round(props.mouthOpen * 100)}%</span>
-        </div>
-        <div className="interview-live2d-side">
-          <span className="companion-stage-copy">{stageStatusText}</span>
-          {modelOptions.length > 1 ? (
-            <label className="companion-stage-selector">
-              <span>切换模型</span>
-              <select value={currentModel?.key || ''} onChange={(event) => setSelectedModelKey(event.target.value)}>
-                {modelOptions.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {`${item.name} · ${live2DMatchTypeLabel(item.match_type)}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-      </div>
-
       <div className="interview-live2d-canvas-wrap">
         <div className="interview-live2d-canvas" ref={hostRef} />
 
@@ -443,7 +385,6 @@ export function InterviewLive2DStage(props: {
         <div className="interview-live2d-dialogue">
           <span className="section-kicker">AI 面试官</span>
           <p className={`interview-live2d-dialogue-text${props.isTyping ? ' is-typing' : ''}`}>{props.dialogue}</p>
-          <span>{props.statusText}</span>
         </div>
       </div>
     </section>

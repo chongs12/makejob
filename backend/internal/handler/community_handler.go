@@ -41,12 +41,11 @@ func (h *CommunityHandler) RegisterRoutes(public *gin.RouterGroup, protected *gi
 
 // ListPosts 返回社区帖子分页列表。
 func (h *CommunityHandler) ListPosts(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
 	params := service.CommunityPostListParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:     pageParam.Page,
+		PageSize: pageParam.PageSize,
 		PostType: c.Query("type"),
 		Keyword:  c.Query("keyword"),
 		Tag:      c.Query("tag"),
@@ -122,12 +121,11 @@ func (h *CommunityHandler) ListMyPosts(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
 	params := service.CommunityPostListParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:     pageParam.Page,
+		PageSize: pageParam.PageSize,
 		PostType: c.Query("type"),
 		Keyword:  c.Query("keyword"),
 		Tag:      c.Query("tag"),

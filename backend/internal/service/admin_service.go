@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"makejob-backend/internal/ai"
+	aiRuntime "makejob-backend/internal/ai/runtime"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
@@ -222,8 +223,10 @@ type AdminService interface {
 	DeleteQuestion(ctx context.Context, id uint) error
 	BatchImportQuestions(ctx context.Context, req *BatchImportRequest) (*BatchImportResponse, error)
 	GenerateQuestionPipeline(ctx context.Context, req *AdminQuestionPipelineGenerateRequest) (*AdminQuestionPipelineGenerateResponse, error)
+	CreateQuestionPipelineTask(ctx context.Context, req *AdminQuestionPipelineGenerateRequest) (*model.ScraperTask, error)
 	GenerateQuestionPipelineStream(ctx context.Context, req *AdminQuestionPipelineGenerateRequest, emit AdminQuestionPipelineStreamEmitter) error
 	ImportQuestionPipeline(ctx context.Context, req *AdminQuestionPipelineImportRequest) (*BatchImportResponse, error)
+	RunNextPendingQuestionPipelineTask(ctx context.Context) (*model.ScraperTask, bool, error)
 
 	ListCategories(ctx context.Context) ([]model.Category, error)
 	CreateCategory(ctx context.Context, req *CreateCategoryRequest) (*model.Category, error)
@@ -243,6 +246,7 @@ type AdminService interface {
 	UpdateAIConfigs(ctx context.Context, configs map[string]string) error
 	DebugAIRuntime(ctx context.Context, req *AIDebugRequest) (*AIDebugResponse, error)
 	ListAICallLogs(ctx context.Context, req *ListAICallLogsRequest) (*common.PageResult, error)
+	GetAICallLog(ctx context.Context, id uint) (*model.AICallLog, error)
 
 	ListLive2DModels(ctx context.Context) ([]model.Live2DModel, error)
 	CreateLive2DModel(ctx context.Context, req *CreateLive2DModelRequest) (*model.Live2DModel, error)
@@ -267,6 +271,7 @@ type adminService struct {
 	live2DRepo        repository.Live2DModelRepository
 	ttsRepo           repository.TTSConfigRepository
 	mockInterviewRepo repository.MockInterviewRepository
+	scraperTaskRepo   repository.ScraperTaskRepository
 	scraperProvider   scraper.ScraperProvider
 	questionCleaner   scraper.QuestionCleaner
 	baseAIConfig      map[string]string
@@ -284,6 +289,7 @@ func NewAdminService(
 	live2DRepo repository.Live2DModelRepository,
 	ttsRepo repository.TTSConfigRepository,
 	mockInterviewRepo repository.MockInterviewRepository,
+	scraperTaskRepo repository.ScraperTaskRepository,
 	scraperProvider scraper.ScraperProvider,
 	questionCleaner scraper.QuestionCleaner,
 	baseAIConfig map[string]string,
@@ -299,6 +305,7 @@ func NewAdminService(
 		live2DRepo:        live2DRepo,
 		ttsRepo:           ttsRepo,
 		mockInterviewRepo: mockInterviewRepo,
+		scraperTaskRepo:   scraperTaskRepo,
 		scraperProvider:   scraperProvider,
 		questionCleaner:   questionCleaner,
 		baseAIConfig:      ai.NormalizeRuntimeConfig(baseAIConfig),
@@ -332,17 +339,10 @@ func (s *adminService) GetDashboard(ctx context.Context) (*DashboardResponse, er
 }
 
 func (s *adminService) ListUsers(ctx context.Context, page, pageSize int, keyword, role string) (*common.PageResult, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
 
-	users, total, err := s.adminUserRepo.List(ctx, page, pageSize, keyword, role)
+	users, total, err := s.adminUserRepo.List(ctx, pageParam.Page, pageParam.PageSize, keyword, role)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +370,7 @@ func (s *adminService) ListUsers(ctx context.Context, page, pageSize int, keywor
 		})
 	}
 
-	return &common.PageResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
+	return common.NewPageResult(items, total, pageParam), nil
 }
 
 func (s *adminService) UpdateUserRole(ctx context.Context, userID uint, role string) error {
@@ -391,17 +391,10 @@ func (s *adminService) DisableUser(ctx context.Context, userID uint) error {
 }
 
 func (s *adminService) ListQuestions(ctx context.Context, page, pageSize int, keyword, difficulty string, categoryID uint) (*common.PageResult, error) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
 
-	questions, total, err := s.adminQuestionRepo.List(ctx, page, pageSize, keyword, difficulty, categoryID)
+	questions, total, err := s.adminQuestionRepo.List(ctx, pageParam.Page, pageParam.PageSize, keyword, difficulty, categoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +420,7 @@ func (s *adminService) ListQuestions(ctx context.Context, page, pageSize int, ke
 		})
 	}
 
-	return &common.PageResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
+	return common.NewPageResult(items, total, pageParam), nil
 }
 
 func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuestionRequest) (*model.Question, error) {
@@ -778,6 +771,7 @@ func (s *adminService) DeletePrompt(ctx context.Context, id uint) error {
 	return s.promptRepo.Delete(ctx, id)
 }
 
+// GetAIConfigs 返回后台 AI 配置页需要的配置、支持范围和当前告警信息。
 func (s *adminService) GetAIConfigs(ctx context.Context) (*AIConfigResponse, error) {
 	items, err := s.adminConfigRepo.List(ctx)
 	if err != nil {
@@ -787,9 +781,14 @@ func (s *adminService) GetAIConfigs(ctx context.Context) (*AIConfigResponse, err
 	return buildAIConfigResponse(items, s.baseAIConfig), nil
 }
 
+// UpdateAIConfigs 校验并持久化后台提交的 AI 运行配置。
 func (s *adminService) UpdateAIConfigs(ctx context.Context, configs map[string]string) error {
 	if len(configs) == 0 {
 		return common.NewBusinessError(common.CodeBadRequest, "configs cannot be empty")
+	}
+
+	if err := aiRuntime.ValidateRuntimeConfig(configs); err != nil {
+		return common.NewBusinessError(common.CodeBadRequest, err.Error())
 	}
 
 	adminConfigs := buildAIConfigItems(ai.NormalizeRuntimeConfig(configs))

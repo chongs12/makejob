@@ -18,6 +18,7 @@ import (
 // DebugRequest 定义管理端 AI 调试请求。
 type DebugRequest struct {
 	Scene           string            `json:"scene"`
+	TaskID          *uint             `json:"task_id,omitempty"`
 	IndustryID      *uint             `json:"industry_id,omitempty"`
 	TemplateID      *uint             `json:"template_id,omitempty"`
 	TemplateContent string            `json:"template_content,omitempty"`
@@ -107,12 +108,19 @@ func (d *Debugger) Run(ctx context.Context, req DebugRequest) (*DebugResponse, e
 		Model:            strings.TrimSpace(sceneConfig[ai.ConfigKeyModel]),
 	}
 
+	logFields := []zap.Field{
+		zap.String("trace_id", traceID),
+		zap.String("scene", scene),
+		zap.String("prompt_source", response.PromptSource),
+		zap.String("provider", response.Provider),
+		zap.String("model", response.Model),
+	}
+	if req.TaskID != nil && *req.TaskID > 0 {
+		logFields = append(logFields, zap.Uint("task_id", *req.TaskID))
+	}
+
 	if !req.RunModel {
-		applogger.Info("admin ai debug completed without model run",
-			zap.String("trace_id", traceID),
-			zap.String("scene", scene),
-			zap.String("prompt_source", response.PromptSource),
-			zap.String("model", response.Model))
+		applogger.Info("admin ai debug completed without model run", logFields...)
 		return response, nil
 	}
 
@@ -136,14 +144,7 @@ func (d *Debugger) Run(ctx context.Context, req DebugRequest) (*DebugResponse, e
 		}
 	}
 
-	logFields := []zap.Field{
-		zap.String("trace_id", traceID),
-		zap.String("scene", scene),
-		zap.String("prompt_source", response.PromptSource),
-		zap.String("provider", response.Provider),
-		zap.String("model", response.Model),
-		zap.Int64("latency_ms", response.LatencyMS),
-	}
+	logFields = append(logFields, zap.Int64("latency_ms", response.LatencyMS))
 	if response.ModelError != "" {
 		applogger.Warn("admin ai debug model run failed", append(logFields, zap.String("error", response.ModelError))...)
 	} else {

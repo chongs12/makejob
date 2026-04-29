@@ -237,17 +237,17 @@ func NewQuestionService(
 
 // ListQuestions 获取题目列表
 func (s *questionService) ListQuestions(ctx context.Context, params repository.QuestionListParams) (*common.PageResult, error) {
+	pageParam := common.PageParam{Page: params.Page, PageSize: params.PageSize}
+	pageParam.Normalize()
+	params.Page = pageParam.Page
+	params.PageSize = pageParam.PageSize
+
 	questions, total, err := s.questionRepo.List(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     questions,
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.PageSize,
-	}, nil
+	return common.NewPageResult(questions, total, pageParam), nil
 }
 
 // GetQuestion 获取题目详情
@@ -454,32 +454,28 @@ func (s *questionService) ToggleFavorite(ctx context.Context, userID, questionID
 
 // GetFavorites 获取收藏列表
 func (s *questionService) GetFavorites(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	favorites, total, err := s.favoriteRepo.ListByUser(ctx, userID, page, pageSize)
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
+
+	favorites, total, err := s.favoriteRepo.ListByUser(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     favorites,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(favorites, total, pageParam), nil
 }
 
 // GetWrongQuestions 获取错题列表
 func (s *questionService) GetWrongQuestions(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	records, total, err := s.recordRepo.GetWrongQuestions(ctx, userID, page, pageSize)
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
+
+	records, total, err := s.recordRepo.GetWrongQuestions(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     records,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(records, total, pageParam), nil
 }
 
 // CreateNote 创建笔记
@@ -532,17 +528,15 @@ func (s *questionService) DeleteNote(ctx context.Context, userID, noteID uint) e
 
 // ListNotes 获取笔记列表
 func (s *questionService) ListNotes(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error) {
-	notes, total, err := s.noteRepo.ListByUser(ctx, userID, page, pageSize)
+	pageParam := common.PageParam{Page: page, PageSize: pageSize}
+	pageParam.Normalize()
+
+	notes, total, err := s.noteRepo.ListByUser(ctx, userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	return &common.PageResult{
-		List:     notes,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return common.NewPageResult(notes, total, pageParam), nil
 }
 
 // GenerateRandomExam 生成随机试卷

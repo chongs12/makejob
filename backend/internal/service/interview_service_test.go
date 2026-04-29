@@ -250,6 +250,52 @@ func TestInterviewServiceFinishInterviewEvaluatesAnswersForReport(t *testing.T) 
 	}
 }
 
+// TestInterviewServiceFinishInterviewIsIdempotent 验证重复结束已完成面试时会直接返回已有报告。
+func TestInterviewServiceFinishInterviewIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC)
+	endedAt := startedAt.Add(23 * time.Minute)
+	report := ai.InterviewReport{
+		OverallScore:   88,
+		TotalQuestions: 4,
+		CorrectCount:   3,
+		Summary:        "报告已生成。",
+	}
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report failed: %v", err)
+	}
+
+	svc := &interviewService{
+		interviewRepo: &stubInterviewRepository{
+			interview: &model.MockInterview{
+				BaseModel:      model.BaseModel{ID: 19},
+				UserID:         1,
+				Status:         model.InterviewStatusCompleted,
+				Score:          report.OverallScore,
+				AIFeedback:     "旧摘要",
+				ReportJSON:     string(reportJSON),
+				TotalQuestions: report.TotalQuestions,
+				StartedAt:      &startedAt,
+				EndedAt:        &endedAt,
+			},
+		},
+		interviewAgent: &stubInterviewAgent{},
+	}
+
+	resp, err := svc.FinishInterview(context.Background(), 1, 19)
+	if err != nil {
+		t.Fatalf("FinishInterview returned error: %v", err)
+	}
+	if resp == nil || resp.Report == nil {
+		t.Fatal("expected report response, got nil")
+	}
+	if resp.Report.Summary != report.Summary {
+		t.Fatalf("unexpected report summary: got %q want %q", resp.Report.Summary, report.Summary)
+	}
+}
+
 // stubInterviewRepository 模拟面试仓库，供服务层测试验证持久化结果。
 type stubInterviewRepository struct {
 	interview *model.MockInterview

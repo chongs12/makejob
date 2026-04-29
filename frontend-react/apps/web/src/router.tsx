@@ -12,10 +12,11 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { extractErrorMessage, requestJson } from '@makejob/api-client'
+import { AUTH_EXPIRED_EVENT_NAME, extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from './state/auth'
-import { CompanionHubPage, CompanionWorkspacePage } from './features/companion/CompanionPage'
+import { CompanionHubPage } from './features/companion/CompanionHubPage'
+import { CompanionWorkspacePage } from './features/companion/CompanionWorkspacePage'
 import {
   CommunityCreatePostPage,
   CommunityEditPostPage,
@@ -33,15 +34,15 @@ import {
   persistSelectedFrontendIndustryCode,
   readSelectedFrontendIndustryCode,
   resolvePreferredFrontendIndustry,
-  subscribeFrontendIndustryCodeChange,
 } from './shared/industryContext'
+import { findFrontendIndustryById, useFrontendIndustryPreference } from './shared/frontendIndustryPreference'
 import {
   buildCurrentLocationPath,
   buildLoginRedirectSearch,
-  isProtectedWebPath,
   readCurrentBrowserPath,
   resolveLoginRedirectTarget,
 } from './shared/authRedirect'
+import { LOGIN_REQUIRED_PROMPT_EVENT_NAME, type LoginPromptDetail, type LoginPromptReason, requestLoginPrompt } from './shared/loginPrompt'
 import { consumePendingPracticeSearch, persistPendingPracticeSearch } from './shared/practiceSearch'
 
 interface RouterContext {
@@ -328,66 +329,6 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, maxLength)}...`
-}
-
-/**
- * 根据行业主键从前台行业列表中定位真实行业对象，供详情页展示真实方向名称。
- */
-function findFrontendIndustryById(industries: FrontendIndustry[], industryId?: number): FrontendIndustry | null {
-  if (!industryId) {
-    return null
-  }
-
-  return industries.find((item) => item.id === industryId) || null
-}
-
-/**
- * 统一维护前台行业偏好，让导航、首页和工作台能共享同一份方向上下文。
- */
-function useFrontendIndustryPreference() {
-  const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || DEFAULT_FRONTEND_INDUSTRY_CODE)
-
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const selectedIndustry = useMemo(
-    () => resolvePreferredFrontendIndustry(industriesQuery.data || [], selectedIndustryCode),
-    [industriesQuery.data, selectedIndustryCode],
-  )
-  const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || DEFAULT_FRONTEND_INDUSTRY_CODE
-  const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
-
-  useEffect(() => {
-    const unsubscribe = subscribeFrontendIndustryCodeChange((industryCode) => {
-      setSelectedIndustryCode(industryCode || DEFAULT_FRONTEND_INDUSTRY_CODE)
-    })
-
-    return unsubscribe
-  }, [])
-
-  useEffect(() => {
-    const normalizedIndustryCode = effectiveIndustryCode.trim()
-    if (!normalizedIndustryCode) {
-      return
-    }
-
-    persistSelectedFrontendIndustryCode(normalizedIndustryCode)
-    if (normalizedIndustryCode !== selectedIndustryCode) {
-      setSelectedIndustryCode(normalizedIndustryCode)
-    }
-  }, [effectiveIndustryCode, selectedIndustryCode])
-
-  return {
-    industriesQuery,
-    selectedIndustry,
-    selectedIndustryCode,
-    setSelectedIndustryCode,
-    effectiveIndustryCode,
-    effectiveIndustryLabel,
-  }
 }
 
 /**
@@ -880,7 +821,6 @@ function AuthBootstrap() {
  * 提供题目页与编辑器页共用的笔记面板，支持创建、更新和删除。
  */
 function QuestionNotePanel(props: { questionId: number; questionTitle: string; token: string | null }) {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(props.questionTitle)
   const [content, setContent] = useState('')
@@ -903,10 +843,7 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
    */
   async function handleSave() {
     if (!props.token) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -928,10 +865,7 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '保存笔记失败'))
@@ -945,10 +879,7 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
    */
   async function handleDelete() {
     if (!props.token) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -967,10 +898,7 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '删除笔记失败'))
@@ -1019,6 +947,43 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
 }
 
 /**
+ * 渲染全局统一的登录提示弹窗，引导用户在需要完整功能时主动进入登录页。
+ */
+function LoginRequiredDialog(props: {
+  open: boolean
+  reason: LoginPromptReason
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  if (!props.open) {
+    return null
+  }
+
+  const title = props.reason === 'expired' ? '登录状态已失效' : '需要先登录'
+  const description = props.reason === 'expired'
+    ? '你的登录状态已经过期。想继续使用完整功能，请重新登录。'
+    : '当前功能需要登录后才能完整使用。登录后你可以继续当前操作，并保留回跳位置。'
+
+  return (
+    <div className="login-required-overlay" role="presentation">
+      <div className="login-required-dialog" role="dialog" aria-modal="true" aria-labelledby="login-required-title">
+        <span className="page-tag">登录提示</span>
+        <h2 id="login-required-title">{title}</h2>
+        <p>{description}</p>
+        <div className="page-actions login-required-actions">
+          <button className="primary-button" type="button" onClick={props.onConfirm}>
+            立即登录
+          </button>
+          <button className="secondary-button" type="button" onClick={props.onCancel}>
+            稍后登录
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * 提供前台统一外壳，承载导航、状态展示和子路由出口。
  */
 function RootLayout() {
@@ -1033,7 +998,38 @@ function RootLayout() {
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
   const [headerKeyword, setHeaderKeyword] = useState('')
+  const [loginPromptState, setLoginPromptState] = useState<{
+    open: boolean
+    redirectTarget: string
+    reason: LoginPromptReason
+  }>({
+    open: false,
+    redirectTarget: '/',
+    reason: 'missing',
+  })
   const { effectiveIndustryLabel } = useFrontendIndustryPreference()
+  const currentLocationPath = buildCurrentLocationPath(pathname, searchStr || '')
+
+  /**
+   * 打开全局登录提示弹窗，并记录登录后应该返回的目标地址。
+   */
+  function openLoginPrompt(redirectTarget: string, reason: LoginPromptReason): void {
+    setLoginPromptState({
+      open: true,
+      redirectTarget: redirectTarget.trim() || currentLocationPath,
+      reason,
+    })
+  }
+
+  /**
+   * 关闭当前登录提示弹窗，允许用户暂时留在现有页面继续浏览。
+   */
+  function closeLoginPrompt(): void {
+    setLoginPromptState((current) => ({
+      ...current,
+      open: false,
+    }))
+  }
 
   /**
    * 统一处理顶部题库搜索，确保无论当前处于哪个页面都能直接跳转到题库页筛选。
@@ -1057,26 +1053,68 @@ function RootLayout() {
       return
     }
 
-    navigate({
-      to: '/auth/login',
-      search: buildLoginRedirectSearch('/community/create'),
-    })
+    openLoginPrompt('/community/create', 'missing')
   }
 
   /**
-   * 当受保护页面上的登录态被后端判定失效后，立即跳回登录页并保留原始地址。
+   * 监听显式登录提示和令牌失效事件，统一由根布局弹出登录引导。
    */
   useEffect(() => {
-    if (accessToken || !isProtectedWebPath(pathname)) {
+    if (typeof window === 'undefined') {
       return
     }
 
+    /**
+     * 接收业务侧主动发起的登录请求，并把目标地址带入统一弹窗。
+     */
+    function handleLoginRequired(event: Event): void {
+      const detail = (event as CustomEvent<LoginPromptDetail | undefined>).detail
+      const redirectTarget = typeof detail?.redirectTarget === 'string' ? detail.redirectTarget : currentLocationPath
+      openLoginPrompt(redirectTarget, detail?.reason === 'expired' ? 'expired' : 'missing')
+    }
+
+    /**
+     * 在请求层捕获到 401 后，直接提示用户重新登录即可继续当前页面操作。
+     */
+    function handleAuthExpired(): void {
+      if (pathname === '/auth/login') {
+        return
+      }
+
+      openLoginPrompt(currentLocationPath, 'expired')
+    }
+
+    window.addEventListener(LOGIN_REQUIRED_PROMPT_EVENT_NAME, handleLoginRequired)
+    window.addEventListener(AUTH_EXPIRED_EVENT_NAME, handleAuthExpired)
+
+    return () => {
+      window.removeEventListener(LOGIN_REQUIRED_PROMPT_EVENT_NAME, handleLoginRequired)
+      window.removeEventListener(AUTH_EXPIRED_EVENT_NAME, handleAuthExpired)
+    }
+  }, [currentLocationPath, pathname])
+
+  /**
+   * 用户重新拿到有效令牌或已经进入登录页时，自动收起旧的登录提示。
+   */
+  useEffect(() => {
+    if (!accessToken && pathname !== '/auth/login') {
+      return
+    }
+
+    closeLoginPrompt()
+  }, [accessToken, pathname])
+
+  /**
+   * 确认跳转登录页，并把当前弹窗记录的回跳地址一并带上。
+   */
+  function handleConfirmLogin(): void {
+    const redirectTarget = loginPromptState.redirectTarget.trim() || currentLocationPath
+    closeLoginPrompt()
     navigate({
       to: '/auth/login',
-      search: buildLoginRedirectSearch(buildCurrentLocationPath(pathname, searchStr || '')),
-      replace: true,
+      search: buildLoginRedirectSearch(redirectTarget),
     })
-  }, [accessToken, navigate, pathname, searchStr])
+  }
 
   const navigationItems = [
     { to: '/', label: '首页', match: pathname === '/' },
@@ -1088,12 +1126,21 @@ function RootLayout() {
   ]
   const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
+  const loginPromptDialog = (
+    <LoginRequiredDialog
+      open={loginPromptState.open}
+      reason={loginPromptState.reason}
+      onConfirm={handleConfirmLogin}
+      onCancel={closeLoginPrompt}
+    />
+  )
 
   if (isStandaloneCompanionRoom) {
     return (
       <div className="app-shell companion-room-shell">
         <AuthBootstrap />
         <Outlet />
+        {loginPromptDialog}
       </div>
     )
   }
@@ -1159,6 +1206,7 @@ function RootLayout() {
       <main className="page-content site-main">
         <Outlet />
       </main>
+      {loginPromptDialog}
     </div>
   )
 }
@@ -1416,13 +1464,27 @@ function HomePage() {
             <span className="section-kicker">社区入口</span>
             <div className="sidebar-links">
               <Link className="sidebar-link" to="/community">浏览全部帖子</Link>
-              <Link className="sidebar-link" to="/community/create">发布刷题复盘</Link>
+              {accessToken ? (
+                <Link className="sidebar-link" to="/community/create">发布刷题复盘</Link>
+              ) : (
+                <button className="sidebar-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/community/create', 'missing')}>
+                  发布刷题复盘
+                </button>
+              )}
               {accessToken ? (
                 <Link className="sidebar-link" to="/community/mine">管理我的帖子</Link>
               ) : (
-                <Link className="sidebar-link" to="/auth/login" search={buildLoginRedirectSearch('/community/create')}>登录后发帖</Link>
+                <button className="sidebar-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/community/create', 'missing')}>
+                  登录后发帖
+                </button>
               )}
-              <Link className="sidebar-link" to="/practice/notes">把笔记整理成帖子</Link>
+              {accessToken ? (
+                <Link className="sidebar-link" to="/practice/notes">把笔记整理成帖子</Link>
+              ) : (
+                <button className="sidebar-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
+                  把笔记整理成帖子
+                </button>
+              )}
             </div>
           </article>
 
@@ -1431,8 +1493,20 @@ function HomePage() {
             <div className="sidebar-links">
               <Link className="sidebar-link" to="/companion">学习计划</Link>
               <Link className="sidebar-link" to="/companion">Live2D 展示</Link>
-              <Link className="sidebar-link" to="/practice/wrong">错题复盘</Link>
-              <Link className="sidebar-link" to="/practice/notes">学习笔记</Link>
+              {accessToken ? (
+                <Link className="sidebar-link" to="/practice/wrong">错题复盘</Link>
+              ) : (
+                <button className="sidebar-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}>
+                  错题复盘
+                </button>
+              )}
+              {accessToken ? (
+                <Link className="sidebar-link" to="/practice/notes">学习笔记</Link>
+              ) : (
+                <button className="sidebar-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
+                  学习笔记
+                </button>
+              )}
             </div>
           </article>
         </aside>
@@ -1553,10 +1627,7 @@ function PracticePage() {
    */
   async function handleGenerateExam(mode: 'random' | 'timed') {
     if (!accessToken) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch('/practice'),
-      })
+      requestLoginPrompt('/practice', 'missing')
       return
     }
 
@@ -1584,10 +1655,7 @@ function PracticePage() {
       })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch('/practice'),
-        })
+        requestLoginPrompt('/practice', 'expired')
         return
       }
       setExamMessage(extractErrorMessage(error, '组卷失败'))
@@ -1613,7 +1681,13 @@ function PracticePage() {
           <span className="section-kicker">复盘沉淀</span>
           <h2>错题、收藏、笔记</h2>
           <p>把高频错题、值得重做的题和个人题解收束到同一个练习域里，形成复盘闭环。</p>
-          <Link className="secondary-link" to="/practice/notes">直接看笔记</Link>
+          {accessToken ? (
+            <Link className="secondary-link" to="/practice/notes">直接看笔记</Link>
+          ) : (
+            <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
+              直接看笔记
+            </button>
+          )}
         </article>
         <article className="channel-entry-card">
           <span className="section-kicker">模拟练习</span>
@@ -1626,9 +1700,27 @@ function PracticePage() {
       </div>
 
       <div className="quick-links">
-        <Link className="secondary-link" to="/practice/wrong">进入错题本</Link>
-        <Link className="secondary-link" to="/practice/favorites">查看收藏夹</Link>
-        <Link className="secondary-link" to="/practice/notes">查看笔记</Link>
+        {accessToken ? (
+          <Link className="secondary-link" to="/practice/wrong">进入错题本</Link>
+        ) : (
+          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}>
+            进入错题本
+          </button>
+        )}
+        {accessToken ? (
+          <Link className="secondary-link" to="/practice/favorites">查看收藏夹</Link>
+        ) : (
+          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/favorites', 'missing')}>
+            查看收藏夹
+          </button>
+        )}
+        {accessToken ? (
+          <Link className="secondary-link" to="/practice/notes">查看笔记</Link>
+        ) : (
+          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
+            查看笔记
+          </button>
+        )}
       </div>
 
       {accessToken && statsQuery.data ? (
@@ -1893,10 +1985,7 @@ function PracticeQuestionPage() {
     }
 
     if (!accessToken) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -1924,10 +2013,7 @@ function PracticeQuestionPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setSubmitMessage(extractErrorMessage(error, '提交答案失败'))
@@ -1941,10 +2027,7 @@ function PracticeQuestionPage() {
    */
   async function handleToggleFavorite() {
     if (!accessToken || !question) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -1955,10 +2038,7 @@ function PracticeQuestionPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setFavoriteMessage(extractErrorMessage(error, '收藏操作失败'))
@@ -2265,10 +2345,7 @@ function PracticeEditorPage() {
     }
 
     if (!accessToken) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -2294,10 +2371,7 @@ function PracticeEditorPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setSubmitMessage(extractErrorMessage(error, `${label}失败`))
@@ -2311,10 +2385,7 @@ function PracticeEditorPage() {
    */
   async function handleToggleFavorite() {
     if (!accessToken || !question) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-      })
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
       return
     }
 
@@ -2325,10 +2396,7 @@ function PracticeEditorPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-        })
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
       setFavoriteMessage(extractErrorMessage(error, '收藏操作失败'))
@@ -2597,10 +2665,7 @@ function PracticeNotesPage() {
    */
   async function handleDelete(noteId: number) {
     if (!accessToken) {
-      navigate({
-        to: '/auth/login',
-        search: buildLoginRedirectSearch('/practice/notes'),
-      })
+      requestLoginPrompt('/practice/notes', 'missing')
       return
     }
 
@@ -2610,10 +2675,7 @@ function PracticeNotesPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-notes'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        navigate({
-          to: '/auth/login',
-          search: buildLoginRedirectSearch('/practice/notes'),
-        })
+        requestLoginPrompt('/practice/notes', 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '删除笔记失败'))

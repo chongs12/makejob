@@ -999,6 +999,14 @@ body {
   border-color: rgba(192, 61, 61, 0.24);
 }
 
+.admin-question-pipeline-composer__task-restore {
+  margin-top: 16px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
 .admin-question-pipeline-stats {
   margin-top: 20px;
   display: grid;
@@ -1242,6 +1250,430 @@ body {
 
 .admin-question-pipeline-card__answer {
   min-height: 120px;
+}
+
+.admin-runtime-page {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-runtime-page__hero,
+.admin-runtime-list-page__hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-page__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-page__stats {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.admin-runtime-card {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 18px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.02));
+}
+
+.admin-runtime-card span {
+  display: block;
+  color: #475569;
+  font-size: 13px;
+}
+
+.admin-runtime-card strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 28px;
+}
+
+.admin-runtime-page__layout,
+.admin-runtime-list-page__layout {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-runtime-panel-card,
+.admin-runtime-section {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 22px;
+  padding: 22px;
+  background: #fff;
+  display: grid;
+  gap: 16px;
+}
+
+.admin-runtime-panel-card__head,
+.admin-runtime-section__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-panel-card__head h3,
+.admin-runtime-section__head h3 {
+  margin: 0;
+}
+
+.admin-runtime-panel-card__head p,
+.admin-runtime-section__head p,
+.admin-runtime-empty,
+.admin-runtime-note {
+  margin: 0;
+  color: #475569;
+}
+
+.admin-runtime-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.32);
+}
+
+.admin-runtime-list-block {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-runtime-list-block h4 {
+  margin: 0;
+}
+
+.admin-runtime-list-block ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+}
+
+.admin-runtime-table,
+.admin-runtime-list-table {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-runtime-table__row,
+.admin-runtime-list-table__row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  align-items: center;
+}
+
+.admin-runtime-list-table__row {
+  grid-template-columns: 88px 140px 120px 180px 90px minmax(180px, 1fr);
+}
+
+.admin-runtime-list-table--scraper .admin-runtime-list-table__row {
+  grid-template-columns: 72px 136px 110px 110px 100px minmax(180px, 1.1fr) minmax(220px, 1.3fr) 150px;
+}
+
+.admin-runtime-table__row--head,
+.admin-runtime-list-table__row--head {
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-runtime-table__row code,
+.admin-runtime-list-table__row code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-runtime-actions-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-list-page {
+  display: grid;
+  gap: 22px;
+}
+
+.admin-runtime-list-page__summary {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 6px 16px;
+  align-items: center;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.14), rgba(30, 41, 59, 0.04));
+}
+
+.admin-runtime-list-page__summary strong {
+  font-size: 28px;
+}
+
+.admin-runtime-inline-config {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: #334155;
+  font-size: 14px;
+}
+
+.admin-runtime-filters {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) auto;
+  align-items: end;
+}
+
+.admin-runtime-task-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-task-detail {
+  display: grid;
+  gap: 18px;
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.admin-runtime-task-detail__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-runtime-task-detail__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-runtime-task-detail__item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.admin-runtime-task-detail__item strong {
+  font-size: 13px;
+  color: #475569;
+}
+
+.admin-runtime-task-detail__item span,
+.admin-runtime-task-detail__item code {
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.admin-runtime-task-detail__item--full {
+  grid-column: 1 / -1;
+}
+
+.admin-runtime-task-detail__blocks {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-runtime-task-detail__block {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-runtime-task-detail__block h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.admin-runtime-task-detail__block pre {
+  margin: 0;
+  min-height: 180px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-runtime-task-detail__related-logs {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-runtime-related-log-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.admin-runtime-related-log-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(226, 232, 240, 0.88));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.admin-runtime-related-log-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-runtime-related-log-card__head strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.admin-runtime-related-log-card__head span {
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.admin-runtime-related-log-card__meta {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.admin-runtime-related-log-card__trace {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-runtime-related-log-card__trace span {
+  color: #475569;
+  font-size: 12px;
+}
+
+.admin-runtime-related-log-card__trace code {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow-wrap: anywhere;
+}
+
+.admin-runtime-related-log-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-runtime-related-log-card__detail {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.admin-runtime-related-log-card__detail-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-runtime-related-log-card__detail-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-runtime-related-log-card__detail-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.admin-runtime-related-log-card__detail-item strong {
+  color: #475569;
+  font-size: 12px;
+}
+
+.admin-runtime-related-log-card__detail-item span {
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.admin-runtime-related-log-card__detail-blocks {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-runtime-related-log-card__detail-block {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-runtime-related-log-card__detail-block h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.admin-runtime-related-log-card__detail-block pre {
+  margin: 0;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-runtime-related-log-card__detail-block--full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 960px) {
+  .admin-runtime-table__row,
+  .admin-runtime-list-table__row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-runtime-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-runtime-task-detail__grid,
+  .admin-runtime-task-detail__blocks,
+  .admin-runtime-related-log-card__detail-grid,
+  .admin-runtime-related-log-card__detail-blocks {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes admin-question-pipeline-pulse {
@@ -1712,6 +2144,7 @@ body {
   .admin-question-pipeline-page__hero,
   .admin-question-pipeline-composer__strategy,
   .admin-question-pipeline-composer__status,
+  .admin-question-pipeline-composer__task-restore,
   .admin-question-pipeline-results__toolbar,
   .admin-question-pipeline-results__selection,
   .admin-question-pipeline-card__head {

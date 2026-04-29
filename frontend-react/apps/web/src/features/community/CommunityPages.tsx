@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
-import { buildLoginRedirectSearch, readCurrentBrowserPath } from '../../shared/authRedirect'
+import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { clearCommunityDraft, readCommunityDraft } from '../../shared/communityDraft'
 import { useAuthStore } from '../../state/auth'
 
@@ -285,13 +285,10 @@ async function toggleCommunityLike(token: string, postId: string): Promise<Commu
 }
 
 /**
- * 统一跳转登录页并保留当前社区页面地址，供登录后原路返回。
+ * 统一弹出社区登录提示，并保留当前社区页面地址供登录后原路返回。
  */
-function redirectToCommunityLogin(navigate: ReturnType<typeof useNavigate>): void {
-  navigate({
-    to: '/auth/login',
-    search: buildLoginRedirectSearch(readCurrentBrowserPath()),
-  })
+function promptCommunityLogin(redirectTarget: string, reason: 'missing' | 'expired' = 'missing'): void {
+  requestLoginPrompt(redirectTarget, reason)
 }
 
 /**
@@ -452,7 +449,18 @@ export function CommunityPage() {
           <p className="page-copy">现在首页动态流只做轻入口，完整浏览、搜索、发帖、评论和互动都统一收口到社区频道。</p>
         </div>
         <div className="page-actions">
-          <button className="primary-button" type="button" onClick={() => navigate({ to: '/community/create' })}>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              if (accessToken) {
+                navigate({ to: '/community/create' })
+                return
+              }
+
+              promptCommunityLogin('/community/create', 'missing')
+            }}
+          >
             发布帖子
           </button>
           {accessToken ? (
@@ -460,7 +468,7 @@ export function CommunityPage() {
               我的帖子
             </button>
           ) : (
-            <button className="secondary-button" type="button" onClick={() => redirectToCommunityLogin(navigate)}>
+            <button className="secondary-button" type="button" onClick={() => promptCommunityLogin('/community/create', 'missing')}>
               登录后发帖
             </button>
           )}
@@ -605,7 +613,7 @@ export function CommunityPostDetailPage() {
    */
   async function handleToggleLike() {
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt(`/community/${postId}`, 'missing')
       return
     }
 
@@ -616,7 +624,7 @@ export function CommunityPostDetailPage() {
       await refreshCommunityQueries()
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        redirectToCommunityLogin(navigate)
+        requestLoginPrompt(`/community/${postId}`, 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '点赞操作失败'))
@@ -632,7 +640,7 @@ export function CommunityPostDetailPage() {
     event.preventDefault()
 
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt(`/community/${postId}`, 'missing')
       return
     }
 
@@ -649,7 +657,7 @@ export function CommunityPostDetailPage() {
       await refreshCommunityQueries()
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        redirectToCommunityLogin(navigate)
+        requestLoginPrompt(`/community/${postId}`, 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '发表评论失败'))
@@ -663,7 +671,7 @@ export function CommunityPostDetailPage() {
    */
   async function handleDeletePost() {
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt(`/community/${postId}`, 'missing')
       return
     }
 
@@ -682,7 +690,7 @@ export function CommunityPostDetailPage() {
       navigate({ to: '/community' })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        redirectToCommunityLogin(navigate)
+        requestLoginPrompt(`/community/${postId}`, 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '删除帖子失败'))
@@ -838,7 +846,7 @@ export function CommunityCreatePostPage() {
    */
   async function handleCreatePost(payload: CommunityPostPayload) {
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt('/community/create', 'missing')
       return
     }
 
@@ -894,7 +902,7 @@ export function CommunityEditPostPage() {
    */
   async function handleUpdatePost(payload: CommunityPostPayload) {
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt(`/community/${postId}/edit`, 'missing')
       return
     }
 
@@ -990,7 +998,7 @@ export function CommunityMyPostsPage() {
    */
   async function handleDeletePost(postId: number) {
     if (!accessToken) {
-      redirectToCommunityLogin(navigate)
+      requestLoginPrompt('/community/mine', 'missing')
       return
     }
 
@@ -1008,7 +1016,7 @@ export function CommunityMyPostsPage() {
       ])
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
-        redirectToCommunityLogin(navigate)
+        requestLoginPrompt('/community/mine', 'expired')
         return
       }
       setMessage(extractErrorMessage(error, '删除帖子失败'))
@@ -1043,7 +1051,18 @@ export function CommunityMyPostsPage() {
         </div>
         <div className="page-actions">
           <button className="secondary-button" type="submit">应用筛选</button>
-          <button className="primary-button" type="button" onClick={() => navigate({ to: '/community/create' })}>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              if (accessToken) {
+                navigate({ to: '/community/create' })
+                return
+              }
+
+              requestLoginPrompt('/community/create', 'missing')
+            }}
+          >
             发布新帖子
           </button>
         </div>

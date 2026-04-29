@@ -64,6 +64,15 @@ func IsRuntimeConfigKey(key string) bool {
 	return strings.HasPrefix(key, "ai_")
 }
 
+// IsKnownRuntimeConfigKey 判断配置键是否属于当前已知的 runtime 配置集合。
+func IsKnownRuntimeConfigKey(key string) bool {
+	if _, ok := defaultRuntimeConfig[key]; ok {
+		return true
+	}
+	_, ok := legacyRuntimeAliases[key]
+	return ok
+}
+
 // NormalizeRuntimeConfig 统一整理 runtime 配置键和值，并补齐默认值。
 func NormalizeRuntimeConfig(raw map[string]string) map[string]string {
 	normalized := DefaultRuntimeConfig()
@@ -88,6 +97,15 @@ func NormalizeRuntimeConfig(raw map[string]string) map[string]string {
 	normalized[ConfigKeyFallbackProvider] = NormalizeProviderType(normalized[ConfigKeyFallbackProvider])
 
 	return normalized
+}
+
+// KnownRuntimeConfigKeys 返回当前已知的 runtime 配置键列表副本。
+func KnownRuntimeConfigKeys() []string {
+	keys := make([]string, 0, len(defaultRuntimeConfig))
+	for key := range defaultRuntimeConfig {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // NormalizeProviderType 规范化 Provider 类型名称，无法识别时返回空字符串。

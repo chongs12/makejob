@@ -4,18 +4,23 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/scraper"
 )
 
 // ScraperTaskRepository 爬取任务仓库接口
 type ScraperTaskRepository interface {
 	Create(ctx context.Context, task *model.ScraperTask) error
 	Update(ctx context.Context, task *model.ScraperTask) error
-	List(ctx context.Context, page, pageSize int) ([]model.ScraperTask, int64, error)
+	List(ctx context.Context, page, pageSize int, filter scraper.TaskListFilter) ([]model.ScraperTask, int64, error)
 	GetByID(ctx context.Context, id uint) (*model.ScraperTask, error)
+	ClaimNextPending(ctx context.Context, taskType string) (*model.ScraperTask, error)
 }
 
 // scraperTaskRepository 爬取任务仓库实现
@@ -45,11 +50,17 @@ func (r *scraperTaskRepository) Update(ctx context.Context, task *model.ScraperT
 }
 
 // List 获取爬取任务列表
-func (r *scraperTaskRepository) List(ctx context.Context, page, pageSize int) ([]model.ScraperTask, int64, error) {
+func (r *scraperTaskRepository) List(ctx context.Context, page, pageSize int, filter scraper.TaskListFilter) ([]model.ScraperTask, int64, error) {
 	var tasks []model.ScraperTask
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&model.ScraperTask{})
+	if status := strings.TrimSpace(filter.Status); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if taskType := strings.TrimSpace(filter.TaskType); taskType != "" {
+		query = query.Where("task_type = ?", taskType)
+	}
 
 	// 统计总数
 	if err := query.Count(&total).Error; err != nil {
@@ -75,4 +86,40 @@ func (r *scraperTaskRepository) GetByID(ctx context.Context, id uint) (*model.Sc
 		return nil, fmt.Errorf("查询爬取任务失败: %w", err)
 	}
 	return &task, nil
+}
+
+// ClaimNextPending 以行锁方式领取下一条待执行任务，并立即标记为 running，避免多 worker 重复消费。
+func (r *scraperTaskRepository) ClaimNextPending(ctx context.Context, taskType string) (*model.ScraperTask, error) {
+	var claimed *model.ScraperTask
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task model.ScraperTask
+		query := tx.Model(&model.ScraperTask{}).
+			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("status = ?", scraper.TaskStatusPending).
+			Order("created_at ASC")
+		if taskType != "" {
+			query = query.Where("task_type = ?", taskType)
+		}
+		if err := query.First(&task).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil
+			}
+			return fmt.Errorf("领取待执行任务失败: %w", err)
+		}
+
+		now := time.Now()
+		task.Status = scraper.TaskStatusRunning
+		task.StartedAt = &now
+		task.RetryCount++
+		if err := tx.Save(&task).Error; err != nil {
+			return fmt.Errorf("标记任务为运行中失败: %w", err)
+		}
+		claimed = &task
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return claimed, nil
 }

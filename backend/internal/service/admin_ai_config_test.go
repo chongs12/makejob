@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	"makejob-backend/internal/ai"
 	"makejob-backend/internal/model"
 )
 
@@ -25,5 +26,11 @@ func TestBuildAIConfigResponseMergesBaseConfig(t *testing.T) {
 	}
 	if got := response.Configs["ai_scene_interview_model"]; got != "db-interview-model" {
 		t.Fatalf("expected db interview model override, got %q", got)
+	}
+	if len(response.Support.PrimaryProviders) != 1 || response.Support.PrimaryProviders[0] != string(ai.ProviderTypeEino) {
+		t.Fatalf("expected eino to be the only supported primary provider, got %#v", response.Support.PrimaryProviders)
+	}
+	if len(response.Warnings) == 0 {
+		t.Fatalf("expected legacy mock provider to produce warnings")
 	}
 }

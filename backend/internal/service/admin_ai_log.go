@@ -18,6 +18,7 @@ type ListAICallLogsRequest struct {
 	Source   string `json:"source"`
 	Status   string `json:"status"`
 	TraceID  string `json:"trace_id"`
+	TaskID   *uint  `json:"task_id,omitempty"`
 }
 
 // ListAICallLogs 查询 AI 调用日志列表。
@@ -36,6 +37,7 @@ func (s *adminService) ListAICallLogs(ctx context.Context, req *ListAICallLogsRe
 		Source:   strings.TrimSpace(req.Source),
 		Status:   strings.TrimSpace(req.Status),
 		TraceID:  strings.TrimSpace(req.TraceID),
+		TaskID:   req.TaskID,
 	}
 	logs, total, err := s.aiCallLogRepo.List(ctx, params)
 	if err != nil {
@@ -45,16 +47,30 @@ func (s *adminService) ListAICallLogs(ctx context.Context, req *ListAICallLogsRe
 	if params.Page <= 0 {
 		params.Page = 1
 	}
-	if params.PageSize <= 0 {
-		params.PageSize = 10
+	pageParam := common.PageParam{Page: params.Page, PageSize: params.PageSize}
+	pageParam.Normalize()
+
+	return common.NewPageResult(logs, total, pageParam), nil
+}
+
+// GetAICallLog 返回单条 AI 调用日志详情，供任务页展开查看 prompt、消息和模型原始输出。
+func (s *adminService) GetAICallLog(ctx context.Context, id uint) (*model.AICallLog, error) {
+	if id == 0 {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "ai call log id is required")
+	}
+	if s.aiCallLogRepo == nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "ai call log repository is unavailable")
 	}
 
-	return &common.PageResult{
-		List:     logs,
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.PageSize,
-	}, nil
+	log, err := s.aiCallLogRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "ai call log not found")
+	}
+
+	return log, nil
 }
 
 // recordAICallLog 将调试结果写入 AI 调用日志表。
@@ -65,6 +81,7 @@ func (s *adminService) recordAICallLog(ctx context.Context, req *AIDebugRequest,
 
 	log := &model.AICallLog{
 		TraceID:            strings.TrimSpace(resp.TraceID),
+		TaskID:             req.TaskID,
 		Source:             model.AICallSourceAdminDebug,
 		Scene:              strings.TrimSpace(resp.Scene),
 		IndustryID:         req.IndustryID,

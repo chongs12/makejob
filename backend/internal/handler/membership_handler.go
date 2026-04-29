@@ -199,11 +199,10 @@ func (h *MembershipHandler) ListOrders(c *gin.Context) {
 		return
 	}
 
-	// 解析分页参数
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	// 统一读取并规范化分页参数，避免列表接口出现不一致的默认值。
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.membershipService.ListOrders(c.Request.Context(), userID, page, pageSize)
+	result, err := h.membershipService.ListOrders(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)

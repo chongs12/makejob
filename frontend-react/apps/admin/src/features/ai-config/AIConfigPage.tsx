@@ -19,6 +19,12 @@ interface AdminConfigItem {
 interface AIConfigResponse {
   configs: Record<string, string>
   items: AdminConfigItem[]
+  support: {
+    primary_providers: string[]
+    fallback_providers: string[]
+    notes: string[]
+  }
+  warnings: string[]
 }
 
 interface AIConfigFieldOption {
@@ -41,7 +47,7 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
   {
     key: 'ai_provider',
     label: '主提供方',
-    description: '设置默认使用的 AI Provider。',
+    description: '设置默认使用的 AI Provider，当前只应展示 runtime 真实支持的选项。',
     type: 'string',
     group: 'provider',
     options: [
@@ -54,7 +60,7 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
   {
     key: 'ai_fallback_provider',
     label: '兜底提供方',
-    description: '主 Provider 失败时自动回退到该 Provider。',
+    description: '主 Provider 失败时自动回退到该 Provider，当前只展示 runtime 已启用的兜底选项。',
     type: 'string',
     group: 'provider',
     options: [
@@ -158,6 +164,13 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
   },
 ]
 
+const AI_PROVIDER_LABELS: Record<string, string> = {
+  eino: 'Eino',
+  openai: 'OpenAI',
+  azure: 'Azure OpenAI',
+  mock: 'Mock',
+}
+
 /**
  * 读取当前 AI 配置列表，并对非成功响应做统一错误抛出。
  */
@@ -192,19 +205,103 @@ async function updateAIConfigs(token: string | null, configs: Record<string, str
 }
 
 /**
- * 将后端返回的配置项元信息与前端兜底字段定义合并，保证默认项也能渲染。
+ * 根据 provider 标识生成后台配置页可读标签，未知值保留原始内容便于排查历史脏数据。
  */
-function buildAIConfigFieldMetas(items: AdminConfigItem[]): AIConfigFieldMeta[] {
+function getAIProviderLabel(value: string): string {
+  return AI_PROVIDER_LABELS[value] || value
+}
+
+/**
+ * 基于后端支持范围构造 Provider 下拉选项，并在存在历史无效值时保留一个告警选项。
+ */
+function buildProviderOptions(values: string[], currentValue: string, allowEmpty: boolean): AIConfigFieldOption[] {
+  const options: AIConfigFieldOption[] = []
+  if (allowEmpty) {
+    options.push({
+      value: '',
+      label: '不启用',
+    })
+  }
+
+  values.forEach((value) => {
+    options.push({
+      value,
+      label: getAIProviderLabel(value),
+    })
+  })
+
+  const trimmedCurrentValue = currentValue.trim()
+  if (trimmedCurrentValue && !options.some((option) => option.value === trimmedCurrentValue)) {
+    options.push({
+      value: trimmedCurrentValue,
+      label: `${getAIProviderLabel(trimmedCurrentValue)}（当前旧值，不再支持）`,
+    })
+  }
+
+  return options
+}
+
+/**
+ * 将后端返回的配置项元信息、运行时支持范围与当前配置合并，保证默认项也能渲染。
+ */
+function buildAIConfigFieldMetas(
+  items: AdminConfigItem[],
+  configs: Record<string, string>,
+  support: AIConfigResponse['support'] | undefined,
+): AIConfigFieldMeta[] {
   const itemMap = new Map(items.map((item) => [item.config_key, item]))
 
   return DEFAULT_AI_CONFIG_FIELDS.map((field) => {
     const current = itemMap.get(field.key)
-    return {
+    const nextField: AIConfigFieldMeta = {
       ...field,
       type: (current?.config_type as AdminConfigValueType) || field.type,
       description: current?.description || field.description,
     }
+
+    if (field.key === 'ai_provider') {
+      nextField.options = buildProviderOptions(support?.primary_providers || ['eino'], configs[field.key] ?? '', false)
+      nextField.description = '当前 runtime 仅允许选择真实已接入的主 Provider。'
+    }
+
+    if (field.key === 'ai_fallback_provider') {
+      nextField.options = buildProviderOptions(support?.fallback_providers || [], configs[field.key] ?? '', true)
+      nextField.description = '当前 runtime 尚未启用额外兜底 Provider，如无特殊说明应保持留空。'
+    }
+
+    return nextField
   })
+}
+
+/**
+ * 计算当前页头部要展示的运行时摘要，便于管理员快速确认主 Provider、模型和兜底值。
+ */
+function buildRuntimeSummary(configs: Record<string, string>): Array<{ label: string; value: string }> {
+  return [
+    {
+      label: '当前主 Provider',
+      value: getAIProviderLabel(configs.ai_provider || '未配置'),
+    },
+    {
+      label: '当前默认模型',
+      value: configs.ai_model || '未配置',
+    },
+    {
+      label: '当前兜底 Provider',
+      value: configs.ai_fallback_provider ? getAIProviderLabel(configs.ai_fallback_provider) : '不启用',
+    },
+  ]
+}
+
+/**
+ * 生成配置页顶部最需要管理员关注的运行时提示。
+ */
+function buildRuntimeAttentionNotes(response: AIConfigResponse | undefined): string[] {
+  if (!response) {
+    return []
+  }
+
+  return [...response.support.notes, ...response.warnings]
 }
 
 /**
@@ -292,10 +389,12 @@ export function AIConfigPage() {
   })
 
   const fieldMetas = useMemo(
-    () => buildAIConfigFieldMetas(configQuery.data?.items || []),
-    [configQuery.data?.items],
+    () => buildAIConfigFieldMetas(configQuery.data?.items || [], configQuery.data?.configs || {}, configQuery.data?.support),
+    [configQuery.data?.configs, configQuery.data?.items, configQuery.data?.support],
   )
   const groupedFields = useMemo(() => groupAIConfigFields(fieldMetas), [fieldMetas])
+  const runtimeSummary = useMemo(() => buildRuntimeSummary(configQuery.data?.configs || {}), [configQuery.data?.configs])
+  const runtimeAttentionNotes = useMemo(() => buildRuntimeAttentionNotes(configQuery.data), [configQuery.data])
 
   useEffect(() => {
     if (!configQuery.data) {
@@ -396,11 +495,27 @@ export function AIConfigPage() {
           <p className="admin-copy">
             当前页直接管理运行时 Provider、默认模型和场景模型覆盖。保存后会整体回写后台配置，陪伴、计划、面试等能力会按新配置生效。
           </p>
+          {runtimeAttentionNotes.length ? (
+            <ul className="admin-ai-config__notes">
+              {runtimeAttentionNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className="admin-ai-config__status">
           <strong>{changedKeys.length}</strong>
           <span>处待保存改动</span>
         </div>
+      </div>
+
+      <div className="admin-ai-config__grid">
+        {runtimeSummary.map((item) => (
+          <article className="admin-ai-field" key={item.label}>
+            <span className="admin-ai-field__label">{item.label}</span>
+            <strong>{item.value}</strong>
+          </article>
+        ))}
       </div>
 
       <form className="admin-ai-config__form" onSubmit={handleSubmit}>

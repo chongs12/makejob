@@ -123,10 +123,9 @@ func (h *PlanHandler) ListPlans(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	pageParam := common.ReadPageParam(c)
 
-	result, err := h.planService.ListPlans(c.Request.Context(), userID, page, pageSize)
+	result, err := h.planService.ListPlans(c.Request.Context(), userID, pageParam.Page, pageParam.PageSize)
 	if err != nil {
 		if businessErr, ok := err.(*common.BusinessError); ok {
 			common.Error(c, businessErr.Code, businessErr.Message)
