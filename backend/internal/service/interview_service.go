@@ -49,21 +49,27 @@ type InterviewDetailResponse struct {
 	Score          float64                    `json:"score"`
 	TotalQuestions int                        `json:"total_questions"`
 	Messages       []InterviewMessageResponse `json:"messages"`
+	CurrentQuestion *ai.InterviewQuestion     `json:"current_question,omitempty"`
 	StartedAt      *time.Time                 `json:"started_at"`
 	EndedAt        *time.Time                 `json:"ended_at"`
 }
 
 // InterviewMessageResponse 面试消息响应DTO
 type InterviewMessageResponse struct {
-	Role        string    `json:"role"`
-	Content     string    `json:"content"`
-	MessageType string    `json:"message_type"`
-	CreatedAt   time.Time `json:"created_at"`
+	Role        string                `json:"role"`
+	Content     string                `json:"content"`
+	MessageType string                `json:"message_type"`
+	Question    *ai.InterviewQuestion `json:"question,omitempty"`
+	CreatedAt   time.Time             `json:"created_at"`
 }
 
 // InterviewAnswerRequest 提交回答请求DTO
 type InterviewAnswerRequest struct {
-	Answer string `json:"answer" binding:"required"`
+	Answer       string                       `json:"answer"`
+	FinalCode    string                       `json:"final_code"`
+	Language     string                       `json:"language"`
+	QuestionType string                       `json:"question_type"`
+	ProcessEvents []InterviewCodingProcessEvent `json:"process_events"`
 }
 
 // InterviewAnswerResponse 提交回答响应DTO
@@ -92,7 +98,10 @@ type InterviewReportResponse struct {
 type interviewService struct {
 	interviewRepo        repository.InterviewRepository
 	interviewMessageRepo repository.InterviewMessageRepository
+	codingAttemptRepo    repository.InterviewCodingAttemptRepository
+	learningArchiveRepo  repository.LearningArchiveRepository
 	interviewAgent       ai.InterviewAgent
+	quizAnalyzer         ai.QuizAnalyzer
 	industryRepo         repository.IndustryRepository
 }
 
@@ -100,13 +109,19 @@ type interviewService struct {
 func NewInterviewService(
 	interviewRepo repository.InterviewRepository,
 	interviewMessageRepo repository.InterviewMessageRepository,
+	codingAttemptRepo repository.InterviewCodingAttemptRepository,
+	learningArchiveRepo repository.LearningArchiveRepository,
 	interviewAgent ai.InterviewAgent,
+	quizAnalyzer ai.QuizAnalyzer,
 	industryRepo ...repository.IndustryRepository,
 ) InterviewService {
 	s := &interviewService{
 		interviewRepo:        interviewRepo,
 		interviewMessageRepo: interviewMessageRepo,
+		codingAttemptRepo:    codingAttemptRepo,
+		learningArchiveRepo:  learningArchiveRepo,
 		interviewAgent:       interviewAgent,
+		quizAnalyzer:         quizAnalyzer,
 	}
 	if len(industryRepo) > 0 {
 		s.industryRepo = industryRepo[0]
@@ -165,11 +180,9 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 	}
 
 	// 保存第一个问题为消息
-	questionMsg := &model.InterviewMessage{
-		InterviewID: interview.ID,
-		Role:        model.MessageRoleAI,
-		Content:     firstQuestion.Question,
-		MessageType: model.MessageTypeText,
+	questionMsg, err := buildInterviewQuestionMessage(interview.ID, firstQuestion)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
 		return nil, err
@@ -206,10 +219,12 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 
 	messageResponses := make([]InterviewMessageResponse, len(messages))
 	for i, msg := range messages {
+		question := parseInterviewQuestionMetadata(msg.MetadataJSON)
 		messageResponses[i] = InterviewMessageResponse{
 			Role:        msg.Role,
 			Content:     msg.Content,
 			MessageType: msg.MessageType,
+			Question:    question,
 			CreatedAt:   time.Unix(msg.CreatedAt, 0),
 		}
 	}
@@ -224,6 +239,7 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 		Score:          interview.Score,
 		TotalQuestions: interview.TotalQuestions,
 		Messages:       messageResponses,
+		CurrentQuestion: resolveCurrentInterviewQuestionFromMessages(messageResponses, interview.TotalQuestions, interview.Status),
 		StartedAt:      interview.StartedAt,
 		EndedAt:        interview.EndedAt,
 	}, nil
@@ -276,6 +292,10 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
 	}
 
+	if strings.TrimSpace(req.Answer) == "" && strings.TrimSpace(req.FinalCode) == "" {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "回答内容不能为空")
+	}
+
 	// 获取sessionID
 	sessionID := resolveInterviewSessionID(interview)
 	if sessionID == "" {
@@ -293,13 +313,23 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 		return nil, common.NewBusinessError(common.CodeBadRequest, "已完成所有题目")
 	}
 
-	// 保存用户回答
-	answerMsg := &model.InterviewMessage{
-		InterviewID: interviewID,
-		Role:        model.MessageRoleUser,
-		Content:     req.Answer,
-		MessageType: model.MessageTypeText,
+	currentQuestion := resolveCurrentQuestionFromStoredMessages(messages)
+	if currentQuestion != nil && strings.EqualFold(strings.TrimSpace(currentQuestion.Type), "coding") {
+		if strings.TrimSpace(req.FinalCode) == "" {
+			return nil, common.NewBusinessError(common.CodeBadRequest, "编程题必须提交最终代码")
+		}
+
+		if err := s.persistCodingAttempt(ctx, interview, questionIndex, currentQuestion, req); err != nil {
+			return nil, err
+		}
 	}
+
+	// 保存用户回答
+	questionType := ""
+	if currentQuestion != nil {
+		questionType = currentQuestion.Type
+	}
+	answerMsg := buildInterviewAnswerMessage(interviewID, questionType, req.Answer, req.FinalCode, req.Language)
 	if err := s.interviewMessageRepo.Create(ctx, answerMsg); err != nil {
 		return nil, err
 	}
@@ -317,11 +347,9 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 		if hasNext {
 			nextQuestion = &nextQ
 			// 保存下一题
-			questionMsg := &model.InterviewMessage{
-				InterviewID: interviewID,
-				Role:        model.MessageRoleAI,
-				Content:     nextQ.Question,
-				MessageType: model.MessageTypeText,
+			questionMsg, err := buildInterviewQuestionMessage(interviewID, nextQ)
+			if err != nil {
+				return nil, err
 			}
 			if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
 				return nil, err
@@ -390,11 +418,9 @@ func (s *interviewService) GetNextQuestion(ctx context.Context, userID, intervie
 	}
 
 	// 保存问题到消息
-	questionMsg := &model.InterviewMessage{
-		InterviewID: interviewID,
-		Role:        model.MessageRoleAI,
-		Content:     question.Question,
-		MessageType: model.MessageTypeText,
+	questionMsg, err := buildInterviewQuestionMessage(interviewID, question)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
 		return nil, err
@@ -446,18 +472,24 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 	if err != nil {
 		return nil, fmt.Errorf("生成面试报告失败: %w", err)
 	}
+
+	if err := s.enrichInterviewReportWithCoding(ctx, interview, &report); err != nil {
+		return nil, fmt.Errorf("生成编程题诊断失败: %w", err)
+	}
 	reportJSON, err := serializeInterviewReport(report)
 	if err != nil {
 		return nil, fmt.Errorf("序列化面试报告失败: %w", err)
 	}
 
-	// 更新面试记录
 	now := time.Now()
+	if err := s.persistLearningArchiveEntries(ctx, interview, report, now); err != nil {
+		return nil, err
+	}
+
+	// 更新面试记录
 	interview.Status = model.InterviewStatusCompleted
 	interview.Score = report.OverallScore
 	interview.EndedAt = &now
-
-	// 保存完整报告与摘要，确保后续可稳定回放报告页。
 	interview.ReportJSON = reportJSON
 	interview.AIFeedback = buildInterviewReportSummary(report)
 
@@ -621,6 +653,191 @@ func countAnsweredInterviewQuestions(messages []model.InterviewMessage) int {
 		}
 	}
 	return count
+}
+
+// resolveCurrentQuestionFromStoredMessages 从持久化消息中恢复当前问题及其元数据。
+func resolveCurrentQuestionFromStoredMessages(messages []model.InterviewMessage) *ai.InterviewQuestion {
+	for index := len(messages) - 1; index >= 0; index-- {
+		item := messages[index]
+		if item.Role != model.MessageRoleAI || item.MessageType != model.MessageTypeText {
+			continue
+		}
+
+		question := parseInterviewQuestionMetadata(item.MetadataJSON)
+		if question != nil {
+			return question
+		}
+		if strings.TrimSpace(item.Content) == "" {
+			continue
+		}
+		return &ai.InterviewQuestion{
+			Question: item.Content,
+			Type:     "technical",
+		}
+	}
+	return nil
+}
+
+// persistCodingAttempt 将当前编程题的最终代码和过程事件写入持久化记录。
+func (s *interviewService) persistCodingAttempt(
+	ctx context.Context,
+	interview *model.MockInterview,
+	questionIndex int,
+	question *ai.InterviewQuestion,
+	req *InterviewAnswerRequest,
+) error {
+	if s.codingAttemptRepo == nil || interview == nil || question == nil {
+		return nil
+	}
+
+	attempt, events, err := buildCodingAttemptFromRequest(interview.ID, interview.UserID, questionIndex, *question, req)
+	if err != nil {
+		return fmt.Errorf("构造编程题作答记录失败: %w", err)
+	}
+	if err := s.codingAttemptRepo.UpsertAttempt(ctx, attempt); err != nil {
+		return err
+	}
+
+	for index := range events {
+		events[index].AttemptID = attempt.ID
+	}
+	if err := s.codingAttemptRepo.ReplaceEvents(ctx, attempt.ID, events); err != nil {
+		return err
+	}
+	return nil
+}
+
+// enrichInterviewReportWithCoding 为面试报告补齐编程题过程诊断结果。
+func (s *interviewService) enrichInterviewReportWithCoding(ctx context.Context, interview *model.MockInterview, report *ai.InterviewReport) error {
+	if s.codingAttemptRepo == nil || interview == nil || report == nil {
+		return nil
+	}
+
+	attempts, err := s.codingAttemptRepo.ListByInterview(ctx, interview.ID)
+	if err != nil {
+		return err
+	}
+	if len(attempts) == 0 {
+		return nil
+	}
+
+	diagnostics := make([]ai.CodingQuestionDiagnosis, 0, len(attempts))
+	for _, attempt := range attempts {
+		processEvents := convertAttemptEventsToAI(attempt.Events)
+		diagnosis, err := s.generateCodingDiagnosis(ctx, &attempt, processEvents)
+		if err != nil {
+			return err
+		}
+
+		diagnosis.QuestionIndex = attempt.QuestionIndex
+		attempt.ProcessSummary = diagnosis.ProcessSummary
+		if diagnosisJSON, marshalErr := json.Marshal(diagnosis); marshalErr == nil {
+			attempt.DiagnosisJSON = string(diagnosisJSON)
+		}
+		if err := s.codingAttemptRepo.UpsertAttempt(ctx, &attempt); err != nil {
+			return err
+		}
+		diagnostics = append(diagnostics, diagnosis)
+	}
+
+	report.CodingDiagnostics = diagnostics
+	report.Weaknesses = mergeInterviewReportWeaknesses(report.Weaknesses, diagnostics)
+	report.Suggestions = mergeInterviewReportSuggestions(report.Suggestions, diagnostics)
+	return nil
+}
+
+// generateCodingDiagnosis 优先调用 AI 诊断器，失败时回退到本地规则诊断。
+func (s *interviewService) generateCodingDiagnosis(
+	ctx context.Context,
+	attempt *model.InterviewCodingAttempt,
+	processEvents []ai.CodingProcessEvent,
+) (ai.CodingQuestionDiagnosis, error) {
+	if attempt == nil {
+		return ai.CodingQuestionDiagnosis{}, fmt.Errorf("编程题作答记录不存在")
+	}
+
+	if s.quizAnalyzer != nil {
+		diagnosis, err := s.quizAnalyzer.DiagnoseInterviewCoding(ctx, ai.InterviewCodingDiagnosisInput{
+			Question:      attempt.QuestionPrompt,
+			Language:      attempt.Language,
+			FinalCode:     attempt.FinalCode,
+			FinalAnswer:   attempt.FinalAnswer,
+			ProcessEvents: processEvents,
+		})
+		if err == nil {
+			if strings.TrimSpace(diagnosis.ProcessSummary) == "" {
+				diagnosis.ProcessSummary = buildCodingProcessSummary(processEvents, 0, 0, 0)
+			}
+			return diagnosis, nil
+		}
+	}
+
+	return buildLocalCodingDiagnosis(attempt, processEvents), nil
+}
+
+// persistLearningArchiveEntries 将编程题诊断结果沉淀到长期学习档案中。
+func (s *interviewService) persistLearningArchiveEntries(
+	ctx context.Context,
+	interview *model.MockInterview,
+	report ai.InterviewReport,
+	occurredAt time.Time,
+) error {
+	if s.learningArchiveRepo == nil || interview == nil || len(report.CodingDiagnostics) == 0 {
+		return nil
+	}
+
+	industryCode := s.resolveInterviewIndustryCode(ctx, interview.IndustryID)
+	for _, diagnosis := range report.CodingDiagnostics {
+		mistakeTagsJSON, err := json.Marshal(diagnosis.MistakeTags)
+		if err != nil {
+			return fmt.Errorf("序列化学习档案错因标签失败: %w", err)
+		}
+		strengthTagsJSON, err := json.Marshal(diagnosis.StrengthTags)
+		if err != nil {
+			return fmt.Errorf("序列化学习档案优势标签失败: %w", err)
+		}
+		suggestionsJSON, err := json.Marshal(diagnosis.Suggestions)
+		if err != nil {
+			return fmt.Errorf("序列化学习档案建议失败: %w", err)
+		}
+
+		entry := &model.LearningArchiveEntry{
+			UserID:           interview.UserID,
+			SourceType:       model.LearningArchiveSourceInterviewCoding,
+			SourceRef:        fmt.Sprintf("interview:%d:question:%d", interview.ID, diagnosis.QuestionIndex),
+			InterviewID:      interview.ID,
+			QuestionIndex:    diagnosis.QuestionIndex,
+			IndustryCode:     industryCode,
+			Language:         diagnosis.Language,
+			MistakeTagsJSON:  string(mistakeTagsJSON),
+			StrengthTagsJSON: string(strengthTagsJSON),
+			SuggestionsJSON:  string(suggestionsJSON),
+			EvidenceSummary:  strings.Join(diagnosis.Evidence, "；"),
+			OccurredAt:       &occurredAt,
+		}
+		if err := s.learningArchiveRepo.Upsert(ctx, entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// mergeInterviewReportWeaknesses 将编程题错因标签补充到总报告薄弱项里。
+func mergeInterviewReportWeaknesses(existing []string, diagnostics []ai.CodingQuestionDiagnosis) []string {
+	result := appendUniqueStrings(existing)
+	for _, diagnosis := range diagnostics {
+		result = appendUniqueStrings(result, diagnosis.MistakeTags...)
+	}
+	return result
+}
+
+// mergeInterviewReportSuggestions 将编程题建议补充到总报告建议里。
+func mergeInterviewReportSuggestions(existing []string, diagnostics []ai.CodingQuestionDiagnosis) []string {
+	result := appendUniqueStrings(existing)
+	for _, diagnosis := range diagnostics {
+		result = appendUniqueStrings(result, diagnosis.Suggestions...)
+	}
+	return result
 }
 
 // parseIndustryCode 解析行业代码为行业ID（简化实现）

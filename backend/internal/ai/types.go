@@ -19,11 +19,15 @@ type InterviewConfig struct {
 
 // InterviewQuestion 面试问题
 type InterviewQuestion struct {
-	Question   string `json:"question"`
-	Topic      string `json:"topic"`
-	Difficulty string `json:"difficulty"`
-	Type       string `json:"type"` // technical/behavioral/coding
-	Hints      string `json:"hints,omitempty"`
+	Question       string `json:"question"`
+	Topic          string `json:"topic"`
+	Difficulty     string `json:"difficulty"`
+	Type           string `json:"type"` // technical/behavioral/coding
+	Hints          string `json:"hints,omitempty"`
+	Language       string `json:"language,omitempty"`
+	StarterCode    string `json:"starter_code,omitempty"`
+	EditorMode     string `json:"editor_mode,omitempty"`
+	EvaluationMode string `json:"evaluation_mode,omitempty"`
 }
 
 // AnswerFeedback 答案反馈
@@ -38,14 +42,43 @@ type AnswerFeedback struct {
 
 // InterviewReport 面试报告
 type InterviewReport struct {
-	OverallScore    float64            `json:"overall_score"`
-	TotalQuestions  int                `json:"total_questions"`
-	CorrectCount    int                `json:"correct_count"`
-	DimensionScores map[string]float64 `json:"dimension_scores"` // 各维度评分
-	Strengths       []string           `json:"strengths"`
-	Weaknesses      []string           `json:"weaknesses"`
-	Suggestions     []string           `json:"suggestions"`
-	Summary         string             `json:"summary"`
+	OverallScore     float64                   `json:"overall_score"`
+	TotalQuestions   int                       `json:"total_questions"`
+	CorrectCount     int                       `json:"correct_count"`
+	DimensionScores  map[string]float64        `json:"dimension_scores"` // 各维度评分
+	Strengths        []string                  `json:"strengths"`
+	Weaknesses       []string                  `json:"weaknesses"`
+	Suggestions      []string                  `json:"suggestions"`
+	Summary          string                    `json:"summary"`
+	CodingDiagnostics []CodingQuestionDiagnosis `json:"coding_diagnostics,omitempty"`
+}
+
+// CodingProcessEvent 表示编程题过程采集中的单条事件。
+type CodingProcessEvent struct {
+	Type        string                 `json:"type"`
+	TimestampMS int64                  `json:"timestamp_ms"`
+	Payload     map[string]interface{} `json:"payload,omitempty"`
+}
+
+// InterviewCodingDiagnosisInput 表示编程面试诊断所需的完整上下文。
+type InterviewCodingDiagnosisInput struct {
+	Question       string               `json:"question"`
+	Language       string               `json:"language"`
+	FinalCode      string               `json:"final_code"`
+	FinalAnswer    string               `json:"final_answer"`
+	ProcessEvents  []CodingProcessEvent `json:"process_events"`
+}
+
+// CodingQuestionDiagnosis 表示单道编程题的结构化诊断结果。
+type CodingQuestionDiagnosis struct {
+	QuestionIndex  int      `json:"question_index"`
+	Language       string   `json:"language"`
+	Score          float64  `json:"score"`
+	MistakeTags    []string `json:"mistake_tags"`
+	StrengthTags   []string `json:"strength_tags"`
+	Evidence       []string `json:"evidence"`
+	Suggestions    []string `json:"suggestions"`
+	ProcessSummary string   `json:"process_summary"`
 }
 
 // LearningPlan 学习计划
@@ -90,6 +123,8 @@ type CodeAnalysis struct {
 	Feedback        string   `json:"feedback"`
 	Issues          []string `json:"issues"`
 	Improvements    []string `json:"improvements"`
+	MistakeTags     []string `json:"mistake_tags,omitempty"`
+	StrengthTags    []string `json:"strength_tags,omitempty"`
 	TimeComplexity  string   `json:"time_complexity"`
 	SpaceComplexity string   `json:"space_complexity"`
 }

@@ -35,10 +35,36 @@ interface QuestionListItem {
   options: string[]
   answer: string
   explanation: string
+  solution?: QuestionSolution | null
+  answer_template?: QuestionAnswerTemplate | null
   tags: string[]
   is_active: boolean
   created_at?: string
   updated_at?: string
+}
+
+interface QuestionSolution {
+  summary: string
+  approach: string
+  key_steps: string[]
+  edge_cases: string[]
+  complexity: string
+  common_mistakes: string[]
+  recommended_tags: string[]
+}
+
+interface QuestionAnswerTemplate {
+  core_conclusion: string
+  key_points: string[]
+  sample_answer: string
+  follow_ups: string[]
+  pitfalls: string[]
+}
+
+interface QuestionTagTaxonomyGroup {
+  group: string
+  description: string
+  tags: string[]
 }
 
 interface PageResult<T> {
@@ -65,6 +91,17 @@ interface QuestionFormState {
   optionsText: string
   answer: string
   explanation: string
+  solutionSummary: string
+  solutionApproach: string
+  solutionStepsText: string
+  solutionEdgeCasesText: string
+  solutionComplexity: string
+  solutionMistakesText: string
+  answerTemplateConclusion: string
+  answerTemplateKeyPointsText: string
+  answerTemplateSampleAnswer: string
+  answerTemplateFollowUpsText: string
+  answerTemplatePitfallsText: string
   tagsText: string
   isActive: boolean
 }
@@ -161,6 +198,22 @@ async function fetchQuestions(token: string | null, filters: QuestionFilters): P
 }
 
 /**
+ * 获取后台题目标签词典，辅助题库治理阶段统一标签口径。
+ */
+async function fetchQuestionTagTaxonomy(token: string | null): Promise<QuestionTagTaxonomyGroup[]> {
+  const response = await requestJson<ApiEnvelope<QuestionTagTaxonomyGroup[]>>('/admin/questions/tag-taxonomy', {
+    method: 'GET',
+    token,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '获取题目标签词典失败')
+  }
+
+  return response.data
+}
+
+/**
  * 创建新的题目记录，并返回服务端保存后的结果。
  */
 async function createQuestion(token: string | null, payload: Record<string, unknown>): Promise<QuestionListItem> {
@@ -244,6 +297,17 @@ function buildInitialQuestionForm(): QuestionFormState {
     optionsText: '选项 A\n选项 B',
     answer: '',
     explanation: '',
+    solutionSummary: '',
+    solutionApproach: '',
+    solutionStepsText: '',
+    solutionEdgeCasesText: '',
+    solutionComplexity: '',
+    solutionMistakesText: '',
+    answerTemplateConclusion: '',
+    answerTemplateKeyPointsText: '',
+    answerTemplateSampleAnswer: '',
+    answerTemplateFollowUpsText: '',
+    answerTemplatePitfallsText: '',
     tagsText: '',
     isActive: true,
   }
@@ -267,6 +331,17 @@ function buildQuestionForm(question?: QuestionListItem | null): QuestionFormStat
     optionsText: question.options.join('\n'),
     answer: question.answer,
     explanation: question.explanation || '',
+    solutionSummary: question.solution?.summary || '',
+    solutionApproach: question.solution?.approach || '',
+    solutionStepsText: (question.solution?.key_steps || []).join('\n'),
+    solutionEdgeCasesText: (question.solution?.edge_cases || []).join('\n'),
+    solutionComplexity: question.solution?.complexity || '',
+    solutionMistakesText: (question.solution?.common_mistakes || []).join('\n'),
+    answerTemplateConclusion: question.answer_template?.core_conclusion || '',
+    answerTemplateKeyPointsText: (question.answer_template?.key_points || []).join('\n'),
+    answerTemplateSampleAnswer: question.answer_template?.sample_answer || '',
+    answerTemplateFollowUpsText: (question.answer_template?.follow_ups || []).join('\n'),
+    answerTemplatePitfallsText: (question.answer_template?.pitfalls || []).join('\n'),
     tagsText: question.tags.join(', '),
     isActive: question.is_active,
   }
@@ -297,6 +372,20 @@ function parseQuestionTagsText(value: string): string[] {
 }
 
 /**
+ * 将多行文本解析为去重后的字符串数组，供结构化解析和模板字段复用。
+ */
+function parseQuestionLineListText(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+/**
  * 根据题型判断当前题目是否需要选项列表。
  */
 function requiresQuestionOptions(questionType: QuestionType): boolean {
@@ -308,6 +397,28 @@ function requiresQuestionOptions(questionType: QuestionType): boolean {
  */
 function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> {
   const options = parseQuestionOptionsText(form.optionsText)
+  const solution =
+    form.type === 'code'
+      ? {
+          summary: form.solutionSummary.trim(),
+          approach: form.solutionApproach.trim(),
+          key_steps: parseQuestionLineListText(form.solutionStepsText),
+          edge_cases: parseQuestionLineListText(form.solutionEdgeCasesText),
+          complexity: form.solutionComplexity.trim(),
+          common_mistakes: parseQuestionLineListText(form.solutionMistakesText),
+          recommended_tags: parseQuestionTagsText(form.tagsText),
+        }
+      : null
+  const answerTemplate =
+    form.type === 'subjective'
+      ? {
+          core_conclusion: form.answerTemplateConclusion.trim(),
+          key_points: parseQuestionLineListText(form.answerTemplateKeyPointsText),
+          sample_answer: form.answerTemplateSampleAnswer.trim(),
+          follow_ups: parseQuestionLineListText(form.answerTemplateFollowUpsText),
+          pitfalls: parseQuestionLineListText(form.answerTemplatePitfallsText),
+        }
+      : null
 
   return {
     industry_id: Number(form.industryId),
@@ -319,6 +430,8 @@ function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> 
     options_json: requiresQuestionOptions(form.type) ? JSON.stringify(options) : '',
     answer: form.answer.trim(),
     explanation: form.explanation.trim(),
+    solution: solution || undefined,
+    answer_template: answerTemplate || undefined,
     tags: parseQuestionTagsText(form.tagsText).join(','),
     is_active: form.isActive,
   }
@@ -445,6 +558,12 @@ function validateQuestionForm(form: QuestionFormState): string {
   if (requiresQuestionOptions(form.type) && parseQuestionOptionsText(form.optionsText).length < 2) {
     return '选择题至少需要两个选项'
   }
+  if (form.type === 'code' && (!form.solutionSummary.trim() || !form.solutionApproach.trim())) {
+    return '编程题至少需要补齐结构化解析中的“题意总结”和“解题思路”'
+  }
+  if (form.type === 'subjective' && !form.answerTemplateConclusion.trim()) {
+    return '主观题至少需要补齐参考作答模板中的“核心结论”'
+  }
 
   return ''
 }
@@ -478,6 +597,12 @@ export function QuestionPage() {
   const categoriesQuery = useQuery({
     queryKey: ['admin', 'categories', accessToken],
     queryFn: () => fetchCategories(accessToken),
+    enabled: Boolean(accessToken),
+  })
+
+  const questionTagTaxonomyQuery = useQuery({
+    queryKey: ['admin', 'question-tag-taxonomy', accessToken],
+    queryFn: () => fetchQuestionTagTaxonomy(accessToken),
     enabled: Boolean(accessToken),
   })
 
@@ -658,6 +783,14 @@ export function QuestionPage() {
   }
 
   /**
+   * 将标准标签追加进当前表单，减少后台手动输入时的同义词漂移。
+   */
+  function appendQuestionTag(tag: string): void {
+    const nextTags = Array.from(new Set([...parseQuestionTagsText(form.tagsText), tag]))
+    updateQuestionField('tagsText', nextTags.join(', '))
+  }
+
+  /**
    * 提交题目表单并执行创建或更新。
    */
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -697,7 +830,7 @@ export function QuestionPage() {
     importMutation.mutate()
   }
 
-  if (industriesQuery.isLoading || categoriesQuery.isLoading || questionsQuery.isLoading) {
+  if (industriesQuery.isLoading || categoriesQuery.isLoading || questionsQuery.isLoading || questionTagTaxonomyQuery.isLoading) {
     return (
       <section className="admin-panel">
         <span className="admin-tag">题库中心</span>
@@ -707,14 +840,14 @@ export function QuestionPage() {
     )
   }
 
-  if (industriesQuery.isError || categoriesQuery.isError || questionsQuery.isError) {
+  if (industriesQuery.isError || categoriesQuery.isError || questionsQuery.isError || questionTagTaxonomyQuery.isError) {
     return (
       <section className="admin-panel">
         <span className="admin-tag">题库中心</span>
         <h2>题库管理</h2>
         <p className="admin-copy">
           {extractErrorMessage(
-            questionsQuery.error || categoriesQuery.error || industriesQuery.error,
+            questionsQuery.error || categoriesQuery.error || industriesQuery.error || questionTagTaxonomyQuery.error,
             '读取题库管理数据失败',
           )}
         </p>
@@ -1035,6 +1168,169 @@ export function QuestionPage() {
               placeholder="请输入题目解析"
             />
           </label>
+
+          {form.type === 'code' ? (
+            <div className="admin-question-import">
+              <div className="admin-question-import__head">
+                <div>
+                  <strong>编程题结构化解析</strong>
+                  <p>这里维护 P0 阶段要求的统一解析结构，前台会按这个结构直接展示。</p>
+                </div>
+              </div>
+
+              <label className="admin-field">
+                <span>题意总结</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionSummary}
+                  onChange={(event) => updateQuestionField('solutionSummary', event.target.value)}
+                  placeholder="一句话说明这道题核心在考什么"
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>解题思路</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionApproach}
+                  onChange={(event) => updateQuestionField('solutionApproach', event.target.value)}
+                  placeholder="说明为什么采用这套解法，以及关键策略是什么"
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>关键步骤</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionStepsText}
+                  onChange={(event) => updateQuestionField('solutionStepsText', event.target.value)}
+                  placeholder={'每行一条，例如：\n确定状态定义\n初始化边界\n按转移关系推进'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>边界条件</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionEdgeCasesText}
+                  onChange={(event) => updateQuestionField('solutionEdgeCasesText', event.target.value)}
+                  placeholder={'每行一条，例如：\n空输入\n长度为 1\n重复元素'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>复杂度分析</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionComplexity}
+                  onChange={(event) => updateQuestionField('solutionComplexity', event.target.value)}
+                  placeholder="例如：时间复杂度 O(n)，空间复杂度 O(1)"
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>常见错法</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.solutionMistakesText}
+                  onChange={(event) => updateQuestionField('solutionMistakesText', event.target.value)}
+                  placeholder={'每行一条，例如：\n漏掉边界判断\n索引越界\n复杂度分析缺失'}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === 'subjective' ? (
+            <div className="admin-question-import">
+              <div className="admin-question-import__head">
+                <div>
+                  <strong>主观题参考回答模板</strong>
+                  <p>这里维护面试化回答模板，前台会按“结论 + 展开 + 追问”结构展示。</p>
+                </div>
+              </div>
+
+              <label className="admin-field">
+                <span>核心结论</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.answerTemplateConclusion}
+                  onChange={(event) => updateQuestionField('answerTemplateConclusion', event.target.value)}
+                  placeholder="先给出这道题最关键的结论"
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>关键展开点</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.answerTemplateKeyPointsText}
+                  onChange={(event) => updateQuestionField('answerTemplateKeyPointsText', event.target.value)}
+                  placeholder={'每行一条，例如：\n解释原理\n说明适用场景\n补充优缺点'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>面试表达示例</span>
+                <textarea
+                  className="admin-question-editor__content"
+                  value={form.answerTemplateSampleAnswer}
+                  onChange={(event) => updateQuestionField('answerTemplateSampleAnswer', event.target.value)}
+                  placeholder="写一版更接近真实面试表达的完整回答"
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>高频追问点</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.answerTemplateFollowUpsText}
+                  onChange={(event) => updateQuestionField('answerTemplateFollowUpsText', event.target.value)}
+                  placeholder={'每行一条，例如：\n为什么这样设计？\n边界是什么？\n替代方案是什么？'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>易答偏点</span>
+                <textarea
+                  className="admin-question-editor__answer"
+                  value={form.answerTemplatePitfallsText}
+                  onChange={(event) => updateQuestionField('answerTemplatePitfallsText', event.target.value)}
+                  placeholder={'每行一条，例如：\n只背定义\n不讲场景\n忽略权衡'}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {questionTagTaxonomyQuery.data?.length ? (
+            <div className="admin-question-import">
+              <div className="admin-question-import__head">
+                <div>
+                  <strong>标准标签建议</strong>
+                  <p>P0 阶段优先复用这套标签，避免同义词、英文大小写和临时口径继续扩散。</p>
+                </div>
+              </div>
+
+              {questionTagTaxonomyQuery.data.map((group) => (
+                <div key={group.group} style={{ marginBottom: 16 }}>
+                  <strong>{group.group}</strong>
+                  <p style={{ margin: '6px 0 10px' }}>{group.description}</p>
+                  <div className="admin-question-card__tags">
+                    {group.tags.map((tag) => (
+                      <button
+                        key={`${group.group}-${tag}`}
+                        type="button"
+                        className="admin-link"
+                        style={{ marginRight: 8, marginBottom: 8 }}
+                        onClick={() => appendQuestionTag(tag)}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           <div className={`admin-question-editor__status ${formError ? 'is-error' : 'is-valid'}`}>
             <strong>表单检查</strong>

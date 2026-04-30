@@ -40,49 +40,55 @@ type AdminUserListItem struct {
 }
 
 type AdminQuestionListItem struct {
-	ID           uint      `json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	CategoryID   uint      `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	IndustryID   uint      `json:"industry_id"`
-	Type         string    `json:"type"`
-	Difficulty   string    `json:"difficulty"`
-	Title        string    `json:"title"`
-	Content      string    `json:"content"`
-	Options      []string  `json:"options"`
-	Answer       string    `json:"answer"`
-	Explanation  string    `json:"explanation"`
-	Tags         []string  `json:"tags"`
-	IsActive     bool      `json:"is_active"`
+	ID             uint                        `json:"id"`
+	CreatedAt      time.Time                   `json:"created_at"`
+	UpdatedAt      time.Time                   `json:"updated_at"`
+	CategoryID     uint                        `json:"category_id"`
+	CategoryName   string                      `json:"category_name"`
+	IndustryID     uint                        `json:"industry_id"`
+	Type           string                      `json:"type"`
+	Difficulty     string                      `json:"difficulty"`
+	Title          string                      `json:"title"`
+	Content        string                      `json:"content"`
+	Options        []string                    `json:"options"`
+	Answer         string                      `json:"answer"`
+	Explanation    string                      `json:"explanation"`
+	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
+	Tags           []string                    `json:"tags"`
+	IsActive       bool                        `json:"is_active"`
 }
 
 type AdminCreateQuestionRequest struct {
-	CategoryID  uint   `json:"category_id" binding:"required"`
-	IndustryID  uint   `json:"industry_id" binding:"required"`
-	Type        string `json:"type" binding:"required,oneof=choice multi code subjective"`
-	Difficulty  string `json:"difficulty" binding:"required,oneof=easy medium hard"`
-	Title       string `json:"title" binding:"required,max=500"`
-	Content     string `json:"content" binding:"required"`
-	OptionsJSON string `json:"options_json,omitempty"`
-	Answer      string `json:"answer" binding:"required"`
-	Explanation string `json:"explanation"`
-	Tags        string `json:"tags"`
-	IsActive    bool   `json:"is_active"`
+	CategoryID     uint                        `json:"category_id" binding:"required"`
+	IndustryID     uint                        `json:"industry_id" binding:"required"`
+	Type           string                      `json:"type" binding:"required,oneof=choice multi code subjective"`
+	Difficulty     string                      `json:"difficulty" binding:"required,oneof=easy medium hard"`
+	Title          string                      `json:"title" binding:"required,max=500"`
+	Content        string                      `json:"content" binding:"required"`
+	OptionsJSON    string                      `json:"options_json,omitempty"`
+	Answer         string                      `json:"answer" binding:"required"`
+	Explanation    string                      `json:"explanation"`
+	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
+	Tags           string                      `json:"tags"`
+	IsActive       bool                        `json:"is_active"`
 }
 
 type AdminUpdateQuestionRequest struct {
-	CategoryID  uint   `json:"category_id,omitempty"`
-	IndustryID  uint   `json:"industry_id,omitempty"`
-	Type        string `json:"type,omitempty" binding:"omitempty,oneof=choice multi code subjective"`
-	Difficulty  string `json:"difficulty,omitempty" binding:"omitempty,oneof=easy medium hard"`
-	Title       string `json:"title,omitempty" binding:"omitempty,max=500"`
-	Content     string `json:"content,omitempty"`
-	OptionsJSON string `json:"options_json,omitempty"`
-	Answer      string `json:"answer,omitempty"`
-	Explanation string `json:"explanation,omitempty"`
-	Tags        string `json:"tags,omitempty"`
-	IsActive    *bool  `json:"is_active,omitempty"`
+	CategoryID     uint                        `json:"category_id,omitempty"`
+	IndustryID     uint                        `json:"industry_id,omitempty"`
+	Type           string                      `json:"type,omitempty" binding:"omitempty,oneof=choice multi code subjective"`
+	Difficulty     string                      `json:"difficulty,omitempty" binding:"omitempty,oneof=easy medium hard"`
+	Title          string                      `json:"title,omitempty" binding:"omitempty,max=500"`
+	Content        string                      `json:"content,omitempty"`
+	OptionsJSON    string                      `json:"options_json,omitempty"`
+	Answer         string                      `json:"answer,omitempty"`
+	Explanation    string                      `json:"explanation,omitempty"`
+	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
+	Tags           string                      `json:"tags,omitempty"`
+	IsActive       *bool                       `json:"is_active,omitempty"`
 }
 
 type BatchImportRequest struct {
@@ -91,15 +97,17 @@ type BatchImportRequest struct {
 }
 
 type ImportQuestionItem struct {
-	CategoryName string `json:"category_name" binding:"required"`
-	Type         string `json:"type" binding:"required"`
-	Difficulty   string `json:"difficulty" binding:"required"`
-	Title        string `json:"title" binding:"required"`
-	Content      string `json:"content" binding:"required"`
-	OptionsJSON  string `json:"options_json,omitempty"`
-	Answer       string `json:"answer" binding:"required"`
-	Explanation  string `json:"explanation"`
-	Tags         string `json:"tags"`
+	CategoryName   string                      `json:"category_name" binding:"required"`
+	Type           string                      `json:"type" binding:"required"`
+	Difficulty     string                      `json:"difficulty" binding:"required"`
+	Title          string                      `json:"title" binding:"required"`
+	Content        string                      `json:"content" binding:"required"`
+	OptionsJSON    string                      `json:"options_json,omitempty"`
+	Answer         string                      `json:"answer" binding:"required"`
+	Explanation    string                      `json:"explanation"`
+	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
+	Tags           string                      `json:"tags"`
 }
 
 type BatchImportResponse struct {
@@ -222,6 +230,7 @@ type AdminService interface {
 	UpdateQuestion(ctx context.Context, id uint, req *AdminUpdateQuestionRequest) error
 	DeleteQuestion(ctx context.Context, id uint) error
 	BatchImportQuestions(ctx context.Context, req *BatchImportRequest) (*BatchImportResponse, error)
+	GetQuestionTagTaxonomy(ctx context.Context) ([]QuestionTagTaxonomyGroup, error)
 	GenerateQuestionPipeline(ctx context.Context, req *AdminQuestionPipelineGenerateRequest) (*AdminQuestionPipelineGenerateResponse, error)
 	CreateQuestionPipelineTask(ctx context.Context, req *AdminQuestionPipelineGenerateRequest) (*model.ScraperTask, error)
 	GenerateQuestionPipelineStream(ctx context.Context, req *AdminQuestionPipelineGenerateRequest, emit AdminQuestionPipelineStreamEmitter) error
@@ -402,21 +411,23 @@ func (s *adminService) ListQuestions(ctx context.Context, page, pageSize int, ke
 	items := make([]AdminQuestionListItem, 0, len(questions))
 	for _, question := range questions {
 		items = append(items, AdminQuestionListItem{
-			ID:           question.ID,
-			CreatedAt:    question.CreatedAt,
-			UpdatedAt:    question.UpdatedAt,
-			CategoryID:   question.CategoryID,
-			CategoryName: question.Category.Name,
-			IndustryID:   question.IndustryID,
-			Type:         question.Type,
-			Difficulty:   question.Difficulty,
-			Title:        question.Title,
-			Content:      question.Content,
-			Options:      parseQuestionOptions(question.OptionsJSON),
-			Answer:       question.Answer,
-			Explanation:  question.Explanation,
-			Tags:         parseQuestionTags(question.Tags),
-			IsActive:     question.IsActive,
+			ID:             question.ID,
+			CreatedAt:      question.CreatedAt,
+			UpdatedAt:      question.UpdatedAt,
+			CategoryID:     question.CategoryID,
+			CategoryName:   question.Category.Name,
+			IndustryID:     question.IndustryID,
+			Type:           question.Type,
+			Difficulty:     question.Difficulty,
+			Title:          question.Title,
+			Content:        question.Content,
+			Options:        parseQuestionOptions(question.OptionsJSON),
+			Answer:         question.Answer,
+			Explanation:    question.Explanation,
+			Solution:       parseQuestionStructuredSolution(question.SolutionJSON, &question),
+			AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, &question),
+			Tags:           parseQuestionTagsFromStorage(question.Tags),
+			IsActive:       question.IsActive,
 		})
 	}
 
@@ -431,25 +442,35 @@ func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuest
 		return nil, err
 	}
 
-	question := &model.Question{
+	normalizedQuestion := &model.Question{
 		CategoryID:  req.CategoryID,
 		IndustryID:  req.IndustryID,
 		Type:        req.Type,
 		Difficulty:  req.Difficulty,
-		Title:       req.Title,
-		Content:     req.Content,
+		Title:       strings.TrimSpace(req.Title),
+		Content:     strings.TrimSpace(req.Content),
 		OptionsJSON: req.OptionsJSON,
-		Answer:      req.Answer,
-		Explanation: req.Explanation,
-		Tags:        req.Tags,
+		Answer:      strings.TrimSpace(req.Answer),
+		Explanation: strings.TrimSpace(req.Explanation),
+		Tags:        normalizeQuestionTagsForStorage(req.Tags),
 		IsActive:    req.IsActive,
 	}
+	solutionJSON, err := marshalQuestionStructuredSolution(req.Solution, normalizedQuestion)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "solution 字段格式错误")
+	}
+	answerTemplateJSON, err := marshalQuestionAnswerTemplate(req.AnswerTemplate, normalizedQuestion)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "answer_template 字段格式错误")
+	}
+	normalizedQuestion.SolutionJSON = solutionJSON
+	normalizedQuestion.AnswerTemplateJSON = answerTemplateJSON
 
-	if err := s.adminQuestionRepo.Create(ctx, question); err != nil {
+	if err := s.adminQuestionRepo.Create(ctx, normalizedQuestion); err != nil {
 		return nil, err
 	}
 
-	return question, nil
+	return normalizedQuestion, nil
 }
 
 func (s *adminService) UpdateQuestion(ctx context.Context, id uint, req *AdminUpdateQuestionRequest) error {
@@ -506,7 +527,21 @@ func (s *adminService) UpdateQuestion(ctx context.Context, id uint, req *AdminUp
 		question.Answer = req.Answer
 	}
 	question.Explanation = req.Explanation
-	question.Tags = req.Tags
+	question.Tags = normalizeQuestionTagsForStorage(req.Tags)
+	if req.Solution != nil || strings.TrimSpace(question.SolutionJSON) == "" {
+		solutionJSON, err := marshalQuestionStructuredSolution(req.Solution, question)
+		if err != nil {
+			return common.NewBusinessError(common.CodeBadRequest, "solution 字段格式错误")
+		}
+		question.SolutionJSON = solutionJSON
+	}
+	if req.AnswerTemplate != nil || (question.Type == model.QuestionTypeSubjective && strings.TrimSpace(question.AnswerTemplateJSON) == "") {
+		answerTemplateJSON, err := marshalQuestionAnswerTemplate(req.AnswerTemplate, question)
+		if err != nil {
+			return common.NewBusinessError(common.CodeBadRequest, "answer_template 字段格式错误")
+		}
+		question.AnswerTemplateJSON = answerTemplateJSON
+	}
 	if req.IsActive != nil {
 		question.IsActive = *req.IsActive
 	}
@@ -562,14 +597,29 @@ func (s *adminService) BatchImportQuestions(ctx context.Context, req *BatchImpor
 			IndustryID:  industry.ID,
 			Type:        item.Type,
 			Difficulty:  item.Difficulty,
-			Title:       item.Title,
-			Content:     item.Content,
+			Title:       strings.TrimSpace(item.Title),
+			Content:     strings.TrimSpace(item.Content),
 			OptionsJSON: item.OptionsJSON,
-			Answer:      item.Answer,
-			Explanation: item.Explanation,
-			Tags:        item.Tags,
+			Answer:      strings.TrimSpace(item.Answer),
+			Explanation: strings.TrimSpace(item.Explanation),
+			Tags:        normalizeQuestionTagsForStorage(item.Tags),
 			IsActive:    true,
 		})
+		lastQuestion := &questionsToImport[len(questionsToImport)-1]
+		solutionJSON, err := marshalQuestionStructuredSolution(item.Solution, lastQuestion)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("question %d: solution 字段格式错误", index+1))
+			questionsToImport = questionsToImport[:len(questionsToImport)-1]
+			continue
+		}
+		answerTemplateJSON, err := marshalQuestionAnswerTemplate(item.AnswerTemplate, lastQuestion)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("question %d: answer_template 字段格式错误", index+1))
+			questionsToImport = questionsToImport[:len(questionsToImport)-1]
+			continue
+		}
+		lastQuestion.SolutionJSON = solutionJSON
+		lastQuestion.AnswerTemplateJSON = answerTemplateJSON
 	}
 
 	if len(questionsToImport) > 0 {
@@ -581,6 +631,11 @@ func (s *adminService) BatchImportQuestions(ctx context.Context, req *BatchImpor
 	response.SuccessCount = len(questionsToImport)
 	response.FailCount = response.TotalCount - response.SuccessCount
 	return response, nil
+}
+
+// GetQuestionTagTaxonomy 返回后台题库管理可复用的标准标签词典。
+func (s *adminService) GetQuestionTagTaxonomy(ctx context.Context) ([]QuestionTagTaxonomyGroup, error) {
+	return standardQuestionTagTaxonomy(), nil
 }
 
 func (s *adminService) ListCategories(ctx context.Context) ([]model.Category, error) {
@@ -963,24 +1018,7 @@ func parseQuestionOptions(raw string) []string {
 }
 
 func parseQuestionTags(raw string) []string {
-	if strings.TrimSpace(raw) == "" {
-		return []string{}
-	}
-
-	parts := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == '，'
-	})
-
-	tags := make([]string, 0, len(parts))
-	for _, part := range parts {
-		tag := strings.TrimSpace(part)
-		if tag == "" {
-			continue
-		}
-		tags = append(tags, tag)
-	}
-
-	return tags
+	return parseQuestionTagsFromStorage(raw)
 }
 
 func validateQuestionPayload(questionType, optionsJSON string) error {

@@ -41,11 +41,15 @@ type interviewSessionState struct {
 
 // interviewQuestionPayload 定义面试题结构化输出。
 type interviewQuestionPayload struct {
-	Question   string `json:"question"`
-	Topic      string `json:"topic"`
-	Difficulty string `json:"difficulty"`
-	Type       string `json:"type"`
-	Hints      string `json:"hints"`
+	Question       string `json:"question"`
+	Topic          string `json:"topic"`
+	Difficulty     string `json:"difficulty"`
+	Type           string `json:"type"`
+	Hints          string `json:"hints"`
+	Language       string `json:"language"`
+	StarterCode    string `json:"starter_code"`
+	EditorMode     string `json:"editor_mode"`
+	EvaluationMode string `json:"evaluation_mode"`
 }
 
 // interviewFeedbackPayload 定义答案反馈结构化输出。
@@ -77,7 +81,11 @@ func interviewQuestionPayloadSchema() string {
   "topic": "知识点主题",
   "difficulty": "easy|medium|hard",
   "type": "technical|behavioral|coding",
-  "hints": "可选提示"
+  "hints": "可选提示",
+  "language": "go",
+  "starter_code": "package main\n\nfunc solve() {\n\t\n}",
+  "editor_mode": "code",
+  "evaluation_mode": "manual"
 }`
 }
 
@@ -523,11 +531,15 @@ func extractJSONObject(raw string) string {
 // normalizeQuestionPayload 规范化题目结构，确保字段可用。
 func normalizeQuestionPayload(payload interviewQuestionPayload, session *interviewSessionState, questionIndex int) (ai.InterviewQuestion, error) {
 	question := ai.InterviewQuestion{
-		Question:   strings.TrimSpace(payload.Question),
-		Topic:      strings.TrimSpace(payload.Topic),
-		Difficulty: strings.TrimSpace(payload.Difficulty),
-		Type:       strings.TrimSpace(payload.Type),
-		Hints:      strings.TrimSpace(payload.Hints),
+		Question:       strings.TrimSpace(payload.Question),
+		Topic:          strings.TrimSpace(payload.Topic),
+		Difficulty:     strings.TrimSpace(payload.Difficulty),
+		Type:           strings.TrimSpace(payload.Type),
+		Hints:          strings.TrimSpace(payload.Hints),
+		Language:       strings.TrimSpace(payload.Language),
+		StarterCode:    strings.TrimSpace(payload.StarterCode),
+		EditorMode:     strings.TrimSpace(payload.EditorMode),
+		EvaluationMode: strings.TrimSpace(payload.EvaluationMode),
 	}
 
 	if question.Question == "" {
@@ -541,6 +553,20 @@ func normalizeQuestionPayload(payload interviewQuestionPayload, session *intervi
 	}
 	if question.Type == "" {
 		question.Type = "technical"
+	}
+	if question.Type == "coding" {
+		if question.Language == "" {
+			question.Language = fallbackCodingLanguage(session.Config.IndustryCode)
+		}
+		if question.StarterCode == "" {
+			question.StarterCode = buildFallbackStarterCode(question.Language)
+		}
+		if question.EditorMode == "" {
+			question.EditorMode = "code"
+		}
+		if question.EvaluationMode == "" {
+			question.EvaluationMode = "manual"
+		}
 	}
 
 	return question, nil
@@ -622,11 +648,15 @@ func buildLocalQuestion(session *interviewSessionState, questionIndex int) ai.In
 	templateIndex := questionIndex % len(localInterviewQuestionTemplates)
 
 	return ai.InterviewQuestion{
-		Question:   fmt.Sprintf(localInterviewQuestionTemplates[templateIndex], topic),
-		Topic:      topic,
-		Difficulty: difficulty,
-		Type:       fallbackQuestionType(questionIndex),
-		Hints:      "请从定义、原理、使用场景和常见问题四个角度组织回答。",
+		Question:       fmt.Sprintf(localInterviewQuestionTemplates[templateIndex], topic),
+		Topic:          topic,
+		Difficulty:     difficulty,
+		Type:           fallbackQuestionType(questionIndex),
+		Hints:          "请从定义、原理、使用场景和常见问题四个角度组织回答。",
+		Language:       fallbackCodingLanguage(session.Config.IndustryCode),
+		StarterCode:    buildFallbackStarterCode(fallbackCodingLanguage(session.Config.IndustryCode)),
+		EditorMode:     "code",
+		EvaluationMode: "manual",
 	}
 }
 
@@ -782,6 +812,34 @@ func fallbackQuestionType(questionIndex int) string {
 		return "behavioral"
 	default:
 		return "technical"
+	}
+}
+
+// fallbackCodingLanguage 根据当前行业编码返回编程题默认语言。
+func fallbackCodingLanguage(industryCode string) string {
+	switch strings.ToLower(strings.TrimSpace(industryCode)) {
+	case "java":
+		return "java"
+	case "frontend":
+		return "javascript"
+	case "python", "ai":
+		return "python"
+	default:
+		return "go"
+	}
+}
+
+// buildFallbackStarterCode 为编程题提供最小可编辑模板。
+func buildFallbackStarterCode(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "java":
+		return "class Solution {\n    public int solve(int[] nums) {\n        return 0;\n    }\n}"
+	case "javascript", "js", "typescript", "ts":
+		return "function solve(nums) {\n  return 0\n}"
+	case "python":
+		return "def solve(nums):\n    return 0"
+	default:
+		return "package main\n\nfunc solve(nums []int) int {\n\treturn 0\n}"
 	}
 }
 

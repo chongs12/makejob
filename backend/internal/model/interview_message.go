@@ -17,12 +17,13 @@ const (
 
 // InterviewMessage 面试消息表
 type InterviewMessage struct {
-	ID          uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	InterviewID uint   `json:"interview_id" gorm:"not null;index;comment:面试ID"`
-	Role        string `json:"role" gorm:"size:20;not null;comment:角色(ai/user/system)"`
-	Content     string `json:"content" gorm:"type:text;not null;comment:消息内容"`
-	MessageType string `json:"message_type" gorm:"size:20;not null;default:'text';comment:消息类型(text/code/feedback)"`
-	CreatedAt   int64  `json:"created_at" gorm:"autoCreateTime;comment:创建时间"`
+	ID           uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	InterviewID  uint   `json:"interview_id" gorm:"not null;index;comment:面试ID"`
+	Role         string `json:"role" gorm:"size:20;not null;comment:角色(ai/user/system)"`
+	Content      string `json:"content" gorm:"type:text;not null;comment:消息内容"`
+	MessageType  string `json:"message_type" gorm:"size:20;not null;default:'text';comment:消息类型(text/code/feedback)"`
+	MetadataJSON string `json:"metadata_json" gorm:"type:text;comment:扩展元数据JSON"`
+	CreatedAt    int64  `json:"created_at" gorm:"autoCreateTime;comment:创建时间"`
 
 	// 关联关系
 	Interview MockInterview `json:"interview,omitempty" gorm:"foreignKey:InterviewID"`

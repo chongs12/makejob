@@ -43,6 +43,9 @@ import {
   resolveLoginRedirectTarget,
 } from './shared/authRedirect'
 import { LOGIN_REQUIRED_PROMPT_EVENT_NAME, type LoginPromptDetail, type LoginPromptReason, requestLoginPrompt } from './shared/loginPrompt'
+import { fetchMistakeTopic, fetchMistakeTopics, parsePracticeAnalysis, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from './shared/mistakeTopics'
+import { persistPracticeFocusSearch, resolvePracticeQuestionSetTitle } from './shared/practiceFocus'
+import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from './shared/practiceRecommendations'
 import { consumePendingPracticeSearch, persistPendingPracticeSearch } from './shared/practiceSearch'
 
 interface RouterContext {
@@ -66,6 +69,40 @@ interface PracticeQuestion {
   pass_rate?: number
   is_favorite?: boolean
   tags?: string
+}
+
+interface PracticeQuestionSolution {
+  summary: string
+  approach: string
+  key_steps: string[]
+  edge_cases: string[]
+  complexity: string
+  common_mistakes: string[]
+  recommended_tags: string[]
+}
+
+interface PracticeQuestionAnswerTemplate {
+  core_conclusion: string
+  key_points: string[]
+  sample_answer: string
+  follow_ups: string[]
+  pitfalls: string[]
+}
+
+interface PracticeQuestionSetPreview {
+  id: number
+  title: string
+  type: string
+  difficulty: string
+}
+
+interface PracticeQuestionSetSummary {
+  slug: string
+  title: string
+  description: string
+  focus_tags: string[]
+  question_count: number
+  questions: PracticeQuestionSetPreview[]
 }
 
 interface PageResult<T> {
@@ -105,6 +142,9 @@ interface PracticeQuestionDetail extends PracticeQuestion {
   options_json?: string
   answer?: string
   explanation?: string
+  tag_list?: string[]
+  solution?: PracticeQuestionSolution | null
+  answer_template?: PracticeQuestionAnswerTemplate | null
   is_favorited?: boolean
   user_note?: PracticeNote | null
 }
@@ -557,6 +597,24 @@ async function fetchQuestionDetail(questionId: string): Promise<PracticeQuestion
   }
 
   return response.data
+}
+
+/**
+ * 拉取当前行业下的核心题单摘要，供刷题首页快速进入高价值主题。
+ */
+async function fetchQuestionSets(industryId: number | null): Promise<PracticeQuestionSetSummary[]> {
+  const params = new URLSearchParams()
+  if (industryId) {
+    params.set('industry_id', String(industryId))
+  }
+
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  const response = await requestJson<ApiEnvelope<PracticeQuestionSetSummary[]>>(`/question-sets${suffix}`)
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '获取核心题单失败')
+  }
+
+  return response.data || []
 }
 
 /**
@@ -1560,6 +1618,12 @@ function PracticePage() {
     }),
   })
 
+  const questionSetsQuery = useQuery({
+    queryKey: ['practice-question-sets', selectedIndustry?.id],
+    queryFn: () => fetchQuestionSets(selectedIndustry?.id || null),
+    enabled: Boolean(selectedIndustry?.id),
+  })
+
   const statsQuery = useQuery({
     queryKey: ['practice-stats', accessToken],
     queryFn: () => fetchPracticeStats(accessToken as string),
@@ -1569,6 +1633,12 @@ function PracticePage() {
   const collectionsOverviewQuery = useQuery({
     queryKey: ['practice-collections-overview', accessToken],
     queryFn: () => fetchPracticeCollectionsOverview(accessToken as string),
+    enabled: Boolean(accessToken),
+  })
+
+  const practiceRecommendationsQuery = useQuery({
+    queryKey: ['practice-recommendations', accessToken],
+    queryFn: () => fetchPracticeRecommendations(accessToken as string, 6),
     enabled: Boolean(accessToken),
   })
 
@@ -1760,6 +1830,141 @@ function PracticePage() {
         </div>
       ) : null}
 
+      {accessToken ? (
+        <article className="status-card" style={{ marginTop: 24 }}>
+          <div className="card-inline">
+            <div>
+              <span className="section-kicker">对症练习推荐</span>
+              <h2>先补最近反复暴露的问题</h2>
+            </div>
+            <Link className="secondary-link" to="/practice/wrong">查看错题本</Link>
+          </div>
+
+          {practiceRecommendationsQuery.isLoading ? (
+            <p style={{ marginTop: 12 }}>正在根据最近错因生成推荐...</p>
+          ) : null}
+
+          {practiceRecommendationsQuery.isError ? (
+            <p style={{ marginTop: 12 }}>
+              {extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
+            </p>
+          ) : null}
+
+          {practiceRecommendationsQuery.data?.focus_tags.length ? (
+            <div className="community-tag-row" style={{ marginTop: 12 }}>
+              {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          ) : null}
+
+          {practiceRecommendationsQuery.data?.items.length ? (
+            <div className="grid-cards" style={{ marginTop: 18 }}>
+              {practiceRecommendationsQuery.data.items.map((item) => (
+                <article className="feature-card" key={`practice-recommendation-${item.question.id}`}>
+                  <div className="card-inline">
+                    <strong>{item.question.title}</strong>
+                    <span>{difficultyLabel(item.question.difficulty)}</span>
+                  </div>
+                  <p>聚焦标签：{item.focus_tag}</p>
+                  <p>{item.reason}</p>
+                  <p>推荐优先级：第 {item.priority} 位 · 来源：{item.source_type === 'interview_archive' ? '本场面试' : '最近学习档案'}</p>
+                  <p>题型：{questionTypeLabel(item.question.type)}</p>
+                  <div className="page-actions" style={{ marginTop: 12 }}>
+                    <Link
+                      className="secondary-link"
+                      to={resolvePracticeRecommendationRoute(item.question.type)}
+                      params={{ questionId: String(item.question.id) }}
+                    >
+                      直接开始补练
+                    </Link>
+                    {item.topic_code ? (
+                      <Link
+                        className="secondary-link"
+                        to={resolveMistakeTopicRoute()}
+                        params={{ topicCode: item.topic_code }}
+                      >
+                        查看错因专题
+                      </Link>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
+            <div className="timeline-item" style={{ marginTop: 18 }}>
+              <strong>还没有形成推荐</strong>
+              <p>先做几道编程题或主观题，系统会根据错因标签逐步给出更具体的补题建议。</p>
+            </div>
+          ) : null}
+        </article>
+      ) : null}
+
+      <article className="status-card" style={{ marginTop: 24 }}>
+        <div className="card-inline">
+          <div>
+            <span className="section-kicker">核心题单</span>
+            <h2>{effectiveIndustryLabel} 最值得先打通的主题</h2>
+          </div>
+          <Link className="secondary-link" to="/practice">继续按筛选做题</Link>
+        </div>
+
+        {questionSetsQuery.isLoading ? (
+          <p style={{ marginTop: 12 }}>正在整理当前方向的核心题单...</p>
+        ) : null}
+
+        {questionSetsQuery.isError ? (
+          <p style={{ marginTop: 12 }}>
+            {extractErrorMessage(questionSetsQuery.error, '核心题单加载失败')}
+          </p>
+        ) : null}
+
+        {questionSetsQuery.data?.length ? (
+          <div className="grid-cards" style={{ marginTop: 18 }}>
+            {questionSetsQuery.data.map((set) => (
+              <article className="feature-card" key={set.slug}>
+                <div className="card-inline">
+                  <strong>{set.title}</strong>
+                  <span>{set.question_count} 题预览</span>
+                </div>
+                <p>{set.description}</p>
+                {set.focus_tags.length ? (
+                  <div className="community-tag-row" style={{ marginTop: 12 }}>
+                    {set.focus_tags.map((tag) => (
+                      <span key={`${set.slug}-${tag}`}>{tag}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {set.questions.length ? (
+                  <div style={{ marginTop: 12 }}>
+                    {set.questions.map((item) => (
+                      <div key={`${set.slug}-question-${item.id}`} style={{ marginBottom: 8 }}>
+                        <Link
+                          className="secondary-link"
+                          to={resolvePracticeTarget(item.id, item.type)}
+                          params={{ questionId: String(item.id) }}
+                        >
+                          {item.title}
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {!questionSetsQuery.isLoading && !questionSetsQuery.isError && !questionSetsQuery.data?.length ? (
+          <div className="timeline-item" style={{ marginTop: 18 }}>
+            <strong>当前方向还没有整理出核心题单</strong>
+            <p>优先补齐该行业下的高价值题目后，这里会自动收敛成更稳定的主题入口。</p>
+          </div>
+        ) : null}
+      </article>
+
       <form className="stack-form" onSubmit={handleSearchSubmit}>
         <label className="field">
           <span>行业筛选</span>
@@ -1933,6 +2138,10 @@ function PracticeQuestionPage() {
   })
 
   const question = detailQuery.data
+  const practiceAnalysis = useMemo(
+    () => parsePracticeAnalysis(submitResult?.ai_analysis),
+    [submitResult?.ai_analysis],
+  )
   const options = useMemo(() => parseQuestionOptions(question?.options_json), [question?.options_json])
   const questionIndustry = useMemo(
     () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
@@ -2011,6 +2220,7 @@ function PracticeQuestionPage() {
       setSubmitMessage(result.is_correct ? '回答正确' : '回答完成')
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -2070,6 +2280,13 @@ function PracticeQuestionPage() {
             <p>题型：{questionTypeLabel(question.type)}</p>
             <p>行业：{questionIndustryLabel}</p>
             <p>分类：{question.category_name || question.category_id}</p>
+            {question.tag_list?.length ? (
+              <div className="community-tag-row" style={{ marginTop: 12 }}>
+                {question.tag_list.map((tag) => (
+                  <span key={`question-tag-${tag}`}>{tag}</span>
+                ))}
+              </div>
+            ) : null}
             <div className="question-content">{question.content}</div>
             <div className="page-actions" style={{ marginTop: 16 }}>
               <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
@@ -2150,6 +2367,73 @@ function PracticeQuestionPage() {
                 {submitResult.ai_analysis ? (
                   <pre className="analysis-block">{submitResult.ai_analysis}</pre>
                 ) : null}
+                {question.solution ? (
+                  <div style={{ marginTop: 16 }}>
+                    <strong>结构化解析</strong>
+                    <p>题意总结：{question.solution.summary || '暂无'}</p>
+                    <p>解题思路：{question.solution.approach || '暂无'}</p>
+                    <p>复杂度分析：{question.solution.complexity || '暂无'}</p>
+                    {question.solution.key_steps.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>关键步骤</strong>
+                        <ul>
+                          {question.solution.key_steps.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.solution.edge_cases.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>边界条件</strong>
+                        <ul>
+                          {question.solution.edge_cases.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.solution.common_mistakes.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>常见错法</strong>
+                        <ul>
+                          {question.solution.common_mistakes.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {question.answer_template ? (
+                  <div style={{ marginTop: 16 }}>
+                    <strong>参考回答模板</strong>
+                    <p>核心结论：{question.answer_template.core_conclusion || '暂无'}</p>
+                    <p>面试表达示例：{question.answer_template.sample_answer || '暂无'}</p>
+                    {question.answer_template.key_points.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>关键展开点</strong>
+                        <ul>
+                          {question.answer_template.key_points.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.answer_template.follow_ups.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>高频追问点</strong>
+                        <ul>
+                          {question.answer_template.follow_ups.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.answer_template.pitfalls.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>易答偏点</strong>
+                        <ul>
+                          {question.answer_template.pitfalls.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <MistakeTopicHighlights
+                  tags={practiceAnalysis?.mistake_tags || []}
+                  title="继续深挖这些错因"
+                />
               </>
             ) : null}
           </div>
@@ -2196,6 +2480,10 @@ function PracticeEditorPage() {
   })
 
   const question = detailQuery.data
+  const practiceAnalysis = useMemo(
+    () => parsePracticeAnalysis(submitResult?.ai_analysis),
+    [submitResult?.ai_analysis],
+  )
   const questionIndustry = useMemo(
     () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
     [industriesQuery.data, question?.industry_id],
@@ -2369,6 +2657,7 @@ function PracticeEditorPage() {
       setSubmitMessage(result.is_correct ? `${label}通过` : `${label}完成`)
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -2456,6 +2745,13 @@ function PracticeEditorPage() {
           <h1>{question?.title || `题目 #${questionId}`}</h1>
           <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
           <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
+          {question?.tag_list?.length ? (
+            <div className="community-tag-row" style={{ marginTop: 12 }}>
+              {question.tag_list.map((tag) => (
+                <span key={`editor-question-tag-${tag}`}>{tag}</span>
+              ))}
+            </div>
+          ) : null}
           <div className="page-actions" style={{ marginTop: 16 }}>
             <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
               {favoriteState ? '取消收藏' : '加入收藏'}
@@ -2502,6 +2798,42 @@ function PracticeEditorPage() {
                 {submitResult.ai_analysis ? (
                   <pre className="analysis-block">{submitResult.ai_analysis}</pre>
                 ) : null}
+                {question?.solution ? (
+                  <div style={{ marginTop: 16 }}>
+                    <strong>结构化解析</strong>
+                    <p>题意总结：{question.solution.summary || '暂无'}</p>
+                    <p>解题思路：{question.solution.approach || '暂无'}</p>
+                    <p>复杂度分析：{question.solution.complexity || '暂无'}</p>
+                    {question.solution.key_steps.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>关键步骤</strong>
+                        <ul>
+                          {question.solution.key_steps.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.solution.edge_cases.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>边界条件</strong>
+                        <ul>
+                          {question.solution.edge_cases.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {question.solution.common_mistakes.length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong>常见错法</strong>
+                        <ul>
+                          {question.solution.common_mistakes.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <MistakeTopicHighlights
+                  tags={practiceAnalysis?.mistake_tags || []}
+                  title="建议继续补的错因专题"
+                />
               </>
             ) : null}
           </div>
@@ -2746,6 +3078,161 @@ function PracticeNotesPage() {
 }
 
 /**
+ * 根据练习分析里的错因标签展示可继续深挖的专题卡片。
+ */
+function MistakeTopicHighlights(props: { tags: string[]; title?: string }) {
+  const topicsQuery = useQuery({
+    queryKey: ['mistake-topics-catalog'],
+    queryFn: () => fetchMistakeTopics([]),
+    enabled: props.tags.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const matchedTopics = useMemo(
+    () => pickMistakeTopicsByTags(props.tags, topicsQuery.data || []),
+    [props.tags, topicsQuery.data],
+  )
+
+  if (!props.tags.length) {
+    return null
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <strong>{props.title || '相关错因专题'}</strong>
+      {topicsQuery.isLoading ? <p style={{ marginTop: 8 }}>正在加载错因专题...</p> : null}
+      {topicsQuery.isError ? (
+        <p style={{ marginTop: 8 }}>{extractErrorMessage(topicsQuery.error, '错因专题加载失败')}</p>
+      ) : null}
+      {matchedTopics.length ? (
+        <div className="grid-cards" style={{ marginTop: 12 }}>
+          {matchedTopics.map((topic) => (
+            <article className="feature-card" key={topic.code}>
+              <div className="card-inline">
+                <strong>{topic.title}</strong>
+                <span>{topic.tag}</span>
+              </div>
+              <p>{topic.problem_pattern}</p>
+              <div className="page-actions">
+                <Link className="secondary-link" to={resolveMistakeTopicRoute()} params={{ topicCode: topic.code }}>
+                  打开专题
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * 展示单个错因专题详情，承接报告页、成长页和练习反馈页的深挖入口。
+ */
+function MistakeTopicPage() {
+  const navigate = useNavigate()
+  const { topicCode } = useParams({ from: '/practice/topics/$topicCode' })
+  const topicQuery = useQuery({
+    queryKey: ['mistake-topic-detail', topicCode],
+    queryFn: () => fetchMistakeTopic(topicCode),
+    enabled: Boolean(topicCode),
+  })
+
+  /**
+   * 以当前专题标签或关联题单预填题库搜索，帮助用户直接进入补练状态。
+   */
+  function handleOpenTopicPractice(questionSetSlug = ''): void {
+    if (topicQuery.data) {
+      persistPracticeFocusSearch(questionSetSlug, [topicQuery.data.tag], topicQuery.data.title)
+    }
+    navigate({ to: '/practice' })
+  }
+
+  return (
+    <section className="page-panel">
+      <span className="page-tag">错因专题</span>
+      <h1>{topicQuery.data?.title || topicCode}</h1>
+      <p className="page-copy">把高频错因从一个标签，展开成可复习、可自查、可继续补题的专题内容。</p>
+
+      {topicQuery.isLoading ? (
+        <div className="status-card" style={{ marginTop: 24 }}>专题内容加载中...</div>
+      ) : null}
+
+      {topicQuery.isError ? (
+        <div className="status-card" style={{ marginTop: 24 }}>
+          {extractErrorMessage(topicQuery.error, '专题内容加载失败')}
+        </div>
+      ) : null}
+
+      {topicQuery.data ? (
+        <>
+          <article className="status-card" style={{ marginTop: 24 }}>
+            <div className="card-inline">
+              <strong>{topicQuery.data.title}</strong>
+              <span>{topicQuery.data.tag}</span>
+            </div>
+            <p style={{ marginTop: 12 }}>{topicQuery.data.problem_pattern}</p>
+          </article>
+
+          <div className="grid-cards" style={{ marginTop: 24 }}>
+            <article className="feature-card">
+              <h2>常见根因</h2>
+              <ul>
+                {topicQuery.data.root_causes.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </article>
+            <article className="feature-card">
+              <h2>自查清单</h2>
+              <ul>
+                {topicQuery.data.self_check_list.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </article>
+          </div>
+
+          <div className="grid-cards" style={{ marginTop: 24 }}>
+            <article className="feature-card">
+              <h2>练习方向</h2>
+              <ul>
+                {topicQuery.data.practice_directions.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </article>
+            <article className="feature-card">
+              <h2>建议动作</h2>
+              <ul>
+                {topicQuery.data.recommended_actions.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </article>
+          </div>
+
+          <article className="status-card" style={{ marginTop: 24 }}>
+            <div className="card-inline">
+              <div>
+                <span className="section-kicker">继续练习</span>
+                <h2>回到题库继续补强</h2>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => handleOpenTopicPractice()}>
+                去题库补练
+              </button>
+            </div>
+            {topicQuery.data.related_question_sets.length ? (
+              <div className="page-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+                {topicQuery.data.related_question_sets.map((item) => (
+                  <button className="secondary-button" key={item} type="button" onClick={() => handleOpenTopicPractice(item)}>
+                    {resolvePracticeQuestionSetTitle(item)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p style={{ marginTop: 12 }}>当前专题暂未绑定题单，先回到题库按标签继续补练。</p>
+            )}
+          </article>
+        </>
+      ) : null}
+    </section>
+  )
+}
+
+/**
  * 提供学习陪伴频道首页，整合学习计划、陪伴角色和成长记录的入口设计。
  */
 function CompanionPage() {
@@ -2976,6 +3463,12 @@ const practiceNotesRoute = createRoute({
   component: PracticeNotesPage,
 })
 
+const practiceTopicRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'practice/topics/$topicCode',
+  component: MistakeTopicPage,
+})
+
 const interviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview',
@@ -3088,6 +3581,7 @@ const routeTree = rootRoute.addChildren([
   practiceWrongRoute,
   practiceFavoritesRoute,
   practiceNotesRoute,
+  practiceTopicRoute,
   interviewRoute,
   interviewSessionRoute,
   interviewReportRoute,

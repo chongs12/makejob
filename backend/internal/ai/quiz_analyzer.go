@@ -13,6 +13,12 @@ type QuizAnalyzer interface {
 	// 返回: 代码分析结果、错误
 	AnalyzeCode(ctx context.Context, code string, language string, question string) (CodeAnalysis, error)
 
+	// DiagnoseInterviewCoding 基于题目、最终代码和过程事件生成编程面试诊断。
+	// ctx: 上下文
+	// input: 编程题诊断输入
+	// 返回: 结构化诊断结果、错误
+	DiagnoseInterviewCoding(ctx context.Context, input InterviewCodingDiagnosisInput) (CodingQuestionDiagnosis, error)
+
 	// ExplainAnswer 解释正确答案
 	// ctx: 上下文
 	// questionTitle: 题目标题

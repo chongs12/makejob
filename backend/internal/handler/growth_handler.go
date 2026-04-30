@@ -25,6 +25,7 @@ func NewGrowthHandler(growthService service.GrowthService) *GrowthHandler {
 func (h *GrowthHandler) RegisterRoutes(protected *gin.RouterGroup) {
 	protected.PUT("/user/study-logs/daily", h.SyncDailyStudyLog)
 	protected.GET("/user/growth-summary", h.GetGrowthSummary)
+	protected.GET("/user/weekly-focus", h.GetWeeklyFocus)
 }
 
 // SyncDailyStudyLog 接收前端当天学习摘要并同步到服务端。
@@ -68,6 +69,27 @@ func (h *GrowthHandler) GetGrowthSummary(c *gin.Context) {
 			common.Error(c, businessErr.Code, businessErr.Message)
 		} else {
 			common.InternalError(c, "获取成长档案失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, resp)
+}
+
+// GetWeeklyFocus 返回本周最值得优先补强的主题摘要。
+func (h *GrowthHandler) GetWeeklyFocus(c *gin.Context) {
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		common.Unauthorized(c, "未登录")
+		return
+	}
+
+	resp, err := h.growthService.GetWeeklyFocus(c.Request.Context(), userID)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取本周补强主题失败: "+err.Error())
 		}
 		return
 	}

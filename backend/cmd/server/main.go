@@ -37,6 +37,7 @@ type AppDependencies struct {
 	MembershipRepo       repository.MembershipRepository
 	InterviewRepo        repository.InterviewRepository
 	InterviewMessageRepo repository.InterviewMessageRepository
+	InterviewCodingRepo  repository.InterviewCodingAttemptRepository
 	QuestionRepo         repository.QuestionRepository
 	CategoryRepo         repository.CategoryRepository
 	RecordRepo           repository.QuestionRecordRepository
@@ -45,6 +46,7 @@ type AppDependencies struct {
 	PlanRepo             repository.PlanRepository
 	PlanTaskRepo         repository.PlanTaskRepository
 	StudyLogRepo         repository.StudyLogRepository
+	LearningArchiveRepo  repository.LearningArchiveRepository
 
 	AuthService       service.AuthService
 	MembershipService service.MembershipService
@@ -160,6 +162,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.MembershipRepo = repository.NewMembershipRepository(db)
 		deps.InterviewRepo = repository.NewInterviewRepository(db)
 		deps.InterviewMessageRepo = repository.NewInterviewMessageRepository(db)
+		deps.InterviewCodingRepo = repository.NewInterviewCodingAttemptRepository(db)
 		deps.QuestionRepo = repository.NewQuestionRepository(db)
 		deps.CategoryRepo = repository.NewCategoryRepository(db)
 		deps.RecordRepo = repository.NewQuestionRecordRepository(db)
@@ -168,6 +171,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.PlanRepo = repository.NewPlanRepository(db)
 		deps.PlanTaskRepo = repository.NewPlanTaskRepository(db)
 		deps.StudyLogRepo = repository.NewStudyLogRepository(db)
+		deps.LearningArchiveRepo = repository.NewLearningArchiveRepository(db)
 
 		industryRepo = repository.NewIndustryRepository(db)
 		adminConfigRepo := repository.NewAdminConfigRepository(db)
@@ -190,7 +194,10 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.InterviewService = service.NewInterviewService(
 			deps.InterviewRepo,
 			deps.InterviewMessageRepo,
+			deps.InterviewCodingRepo,
+			deps.LearningArchiveRepo,
 			aiClient.InterviewAgent,
+			aiClient.QuizAnalyzer,
 			industryRepo,
 		)
 		deps.QuestionService = service.NewQuestionService(
@@ -200,6 +207,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.FavoriteRepo,
 			deps.NoteRepo,
 			aiClient.QuizAnalyzer,
+			deps.LearningArchiveRepo,
 			industryRepo,
 		)
 		deps.PlanService = service.NewPlanService(
@@ -215,6 +223,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.InterviewRepo,
 			deps.PlanRepo,
 			deps.PlanTaskRepo,
+			deps.LearningArchiveRepo,
 		)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)

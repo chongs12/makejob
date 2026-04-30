@@ -2,6 +2,7 @@ import { requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import type {
   InterviewAnswerResponse,
+  InterviewCodingProcessEvent,
   InterviewCreatePayload,
   InterviewCreateResponse,
   InterviewDetailResponse,
@@ -57,16 +58,26 @@ export async function fetchInterviewDetail(token: string, interviewId: string): 
   return unwrapInterviewResponseData(response, '获取面试详情失败')
 }
 
+export interface SubmitInterviewAnswerPayload {
+  answer: string
+  final_code?: string
+  language?: string
+  question_type?: string
+  process_events?: InterviewCodingProcessEvent[]
+}
+
 /**
  * 提交当前问题的回答，并在后端直接推进到下一题。
  */
-export async function submitInterviewAnswer(token: string, interviewId: string, answer: string): Promise<InterviewAnswerResponse> {
+export async function submitInterviewAnswer(
+  token: string,
+  interviewId: string,
+  payload: SubmitInterviewAnswerPayload,
+): Promise<InterviewAnswerResponse> {
   const response = await requestJson<ApiEnvelope<InterviewAnswerResponse>>(`/interviews/${interviewId}/answer`, {
     method: 'POST',
     token,
-    body: {
-      answer,
-    },
+    body: payload,
   })
 
   return unwrapInterviewResponseData(response, '提交回答失败')

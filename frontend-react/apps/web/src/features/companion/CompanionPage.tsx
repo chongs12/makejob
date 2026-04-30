@@ -22,6 +22,8 @@ import {
   type CompanionPlanContextDraft,
 } from '../../shared/companionContext'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
+import { persistPracticeFocusSearch } from '../../shared/practiceFocus'
+import { fetchWeeklyFocus, type WeeklyFocusTheme } from '../../shared/weeklyFocus'
 import {
   adjustCompanionPlan,
   createCompanionPlan,
@@ -189,6 +191,47 @@ function applyCompanionPlanContextToForm(
 }
 
 /**
+ * 将本周重点补强主题压缩成一段可直接塞进计划目标的文案。
+ */
+function buildWeeklyFocusGoalDescription(themes: WeeklyFocusTheme[]): string {
+  const titles = Array.from(new Set(themes.map((item) => item.title.trim()).filter(Boolean))).slice(0, 3)
+  if (!titles.length) {
+    return ''
+  }
+
+  return `本周优先补强${titles.map((item) => `「${item}」`).join('、')}，并围绕这些问题安排连续复习、专项练习和复盘。`
+}
+
+/**
+ * 将本周补强主题一键合并进计划表单，减少用户手动搬运弱项和目标描述。
+ */
+function applyWeeklyFocusToPlanForm(form: CompanionGeneratePlanForm, themes: WeeklyFocusTheme[]): CompanionGeneratePlanForm {
+  const focusTags = Array.from(
+    new Set(
+      themes
+        .flatMap((theme) => (theme.focus_tags.length ? theme.focus_tags : [theme.title]))
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 12)
+  const mergedWeakTopics = Array.from(new Set([...focusTags, ...form.weakTopics])).slice(0, 12)
+  const mergedWeakTopicsText = Array.from(new Set([...focusTags, ...parseWeakTopicsText(form.weakTopicsText)])).join('，')
+  const goalPreset = buildWeeklyFocusGoalDescription(themes)
+  const currentGoalDescription = form.goalDescription.trim()
+  const nextGoalDescription =
+    goalPreset && !currentGoalDescription.includes(goalPreset)
+      ? (currentGoalDescription ? `${goalPreset}\n${currentGoalDescription}` : goalPreset)
+      : currentGoalDescription
+
+  return {
+    ...form,
+    goalDescription: nextGoalDescription,
+    weakTopics: mergedWeakTopics,
+    weakTopicsText: mergedWeakTopicsText,
+  }
+}
+
+/**
  * 将陪伴上下文的推荐参数整理成入口页提示文案，帮助用户理解当前预填依据。
  */
 function buildCompanionContextPresetText(draft: CompanionPlanContextDraft): string {
@@ -300,6 +343,7 @@ export function CompanionHubPage() {
   const accessToken = useAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
   const hasAppliedPlanContextRef = useRef(false)
+  const hasAutoAppliedWeeklyFocusRef = useRef(false)
   const [sessionSummary, setSessionSummary] = useState<CompanionSessionSummary | null>(() => readCompanionSessionSummary())
   const [dailyDigest, setDailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
   const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
@@ -325,6 +369,13 @@ export function CompanionHubPage() {
   const practiceStatsQuery = useQuery({
     queryKey: ['companion-hub-practice-stats', accessToken],
     queryFn: () => fetchCompanionPracticeStats(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+
+  const weeklyFocusQuery = useQuery({
+    queryKey: ['companion-hub-weekly-focus', accessToken],
+    queryFn: () => fetchWeeklyFocus(accessToken as string),
     enabled: Boolean(accessToken),
     retry: false,
   })
@@ -451,6 +502,24 @@ export function CompanionHubPage() {
     setPlanFormMessage(`已根据面试报告 #${planContextDraft.interviewId || '-'} 自动带入强化计划上下文。`)
   }, [planContextDraft])
 
+  /**
+   * 首次进入且表单仍为空壳时，自动把本周补强主题带入，减少用户从零整理输入的成本。
+   */
+  useEffect(() => {
+    if (hasAutoAppliedWeeklyFocusRef.current || planContextDraft || !weeklyFocusQuery.data?.themes.length) {
+      return
+    }
+
+    hasAutoAppliedWeeklyFocusRef.current = true
+    setPlanForm((current) => {
+      if (current.goalDescription.trim() || current.weakTopics.length || current.weakTopicsText.trim()) {
+        return current
+      }
+      return applyWeeklyFocusToPlanForm(current, weeklyFocusQuery.data?.themes || [])
+    })
+    setPlanFormMessage('已根据最近练习和面试记录自动带入本周补强主题，你也可以继续手动调整。')
+  }, [planContextDraft, weeklyFocusQuery.data?.themes])
+
   const progressText = currentPlanQuery.data
     ? `${Math.round(currentPlanQuery.data.progress || 0)}%`
     : (sessionSummary ? `${sessionSummary.progress}%` : '--')
@@ -569,6 +638,28 @@ export function CompanionHubPage() {
   }
 
   /**
+   * 将本周最值得补强的主题直接带入计划表单，减少重复整理输入的成本。
+   */
+  function handleApplyWeeklyFocus(): void {
+    const themes = weeklyFocusQuery.data?.themes || []
+    if (!themes.length) {
+      setPlanFormMessage('当前还没有足够的补强主题可带入，请先积累一些练习或面试记录。')
+      return
+    }
+
+    setPlanForm((current) => applyWeeklyFocusToPlanForm(current, themes))
+    setPlanFormMessage(`已将 ${themes.length} 个本周补强主题带入计划表单。`)
+  }
+
+  /**
+   * 以当前补强主题预填题库搜索并跳到刷题页，方便先补练再回来看计划。
+   */
+  function handleOpenWeeklyFocusPractice(theme: WeeklyFocusTheme): void {
+    persistPracticeFocusSearch('', theme.focus_tags, theme.title)
+    navigate({ to: '/practice' })
+  }
+
+  /**
    * 清空当前学习陪伴上下文草稿，避免旧报告继续影响后续手动生成计划。
    */
   function handleClearPlanContextDraft(): void {
@@ -588,7 +679,12 @@ export function CompanionHubPage() {
       return
     }
 
-    const payload = buildGeneratePlanPayload(planForm, effectiveIndustryCode)
+    const effectiveForm = weeklyFocusQuery.data?.themes.length
+      ? applyWeeklyFocusToPlanForm(planForm, weeklyFocusQuery.data.themes)
+      : planForm
+    setPlanForm(effectiveForm)
+
+    const payload = buildGeneratePlanPayload(effectiveForm, effectiveIndustryCode)
     if (!payload.goal_description) {
       setPlanFormMessage(`先写清楚目标，例如“两周内完成 ${effectiveIndustryLabel} 方向的重点模块复习”。`)
       return
@@ -735,6 +831,74 @@ export function CompanionHubPage() {
                   </div>
                 </article>
               ) : null}
+
+              <article className="timeline-item companion-context-card">
+                <div className="companion-card-head">
+                  <div>
+                    <span className="section-kicker">本周重点补强</span>
+                    <h3>把最近重复暴露的问题直接带入你的学习计划</h3>
+                  </div>
+                  <span className="companion-card-note">
+                    {weeklyFocusQuery.data?.themes.length ? `${weeklyFocusQuery.data.themes.length} 个主题` : '等待主题生成'}
+                  </span>
+                </div>
+
+                {weeklyFocusQuery.isLoading ? (
+                  <p>正在整理你本周最值得优先补强的主题...</p>
+                ) : null}
+
+                {weeklyFocusQuery.isError ? (
+                  <p>{extractErrorMessage(weeklyFocusQuery.error, '本周补强主题加载失败')}</p>
+                ) : null}
+
+                {weeklyFocusQuery.data?.themes.length ? (
+                  <>
+                    <div className="stack-list">
+                      {weeklyFocusQuery.data.themes.map((theme) => (
+                        <article className="timeline-item" key={`companion-weekly-focus-${theme.title}`}>
+                          <div className="card-inline">
+                            <strong>{theme.title}</strong>
+                            <span>{theme.source_label}</span>
+                          </div>
+                          <p>{theme.reason}</p>
+                          {theme.focus_tags.length ? (
+                            <div className="community-tag-row">
+                              {theme.focus_tags.map((item) => (
+                                <span key={`${theme.title}-${item}`}>{item}</span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {theme.suggestions.length ? (
+                            <ul className="interview-bullet-list companion-context-list">
+                              {theme.suggestions.map((item) => (
+                                <li key={`${theme.title}-${item}`}>{item}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <div className="page-actions">
+                            <button className="secondary-button" type="button" onClick={() => handleOpenWeeklyFocusPractice(theme)}>
+                              先去补练
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="page-actions">
+                      <button className="secondary-button" type="button" onClick={handleApplyWeeklyFocus}>
+                        应用到计划表单
+                      </button>
+                      <Link className="secondary-link" to="/growth">
+                        去成长档案查看
+                      </Link>
+                    </div>
+                  </>
+                ) : null}
+
+                {!weeklyFocusQuery.isLoading && !weeklyFocusQuery.isError && !weeklyFocusQuery.data?.themes.length ? (
+                  <p>先做几道题或完成一场面试后，这里会自动把本周最值得优先补强的 1 到 3 个主题收束出来。</p>
+                ) : null}
+              </article>
 
             <form className="stack-form companion-plan-form" onSubmit={handleGeneratePlan}>
               <div className="companion-plan-form-grid">

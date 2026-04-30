@@ -384,10 +384,14 @@ type wsASRPayload struct {
 
 // wsQuestionPayload 描述当前题目和题号。
 type wsQuestionPayload struct {
-	Question   string `json:"question"`
-	QuestionNo int    `json:"question_no"`
-	Type       string `json:"type"`
-	Hints      string `json:"hints,omitempty"`
+	Question       string `json:"question"`
+	QuestionNo     int    `json:"question_no"`
+	Type           string `json:"type"`
+	Hints          string `json:"hints,omitempty"`
+	Language       string `json:"language,omitempty"`
+	StarterCode    string `json:"starter_code,omitempty"`
+	EditorMode     string `json:"editor_mode,omitempty"`
+	EvaluationMode string `json:"evaluation_mode,omitempty"`
 }
 
 // wsTTSAudioPayload 描述面试官当前播报文本对应的语音资源。
@@ -703,10 +707,14 @@ func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questio
 		Type:    WSMessageTypeAIQuestion,
 		Content: question.Question,
 		Data: wsQuestionPayload{
-			Question:   question.Question,
-			QuestionNo: questionNo,
-			Type:       firstNonEmpty(question.Type, "technical"),
-			Hints:      question.Hints,
+			Question:       question.Question,
+			QuestionNo:     questionNo,
+			Type:           firstNonEmpty(question.Type, "technical"),
+			Hints:          question.Hints,
+			Language:       question.Language,
+			StarterCode:    question.StarterCode,
+			EditorMode:     question.EditorMode,
+			EvaluationMode: question.EvaluationMode,
 		},
 	})
 	s.sendState("speaking", "面试官正在播报当前题目。")
@@ -858,6 +866,16 @@ func (s *wsInterviewSession) closeASRSession() {
 func resolveCurrentInterviewQuestion(detail *service.InterviewDetailResponse) (ai.InterviewQuestion, int, bool) {
 	if detail == nil || detail.Status != "ongoing" {
 		return ai.InterviewQuestion{}, 0, false
+	}
+
+	if detail.CurrentQuestion != nil {
+		answerCount := 0
+		for _, item := range detail.Messages {
+			if item.Role == "user" {
+				answerCount++
+			}
+		}
+		return *detail.CurrentQuestion, answerCount + 1, true
 	}
 
 	answerCount := 0

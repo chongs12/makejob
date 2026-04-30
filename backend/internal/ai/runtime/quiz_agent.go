@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -26,8 +27,20 @@ type quizAnalysisPayload struct {
 	Feedback        string   `json:"feedback"`
 	Issues          []string `json:"issues"`
 	Improvements    []string `json:"improvements"`
+	MistakeTags     []string `json:"mistake_tags"`
+	StrengthTags    []string `json:"strength_tags"`
 	TimeComplexity  string   `json:"time_complexity"`
 	SpaceComplexity string   `json:"space_complexity"`
+}
+
+// interviewCodingDiagnosisPayload 表示编程面试诊断结构化输出。
+type interviewCodingDiagnosisPayload struct {
+	Score          *float64 `json:"score"`
+	MistakeTags    []string `json:"mistake_tags"`
+	StrengthTags   []string `json:"strength_tags"`
+	Evidence       []string `json:"evidence"`
+	Suggestions    []string `json:"suggestions"`
+	ProcessSummary string   `json:"process_summary"`
 }
 
 // quizAnalysisPayloadSchema 返回判题分析结构化输出的 JSON 合同。
@@ -38,8 +51,22 @@ func quizAnalysisPayloadSchema() string {
   "feedback": "总体反馈",
   "issues": ["问题1", "问题2"],
   "improvements": ["改进1", "改进2"],
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
   "time_complexity": "O(n)",
   "space_complexity": "O(1)"
+}`
+}
+
+// interviewCodingDiagnosisPayloadSchema 返回编程面试诊断结构化输出的 JSON 合同。
+func interviewCodingDiagnosisPayloadSchema() string {
+	return `{
+  "score": 78,
+  "mistake_tags": ["状态定义不清"],
+  "strength_tags": ["愿意主动验证思路"],
+  "evidence": ["多次运行后仍集中修改同一逻辑分支"],
+  "suggestions": ["补练边界条件和状态设计"],
+  "process_summary": "能够持续迭代，但调试路径还不够稳定。"
 }`
 }
 
@@ -83,6 +110,44 @@ func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, lan
 	}
 
 	result := normalizeQuizAnalysis(payload, code, language, question)
+	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
+	return result, nil
+}
+
+// DiagnoseInterviewCoding 基于最终代码与过程事件生成编程面试诊断。
+func (a *providerQuizAnalyzer) DiagnoseInterviewCoding(ctx context.Context, input ai.InterviewCodingDiagnosisInput) (ai.CodingQuestionDiagnosis, error) {
+	if a.shouldUseFallback() {
+		return ai.CodingQuestionDiagnosis{}, fmt.Errorf("ai provider is unavailable")
+	}
+
+	traceID := uuid.NewString()
+	promptDetails := a.resolvePromptDetails(ctx, map[string]string{
+		"language": input.Language,
+		"question": input.Question,
+	})
+	userPrompt, err := buildInterviewCodingDiagnosisUserPrompt(input)
+	if err != nil {
+		return ai.CodingQuestionDiagnosis{}, err
+	}
+	messages := []ai.Message{
+		{
+			Role:    "system",
+			Content: buildInterviewCodingDiagnosisSystemPrompt(promptDetails.Prompt),
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}
+
+	startedAt := time.Now()
+	payload, response, err := callStructuredJSON[interviewCodingDiagnosisPayload](ctx, a.provider, messages, interviewCodingDiagnosisPayloadSchema())
+	if err != nil {
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
+		return ai.CodingQuestionDiagnosis{}, err
+	}
+
+	result := normalizeInterviewCodingDiagnosis(payload, input)
 	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
 	return result, nil
 }
@@ -221,13 +286,16 @@ func buildQuizAnalysisSystemPrompt(basePrompt string) string {
   "feedback": "整体评价",
   "issues": ["问题1", "问题2"],
   "improvements": ["改进建议1", "改进建议2"],
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
   "time_complexity": "O(n)",
   "space_complexity": "O(1)"
 }
 要求：
 1. score 必须在 0 到 100 之间。
 2. 评价要兼顾正确性、完整性和表达质量。
-3. issues 和 improvements 至少各返回 1 条。`)
+3. issues 和 improvements 至少各返回 1 条。
+4. mistake_tags 要尽量具体，不要只写“基础不好”这类空泛表述。`)
 }
 
 // buildQuizAnalysisUserPrompt 构造答题分析请求。
@@ -238,6 +306,41 @@ func buildQuizAnalysisUserPrompt(code string, language string, question string) 
 		defaultString(strings.TrimSpace(language), "text"),
 		defaultString(strings.TrimSpace(code), "未提供答案"),
 	)
+}
+
+// buildInterviewCodingDiagnosisSystemPrompt 构造编程面试诊断系统提示词。
+func buildInterviewCodingDiagnosisSystemPrompt(basePrompt string) string {
+	return mergePrompt(basePrompt, `请根据题目、最终代码和过程事件分析候选人的编程面试表现，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
+{
+  "score": 0,
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
+  "evidence": ["证据1", "证据2"],
+  "suggestions": ["建议1", "建议2"],
+  "process_summary": "过程总结"
+}
+要求：
+1. score 必须在 0 到 100 之间。
+2. 错因标签要尽量具体，优先围绕状态定义、边界条件、索引控制、数据结构选择、复杂度意识和调试路径。
+3. evidence 必须引用过程中的现象，不要只写空泛判断。
+4. suggestions 给出可执行的补强动作。`)
+}
+
+// buildInterviewCodingDiagnosisUserPrompt 构造编程面试诊断请求。
+func buildInterviewCodingDiagnosisUserPrompt(input ai.InterviewCodingDiagnosisInput) (string, error) {
+	processEventsJSON, err := json.Marshal(input.ProcessEvents)
+	if err != nil {
+		return "", fmt.Errorf("marshal interview coding process events: %w", err)
+	}
+
+	return fmt.Sprintf(
+		"题目：\n%s\n\n语言：%s\n\n最终代码：\n%s\n\n用户文字说明：\n%s\n\n过程事件(JSON)：\n%s",
+		defaultString(strings.TrimSpace(input.Question), "未提供题目"),
+		defaultString(strings.TrimSpace(input.Language), "go"),
+		defaultString(strings.TrimSpace(input.FinalCode), "未提供最终代码"),
+		defaultString(strings.TrimSpace(input.FinalAnswer), "未提供文字说明"),
+		defaultString(strings.TrimSpace(string(processEventsJSON)), "[]"),
+	), nil
 }
 
 // buildQuizExplainSystemPrompt 构造答案解析系统提示词。
@@ -258,6 +361,29 @@ func buildQuizExplainUserPrompt(questionTitle string, questionContent string, co
 // buildQuizHintSystemPrompt 构造答题提示系统提示词。
 func buildQuizHintSystemPrompt(basePrompt string) string {
 	return mergePrompt(basePrompt, "请给出 2 到 4 条循序渐进的提示，不要直接泄露答案。")
+}
+
+// normalizeInterviewCodingDiagnosis 规范化编程面试诊断结构。
+func normalizeInterviewCodingDiagnosis(payload interviewCodingDiagnosisPayload, input ai.InterviewCodingDiagnosisInput) ai.CodingQuestionDiagnosis {
+	score := 0.0
+	if payload.Score != nil {
+		score = clampScore(*payload.Score)
+	}
+
+	processSummary := strings.TrimSpace(payload.ProcessSummary)
+	if processSummary == "" {
+		processSummary = "本次编程作答已记录，但模型未返回过程总结。"
+	}
+
+	return ai.CodingQuestionDiagnosis{
+		Language:       defaultString(strings.TrimSpace(input.Language), "go"),
+		Score:          score,
+		MistakeTags:    normalizeStringSlice(payload.MistakeTags),
+		StrengthTags:   normalizeStringSlice(payload.StrengthTags),
+		Evidence:       normalizeStringSlice(payload.Evidence),
+		Suggestions:    normalizeStringSlice(payload.Suggestions),
+		ProcessSummary: processSummary,
+	}
 }
 
 // buildQuizHintUserPrompt 构造答题提示请求。
@@ -290,6 +416,12 @@ func normalizeQuizAnalysis(payload quizAnalysisPayload, code string, language st
 	}
 	if improvements := normalizeStringSlice(payload.Improvements); len(improvements) > 0 {
 		result.Improvements = improvements
+	}
+	if mistakeTags := normalizeStringSlice(payload.MistakeTags); len(mistakeTags) > 0 {
+		result.MistakeTags = mistakeTags
+	}
+	if strengthTags := normalizeStringSlice(payload.StrengthTags); len(strengthTags) > 0 {
+		result.StrengthTags = strengthTags
 	}
 	if complexity := strings.TrimSpace(payload.TimeComplexity); complexity != "" {
 		result.TimeComplexity = complexity
@@ -337,15 +469,21 @@ func buildDefaultQuizAnalysis(code string, language string, question string) ai.
 	timeComplexity, spaceComplexity := inferComplexity(question, trimmed)
 	issues := []string{"可以进一步补充边界情况、关键判断或复杂度说明。"}
 	improvements := []string{"建议按“思路 -> 关键步骤 -> 结果”组织答案，提高可读性。"}
+	mistakeTags := []string{"边界条件生疏"}
+	strengthTags := []string{"具备基础解题表达"}
 
 	if trimmed == "" {
 		issues = []string{"当前没有提供答案，无法判断解题思路是否正确。"}
 		improvements = []string{"建议先给出核心思路或伪代码，再逐步完善实现细节。"}
+		mistakeTags = []string{"代码实现不完整"}
+		strengthTags = []string{}
 	}
 
 	if isCodeAnswer {
 		issues = []string{"代码答案建议补充边界处理、复杂度说明或关键设计理由。"}
 		improvements = []string{"建议补充注释或解释，说明为何这样设计以及复杂度如何。"}
+		mistakeTags = []string{"边界条件生疏", "复杂度意识薄弱"}
+		strengthTags = []string{"愿意直接给出实现"}
 	}
 
 	return ai.CodeAnalysis{
@@ -354,6 +492,8 @@ func buildDefaultQuizAnalysis(code string, language string, question string) ai.
 		Feedback:        buildDefaultQuizFeedback(trimmed, isCodeAnswer),
 		Issues:          issues,
 		Improvements:    improvements,
+		MistakeTags:     mistakeTags,
+		StrengthTags:    strengthTags,
 		TimeComplexity:  timeComplexity,
 		SpaceComplexity: spaceComplexity,
 	}

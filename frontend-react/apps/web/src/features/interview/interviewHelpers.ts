@@ -282,6 +282,10 @@ export function resolveCurrentInterviewQuestion(detail: InterviewDetailResponse 
     return null
   }
 
+  if (detail.current_question) {
+    return detail.current_question
+  }
+
   const answeredCount = countInterviewAnswers(detail.messages)
   if (answeredCount >= detail.total_questions) {
     return null
@@ -295,7 +299,7 @@ export function resolveCurrentInterviewQuestion(detail: InterviewDetailResponse 
     return null
   }
 
-  return {
+  return latestQuestionMessage.question || {
     question: latestQuestionMessage.content,
     topic: '',
     difficulty: '',
@@ -329,7 +333,7 @@ export function resolveCurrentInterviewQuestionFromMessages(
     return null
   }
 
-  return {
+  return latestQuestionMessage.question || {
     question: latestQuestionMessage.content,
     topic: '',
     difficulty: '',
@@ -353,11 +357,17 @@ export function buildInterviewWebSocketUrl(interviewId: string, token: string): 
 /**
  * 构造一条前台本地即时消息，统一实时链路与 HTTP 回退链路的数据结构。
  */
-export function buildRealtimeInterviewMessage(role: string, messageType: string, content: string): InterviewMessage {
+export function buildRealtimeInterviewMessage(
+  role: string,
+  messageType: string,
+  content: string,
+  question?: InterviewQuestion | null,
+): InterviewMessage {
   return {
     role,
     message_type: messageType,
     content,
+    question,
     created_at: new Date().toISOString(),
   }
 }

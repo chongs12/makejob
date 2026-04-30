@@ -3,6 +3,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -30,6 +31,9 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 	if public != nil {
 		public.GET("/questions", h.ListQuestions)
 		public.GET("/questions/:id", h.GetQuestion)
+		public.GET("/question-sets", h.ListQuestionSets)
+		public.GET("/mistake-topics", h.ListMistakeTopics)
+		public.GET("/mistake-topics/:code", h.GetMistakeTopic)
 		public.GET("/industries", h.ListIndustries)
 		public.GET("/categories", h.GetCategories)
 	}
@@ -48,6 +52,7 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 		protected.PUT("/user/notes/:id", h.UpdateNote)
 		protected.DELETE("/user/notes/:id", h.DeleteNote)
 		protected.GET("/user/practice-stats", h.GetPracticeStats)
+		protected.GET("/user/practice-recommendations", h.GetPracticeRecommendations)
 
 		// 考试相关
 		protected.POST("/exams/random", h.GenerateRandomExam)
@@ -144,6 +149,97 @@ func (h *QuestionHandler) GetQuestion(c *gin.Context) {
 	}
 
 	common.Success(c, question)
+}
+
+// ListQuestionSets 获取当前行业下的核心题单摘要。
+// @Summary 获取核心题单摘要
+// @Description 返回题库首页可直接展示的核心题单及题目预览
+// @Tags 题库
+// @Accept json
+// @Produce json
+// @Param industry_id query int false "行业ID"
+// @Success 200 {object} common.Response{data=[]service.QuestionSetSummary}
+// @Router /api/question-sets [get]
+func (h *QuestionHandler) ListQuestionSets(c *gin.Context) {
+	var industryID uint
+	if industryIDStr := c.Query("industry_id"); industryIDStr != "" {
+		id, err := strconv.ParseUint(industryIDStr, 10, 32)
+		if err != nil {
+			common.BadRequest(c, "无效的行业ID")
+			return
+		}
+		industryID = uint(id)
+	}
+
+	sets, err := h.questionService.ListQuestionSets(c.Request.Context(), industryID)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取核心题单失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, sets)
+}
+
+// ListMistakeTopics 获取错因专题卡片列表。
+// @Summary 获取错因专题列表
+// @Description 返回全部错因专题，或按 codes 参数筛选指定专题
+// @Tags 题库
+// @Accept json
+// @Produce json
+// @Param codes query string false "专题编码列表，逗号分隔"
+// @Success 200 {object} common.Response{data=[]service.MistakeTopicCard}
+// @Router /api/mistake-topics [get]
+func (h *QuestionHandler) ListMistakeTopics(c *gin.Context) {
+	rawCodes := strings.TrimSpace(c.Query("codes"))
+	codes := make([]string, 0)
+	if rawCodes != "" {
+		for _, part := range strings.Split(rawCodes, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			codes = append(codes, trimmed)
+		}
+	}
+
+	topics, err := h.questionService.ListMistakeTopics(c.Request.Context(), codes)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取错因专题列表失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, topics)
+}
+
+// GetMistakeTopic 获取单个错因专题详情。
+// @Summary 获取错因专题详情
+// @Description 根据专题编码返回专题详情
+// @Tags 题库
+// @Accept json
+// @Produce json
+// @Param code path string true "专题编码"
+// @Success 200 {object} common.Response{data=service.MistakeTopicCard}
+// @Router /api/mistake-topics/{code} [get]
+func (h *QuestionHandler) GetMistakeTopic(c *gin.Context) {
+	topic, err := h.questionService.GetMistakeTopic(c.Request.Context(), c.Param("code"))
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取错因专题失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, topic)
 }
 
 // ListIndustries 获取行业列表
@@ -625,4 +721,56 @@ func (h *QuestionHandler) GetPracticeStats(c *gin.Context) {
 	}
 
 	common.Success(c, stats)
+}
+
+// GetPracticeRecommendations 获取对症练习推荐。
+// @Summary 获取对症练习推荐
+// @Description 基于最近学习档案中的错因标签返回推荐练习题
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param limit query int false "返回题目数量，默认6"
+// @Param interview_id query int false "仅按指定面试关联的学习档案生成推荐"
+// @Success 200 {object} common.Response{data=service.PracticeRecommendationResponse}
+// @Router /api/user/practice-recommendations [get]
+func (h *QuestionHandler) GetPracticeRecommendations(c *gin.Context) {
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		common.Unauthorized(c, "未登录")
+		return
+	}
+
+	limit := 6
+	if limitValue := c.Query("limit"); limitValue != "" {
+		parsedLimit, err := strconv.Atoi(limitValue)
+		if err != nil {
+			common.BadRequest(c, "无效的 limit 参数")
+			return
+		}
+		limit = parsedLimit
+	}
+
+	var interviewID *uint
+	if interviewIDValue := c.Query("interview_id"); interviewIDValue != "" {
+		parsedInterviewID, err := strconv.ParseUint(interviewIDValue, 10, 32)
+		if err != nil {
+			common.BadRequest(c, "无效的 interview_id 参数")
+			return
+		}
+		value := uint(parsedInterviewID)
+		interviewID = &value
+	}
+
+	result, err := h.questionService.GetPracticeRecommendations(c.Request.Context(), userID, interviewID, limit)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取练习推荐失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, result)
 }

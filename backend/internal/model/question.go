@@ -19,17 +19,19 @@ const (
 // Question 题目表
 type Question struct {
 	BaseModel
-	CategoryID  uint   `json:"category_id" gorm:"not null;index;comment:分类ID"`
-	IndustryID  uint   `json:"industry_id" gorm:"not null;index;comment:行业ID"`
-	Type        string `json:"type" gorm:"size:20;not null;comment:题目类型(choice/multi/code/subjective)"`
-	Difficulty  string `json:"difficulty" gorm:"size:10;not null;default:'medium';comment:难度(easy/medium/hard)"`
-	Title       string `json:"title" gorm:"size:500;not null;comment:题目标题"`
-	Content     string `json:"content" gorm:"type:text;not null;comment:题目内容"`
-	OptionsJSON string `json:"options_json,omitempty" gorm:"type:text;comment:选择题选项JSON字符串"`
-	Answer      string `json:"answer" gorm:"type:text;not null;comment:答案"`
-	Explanation string `json:"explanation" gorm:"type:text;comment:答案解析"`
-	Tags        string `json:"tags" gorm:"size:500;comment:标签，逗号分隔"`
-	IsActive    bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`
+	CategoryID         uint   `json:"category_id" gorm:"not null;index;comment:分类ID"`
+	IndustryID         uint   `json:"industry_id" gorm:"not null;index;comment:行业ID"`
+	Type               string `json:"type" gorm:"size:20;not null;comment:题目类型(choice/multi/code/subjective)"`
+	Difficulty         string `json:"difficulty" gorm:"size:10;not null;default:'medium';comment:难度(easy/medium/hard)"`
+	Title              string `json:"title" gorm:"size:500;not null;comment:题目标题"`
+	Content            string `json:"content" gorm:"type:text;not null;comment:题目内容"`
+	OptionsJSON        string `json:"options_json,omitempty" gorm:"type:text;comment:选择题选项JSON字符串"`
+	Answer             string `json:"answer" gorm:"type:text;not null;comment:答案"`
+	Explanation        string `json:"explanation" gorm:"type:text;comment:答案解析"`
+	SolutionJSON       string `json:"solution_json,omitempty" gorm:"type:text;comment:结构化解题解析JSON"`
+	AnswerTemplateJSON string `json:"answer_template_json,omitempty" gorm:"type:text;comment:主观题参考回答模板JSON"`
+	Tags               string `json:"tags" gorm:"size:500;comment:标签，逗号分隔"`
+	IsActive           bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`
 
 	// 关联关系
 	Category Category `json:"category,omitempty" gorm:"foreignKey:CategoryID"`

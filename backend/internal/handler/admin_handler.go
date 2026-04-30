@@ -37,6 +37,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// 题库管理
 	r.GET("/questions", h.ListQuestions)
+	r.GET("/questions/tag-taxonomy", h.GetQuestionTagTaxonomy)
 	r.POST("/questions", h.CreateQuestion)
 	r.PUT("/questions/:id", h.UpdateQuestion)
 	r.DELETE("/questions/:id", h.DeleteQuestion)
@@ -245,6 +246,29 @@ func (h *AdminHandler) ListQuestions(c *gin.Context) {
 			common.Error(c, businessErr.Code, businessErr.Message)
 		} else {
 			common.InternalError(c, "获取题库列表失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, result)
+}
+
+// GetQuestionTagTaxonomy 获取后台题库管理使用的标准标签词典。
+// @Summary 获取题目标签词典
+// @Description 返回后台题目维护可复用的标准标签分组和说明
+// @Tags 管理后台-题库管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} common.Response{data=[]service.QuestionTagTaxonomyGroup}
+// @Router /api/admin/questions/tag-taxonomy [get]
+func (h *AdminHandler) GetQuestionTagTaxonomy(c *gin.Context) {
+	result, err := h.adminService.GetQuestionTagTaxonomy(c.Request.Context())
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取题目标签词典失败: "+err.Error())
 		}
 		return
 	}

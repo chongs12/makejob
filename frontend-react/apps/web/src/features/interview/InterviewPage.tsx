@@ -13,6 +13,7 @@ import {
   fetchNextInterviewQuestion,
   finishInterviewRequest,
   submitInterviewAnswer,
+  type SubmitInterviewAnswerPayload,
 } from './interviewApi'
 import {
   appendInterviewMessage,
@@ -41,6 +42,7 @@ import {
 import type {
   InterviewAnswerResponse,
   InterviewConfigForm,
+  InterviewCodingProcessEvent,
   InterviewDetailResponse,
   InterviewFeedback,
   InterviewHistoryItem,
@@ -72,6 +74,8 @@ import {
 } from '../../shared/companionContext'
 import { persistCommunityDraft } from '../../shared/communityDraft'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
+import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
+import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
 import { persistPendingPracticeSearch } from '../../shared/practiceSearch'
 
 /**
@@ -428,6 +432,10 @@ export function InterviewSessionPage() {
   const [mouthOpen, setMouthOpen] = useState(0)
   const [recognitionPartial, setRecognitionPartial] = useState('')
   const [recognitionFinal, setRecognitionFinal] = useState('')
+  const [codingLanguage, setCodingLanguage] = useState('go')
+  const [codeContent, setCodeContent] = useState('')
+  const [codingRunMessage, setCodingRunMessage] = useState('编程题模式下可以先运行记录过程，再提交最终代码。')
+  const [codingEventCount, setCodingEventCount] = useState(0)
   const [wsTraceId, setWsTraceId] = useState('')
   const [wsConnected, setWsConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -445,6 +453,13 @@ export function InterviewSessionPage() {
   const recordSilenceTimeoutRef = useRef<number | null>(null)
   const recordSpeechDetectedRef = useRef(false)
   const recordStopRequestedRef = useRef(false)
+  const editorContainerRef = useRef<HTMLDivElement | null>(null)
+  const editorInstanceRef = useRef<any>(null)
+  const monacoRef = useRef<any>(null)
+  const codingEventsRef = useRef<InterviewCodingProcessEvent[]>([])
+  const lastCodingSnapshotRef = useRef('')
+  const codingSnapshotTimerRef = useRef<number | null>(null)
+  const codingIdleTimerRef = useRef<number | null>(null)
 
   const detailQuery = useQuery({
     queryKey: ['interview-detail', accessToken, interviewId],
@@ -454,11 +469,12 @@ export function InterviewSessionPage() {
     refetchOnWindowFocus: false,
   })
   const submitMutation = useMutation({
-    mutationFn: (content: string) => submitInterviewAnswer(accessToken as string, interviewId, content),
+    mutationFn: (payload: SubmitInterviewAnswerPayload) => submitInterviewAnswer(accessToken as string, interviewId, payload),
     onSuccess: async (data) => {
       setAnswer('')
       setRecognitionFinal('')
       setRecognitionPartial('')
+      setCodingRunMessage('本题提交完成，正在等待下一题或生成报告。')
       setMessage(data.is_finished ? '本场面试题目已完成，建议现在生成报告。' : '答案已提交，下一题已准备好。')
       await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
       await queryClient.invalidateQueries({ queryKey: ['interview-history'] })
@@ -506,6 +522,7 @@ export function InterviewSessionPage() {
     () => resolveCurrentInterviewQuestionFromMessages(effectiveMessages, effectiveStatus, detailQuery.data?.total_questions || 0),
     [detailQuery.data?.total_questions, effectiveMessages, effectiveStatus],
   )
+  const isCodingQuestion = currentQuestion?.type === 'coding'
   const sessionIndustryCode = detailQuery.data?.industry_code || readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE
   const canRecord = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
   /**
@@ -533,6 +550,223 @@ export function InterviewSessionPage() {
       stopDialogueTyping(restoredQuestion.question)
     }
   }, [detailQuery.data])
+
+  /**
+   * 向当前编程题过程缓存中追加一条事件，并同步刷新界面上的事件数量。
+   */
+  function appendCodingProcessEvent(type: string, payload?: Record<string, unknown>): void {
+    if (!isCodingQuestion) {
+      return
+    }
+
+    codingEventsRef.current = [
+      ...codingEventsRef.current,
+      {
+        type,
+        timestamp_ms: Date.now(),
+        payload,
+      },
+    ]
+    setCodingEventCount(codingEventsRef.current.length)
+  }
+
+  /**
+   * 清理代码快照和长停顿检测定时器，避免旧题目状态影响当前题目。
+   */
+  function clearCodingTimers(): void {
+    if (codingSnapshotTimerRef.current !== null) {
+      window.clearTimeout(codingSnapshotTimerRef.current)
+      codingSnapshotTimerRef.current = null
+    }
+    if (codingIdleTimerRef.current !== null) {
+      window.clearTimeout(codingIdleTimerRef.current)
+      codingIdleTimerRef.current = null
+    }
+  }
+
+  /**
+   * 以当前题目元数据重置编程题编辑状态，保证切题后不会残留上一题过程数据。
+   */
+  function resetCodingWorkspace(question: InterviewQuestion | null): void {
+    const nextLanguage = question?.language || 'go'
+    const nextCode = question?.starter_code || ''
+    codingEventsRef.current = []
+    lastCodingSnapshotRef.current = nextCode.trim()
+    setCodingEventCount(0)
+    setCodingLanguage(nextLanguage)
+    setCodeContent(nextCode)
+    setCodingRunMessage(
+      question
+        ? '编程题模式已准备好，可以先运行记录过程，再提交最终代码。'
+        : '当前不是编程题。',
+    )
+
+    if (editorInstanceRef.current && editorInstanceRef.current.getValue() !== nextCode) {
+      editorInstanceRef.current.setValue(nextCode)
+    }
+  }
+
+  /**
+   * 在进入或切换编程题时同步编辑器语言与默认模板。
+   */
+  useEffect(() => {
+    clearCodingTimers()
+    if (!isCodingQuestion) {
+      resetCodingWorkspace(null)
+      return
+    }
+
+    resetCodingWorkspace(currentQuestion)
+  }, [currentQuestion?.question, currentQuestion?.language, currentQuestion?.starter_code, isCodingQuestion])
+
+  /**
+   * 初始化编程题编辑器实例，并把内容变化同步回页面状态。
+   */
+  useEffect(() => {
+    if (!isCodingQuestion || !editorContainerRef.current) {
+      if (editorInstanceRef.current) {
+        editorInstanceRef.current.dispose()
+        editorInstanceRef.current = null
+      }
+      return undefined
+    }
+
+    let disposed = false
+
+    async function initializeEditor(): Promise<void> {
+      if (!editorContainerRef.current || editorInstanceRef.current) {
+        return
+      }
+
+      const loader = await import('@monaco-editor/loader')
+      const monaco = await loader.default.init()
+      if (disposed || !editorContainerRef.current) {
+        return
+      }
+
+      monacoRef.current = monaco
+      editorInstanceRef.current = monaco.editor.create(editorContainerRef.current, {
+        value: codeContent || currentQuestion?.starter_code || '',
+        language: codingLanguage,
+        theme: 'vs-dark',
+        fontSize: 14,
+        minimap: { enabled: false },
+        automaticLayout: true,
+        scrollBeyondLastLine: false,
+        lineNumbers: 'on',
+        tabSize: 2,
+      })
+      editorInstanceRef.current.onDidChangeModelContent(() => {
+        setCodeContent(editorInstanceRef.current.getValue())
+      })
+    }
+
+    void initializeEditor()
+
+    return () => {
+      disposed = true
+      if (editorInstanceRef.current) {
+        editorInstanceRef.current.dispose()
+        editorInstanceRef.current = null
+      }
+    }
+  }, [currentQuestion?.question, codingLanguage, codeContent, isCodingQuestion])
+
+  /**
+   * 切换编程题语言高亮时同步更新 Monaco 模型语言。
+   */
+  useEffect(() => {
+    if (!isCodingQuestion || !editorInstanceRef.current?.getModel() || !monacoRef.current) {
+      return
+    }
+
+    monacoRef.current.editor.setModelLanguage(editorInstanceRef.current.getModel(), codingLanguage)
+  }, [codingLanguage, isCodingQuestion])
+
+  /**
+   * 以节流方式写入代码快照事件，避免每次按键都形成冗余过程记录。
+   */
+  useEffect(() => {
+    if (!isCodingQuestion) {
+      return
+    }
+
+    if (codingSnapshotTimerRef.current !== null) {
+      window.clearTimeout(codingSnapshotTimerRef.current)
+    }
+    codingSnapshotTimerRef.current = window.setTimeout(() => {
+      const normalizedCode = codeContent.trim()
+      if (!normalizedCode || normalizedCode === lastCodingSnapshotRef.current) {
+        return
+      }
+
+      appendCodingProcessEvent('code_snapshot', {
+        code: codeContent,
+        line_count: codeContent.split('\n').length,
+        language: codingLanguage,
+      })
+      lastCodingSnapshotRef.current = normalizedCode
+    }, 900)
+
+    return () => {
+      if (codingSnapshotTimerRef.current !== null) {
+        window.clearTimeout(codingSnapshotTimerRef.current)
+        codingSnapshotTimerRef.current = null
+      }
+    }
+  }, [codeContent, codingLanguage, isCodingQuestion])
+
+  /**
+   * 记录编程题长停顿事件，用于后端后续分析候选人在关键节点的卡顿情况。
+   */
+  useEffect(() => {
+    if (!isCodingQuestion || detailQuery.data?.status !== 'ongoing') {
+      return
+    }
+
+    if (codingIdleTimerRef.current !== null) {
+      window.clearTimeout(codingIdleTimerRef.current)
+    }
+    codingIdleTimerRef.current = window.setTimeout(() => {
+      appendCodingProcessEvent('idle_timeout', {
+        idle_ms: 30000,
+        language: codingLanguage,
+      })
+      setCodingRunMessage('已记录一次较长停顿，继续编码或运行后再提交。')
+    }, 30000)
+
+    return () => {
+      if (codingIdleTimerRef.current !== null) {
+        window.clearTimeout(codingIdleTimerRef.current)
+        codingIdleTimerRef.current = null
+      }
+    }
+  }, [codeContent, codingLanguage, detailQuery.data?.status, isCodingQuestion])
+
+  /**
+   * 记录一次本地“运行代码”动作；当前版本未接真实判题器，只采集过程数据并给出占位反馈。
+   */
+  function handleRunCodingQuestion(): void {
+    if (!isCodingQuestion) {
+      return
+    }
+
+    if (!codeContent.trim()) {
+      setCodingRunMessage('请先输入代码，再记录运行过程。')
+      return
+    }
+
+    appendCodingProcessEvent('run_code', {
+      language: codingLanguage,
+      code: codeContent,
+    })
+    appendCodingProcessEvent('run_result', {
+      has_error: false,
+      status: 'recorded_only',
+      stdout: '当前版本尚未接真实判题器，本次运行仅用于记录过程数据。',
+    })
+    setCodingRunMessage('已记录一次运行过程；首版暂不执行真实代码。')
+  }
 
   /**
    * 停止当前字幕动画，并按需将字幕直接收敛到目标文本。
@@ -911,7 +1145,17 @@ export function InterviewSessionPage() {
 
             startDialogueTyping(questionText)
             setRuntimeMessages((current) =>
-              appendInterviewMessage(current, buildRealtimeInterviewMessage('ai', 'text', questionText)),
+              appendInterviewMessage(current, buildRealtimeInterviewMessage('ai', 'text', questionText, questionPayload ? {
+                question: questionText,
+                topic: '',
+                difficulty: '',
+                type: questionPayload.type || 'technical',
+                hints: questionPayload.hints,
+                language: questionPayload.language,
+                starter_code: questionPayload.starter_code,
+                editor_mode: questionPayload.editor_mode,
+                evaluation_mode: questionPayload.evaluation_mode,
+              } : null)),
             )
             break
           }
@@ -980,6 +1224,7 @@ export function InterviewSessionPage() {
    */
   useEffect(() => {
     return () => {
+      clearCodingTimers()
       stopCurrentPlayback()
       stopVoiceCapture('cleanup')
     }
@@ -992,6 +1237,37 @@ export function InterviewSessionPage() {
     event.preventDefault()
 
     const content = answer.trim()
+    const finalCode = codeContent.trim()
+    if (isCodingQuestion) {
+      if (!finalCode) {
+        setMessage('编程题需要先填写最终代码。')
+        return
+      }
+
+      const processEvents = [
+        ...codingEventsRef.current,
+        {
+          type: 'submit_code',
+          timestamp_ms: Date.now(),
+          payload: {
+            language: codingLanguage,
+            code: codeContent,
+            note: content,
+          },
+        },
+      ]
+
+      setMessage('编程题将通过 HTTP 提交完整过程数据并生成后续题目。')
+      await submitMutation.mutateAsync({
+        answer: content,
+        final_code: codeContent,
+        language: codingLanguage,
+        question_type: currentQuestion?.type,
+        process_events: processEvents,
+      })
+      return
+    }
+
     if (!content) {
       setMessage('先输入你的回答，再提交给 AI 面试官。')
       return
@@ -1015,7 +1291,9 @@ export function InterviewSessionPage() {
     }
 
     setMessage('当前实时链路未连接，本次将走 HTTP 回退模式；该模式只返回文本，不会触发 TTS 语音。')
-    await submitMutation.mutateAsync(content)
+    await submitMutation.mutateAsync({
+      answer: content,
+    })
   }
 
   return (
@@ -1052,11 +1330,46 @@ export function InterviewSessionPage() {
                 {recognitionPartial ? <p className="interview-answer-status-secondary">实时识别：{recognitionPartial}</p> : null}
                 {recognitionFinal ? <p className="interview-answer-status-secondary">识别结果：{recognitionFinal}</p> : null}
               </div>
+              {isCodingQuestion ? (
+                <div className="timeline-item">
+                  <strong>编程题工作区</strong>
+                  <p>
+                    当前语言：{codingLanguage}
+                    {currentQuestion?.hints ? ` · 提示：${currentQuestion.hints}` : ''}
+                  </p>
+                  <div
+                    ref={editorContainerRef}
+                    style={{
+                      minHeight: 320,
+                      width: '100%',
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  />
+                  <div className="page-actions" style={{ marginTop: 12 }}>
+                    <button className="secondary-button" type="button" onClick={handleRunCodingQuestion}>
+                      运行并记录过程
+                    </button>
+                    <label className="field" style={{ minWidth: 160 }}>
+                      <span>代码语言</span>
+                      <select value={codingLanguage} onChange={(event) => setCodingLanguage(event.target.value)}>
+                        <option value="go">Go</option>
+                        <option value="java">Java</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="interview-answer-status-secondary">{codingRunMessage}</p>
+                  <p className="interview-answer-status-secondary">当前已记录 {codingEventCount} 条过程事件。</p>
+                </div>
+              ) : null}
               <textarea
                 rows={7}
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
-                placeholder="直接输入你的回答。建议先说思路，再补关键点、权衡和落地细节。"
+                placeholder={isCodingQuestion ? '可选：补充你的解题思路、复杂度权衡或边界条件说明。' : '直接输入你的回答。建议先说思路，再补关键点、权衡和落地细节。'}
                 disabled={detailQuery.data?.status !== 'ongoing'}
               />
               <div className="interview-answer-actions">
@@ -1071,7 +1384,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={!canRecord}
+                    disabled={!canRecord || isCodingQuestion}
                     onClick={() => {
                       if (isRecording) {
                         stopVoiceCapture()
@@ -1103,7 +1416,7 @@ export function InterviewSessionPage() {
                     type="submit"
                     disabled={isRecording || submitMutation.isPending || detailQuery.data?.status !== 'ongoing'}
                   >
-                    {submitMutation.isPending ? '提交中...' : '手动提交答案'}
+                    {submitMutation.isPending ? '提交中...' : (isCodingQuestion ? '提交代码与过程数据' : '手动提交答案')}
                   </button>
                 </div>
               </div>
@@ -1209,16 +1522,40 @@ export function InterviewReportPage() {
     [industriesQuery.data, reportIndustryCode],
   )
   const reportIndustryLabel = formatFrontendIndustryLabel(reportIndustry, reportIndustryCode)
+  const numericInterviewId = Number(interviewId)
   const report = reportQuery.data?.report || null
   const reportDuration = reportQuery.data?.duration_seconds || 0
   const reportCompletedAt = reportQuery.data?.completed_at
   const dimensionItems = useMemo(() => normalizeInterviewDimensions(report), [report])
   const strongestDimensions = dimensionItems.slice(0, 3)
   const weakestDimensions = [...dimensionItems].reverse().slice(0, 3)
+  const codingDiagnostics = report?.coding_diagnostics || []
+  const codingMistakeTags = useMemo(
+    () => Array.from(new Set(codingDiagnostics.flatMap((item) => item.mistake_tags || []))),
+    [codingDiagnostics],
+  )
   const replayItems = useMemo(() => buildInterviewReplayItems(detailQuery.data?.messages || []), [detailQuery.data?.messages])
   const readiness = buildInterviewReadiness(report?.overall_score || 0)
-  const primaryWeakKeyword = weakestDimensions[0]?.label || report?.weaknesses?.[0] || ''
+  const primaryWeakKeyword = codingMistakeTags[0] || weakestDimensions[0]?.label || report?.weaknesses?.[0] || ''
   const reviewDraft = report ? buildInterviewReviewDraft(report, detailQuery.data, reportIndustryLabel) : null
+  const practiceRecommendationsQuery = useQuery({
+    queryKey: ['interview-practice-recommendations', accessToken, interviewId],
+    queryFn: () => fetchPracticeRecommendations(accessToken as string, 4, numericInterviewId),
+    enabled: Boolean(accessToken && Number.isFinite(numericInterviewId) && numericInterviewId > 0),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const mistakeTopicsQuery = useQuery({
+    queryKey: ['interview-mistake-topics'],
+    queryFn: () => fetchMistakeTopics([]),
+    enabled: Boolean(codingMistakeTags.length),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+  const codingMistakeTopics = useMemo(
+    () => pickMistakeTopicsByTags(codingMistakeTags, mistakeTopicsQuery.data || []),
+    [codingMistakeTags, mistakeTopicsQuery.data],
+  )
 
   /**
    * 订阅前台行业偏好变化，让报告页在同页切换方向后也能同步显示最新名称。
@@ -1308,6 +1645,7 @@ export function InterviewReportPage() {
         summary: report.summary || '',
         readinessLabel: readiness.label,
         weakTopics: [
+          ...codingMistakeTags,
           ...weakestDimensions.map((item) => item.label),
           ...(report.weaknesses || []),
         ],
@@ -1410,6 +1748,95 @@ export function InterviewReportPage() {
                 <strong>总结</strong>
                 <p>{report.summary || '当前报告未生成总结。'}</p>
               </div>
+
+              {codingDiagnostics.length ? (
+                <article className="timeline-item">
+                  <strong>编程题过程诊断</strong>
+                  <div className="interview-report-sections">
+                    {codingDiagnostics.map((item) => (
+                      <article className="timeline-item" key={`coding-diagnosis-${item.question_index}`}>
+                        <strong>第 {item.question_index + 1} 题 · {item.language || '未标注语言'} · {Math.round(item.score || 0)} 分</strong>
+                        <p>{item.process_summary || '当前没有返回过程总结。'}</p>
+                        <p>错因标签：{item.mistake_tags?.length ? item.mistake_tags.join('、') : '暂无'}</p>
+                        <p>优势标签：{item.strength_tags?.length ? item.strength_tags.join('、') : '暂无'}</p>
+                        <p>证据摘要：{item.evidence?.length ? item.evidence.join('；') : '暂无'}</p>
+                        <p>建议动作：{item.suggestions?.length ? item.suggestions.join('；') : '暂无'}</p>
+                      </article>
+                    ))}
+                  </div>
+                </article>
+              ) : null}
+
+              {codingMistakeTopics.length ? (
+                <article className="timeline-item">
+                  <strong>错因专题卡</strong>
+                  <div className="interview-report-sections" style={{ marginTop: 16 }}>
+                    {codingMistakeTopics.map((topic) => (
+                      <article className="timeline-item" key={topic.code}>
+                        <strong>{topic.title}</strong>
+                        <p>{topic.problem_pattern}</p>
+                        <div className="page-actions">
+                          <Link
+                            className="secondary-link"
+                            to={resolveMistakeTopicRoute()}
+                            params={{ topicCode: topic.code }}
+                          >
+                            打开专题
+                          </Link>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </article>
+              ) : null}
+
+              <article className="timeline-item">
+                <strong>针对这场面试的补题建议</strong>
+                {practiceRecommendationsQuery.isLoading ? <p>正在生成面向本场面试的补题建议...</p> : null}
+                {practiceRecommendationsQuery.isError ? (
+                  <p>{extractErrorMessage(practiceRecommendationsQuery.error, '补题建议加载失败')}</p>
+                ) : null}
+                {practiceRecommendationsQuery.data?.focus_tags.length ? (
+                  <div className="community-tag-row" style={{ marginTop: 12 }}>
+                    {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {practiceRecommendationsQuery.data?.items.length ? (
+                  <div className="interview-report-sections" style={{ marginTop: 16 }}>
+                    {practiceRecommendationsQuery.data.items.map((item) => (
+                      <article className="timeline-item" key={`interview-practice-recommendation-${item.question.id}`}>
+                        <strong>{item.question.title}</strong>
+                        <p>聚焦标签：{item.focus_tag}</p>
+                        <p>{item.reason}</p>
+                        <p>推荐优先级：第 {item.priority} 位</p>
+                        <div className="page-actions">
+                          <Link
+                            className="secondary-link"
+                            to={resolvePracticeRecommendationRoute(item.question.type)}
+                            params={{ questionId: String(item.question.id) }}
+                          >
+                            直接去补这题
+                          </Link>
+                          {item.topic_code ? (
+                            <Link
+                              className="secondary-link"
+                              to={resolveMistakeTopicRoute()}
+                              params={{ topicCode: item.topic_code }}
+                            >
+                              查看错因专题
+                            </Link>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+                {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
+                  <p>当前这场面试还没有形成足够明确的补题推荐，可以先按弱项关键词去题库继续搜索练习。</p>
+                ) : null}
+              </article>
 
               <div className="interview-report-sections">
                 <article className="timeline-item">

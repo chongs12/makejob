@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,11 +31,38 @@ type SubmitAnswerResponse struct {
 	AIAnalysis    string `json:"ai_analysis,omitempty"`
 }
 
+// PracticeRecommendationItem 表示一条对症练习推荐结果。
+type PracticeRecommendationItem struct {
+	Question        QuestionDetail `json:"question"`
+	FocusTag        string         `json:"focus_tag"`
+	TopicCode       string         `json:"topic_code,omitempty"`
+	Reason          string         `json:"reason"`
+	SourceType      string         `json:"source_type"`
+	Priority        int            `json:"priority"`
+	OccurrenceCount int            `json:"occurrence_count"`
+}
+
+// PracticeRecommendationResponse 表示当前用户基于学习档案生成的推荐题单。
+type PracticeRecommendationResponse struct {
+	FocusTags []string                     `json:"focus_tags"`
+	Items     []PracticeRecommendationItem `json:"items"`
+}
+
+// practiceFocusTagStat 描述学习档案中某个高频错因标签的统计结果。
+type practiceFocusTagStat struct {
+	Tag       string
+	Count     int
+	TopicCode string
+}
+
 // QuestionDetail 题目详情DTO
 type QuestionDetail struct {
 	model.Question
-	IsFavorited bool            `json:"is_favorited"`
-	UserNote    *model.UserNote `json:"user_note,omitempty"`
+	IsFavorited    bool                        `json:"is_favorited"`
+	UserNote       *model.UserNote             `json:"user_note,omitempty"`
+	TagList        []string                    `json:"tag_list"`
+	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
 }
 
 // RandomExamRequest 随机组卷请求DTO
@@ -141,17 +169,22 @@ type QuestionService interface {
 
 	// 统计
 	GetPracticeStats(ctx context.Context, userID uint) (*UserPracticeStats, error)
+	GetPracticeRecommendations(ctx context.Context, userID uint, interviewID *uint, limit int) (*PracticeRecommendationResponse, error)
+	ListQuestionSets(ctx context.Context, industryID uint) ([]QuestionSetSummary, error)
+	ListMistakeTopics(ctx context.Context, codes []string) ([]MistakeTopicCard, error)
+	GetMistakeTopic(ctx context.Context, code string) (*MistakeTopicCard, error)
 }
 
 // questionService 题目服务实现
 type questionService struct {
-	questionRepo QuestionRepository
-	categoryRepo CategoryRepository
-	recordRepo   QuestionRecordRepository
-	favoriteRepo FavoriteRepository
-	noteRepo     NoteRepository
-	quizAnalyzer ai.QuizAnalyzer
-	industryRepo repository.IndustryRepository
+	questionRepo        QuestionRepository
+	categoryRepo        CategoryRepository
+	recordRepo          QuestionRecordRepository
+	favoriteRepo        FavoriteRepository
+	noteRepo            NoteRepository
+	quizAnalyzer        ai.QuizAnalyzer
+	learningArchiveRepo repository.LearningArchiveRepository
+	industryRepo        repository.IndustryRepository
 }
 
 // QuestionRepository 题目仓库接口 (本地定义，避免循环导入)
@@ -219,15 +252,17 @@ func NewQuestionService(
 	favoriteRepo repository.FavoriteRepository,
 	noteRepo repository.NoteRepository,
 	quizAnalyzer ai.QuizAnalyzer,
+	learningArchiveRepo repository.LearningArchiveRepository,
 	industryRepo ...repository.IndustryRepository,
 ) QuestionService {
 	s := &questionService{
-		questionRepo: questionRepo,
-		categoryRepo: categoryRepo,
-		recordRepo:   recordRepo,
-		favoriteRepo: favoriteRepo,
-		noteRepo:     noteRepo,
-		quizAnalyzer: quizAnalyzer,
+		questionRepo:        questionRepo,
+		categoryRepo:        categoryRepo,
+		recordRepo:          recordRepo,
+		favoriteRepo:        favoriteRepo,
+		noteRepo:            noteRepo,
+		quizAnalyzer:        quizAnalyzer,
+		learningArchiveRepo: learningArchiveRepo,
 	}
 	if len(industryRepo) > 0 {
 		s.industryRepo = industryRepo[0]
@@ -261,9 +296,12 @@ func (s *questionService) GetQuestion(ctx context.Context, id uint, userID uint)
 	}
 
 	detail := &QuestionDetail{
-		Question:    *question,
-		IsFavorited: false,
-		UserNote:    nil,
+		Question:       *question,
+		IsFavorited:    false,
+		UserNote:       nil,
+		TagList:        parseQuestionTagsFromStorage(question.Tags),
+		Solution:       parseQuestionStructuredSolution(question.SolutionJSON, question),
+		AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, question),
 	}
 
 	// 如果用户已登录，查询收藏状态和笔记
@@ -276,6 +314,40 @@ func (s *questionService) GetQuestion(ctx context.Context, id uint, userID uint)
 	}
 
 	return detail, nil
+}
+
+// ListQuestionSets 返回当前行业下可直接消费的核心题单摘要。
+func (s *questionService) ListQuestionSets(ctx context.Context, industryID uint) ([]QuestionSetSummary, error) {
+	questions, _, err := s.questionRepo.List(ctx, repository.QuestionListParams{
+		Page:       1,
+		PageSize:   100,
+		IndustryID: uintPointer(industryID),
+		IsActive:   boolPointer(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return buildQuestionSetSummaries(questions), nil
+}
+
+// ListMistakeTopics 返回前台可展示的错因专题卡片列表。
+func (s *questionService) ListMistakeTopics(ctx context.Context, codes []string) ([]MistakeTopicCard, error) {
+	_ = ctx
+	if len(codes) == 0 {
+		return buildMistakeTopicCatalog(), nil
+	}
+	return listMistakeTopicsByCodes(codes), nil
+}
+
+// GetMistakeTopic 返回单个错因专题卡片详情。
+func (s *questionService) GetMistakeTopic(ctx context.Context, code string) (*MistakeTopicCard, error) {
+	_ = ctx
+	topic, ok := resolveMistakeTopicByCode(code)
+	if !ok {
+		return nil, common.NewBusinessError(common.CodeNotFound, "错因专题不存在")
+	}
+	return topic, nil
 }
 
 // ListIndustries 获取前台可见的行业列表，仅返回已启用行业。
@@ -368,12 +440,17 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 				resp.IsCorrect = analysis.IsCorrect
 				analysisJSON, _ := json.Marshal(analysis)
 				resp.AIAnalysis = string(analysisJSON)
+				record.AnalysisJSON = resp.AIAnalysis
 			}
 		}
 	}
 
 	record.IsCorrect = resp.IsCorrect
 	if err := s.recordRepo.Create(ctx, record); err != nil {
+		return nil, err
+	}
+
+	if err := s.syncPracticeLearningArchive(ctx, userID, question, record, resp.AIAnalysis); err != nil {
 		return nil, err
 	}
 
@@ -776,4 +853,321 @@ func (s *questionService) SubmitExam(ctx context.Context, userID uint, req *Subm
 // GetPracticeStats 获取练习统计
 func (s *questionService) GetPracticeStats(ctx context.Context, userID uint) (*UserPracticeStats, error) {
 	return s.recordRepo.GetUserStats(ctx, userID)
+}
+
+// GetPracticeRecommendations 基于最近学习档案中的错因标签返回一组可直接补练的题目。
+func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID uint, interviewID *uint, limit int) (*PracticeRecommendationResponse, error) {
+	if s.learningArchiveRepo == nil {
+		return &PracticeRecommendationResponse{
+			FocusTags: []string{},
+			Items:     []PracticeRecommendationItem{},
+		}, nil
+	}
+
+	if limit <= 0 {
+		limit = 6
+	}
+
+	entries, err := s.learningArchiveRepo.ListRecentByUser(ctx, userID, 20, interviewID)
+	if err != nil {
+		return nil, err
+	}
+
+	focusStats := rankPracticeFocusTags(entries)
+	if len(focusStats) == 0 {
+		return &PracticeRecommendationResponse{
+			FocusTags: []string{},
+			Items:     []PracticeRecommendationItem{},
+		}, nil
+	}
+
+	items := make([]PracticeRecommendationItem, 0, limit)
+	seenQuestionIDs := make(map[uint]struct{}, limit)
+	focusTags := make([]string, 0, len(focusStats))
+	sourceType := "learning_archive"
+	if interviewID != nil && *interviewID > 0 {
+		sourceType = "interview_archive"
+	}
+	for index, focusStat := range focusStats {
+		focusTags = append(focusTags, focusStat.Tag)
+		for _, keyword := range expandPracticeFocusTagKeywords(focusStat.Tag) {
+			questions, _, err := s.questionRepo.List(ctx, repository.QuestionListParams{
+				Page:     1,
+				PageSize: limit * 2,
+				Keyword:  keyword,
+				IsActive: boolPointer(true),
+				Type:     model.QuestionTypeCode,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			for _, question := range questions {
+				if len(items) >= limit {
+					break
+				}
+				if _, exists := seenQuestionIDs[question.ID]; exists {
+					continue
+				}
+				seenQuestionIDs[question.ID] = struct{}{}
+				items = append(items, PracticeRecommendationItem{
+					Question: QuestionDetail{
+						Question:       question,
+						IsFavorited:    false,
+						UserNote:       nil,
+						TagList:        parseQuestionTagsFromStorage(question.Tags),
+						Solution:       parseQuestionStructuredSolution(question.SolutionJSON, &question),
+						AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, &question),
+					},
+					FocusTag:        focusStat.Tag,
+					TopicCode:       focusStat.TopicCode,
+					Reason:          buildPracticeRecommendationReason(focusStat.Tag, focusStat.Count, sourceType),
+					SourceType:      sourceType,
+					Priority:        index + 1,
+					OccurrenceCount: focusStat.Count,
+				})
+			}
+			if len(items) >= limit {
+				break
+			}
+		}
+		if len(items) >= limit {
+			break
+		}
+	}
+
+	return &PracticeRecommendationResponse{
+		FocusTags: focusTags,
+		Items:     items,
+	}, nil
+}
+
+// syncPracticeLearningArchive 将代码题或主观题的分析结果同步到学习档案中。
+func (s *questionService) syncPracticeLearningArchive(
+	ctx context.Context,
+	userID uint,
+	question *model.Question,
+	record *model.UserQuestionRecord,
+	analysisJSON string,
+) error {
+	if s.learningArchiveRepo == nil || question == nil || record == nil || strings.TrimSpace(analysisJSON) == "" {
+		return nil
+	}
+
+	var analysis ai.CodeAnalysis
+	if err := json.Unmarshal([]byte(analysisJSON), &analysis); err != nil {
+		return nil
+	}
+
+	mistakeTags := normalizePracticeArchiveTags(analysis.MistakeTags, analysis.Issues, analysis.IsCorrect)
+	if len(mistakeTags) == 0 {
+		return nil
+	}
+
+	strengthTagsJSON, _ := json.Marshal(normalizePracticeArchiveStrengths(analysis.StrengthTags, analysis.IsCorrect))
+	mistakeTagsJSON, _ := json.Marshal(mistakeTags)
+	suggestionsJSON, _ := json.Marshal(normalizePracticeArchiveSuggestions(analysis.Improvements))
+	sourceRef := fmt.Sprintf("practice:%d:%d", userID, question.ID)
+
+	entry := &model.LearningArchiveEntry{
+		UserID:           userID,
+		SourceType:       model.LearningArchiveSourcePracticeQuestion,
+		SourceRef:        sourceRef,
+		QuestionIndex:    0,
+		IndustryCode:     strconv.FormatUint(uint64(question.IndustryID), 10),
+		Language:         detectQuestionLanguage(question),
+		MistakeTagsJSON:  string(mistakeTagsJSON),
+		StrengthTagsJSON: string(strengthTagsJSON),
+		SuggestionsJSON:  string(suggestionsJSON),
+		EvidenceSummary:  strings.Join(analysis.Issues, "；"),
+		OccurredAt:       buildPracticeArchiveOccurredAt(record.CreatedAt),
+	}
+	return s.learningArchiveRepo.Upsert(ctx, entry)
+}
+
+// rankPracticeFocusTags 统计最近学习档案中的高频错因标签。
+func rankPracticeFocusTags(entries []model.LearningArchiveEntry) []practiceFocusTagStat {
+	counts := make(map[string]int)
+	for _, entry := range entries {
+		var tags []string
+		if err := json.Unmarshal([]byte(entry.MistakeTagsJSON), &tags); err != nil {
+			continue
+		}
+		for _, tag := range tags {
+			trimmed := strings.TrimSpace(tag)
+			if trimmed == "" {
+				continue
+			}
+			counts[trimmed]++
+		}
+	}
+
+	items := make([]practiceFocusTagStat, 0, len(counts))
+	for tag, count := range counts {
+		items = append(items, practiceFocusTagStat{
+			Tag:       tag,
+			Count:     count,
+			TopicCode: resolveMistakeTopicCodeByTag(tag),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count == items[j].Count {
+			return items[i].Tag < items[j].Tag
+		}
+		return items[i].Count > items[j].Count
+	})
+
+	result := make([]practiceFocusTagStat, 0, minInt(len(items), 3))
+	for _, item := range items {
+		if len(result) >= 3 {
+			break
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+// buildPracticeRecommendationReason 生成更可解释的推荐理由文案。
+func buildPracticeRecommendationReason(focusTag string, occurrenceCount int, sourceType string) string {
+	if sourceType == "interview_archive" {
+		return fmt.Sprintf("这场面试里“%s”相关问题反复出现 %d 次，建议优先补这类题。", focusTag, occurrenceCount)
+	}
+
+	return fmt.Sprintf("你最近的学习档案里“%s”累计出现 %d 次，先用这题做对症补练。", focusTag, occurrenceCount)
+}
+
+// expandPracticeFocusTagKeywords 将错因标签扩展为更适合题库检索的关键词集合。
+func expandPracticeFocusTagKeywords(tag string) []string {
+	switch strings.TrimSpace(tag) {
+	case "状态定义不清":
+		return []string{tag, "状态", "动态规划"}
+	case "边界条件生疏":
+		return []string{tag, "边界", "数组"}
+	case "循环/索引控制不稳":
+		return []string{tag, "循环", "索引", "双指针"}
+	case "数据结构选择不当":
+		return []string{tag, "数据结构", "链表", "栈", "哈希"}
+	case "复杂度意识薄弱":
+		return []string{tag, "复杂度", "性能"}
+	case "调试路径混乱":
+		return []string{tag, "调试", "排错"}
+	case "代码实现不完整":
+		return []string{tag, "实现", "代码"}
+	default:
+		return []string{tag}
+	}
+}
+
+// normalizePracticeArchiveTags 统一收敛练习题分析得到的错因标签。
+func normalizePracticeArchiveTags(tags []string, issues []string, isCorrect bool) []string {
+	if isCorrect {
+		return []string{}
+	}
+
+	result := make([]string, 0, len(tags)+1)
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		result = appendUniquePracticeStrings(result, trimmed)
+	}
+	if len(result) > 0 {
+		return result
+	}
+
+	for _, issue := range issues {
+		switch {
+		case strings.Contains(issue, "边界"):
+			result = appendUniquePracticeStrings(result, "边界条件生疏")
+		case strings.Contains(issue, "复杂度"):
+			result = appendUniquePracticeStrings(result, "复杂度意识薄弱")
+		case strings.Contains(issue, "思路") || strings.Contains(issue, "实现"):
+			result = appendUniquePracticeStrings(result, "状态定义不清")
+		}
+	}
+	if len(result) == 0 {
+		result = append(result, "状态定义不清")
+	}
+	return result
+}
+
+// normalizePracticeArchiveStrengths 统一收敛练习题分析中的正向标签。
+func normalizePracticeArchiveStrengths(tags []string, isCorrect bool) []string {
+	result := make([]string, 0, len(tags)+1)
+	for _, tag := range tags {
+		result = appendUniquePracticeStrings(result, tag)
+	}
+	if isCorrect {
+		result = appendUniquePracticeStrings(result, "本题已形成可用解法")
+	}
+	return result
+}
+
+// normalizePracticeArchiveSuggestions 清理练习题分析中的改进建议。
+func normalizePracticeArchiveSuggestions(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = appendUniquePracticeStrings(result, value)
+	}
+	return result
+}
+
+// buildPracticeArchiveOccurredAt 将 Unix 秒级时间戳转为 time 指针。
+func buildPracticeArchiveOccurredAt(createdAt int64) *time.Time {
+	if createdAt <= 0 {
+		return nil
+	}
+	value := time.Unix(createdAt, 0)
+	return &value
+}
+
+// appendUniquePracticeStrings 追加不重复的非空字符串。
+func appendUniquePracticeStrings(values []string, next ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values)+len(next))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	for _, value := range next {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+// boolPointer 返回布尔值指针。
+func boolPointer(value bool) *bool {
+	return &value
+}
+
+// minInt 返回两个整数中的较小值。
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+// uintPointer 返回整数指针，便于构造可选查询参数。
+func uintPointer(value uint) *uint {
+	if value == 0 {
+		return nil
+	}
+	return &value
 }

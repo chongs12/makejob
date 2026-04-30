@@ -1,9 +1,13 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
+import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
+import { persistPracticeFocusSearch } from '../../shared/practiceFocus'
+import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
+import { fetchWeeklyFocus } from '../../shared/weeklyFocus'
 
 interface GrowthCategoryStat {
   category_id: number
@@ -197,6 +201,7 @@ function buildGrowthLogSummary(log: GrowthStudyLog): string {
  * 输出成长档案主页面，集中展示用户的练习、面试、计划和每日推进轨迹。
  */
 export default function GrowthPage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
 
   const growthSummaryQuery = useQuery({
@@ -206,10 +211,65 @@ export default function GrowthPage() {
     retry: false,
   })
 
+  const practiceRecommendationsQuery = useQuery({
+    queryKey: ['growth-practice-recommendations', accessToken],
+    queryFn: () => fetchPracticeRecommendations(accessToken as string, 4),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+
+  const weeklyFocusQuery = useQuery({
+    queryKey: ['growth-weekly-focus', accessToken],
+    queryFn: () => fetchWeeklyFocus(accessToken as string),
+    enabled: Boolean(accessToken),
+    retry: false,
+  })
+
+  const mistakeTopicsQuery = useQuery({
+    queryKey: ['growth-mistake-topics'],
+    queryFn: () => fetchMistakeTopics([]),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const mistakeTopicMap = useMemo(
+    () => new Map((mistakeTopicsQuery.data || []).map((topic) => [topic.code, topic])),
+    [mistakeTopicsQuery.data],
+  )
+
   const topCategoryStats = useMemo(
     () => (growthSummaryQuery.data?.practice_stats?.category_stats || []).slice(0, 4),
     [growthSummaryQuery.data?.practice_stats?.category_stats],
   )
+  const focusTopics = useMemo(
+    () => pickMistakeTopicsByTags(practiceRecommendationsQuery.data?.focus_tags || [], mistakeTopicsQuery.data || []),
+    [practiceRecommendationsQuery.data?.focus_tags, mistakeTopicsQuery.data],
+  )
+  const weeklyFocusTopicMap = useMemo(
+    () =>
+      new Map(
+        (weeklyFocusQuery.data?.themes || [])
+          .map((theme) => {
+            const topicCode = theme.topic_codes[0]
+            return [theme.title, topicCode ? mistakeTopicMap.get(topicCode) || null : null] as const
+          }),
+      ),
+    [mistakeTopicMap, weeklyFocusQuery.data?.themes],
+  )
+
+  /**
+   * 根据补强主题预填题库搜索词并跳转到刷题页，减少用户手动重新组织筛选条件。
+   */
+  function handleOpenWeeklyFocusPractice(themeTitle: string): void {
+    const theme = weeklyFocusQuery.data?.themes.find((item) => item.title === themeTitle)
+    if (!theme) {
+      navigate({ to: '/practice' })
+      return
+    }
+
+    const linkedTopic = weeklyFocusTopicMap.get(themeTitle)
+    persistPracticeFocusSearch(linkedTopic?.related_question_sets[0] || '', theme.focus_tags, theme.title)
+    navigate({ to: '/practice' })
+  }
 
   return (
     <section className="page-panel">
@@ -310,6 +370,171 @@ export default function GrowthPage() {
               </div>
             </article>
           </div>
+
+          <article className="status-card" style={{ marginTop: 24 }}>
+            <div className="card-inline">
+              <div>
+                <span className="section-kicker">本周重点补强</span>
+                <h2>把最近反复暴露的问题压缩成 1 到 3 个主攻主题</h2>
+              </div>
+              <Link className="secondary-link" to="/companion">带入学习计划</Link>
+            </div>
+
+            {weeklyFocusQuery.isLoading ? (
+              <p style={{ marginTop: 18 }}>正在整理你这周最该优先补强的主题...</p>
+            ) : null}
+
+            {weeklyFocusQuery.isError ? (
+              <p style={{ marginTop: 18 }}>
+                {extractErrorMessage(weeklyFocusQuery.error, '本周补强主题加载失败')}
+              </p>
+            ) : null}
+
+            {weeklyFocusQuery.data?.themes.length ? (
+              <div className="grid-cards" style={{ marginTop: 18 }}>
+                {weeklyFocusQuery.data.themes.map((theme) => {
+                  const linkedTopic = weeklyFocusTopicMap.get(theme.title)
+                  return (
+                    <article className="feature-card" key={`growth-weekly-focus-${theme.title}`}>
+                      <div className="card-inline">
+                        <strong>{theme.title}</strong>
+                        <span>{theme.source_label}</span>
+                      </div>
+                      <p>{theme.reason}</p>
+                      {theme.focus_tags.length ? (
+                        <div className="community-tag-row">
+                          {theme.focus_tags.map((tag) => (
+                            <span key={`${theme.title}-${tag}`}>{tag}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {theme.suggestions.length ? (
+                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                          {theme.suggestions.map((item) => (
+                            <li key={`${theme.title}-${item}`}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {linkedTopic ? <p style={{ marginTop: 12 }}>专题提示：{linkedTopic.problem_pattern}</p> : null}
+                      <div className="page-actions">
+                        <Link className="secondary-link" to="/companion">去生成补强计划</Link>
+                        <button className="secondary-button" type="button" onClick={() => handleOpenWeeklyFocusPractice(theme.title)}>
+                          去题库补练
+                        </button>
+                        {linkedTopic ? (
+                          <Link
+                            className="secondary-link"
+                            to={resolveMistakeTopicRoute()}
+                            params={{ topicCode: linkedTopic.code }}
+                          >
+                            打开专题
+                          </Link>
+                        ) : null}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : null}
+
+            {!weeklyFocusQuery.isLoading && !weeklyFocusQuery.isError && !weeklyFocusQuery.data?.themes.length ? (
+              <div className="timeline-item" style={{ marginTop: 18 }}>
+                <strong>本周还没有明确主攻主题</strong>
+                <p>先做几道题或完成一场面试，学习档案和面试报告积累起来后，这里会自动帮你收束出本周最值得优先补强的方向。</p>
+              </div>
+            ) : null}
+          </article>
+
+          <article className="status-card" style={{ marginTop: 24 }}>
+            <div className="card-inline">
+              <div>
+                <span className="section-kicker">最近最值得补的题</span>
+                <h2>按最近错因直接安排下一轮练习</h2>
+              </div>
+              <Link className="secondary-link" to="/practice">进入题库</Link>
+            </div>
+
+            {practiceRecommendationsQuery.isLoading ? (
+              <p style={{ marginTop: 18 }}>正在生成你的对症练习推荐...</p>
+            ) : null}
+
+            {practiceRecommendationsQuery.isError ? (
+              <p style={{ marginTop: 18 }}>
+                {extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
+              </p>
+            ) : null}
+
+            {practiceRecommendationsQuery.data?.focus_tags.length ? (
+              <div className="community-tag-row" style={{ marginTop: 18 }}>
+                {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+            ) : null}
+
+            {practiceRecommendationsQuery.data?.items.length ? (
+              <div className="grid-cards" style={{ marginTop: 18 }}>
+                {practiceRecommendationsQuery.data.items.map((item) => (
+                  <article className="feature-card" key={`growth-practice-recommendation-${item.question.id}`}>
+                    <div className="card-inline">
+                      <strong>{item.question.title}</strong>
+                      <span>{item.focus_tag}</span>
+                    </div>
+                    <p>{item.reason}</p>
+                    <p>难度：{item.question.difficulty || '未标注'}</p>
+                    <div className="page-actions">
+                      <Link
+                        className="secondary-link"
+                        to={resolvePracticeRecommendationRoute(item.question.type)}
+                        params={{ questionId: String(item.question.id) }}
+                      >
+                        去做这题
+                      </Link>
+                      {item.topic_code ? (
+                        <Link
+                          className="secondary-link"
+                          to={resolveMistakeTopicRoute()}
+                          params={{ topicCode: item.topic_code }}
+                        >
+                          看错因专题
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
+            {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
+              <div className="timeline-item" style={{ marginTop: 18 }}>
+                <strong>还没有足够的推荐依据</strong>
+                <p>先在题库里完成几道编程题或主观题，学习档案积累出错因标签后，这里会更准确地指出下一步补题方向。</p>
+              </div>
+            ) : null}
+
+            {focusTopics.length ? (
+              <div className="grid-cards" style={{ marginTop: 18 }}>
+                {focusTopics.map((topic) => (
+                  <article className="feature-card" key={topic.code}>
+                    <div className="card-inline">
+                      <strong>{topic.title}</strong>
+                      <span>{topic.tag}</span>
+                    </div>
+                    <p>{topic.problem_pattern}</p>
+                    <div className="page-actions">
+                      <Link
+                        className="secondary-link"
+                        to={resolveMistakeTopicRoute()}
+                        params={{ topicCode: topic.code }}
+                      >
+                        打开专题
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </article>
 
           <article className="status-card" style={{ marginTop: 24 }}>
             <div className="card-inline">

@@ -10,6 +10,10 @@ export interface InterviewQuestion {
   difficulty: string
   type: string
   hints?: string
+  language?: string
+  starter_code?: string
+  editor_mode?: string
+  evaluation_mode?: string
 }
 
 export interface InterviewFeedback {
@@ -30,6 +34,18 @@ export interface InterviewReport {
   weaknesses: string[]
   suggestions: string[]
   summary: string
+  coding_diagnostics?: InterviewCodingDiagnosis[]
+}
+
+export interface InterviewCodingDiagnosis {
+  question_index: number
+  language: string
+  score: number
+  mistake_tags: string[]
+  strength_tags: string[]
+  evidence: string[]
+  suggestions: string[]
+  process_summary: string
 }
 
 export interface InterviewCreatePayload {
@@ -60,6 +76,7 @@ export interface InterviewMessage {
   role: string
   content: string
   message_type: string
+  question?: InterviewQuestion | null
   created_at: string
 }
 
@@ -70,8 +87,15 @@ export interface InterviewDetailResponse {
   score: number
   total_questions: number
   messages: InterviewMessage[]
+  current_question?: InterviewQuestion | null
   started_at?: string
   ended_at?: string
+}
+
+export interface InterviewCodingProcessEvent {
+  type: string
+  timestamp_ms: number
+  payload?: Record<string, unknown>
 }
 
 export interface InterviewAnswerResponse {
@@ -135,6 +159,10 @@ export interface InterviewSocketQuestionPayload {
   question_no: number
   type: string
   hints?: string
+  language?: string
+  starter_code?: string
+  editor_mode?: string
+  evaluation_mode?: string
 }
 
 export interface InterviewSocketASRPayload {
