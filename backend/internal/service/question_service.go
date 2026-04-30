@@ -171,6 +171,7 @@ type QuestionService interface {
 	GetPracticeStats(ctx context.Context, userID uint) (*UserPracticeStats, error)
 	GetPracticeRecommendations(ctx context.Context, userID uint, interviewID *uint, limit int) (*PracticeRecommendationResponse, error)
 	ListQuestionSets(ctx context.Context, industryID uint) ([]QuestionSetSummary, error)
+	GetQuestionSetDetail(ctx context.Context, industryID uint, slug string) (*QuestionSetDetail, error)
 	ListMistakeTopics(ctx context.Context, codes []string) ([]MistakeTopicCard, error)
 	GetMistakeTopic(ctx context.Context, code string) (*MistakeTopicCard, error)
 }
@@ -329,6 +330,31 @@ func (s *questionService) ListQuestionSets(ctx context.Context, industryID uint)
 	}
 
 	return buildQuestionSetSummaries(questions), nil
+}
+
+// GetQuestionSetDetail 返回指定题单下可直接进入练习的完整题目集合。
+func (s *questionService) GetQuestionSetDetail(ctx context.Context, industryID uint, slug string) (*QuestionSetDetail, error) {
+	definition, ok := findQuestionSetDefinition(slug)
+	if !ok {
+		return nil, common.NewBusinessError(common.CodeNotFound, "题单不存在")
+	}
+
+	questions, _, err := s.questionRepo.List(ctx, repository.QuestionListParams{
+		Page:       1,
+		PageSize:   200,
+		IndustryID: uintPointer(industryID),
+		IsActive:   boolPointer(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	detail := buildQuestionSetDetail(definition, questions)
+	if detail == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "当前题单下暂无可用题目")
+	}
+
+	return detail, nil
 }
 
 // ListMistakeTopics 返回前台可展示的错因专题卡片列表。

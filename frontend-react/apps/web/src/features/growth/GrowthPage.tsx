@@ -4,9 +4,10 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
+import { AsyncEmptyState, AsyncInlineState, AsyncStatusCard } from '../../shared/asyncState'
 import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
-import { persistPracticeFocusSearch } from '../../shared/practiceFocus'
 import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
+import { buildPracticeRecommendationRouteSearch, buildWeeklyFocusPracticeRouteSearch } from '../../shared/practiceRoute'
 import { fetchWeeklyFocus } from '../../shared/weeklyFocus'
 
 interface GrowthCategoryStat {
@@ -257,7 +258,7 @@ export default function GrowthPage() {
   )
 
   /**
-   * 根据补强主题预填题库搜索词并跳转到刷题页，减少用户手动重新组织筛选条件。
+   * 根据补强主题构造正式题库路由并跳转到刷题页，减少用户手动重新组织筛选条件。
    */
   function handleOpenWeeklyFocusPractice(themeTitle: string): void {
     const theme = weeklyFocusQuery.data?.themes.find((item) => item.title === themeTitle)
@@ -267,8 +268,10 @@ export default function GrowthPage() {
     }
 
     const linkedTopic = weeklyFocusTopicMap.get(themeTitle)
-    persistPracticeFocusSearch(linkedTopic?.related_question_sets[0] || '', theme.focus_tags, theme.title)
-    navigate({ to: '/practice' })
+    navigate({
+      to: '/practice',
+      search: buildWeeklyFocusPracticeRouteSearch(theme, linkedTopic),
+    })
   }
 
   return (
@@ -279,14 +282,14 @@ export default function GrowthPage() {
         这里不再只是登录后的占位工作台，而是你每天刷题、面试、学习陪伴推进结果的聚合页。后续继续做功能时，这里也会成为最稳定的个人闭环首页。
       </p>
 
-      {growthSummaryQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>成长档案加载中...</div>
-      ) : null}
+      {growthSummaryQuery.isLoading ? <AsyncStatusCard message="成长档案加载中..." style={{ marginTop: 24 }} /> : null}
 
       {growthSummaryQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {extractErrorMessage(growthSummaryQuery.error, '成长档案读取失败，请稍后重试')}
-        </div>
+        <AsyncStatusCard
+          message={extractErrorMessage(growthSummaryQuery.error, '成长档案读取失败，请稍后重试')}
+          style={{ marginTop: 24 }}
+          tone="error"
+        />
       ) : null}
 
       {growthSummaryQuery.data ? (
@@ -380,14 +383,14 @@ export default function GrowthPage() {
               <Link className="secondary-link" to="/companion">带入学习计划</Link>
             </div>
 
-            {weeklyFocusQuery.isLoading ? (
-              <p style={{ marginTop: 18 }}>正在整理你这周最该优先补强的主题...</p>
-            ) : null}
+            {weeklyFocusQuery.isLoading ? <AsyncInlineState message="正在整理你这周最该优先补强的主题..." style={{ marginTop: 18 }} /> : null}
 
             {weeklyFocusQuery.isError ? (
-              <p style={{ marginTop: 18 }}>
-                {extractErrorMessage(weeklyFocusQuery.error, '本周补强主题加载失败')}
-              </p>
+              <AsyncInlineState
+                message={extractErrorMessage(weeklyFocusQuery.error, '本周补强主题加载失败')}
+                style={{ marginTop: 18 }}
+                tone="error"
+              />
             ) : null}
 
             {weeklyFocusQuery.data?.themes.length ? (
@@ -438,10 +441,11 @@ export default function GrowthPage() {
             ) : null}
 
             {!weeklyFocusQuery.isLoading && !weeklyFocusQuery.isError && !weeklyFocusQuery.data?.themes.length ? (
-              <div className="timeline-item" style={{ marginTop: 18 }}>
-                <strong>本周还没有明确主攻主题</strong>
-                <p>先做几道题或完成一场面试，学习档案和面试报告积累起来后，这里会自动帮你收束出本周最值得优先补强的方向。</p>
-              </div>
+              <AsyncEmptyState
+                title="本周还没有明确主攻主题"
+                message="先做几道题或完成一场面试，学习档案和面试报告积累起来后，这里会自动帮你收束出本周最值得优先补强的方向。"
+                style={{ marginTop: 18 }}
+              />
             ) : null}
           </article>
 
@@ -454,14 +458,14 @@ export default function GrowthPage() {
               <Link className="secondary-link" to="/practice">进入题库</Link>
             </div>
 
-            {practiceRecommendationsQuery.isLoading ? (
-              <p style={{ marginTop: 18 }}>正在生成你的对症练习推荐...</p>
-            ) : null}
+            {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在生成你的对症练习推荐..." style={{ marginTop: 18 }} /> : null}
 
             {practiceRecommendationsQuery.isError ? (
-              <p style={{ marginTop: 18 }}>
-                {extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
-              </p>
+              <AsyncInlineState
+                message={extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
+                style={{ marginTop: 18 }}
+                tone="error"
+              />
             ) : null}
 
             {practiceRecommendationsQuery.data?.focus_tags.length ? (
@@ -474,8 +478,10 @@ export default function GrowthPage() {
 
             {practiceRecommendationsQuery.data?.items.length ? (
               <div className="grid-cards" style={{ marginTop: 18 }}>
-                {practiceRecommendationsQuery.data.items.map((item) => (
-                  <article className="feature-card" key={`growth-practice-recommendation-${item.question.id}`}>
+                {practiceRecommendationsQuery.data.items.map((item) => {
+                  const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
+                  return (
+                    <article className="feature-card" key={`growth-practice-recommendation-${item.question.id}`}>
                     <div className="card-inline">
                       <strong>{item.question.title}</strong>
                       <span>{item.focus_tag}</span>
@@ -483,6 +489,18 @@ export default function GrowthPage() {
                     <p>{item.reason}</p>
                     <p>难度：{item.question.difficulty || '未标注'}</p>
                     <div className="page-actions">
+                      <Link
+                        className="secondary-link"
+                        to="/practice"
+                        search={buildPracticeRecommendationRouteSearch({
+                          focus_tag: item.focus_tag,
+                          topic_code: item.topic_code,
+                          reason: item.reason,
+                          question_title: item.question.title,
+                        }, linkedTopic)}
+                      >
+                        进入这组补练
+                      </Link>
                       <Link
                         className="secondary-link"
                         to={resolvePracticeRecommendationRoute(item.question.type)}
@@ -500,16 +518,18 @@ export default function GrowthPage() {
                         </Link>
                       ) : null}
                     </div>
-                  </article>
-                ))}
+                    </article>
+                  )
+                })}
               </div>
             ) : null}
 
             {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
-              <div className="timeline-item" style={{ marginTop: 18 }}>
-                <strong>还没有足够的推荐依据</strong>
-                <p>先在题库里完成几道编程题或主观题，学习档案积累出错因标签后，这里会更准确地指出下一步补题方向。</p>
-              </div>
+              <AsyncEmptyState
+                title="还没有足够的推荐依据"
+                message="先在题库里完成几道编程题或主观题，学习档案积累出错因标签后，这里会更准确地指出下一步补题方向。"
+                style={{ marginTop: 18 }}
+              />
             ) : null}
 
             {focusTopics.length ? (

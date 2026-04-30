@@ -4,6 +4,7 @@ import type { Application } from 'pixi.js'
 import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubism4'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
+import { loadLive2DRuntime } from '../../shared/live2dRuntime'
 
 const INTERVIEW_SELECTED_MODEL_KEY_PREFIX = 'makejob.interview.selected-live2d:'
 
@@ -18,15 +19,6 @@ interface InterviewSelectableLive2DModel {
   is_generic: boolean
   is_recommended: boolean
 }
-
-declare global {
-  interface Window {
-    PIXI?: typeof import('pixi.js')
-    Live2DCubismCore?: unknown
-  }
-}
-
-let cubismCoreScriptPromise: Promise<void> | null = null
 
 /**
  * 获取面试场景可用的 Live2D 模型列表，并沿用后端推荐顺序。
@@ -68,53 +60,6 @@ function persistSelectedInterviewModelKey(industryCode: string, key: string): vo
   }
 
   window.localStorage.setItem(`${INTERVIEW_SELECTED_MODEL_KEY_PREFIX}${industryCode}`, key)
-}
-
-/**
- * 动态加载 Cubism Core，保证面试页可解析 Live2D Cubism4 模型。
- */
-function ensureCubismCoreScript(): Promise<void> {
-  if (typeof window === 'undefined') {
-    return Promise.resolve()
-  }
-
-  if (window.Live2DCubismCore) {
-    return Promise.resolve()
-  }
-
-  if (cubismCoreScriptPromise) {
-    return cubismCoreScriptPromise
-  }
-
-  cubismCoreScriptPromise = new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>('script[data-live2d-cubism-core="true"]')
-    if (existingScript) {
-      if (window.Live2DCubismCore) {
-        resolve()
-        return
-      }
-
-      existingScript.addEventListener('load', () => resolve(), { once: true })
-      existingScript.addEventListener('error', () => reject(new Error('Cubism Core 脚本加载失败')), { once: true })
-      return
-    }
-
-    const script = document.createElement('script')
-    script.src = '/live2d-assets/live2dcubismcore.min.js'
-    script.async = true
-    script.dataset.live2dCubismCore = 'true'
-    script.onload = () => {
-      if (!window.Live2DCubismCore) {
-        reject(new Error('Cubism Core 已加载但未注入到 window'))
-        return
-      }
-      resolve()
-    }
-    script.onerror = () => reject(new Error('Cubism Core 脚本加载失败'))
-    document.head.appendChild(script)
-  })
-
-  return cubismCoreScriptPromise
 }
 
 /**
@@ -235,6 +180,7 @@ export function InterviewLive2DStage(props: {
     return modelOptions.find((item) => item.is_recommended) || modelOptions[0] || null
   }, [modelOptions, selectedModelKey])
   const currentModelName = currentModel?.name || '面试官'
+  const isLoading = modelOptionsQuery.isLoading || stageLoading
   const errorMessage = modelOptionsQuery.isError
     ? extractErrorMessage(modelOptionsQuery.error, '读取面试 Live2D 模型失败')
     : stageError
@@ -285,10 +231,7 @@ export function InterviewLive2DStage(props: {
       setStageError('')
 
       try {
-        const PIXI = await import('pixi.js')
-        window.PIXI = PIXI
-        await ensureCubismCoreScript()
-        const { Live2DModel } = await import('pixi-live2d-display/cubism4')
+        const { PIXI, Live2DModel } = await loadLive2DRuntime()
 
         app = new PIXI.Application({
           width: Math.max(host.clientWidth, 320),
@@ -368,7 +311,7 @@ export function InterviewLive2DStage(props: {
       <div className="interview-live2d-canvas-wrap">
         <div className="interview-live2d-canvas" ref={hostRef} />
 
-        {stageLoading ? (
+        {isLoading ? (
           <div className="companion-stage-overlay">
             <strong>{modelOptionsQuery.isLoading ? '正在读取可用模型' : `正在加载 ${currentModelName}`}</strong>
             <span>{modelOptionsQuery.isLoading ? '前台正在读取面试场景模型列表。' : '模型资源加载中，请稍等片刻。'}</span>

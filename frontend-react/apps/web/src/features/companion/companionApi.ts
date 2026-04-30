@@ -9,7 +9,6 @@ import type {
   CompanionPlanDetail,
   CompanionPlanProgress,
   CompanionPlanTask,
-  CompanionPracticeStats,
   CompanionSelectableLive2DModel,
   CompanionStudyLogPayload,
   CompanionTaskStatus,
@@ -66,21 +65,6 @@ export async function fetchCompanionPlanProgress(token: string, planId: number):
 
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取计划进度失败')
-  }
-
-  return response.data
-}
-
-/**
- * 拉取连续答题统计，作为当前阶段入口页的临时连续天数展示来源。
- */
-export async function fetchCompanionPracticeStats(token: string): Promise<CompanionPracticeStats> {
-  const response = await requestJson<ApiEnvelope<CompanionPracticeStats>>('/user/practice-stats', {
-    token,
-  })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '获取练习统计失败')
   }
 
   return response.data

@@ -32,6 +32,7 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 		public.GET("/questions", h.ListQuestions)
 		public.GET("/questions/:id", h.GetQuestion)
 		public.GET("/question-sets", h.ListQuestionSets)
+		public.GET("/question-sets/:slug", h.GetQuestionSetDetail)
 		public.GET("/mistake-topics", h.ListMistakeTopics)
 		public.GET("/mistake-topics/:code", h.GetMistakeTopic)
 		public.GET("/industries", h.ListIndustries)
@@ -182,6 +183,46 @@ func (h *QuestionHandler) ListQuestionSets(c *gin.Context) {
 	}
 
 	common.Success(c, sets)
+}
+
+// GetQuestionSetDetail 获取指定核心题单的完整题目集合。
+// @Summary 获取核心题单详情
+// @Description 返回某个题单下可直接进入练习的完整题目列表
+// @Tags 题库
+// @Accept json
+// @Produce json
+// @Param slug path string true "题单 slug"
+// @Param industry_id query int false "行业ID"
+// @Success 200 {object} common.Response{data=service.QuestionSetDetail}
+// @Router /api/question-sets/{slug} [get]
+func (h *QuestionHandler) GetQuestionSetDetail(c *gin.Context) {
+	slug := strings.TrimSpace(c.Param("slug"))
+	if slug == "" {
+		common.BadRequest(c, "题单不能为空")
+		return
+	}
+
+	var industryID uint
+	if industryIDStr := c.Query("industry_id"); industryIDStr != "" {
+		id, err := strconv.ParseUint(industryIDStr, 10, 32)
+		if err != nil {
+			common.BadRequest(c, "无效的行业ID")
+			return
+		}
+		industryID = uint(id)
+	}
+
+	detail, err := h.questionService.GetQuestionSetDetail(c.Request.Context(), industryID, slug)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取题单详情失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, detail)
 }
 
 // ListMistakeTopics 获取错因专题卡片列表。

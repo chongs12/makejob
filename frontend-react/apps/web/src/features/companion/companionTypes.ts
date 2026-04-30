@@ -84,11 +84,6 @@ export interface CompanionStudyLogPayload {
   latest_action_text: string
 }
 
-export interface CompanionPracticeStats {
-  today_count: number
-  streak_days: number
-}
-
 export interface CompanionPlanProgress {
   plan_id: number
   total_tasks: number

@@ -11,6 +11,7 @@
     "build:web": "npm run build -w @makejob/web",
     "build:admin": "npm run build -w @makejob/admin",
     "build": "npm run build:web && npm run build:admin",
+    "test:web": "npm run test -w @makejob/web",
     "preview:web": "npm run preview -w @makejob/web",
     "preview:admin": "npm run preview -w @makejob/admin"
   },
@@ -19,7 +20,8 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.12"
+    "vite": "^7.1.12",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "pixi-live2d-display": "^0.4.0",

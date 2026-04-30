@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE,
   type FrontendIndustry,
-  fetchFrontendIndustries,
   formatFrontendIndustryLabel,
   persistSelectedFrontendIndustryCode,
   readSelectedFrontendIndustryCode,
   resolvePreferredFrontendIndustry,
   subscribeFrontendIndustryCodeChange,
 } from './industryContext'
+import { useFrontendIndustriesQuery } from './frontendQueries'
 
 /**
  * 根据行业主键从前台行业列表中定位真实行业对象，供详情页展示真实方向名称。
@@ -27,12 +26,7 @@ export function findFrontendIndustryById(industries: FrontendIndustry[], industr
  */
 export function useFrontendIndustryPreference() {
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || DEFAULT_FRONTEND_INDUSTRY_CODE)
-
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-  })
+  const industriesQuery = useFrontendIndustriesQuery()
 
   const selectedIndustry = useMemo(
     () => resolvePreferredFrontendIndustry(industriesQuery.data || [], selectedIndustryCode),

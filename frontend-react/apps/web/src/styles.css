@@ -591,6 +591,37 @@ button {
   margin: 0 0 8px;
 }
 
+.async-state-card,
+.async-state-empty {
+  display: grid;
+  gap: 10px;
+}
+
+.async-state-card-message,
+.async-state-empty p,
+.async-state-inline {
+  margin: 0;
+  line-height: 1.8;
+  color: #667a94;
+}
+
+.async-state-card-error,
+.async-state-inline-error {
+  color: #9b3b3b;
+}
+
+.async-state-card-error {
+  border-color: rgba(180, 67, 67, 0.16);
+  background: linear-gradient(180deg, rgba(255, 244, 244, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.async-state-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
 .stack-form {
   display: grid;
   gap: 16px;
@@ -1365,6 +1396,66 @@ button {
   margin-top: 8px;
   color: #687b92;
   font-size: 13px;
+}
+
+.companion-stat-chip-skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.companion-skeleton-block {
+  display: grid;
+}
+
+.companion-skeleton-block-stack {
+  gap: 10px;
+}
+
+.companion-skeleton-line,
+.companion-skeleton-pill {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(19, 34, 56, 0.08) 25%, rgba(19, 34, 56, 0.15) 37%, rgba(19, 34, 56, 0.08) 63%);
+  background-size: 300% 100%;
+  animation: companionSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+.companion-skeleton-line {
+  height: 12px;
+}
+
+.companion-skeleton-line-short {
+  width: 76px;
+}
+
+.companion-skeleton-line-medium {
+  width: 144px;
+}
+
+.companion-skeleton-pill {
+  width: 64px;
+  height: 20px;
+}
+
+.companion-progress-bar-skeleton {
+  overflow: hidden;
+}
+
+.companion-progress-bar-fill-skeleton {
+  width: 42%;
+  background: linear-gradient(90deg, rgba(255, 179, 22, 0.35) 0%, rgba(240, 130, 30, 0.7) 50%, rgba(255, 179, 22, 0.35) 100%);
+  background-size: 300% 100%;
+  animation: companionSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes companionSkeletonPulse {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
 }
 
 .companion-upcoming-item {

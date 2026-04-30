@@ -9,6 +9,10 @@ export default defineConfig({
       url: resolve(__dirname, 'src/shims/browserUrl.ts'),
     },
   },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+  },
   server: {
     port: 3101,
     proxy: {

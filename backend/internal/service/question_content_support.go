@@ -52,6 +52,16 @@ type QuestionSetSummary struct {
 	Questions     []QuestionSetPreview `json:"questions"`
 }
 
+// QuestionSetDetail 描述题库页可直接消费的完整题单内容。
+type QuestionSetDetail struct {
+	Slug          string               `json:"slug"`
+	Title         string               `json:"title"`
+	Description   string               `json:"description"`
+	FocusTags     []string             `json:"focus_tags"`
+	QuestionCount int                  `json:"question_count"`
+	Questions     []QuestionSetPreview `json:"questions"`
+}
+
 type questionSetDefinition struct {
 	Slug          string
 	Title         string
@@ -59,6 +69,17 @@ type questionSetDefinition struct {
 	FocusTags     []string
 	Keywords      []string
 	PreferredTags []string
+}
+
+// findQuestionSetDefinition 根据题单 slug 查找预置题单定义。
+func findQuestionSetDefinition(slug string) (questionSetDefinition, bool) {
+	normalizedSlug := strings.TrimSpace(slug)
+	for _, definition := range curatedQuestionSetDefinitions() {
+		if definition.Slug == normalizedSlug {
+			return definition, true
+		}
+	}
+	return questionSetDefinition{}, false
 }
 
 var standardQuestionTagAlias = map[string]string{
@@ -367,18 +388,19 @@ func buildQuestionSetSummaries(questions []model.Question) []QuestionSetSummary 
 	summaries := make([]QuestionSetSummary, 0, len(definitions))
 	for _, definition := range definitions {
 		matched := make([]QuestionSetPreview, 0, 4)
+		totalCount := 0
 		for _, question := range questions {
 			if !matchesQuestionSetDefinition(question, definition) {
 				continue
 			}
-			matched = append(matched, QuestionSetPreview{
-				ID:         question.ID,
-				Title:      question.Title,
-				Type:       question.Type,
-				Difficulty: question.Difficulty,
-			})
-			if len(matched) >= 4 {
-				break
+			totalCount++
+			if len(matched) < 4 {
+				matched = append(matched, QuestionSetPreview{
+					ID:         question.ID,
+					Title:      question.Title,
+					Type:       question.Type,
+					Difficulty: question.Difficulty,
+				})
 			}
 		}
 		if len(matched) == 0 {
@@ -389,11 +411,38 @@ func buildQuestionSetSummaries(questions []model.Question) []QuestionSetSummary 
 			Title:         definition.Title,
 			Description:   definition.Description,
 			FocusTags:     definition.FocusTags,
-			QuestionCount: len(matched),
+			QuestionCount: totalCount,
 			Questions:     matched,
 		})
 	}
 	return summaries
+}
+
+// buildQuestionSetDetail 根据指定题单定义构建完整题目集合。
+func buildQuestionSetDetail(definition questionSetDefinition, questions []model.Question) *QuestionSetDetail {
+	matched := make([]QuestionSetPreview, 0, len(questions))
+	for _, question := range questions {
+		if !matchesQuestionSetDefinition(question, definition) {
+			continue
+		}
+		matched = append(matched, QuestionSetPreview{
+			ID:         question.ID,
+			Title:      question.Title,
+			Type:       question.Type,
+			Difficulty: question.Difficulty,
+		})
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+	return &QuestionSetDetail{
+		Slug:          definition.Slug,
+		Title:         definition.Title,
+		Description:   definition.Description,
+		FocusTags:     definition.FocusTags,
+		QuestionCount: len(matched),
+		Questions:     matched,
+	}
 }
 
 // matchesQuestionSetDefinition 判断题目是否命中当前题单定义。
