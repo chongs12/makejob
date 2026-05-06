@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,9 @@ func TestPlanServiceAdjustPlanKeepsCompletedTasks(t *testing.T) {
 		plan: &model.LearningPlan{
 			BaseModel:      model.BaseModel{ID: 5},
 			UserID:         9,
+			IndustryID:     3,
+			Title:          "原始计划",
+			Description:    "用于验证调整行为",
 			Status:         model.PlanStatusActive,
 			TotalTasks:     3,
 			CompletedTasks: 1,
@@ -32,7 +36,8 @@ func TestPlanServiceAdjustPlanKeepsCompletedTasks(t *testing.T) {
 			{
 				BaseModel:   model.BaseModel{ID: 101},
 				PlanID:      5,
-				Title:       "已完成任务",
+				Title:       "已完成 goroutine 补强任务",
+				Description: "继续补齐 goroutine 弱项",
 				TaskType:    model.TaskTypeStudy,
 				Status:      model.TaskStatusCompleted,
 				CompletedAt: &completedAt,
@@ -63,20 +68,60 @@ func TestPlanServiceAdjustPlanKeepsCompletedTasks(t *testing.T) {
 			Duration:    10,
 			Tasks: []ai.PlanTask{
 				{
-					Title:       "新任务 A",
-					Description: "新的第一个任务",
+					Title:       "新任务 A：goroutine 实战",
+					Description: "继续补齐 goroutine 弱项",
 					TaskType:    model.TaskTypePractice,
 					DayNumber:   1,
+					Priority:    "high",
 				},
 				{
 					Title:       "新任务 B",
-					Description: "新的第二个任务",
+					Description: "围绕阶段目标继续推进",
 					TaskType:    model.TaskTypeInterview,
 					DayNumber:   2,
+					Priority:    "medium",
 				},
 			},
 		},
 	}
+	storedPayload, err := buildPlanStoredPayload(ai.LearningPlan{
+		Title:       "原始计划",
+		Description: "用于验证调整行为",
+		Tasks: []ai.PlanTask{
+			{
+				Title:       "已完成 goroutine 补强任务",
+				Description: "继续补齐 goroutine 弱项",
+				TaskType:    model.TaskTypeStudy,
+				DayNumber:   1,
+				Priority:    "high",
+			},
+			{
+				Title:       "旧进行中任务",
+				Description: "围绕阶段目标继续推进",
+				TaskType:    model.TaskTypePractice,
+				DayNumber:   2,
+				Priority:    "medium",
+			},
+			{
+				Title:       "旧待开始任务",
+				Description: "围绕阶段目标继续推进",
+				TaskType:    model.TaskTypeReview,
+				DayNumber:   3,
+				Priority:    "low",
+			},
+		},
+	}, planStoredContext{
+		IndustryCode:    "go",
+		Level:           "beginner",
+		WeakTopics:      []string{"goroutine"},
+		GoalDescription: "完成 Go 并发目标训练",
+		DailyStudyTime:  60,
+		DurationDays:    7,
+	})
+	if err != nil {
+		t.Fatalf("buildPlanStoredPayload returned error: %v", err)
+	}
+	planRepo.plan.PlanJSON = string(storedPayload)
 
 	svc := &planService{
 		planRepo:  planRepo,
@@ -110,8 +155,139 @@ func TestPlanServiceAdjustPlanKeepsCompletedTasks(t *testing.T) {
 	if len(resp.Tasks) != 3 {
 		t.Fatalf("expected response to include preserved completed task and 2 new tasks, got %d", len(resp.Tasks))
 	}
-	if resp.Tasks[0].Title != "已完成任务" || resp.Tasks[0].Status != model.TaskStatusCompleted {
+	if resp.Tasks[0].Title != "已完成 goroutine 补强任务" || resp.Tasks[0].Status != model.TaskStatusCompleted {
 		t.Fatalf("expected first task to remain completed history, got %#v", resp.Tasks[0])
+	}
+	if resp.Tasks[0].Source != "weak_topic" || resp.Tasks[0].PriorityExplanation == "" {
+		t.Fatalf("expected preserved task to keep explanation fields, got %#v", resp.Tasks[0])
+	}
+	if resp.Tasks[1].Source != "weak_topic" || resp.Tasks[1].SourceLabel != "弱项补强" {
+		t.Fatalf("expected first new task to inherit weak topic explanation, got %#v", resp.Tasks[1])
+	}
+	if resp.Tasks[2].Source != "goal" || resp.Tasks[2].SourceLabel != "目标拆解" {
+		t.Fatalf("expected second new task to inherit goal explanation, got %#v", resp.Tasks[2])
+	}
+}
+
+// TestPlanServiceAdjustPlanFiltersFocusSignalsByIndustry 验证调整计划时只会写回当前行业下的训练重点信号。
+func TestPlanServiceAdjustPlanFiltersFocusSignalsByIndustry(t *testing.T) {
+	t.Parallel()
+
+	startDate := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, 0, 7)
+	planRepo := &stubPlanRepository{
+		plan: &model.LearningPlan{
+			BaseModel:      model.BaseModel{ID: 6},
+			UserID:         10,
+			IndustryID:     7,
+			Title:          "Go 计划",
+			Description:    "验证行业过滤",
+			Status:         model.PlanStatusActive,
+			TotalTasks:     2,
+			CompletedTasks: 0,
+			StartDate:      &startDate,
+			EndDate:        &endDate,
+		},
+	}
+	taskRepo := &stubPlanTaskRepository{
+		tasks: []model.LearningTask{
+			{
+				BaseModel: model.BaseModel{ID: 201},
+				PlanID:    6,
+				Title:     "旧任务",
+				TaskType:  model.TaskTypePractice,
+				Status:    model.TaskStatusPending,
+				SortOrder: 0,
+			},
+		},
+	}
+	agent := &stubPlanAgent{
+		adjustedPlan: ai.LearningPlan{
+			Title:       "调整后 Go 计划",
+			Description: "新的后续任务安排",
+			Duration:    7,
+			Tasks: []ai.PlanTask{
+				{
+					Title:       "状态定义不清专项练习",
+					Description: "围绕状态定义不清做一轮动态规划专项补练",
+					TaskType:    model.TaskTypePractice,
+					DayNumber:   1,
+					Priority:    "high",
+				},
+			},
+		},
+	}
+	storedPayload, err := buildPlanStoredPayload(ai.LearningPlan{
+		Title:       "Go 计划",
+		Description: "验证行业过滤",
+	}, planStoredContext{
+		IndustryCode: "go",
+	})
+	if err != nil {
+		t.Fatalf("buildPlanStoredPayload returned error: %v", err)
+	}
+	planRepo.plan.PlanJSON = string(storedPayload)
+
+	svc := &planService{
+		planRepo:  planRepo,
+		taskRepo:  taskRepo,
+		planAgent: agent,
+		learningArchiveRepo: growthLearningArchiveRepositoryStub{
+			entries: []model.LearningArchiveEntry{
+				{
+					IndustryCode:    "go",
+					SourceRef:       "practice:10:701",
+					MistakeTagsJSON: `["状态定义不清"]`,
+					SuggestionsJSON: `["先口述状态定义，再开始写代码。"]`,
+				},
+				{
+					IndustryCode:    "java",
+					SourceRef:       "practice:10:702",
+					MistakeTagsJSON: `["边界条件生疏"]`,
+					SuggestionsJSON: `["写完主流程后单独列一组边界样例再检查。"]`,
+				},
+			},
+		},
+		interviewRepo: &growthInterviewRepositoryStub{
+			interviews: []model.MockInterview{
+				{
+					BaseModel:  model.BaseModel{ID: 801},
+					IndustryID: 7,
+					Status:     model.InterviewStatusCompleted,
+					ReportJSON: `{"weaknesses":["状态定义不清"],"suggestions":["先口述状态定义，再开始写代码。"]}`,
+				},
+				{
+					BaseModel:  model.BaseModel{ID: 802},
+					IndustryID: 9,
+					Status:     model.InterviewStatusCompleted,
+					ReportJSON: `{"weaknesses":["边界条件生疏"],"suggestions":["写完主流程后单独列一组边界样例再检查。"]}`,
+				},
+			},
+		},
+	}
+
+	resp, err := svc.AdjustPlan(context.Background(), 10, 6)
+	if err != nil {
+		t.Fatalf("AdjustPlan returned error: %v", err)
+	}
+	if planRepo.saved == nil {
+		t.Fatal("expected adjusted plan to be saved")
+	}
+
+	stored := readPlanStoredPayload(planRepo.saved.PlanJSON)
+	if len(stored.Context.FocusSignals) == 0 {
+		t.Fatalf("expected saved plan to include focus signals, got %#v", stored.Context)
+	}
+	for _, signal := range stored.Context.FocusSignals {
+		if signal.Tag == "边界条件生疏" {
+			t.Fatalf("expected saved focus signals to exclude other industry, got %#v", stored.Context.FocusSignals)
+		}
+	}
+	if len(resp.Tasks) != 1 {
+		t.Fatalf("expected 1 adjusted task, got %d", len(resp.Tasks))
+	}
+	if resp.Tasks[0].SourceRef == "" || !strings.HasPrefix(resp.Tasks[0].SourceRef, "practice:10:701") {
+		t.Fatalf("expected adjusted task to use go-industry source ref, got %#v", resp.Tasks[0])
 	}
 }
 

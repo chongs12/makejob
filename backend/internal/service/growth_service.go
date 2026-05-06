@@ -73,13 +73,44 @@ type GrowthPlanSnapshot struct {
 
 // GrowthCurrentPlan 表示成长档案页当前主计划的精简摘要。
 type GrowthCurrentPlan struct {
-	ID             uint    `json:"id"`
-	Title          string  `json:"title"`
-	Status         string  `json:"status"`
-	TotalTasks     int     `json:"total_tasks"`
-	CompletedTasks int     `json:"completed_tasks"`
-	Progress       float64 `json:"progress"`
-	NextTaskTitle  string  `json:"next_task_title"`
+	ID                     uint    `json:"id"`
+	Title                  string  `json:"title"`
+	Status                 string  `json:"status"`
+	TotalTasks             int     `json:"total_tasks"`
+	CompletedTasks         int     `json:"completed_tasks"`
+	Progress               float64 `json:"progress"`
+	NextTaskTitle          string  `json:"next_task_title"`
+	NextTaskSource         string  `json:"next_task_source,omitempty"`
+	NextTaskReason         string  `json:"next_task_reason,omitempty"`
+	NextTaskSourceRef      string  `json:"next_task_source_ref,omitempty"`
+	NextTaskCollectionHint string  `json:"next_task_collection_hint,omitempty"`
+}
+
+// GrowthFocusSignal 表示成长档案首页可直接展示的一条结构化训练重点信号。
+type GrowthFocusSignal struct {
+	FocusTag                 string   `json:"focus_tag"`
+	TopicCode                string   `json:"topic_code,omitempty"`
+	TopicTitle               string   `json:"topic_title,omitempty"`
+	TopicProblemPattern      string   `json:"topic_problem_pattern,omitempty"`
+	RelatedQuestionSets      []string `json:"related_question_sets"`
+	RecommendedActions       []string `json:"recommended_actions"`
+	PrimaryQuestionSet       string   `json:"primary_question_set,omitempty"`
+	OccurrenceCount          int      `json:"occurrence_count"`
+	ArchiveOccurrenceCount   int      `json:"archive_occurrence_count"`
+	InterviewOccurrenceCount int      `json:"interview_occurrence_count"`
+	Source                   string   `json:"source"`
+	SourceLabel              string   `json:"source_label"`
+	Reason                   string   `json:"reason"`
+}
+
+// GrowthTrendSummary 表示成长档案首页用于概括当前训练趋势的摘要块。
+type GrowthTrendSummary struct {
+	DominantSource      string `json:"dominant_source"`
+	DominantSourceLabel string `json:"dominant_source_label"`
+	TopFocusTag         string `json:"top_focus_tag,omitempty"`
+	TopTopicCode        string `json:"top_topic_code,omitempty"`
+	TopTopicTitle       string `json:"top_topic_title,omitempty"`
+	Summary             string `json:"summary"`
 }
 
 // GrowthSummaryResponse 表示成长档案页首页所需的聚合数据。
@@ -94,17 +125,22 @@ type GrowthSummaryResponse struct {
 	RecentStudyLogs         []StudyLogResponse            `json:"recent_study_logs"`
 	RecentInterviews        []GrowthInterviewSnapshot     `json:"recent_interviews"`
 	RecentPlans             []GrowthPlanSnapshot          `json:"recent_plans"`
+	FocusSignals            []GrowthFocusSignal           `json:"focus_signals"`
+	TrendSummary            *GrowthTrendSummary           `json:"trend_summary"`
 }
 
 // WeeklyFocusTheme 表示本周最值得集中补强的一项主题。
 type WeeklyFocusTheme struct {
-	Title       string   `json:"title"`
-	Reason      string   `json:"reason"`
-	Source      string   `json:"source"`
-	SourceLabel string   `json:"source_label"`
-	FocusTags   []string `json:"focus_tags"`
-	TopicCodes  []string `json:"topic_codes"`
-	Suggestions []string `json:"suggestions"`
+	Title                    string   `json:"title"`
+	Reason                   string   `json:"reason"`
+	Source                   string   `json:"source"`
+	SourceLabel              string   `json:"source_label"`
+	FocusTags                []string `json:"focus_tags"`
+	TopicCodes               []string `json:"topic_codes"`
+	RelatedQuestionSets      []string `json:"related_question_sets"`
+	Suggestions              []string `json:"suggestions"`
+	OccurrenceCount          int      `json:"occurrence_count"`
+	InterviewOccurrenceCount int      `json:"interview_occurrence_count"`
 }
 
 // WeeklyFocusResponse 表示成长页和学习陪伴页共用的本周重点补强摘要。
@@ -230,8 +266,10 @@ func (s *growthService) GetGrowthSummary(ctx context.Context, userID uint) (*Gro
 		RecentStudyLogs:  make([]StudyLogResponse, 0, len(recentLogs)),
 		RecentInterviews: make([]GrowthInterviewSnapshot, 0, minGrowthCount(len(metricInterviews), growthRecentInterviewLimit)),
 		RecentPlans:      make([]GrowthPlanSnapshot, 0, len(recentPlans)),
+		FocusSignals:     []GrowthFocusSignal{},
 	}
 
+	recentTrendInterviews := make([]model.MockInterview, 0, growthRecentInterviewLimit)
 	var completedInterviewCount int64
 	var completedInterviewScore float64
 	for index, interview := range metricInterviews {
@@ -241,6 +279,7 @@ func (s *growthService) GetGrowthSummary(ctx context.Context, userID uint) (*Gro
 		}
 
 		if index < growthRecentInterviewLimit {
+			recentTrendInterviews = append(recentTrendInterviews, interview)
 			response.RecentInterviews = append(response.RecentInterviews, GrowthInterviewSnapshot{
 				ID:             interview.ID,
 				Status:         interview.Status,
@@ -274,20 +313,42 @@ func (s *growthService) GetGrowthSummary(ctx context.Context, userID uint) (*Gro
 		response.RecentStudyLogs = append(response.RecentStudyLogs, *buildStudyLogResponse(&log))
 	}
 
+	archiveEntries := make([]model.LearningArchiveEntry, 0)
+	if s.learningArchiveRepo != nil {
+		entries, err := s.learningArchiveRepo.ListRecentByUser(ctx, userID, growthWeeklyFocusArchiveLimit, nil)
+		if err != nil {
+			return nil, err
+		}
+		archiveEntries = entries
+	}
+	focusSignals := buildTrainingFocusSignals(archiveEntries, recentTrendInterviews, growthWeeklyFocusThemeLimit)
+	response.FocusSignals = buildGrowthFocusSignals(focusSignals)
+	response.TrendSummary = buildGrowthTrendSummary(focusSignals)
+
 	if currentPlan != nil {
 		tasks, err := s.taskRepo.ListByPlan(ctx, currentPlan.ID)
 		if err != nil {
 			return nil, err
 		}
+		nextTask := resolveNextGrowthTask(tasks)
+		nextTaskContext := planTaskResponseContext{}
+		if nextTask != nil {
+			storedContext := readPlanStoredContext(currentPlan.PlanJSON)
+			nextTaskContext = buildPlanTaskResponseContext(*nextTask, "", storedContext)
+		}
 
 		response.CurrentPlan = &GrowthCurrentPlan{
-			ID:             currentPlan.ID,
-			Title:          currentPlan.Title,
-			Status:         currentPlan.Status,
-			TotalTasks:     currentPlan.TotalTasks,
-			CompletedTasks: currentPlan.CompletedTasks,
-			Progress:       calculatePlanProgress(currentPlan.CompletedTasks, currentPlan.TotalTasks),
-			NextTaskTitle:  resolveNextGrowthTaskTitle(tasks),
+			ID:                     currentPlan.ID,
+			Title:                  currentPlan.Title,
+			Status:                 currentPlan.Status,
+			TotalTasks:             currentPlan.TotalTasks,
+			CompletedTasks:         currentPlan.CompletedTasks,
+			Progress:               calculatePlanProgress(currentPlan.CompletedTasks, currentPlan.TotalTasks),
+			NextTaskTitle:          resolveNextGrowthTaskTitle(tasks),
+			NextTaskSource:         nextTaskContext.Source,
+			NextTaskReason:         nextTaskContext.Reason,
+			NextTaskSourceRef:      nextTaskContext.SourceRef,
+			NextTaskCollectionHint: nextTaskContext.CollectionHint,
 		}
 	}
 
@@ -309,14 +370,12 @@ func (s *growthService) GetWeeklyFocus(ctx context.Context, userID uint) (*Weekl
 		archiveEntries = entries
 	}
 
-	focusStats := rankPracticeFocusTags(archiveEntries)
 	recentInterviews, _, err := s.interviewRepo.ListByUser(ctx, userID, 1, growthRecentInterviewLimit)
 	if err != nil {
 		return nil, err
 	}
-	interviewWeaknessStats := rankWeeklyInterviewWeaknesses(recentInterviews)
-
-	response.Themes = buildWeeklyFocusThemes(focusStats, archiveEntries, interviewWeaknessStats)
+	focusSignals := buildTrainingFocusSignals(archiveEntries, recentInterviews, growthWeeklyFocusThemeLimit)
+	response.Themes = buildWeeklyFocusThemesFromSignals(focusSignals)
 	return response, nil
 }
 
@@ -356,12 +415,90 @@ func calculatePlanProgress(completedTasks int, totalTasks int) float64 {
 
 // resolveNextGrowthTaskTitle 从计划任务列表里找出当前最值得继续推进的下一项任务标题。
 func resolveNextGrowthTaskTitle(tasks []model.LearningTask) string {
-	for _, task := range tasks {
-		if task.Status != model.TaskStatusCompleted && task.Status != model.TaskStatusSkipped {
-			return task.Title
-		}
+	if task := resolveNextGrowthTask(tasks); task != nil {
+		return task.Title
 	}
 	return ""
+}
+
+// resolveNextGrowthTask 从计划任务列表里找出当前最值得继续推进的下一项任务。
+func resolveNextGrowthTask(tasks []model.LearningTask) *model.LearningTask {
+	for _, task := range tasks {
+		if task.Status != model.TaskStatusCompleted && task.Status != model.TaskStatusSkipped {
+			copy := task
+			return &copy
+		}
+	}
+	return nil
+}
+
+// buildGrowthFocusSignals 将统一训练重点信号映射为成长页首页可直接消费的结构。
+func buildGrowthFocusSignals(signals []trainingFocusSignal) []GrowthFocusSignal {
+	items := make([]GrowthFocusSignal, 0, len(signals))
+	for _, signal := range signals {
+		items = append(items, GrowthFocusSignal{
+			FocusTag:                 signal.Tag,
+			TopicCode:                signal.TopicCode,
+			TopicTitle:               signal.TopicTitle,
+			TopicProblemPattern:      signal.TopicProblemPattern,
+			RelatedQuestionSets:      append([]string(nil), signal.RelatedQuestionSets...),
+			RecommendedActions:       append([]string(nil), signal.RecommendedActions...),
+			PrimaryQuestionSet:       signal.PrimaryQuestionSet,
+			OccurrenceCount:          signal.OccurrenceCount,
+			ArchiveOccurrenceCount:   signal.ArchiveOccurrenceCount,
+			InterviewOccurrenceCount: signal.InterviewOccurrenceCount,
+			Source:                   signal.Source,
+			SourceLabel:              signal.SourceLabel,
+			Reason:                   signal.Reason,
+		})
+	}
+	return items
+}
+
+// buildGrowthTrendSummary 根据当前最强的训练重点信号生成成长页趋势摘要。
+func buildGrowthTrendSummary(signals []trainingFocusSignal) *GrowthTrendSummary {
+	if len(signals) == 0 {
+		return nil
+	}
+
+	top := signals[0]
+	topicTitle := top.TopicTitle
+	if topicTitle == "" {
+		topicTitle = top.Tag
+	}
+
+	return &GrowthTrendSummary{
+		DominantSource:      top.Source,
+		DominantSourceLabel: top.SourceLabel,
+		TopFocusTag:         top.Tag,
+		TopTopicCode:        top.TopicCode,
+		TopTopicTitle:       top.TopicTitle,
+		Summary:             fmt.Sprintf("当前最值得优先处理的是“%s”，它主要来自%s，并且已经连续影响最近一轮训练表现。", topicTitle, top.SourceLabel),
+	}
+}
+
+// buildWeeklyFocusThemesFromSignals 将统一训练重点信号转成本周补强主题。
+func buildWeeklyFocusThemesFromSignals(signals []trainingFocusSignal) []WeeklyFocusTheme {
+	themes := make([]WeeklyFocusTheme, 0, len(signals))
+	for _, signal := range signals {
+		title := signal.TopicTitle
+		if title == "" {
+			title = fmt.Sprintf("补强「%s」", signal.Tag)
+		}
+		themes = append(themes, WeeklyFocusTheme{
+			Title:                    title,
+			Reason:                   signal.Reason,
+			Source:                   signal.Source,
+			SourceLabel:              signal.SourceLabel,
+			FocusTags:                []string{signal.Tag},
+			TopicCodes:               sanitizeWeeklyFocusTopicCodes([]string{signal.TopicCode}),
+			RelatedQuestionSets:      append([]string(nil), signal.RelatedQuestionSets...),
+			Suggestions:              append([]string(nil), signal.RecommendedActions...),
+			OccurrenceCount:          signal.OccurrenceCount,
+			InterviewOccurrenceCount: signal.InterviewOccurrenceCount,
+		})
+	}
+	return themes
 }
 
 // buildStudyLogResponse 将学习日志模型转换为前端可直接消费的响应结构。

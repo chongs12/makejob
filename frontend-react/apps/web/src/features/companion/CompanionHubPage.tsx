@@ -26,7 +26,7 @@ import {
   buildCompanionWeeklyFocusQueryKey,
   invalidateCompanionPlanQueries,
 } from '../../shared/queryKeys'
-import { buildWeeklyFocusPracticeRouteSearch } from '../../shared/practiceRoute'
+import { buildWeeklyFocusPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
 import { fetchWeeklyFocus, type WeeklyFocusTheme } from '../../shared/weeklyFocus'
 import {
   createCompanionPlan,
@@ -655,12 +655,18 @@ export function CompanionHubPage() {
                             <span>{theme.source_label}</span>
                           </div>
                           <p>{theme.reason}</p>
+                          {(theme.occurrence_count > 0 || theme.interview_occurrence_count > 0) ? (
+                            <p>最近出现 {theme.occurrence_count} 次，其中面试暴露 {theme.interview_occurrence_count} 次</p>
+                          ) : null}
                           {theme.focus_tags.length ? (
                             <div className="community-tag-row">
                               {theme.focus_tags.map((item) => (
                                 <span key={`${theme.title}-${item}`}>{item}</span>
                               ))}
                             </div>
+                          ) : null}
+                          {theme.related_question_sets?.length ? (
+                            <p>关联题单：{theme.related_question_sets.map((item) => resolvePracticeQuestionSetTitle(item)).filter(Boolean).join('、')}</p>
                           ) : null}
                           {theme.suggestions.length ? (
                             <ul className="interview-bullet-list companion-context-list">
@@ -821,6 +827,9 @@ export function CompanionHubPage() {
               <article className="timeline-item">
                 <strong>{focusedTask ? `继续「${focusedTask.title}」` : '当前还没有明确续接任务'}</strong>
                 <p>{dailyDigestText}</p>
+                {focusedTask?.source_label ? <p>任务来源：{focusedTask.source_label}</p> : null}
+                {focusedTask?.reason ? <p>安排原因：{focusedTask.reason}</p> : null}
+                {focusedTask?.priority_explanation ? <p>优先级说明：{focusedTask.priority_explanation}</p> : null}
                 <div className="page-actions">
                   <button className="primary-button" type="button" onClick={() => handleContinueTask(focusedTask)}>
                     {focusedTask ? '进入陪伴页继续' : '进入陪伴页'}
@@ -916,6 +925,8 @@ export function CompanionHubPage() {
                                   <span>{taskStatusLabel(item.status)}</span>
                                 </div>
                                 <p>{item.title}</p>
+                                {item.source_label ? <p>{item.source_label}</p> : null}
+                                {item.reason ? <p>{item.reason}</p> : null}
                               </div>
                             ))}
                           </div>

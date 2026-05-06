@@ -8,6 +8,9 @@ export interface WeeklyFocusTheme {
   source_label: string
   focus_tags: string[]
   topic_codes: string[]
+  related_question_sets: string[]
+  occurrence_count: number
+  interview_occurrence_count: number
   suggestions: string[]
 }
 

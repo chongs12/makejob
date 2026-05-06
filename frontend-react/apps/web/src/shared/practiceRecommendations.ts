@@ -17,10 +17,17 @@ export interface PracticeRecommendationItem {
   question: PracticeRecommendationQuestion
   focus_tag: string
   topic_code?: string
+  topic_title?: string
+  topic_problem_pattern?: string
+  related_question_sets: string[]
+  recommended_actions: string[]
+  primary_question_set?: string
+  recommendation_mode: string
   reason: string
   source_type: string
   priority: number
   occurrence_count: number
+  priority_explanation: string
 }
 
 export interface PracticeRecommendationResponse {
@@ -51,6 +58,31 @@ export async function fetchPracticeRecommendations(
   }
 
   return response.data
+}
+
+/**
+ * 将推荐承接模式转换为更适合前台展示的中文标签。
+ */
+export function resolvePracticeRecommendationModeLabel(mode: string): string {
+  const map: Record<string, string> = {
+    question_set: '题单优先',
+    topic: '专题优先',
+    keyword: '关键词回退',
+  }
+
+  return map[mode.trim()] || '推荐结果'
+}
+
+/**
+ * 将推荐来源类型转换为更适合前台展示的中文标签。
+ */
+export function resolvePracticeRecommendationSourceLabel(sourceType: string): string {
+  const map: Record<string, string> = {
+    learning_archive: '最近学习档案',
+    interview_archive: '本场面试',
+  }
+
+  return map[sourceType.trim()] || '推荐来源'
 }
 
 /**

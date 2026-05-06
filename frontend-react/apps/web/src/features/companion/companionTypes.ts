@@ -12,6 +12,12 @@ export interface CompanionPlanTask {
   completed_at?: string
   day_number: number
   sort_order?: number
+  source?: string
+  source_label?: string
+  reason?: string
+  priority_explanation?: string
+  source_ref?: string
+  collection_hint?: string
 }
 
 export interface CompanionPlanDetail {

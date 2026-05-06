@@ -214,6 +214,8 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanRepo,
 			deps.PlanTaskRepo,
 			aiClient.PlanAgent,
+			deps.LearningArchiveRepo,
+			deps.InterviewRepo,
 			industryRepo,
 		)
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)

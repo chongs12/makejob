@@ -1,4 +1,5 @@
 import { buildTaskStatusActions, taskStatusLabel } from './companionHelpers'
+import { resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
 import type {
   CompanionHistoryItem,
   CompanionPlanDetail,
@@ -52,6 +53,18 @@ export function formatCompanionDateTime(value?: string | number): string {
 }
 
 /**
+ * 将计划任务里的题单提示规范化为更适合前端展示的中文标题。
+ */
+function formatCompanionCollectionHint(value?: string): string {
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue) {
+    return ''
+  }
+
+  return resolvePracticeQuestionSetTitle(normalizedValue)
+}
+
+/**
  * 渲染目标任务列表，统一展示状态、说明和可执行动作。
  */
 export function GoalList(props: {
@@ -75,6 +88,11 @@ export function GoalList(props: {
             <span>{taskStatusLabel(item.status)}</span>
           </div>
           <p>{item.description || '当前任务暂无详细说明。'}</p>
+          {item.source_label ? <p>来源：{item.source_label}</p> : null}
+          {item.reason ? <p>原因：{item.reason}</p> : null}
+          {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
+          {item.collection_hint ? <p>建议题单：{formatCompanionCollectionHint(item.collection_hint)}</p> : null}
+          {item.source_ref ? <p>来源引用：{item.source_ref}</p> : null}
           <div className="companion-goal-meta">
             <span>类型：{item.task_type || 'study'}</span>
             <span>Day {item.day_number || 1}</span>

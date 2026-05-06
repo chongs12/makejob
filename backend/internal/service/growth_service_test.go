@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"makejob-backend/internal/ai"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
 )
@@ -117,6 +118,46 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 		StartDate:      &startDate,
 		EndDate:        &endDate,
 	}
+	storedPayload, err := buildPlanStoredPayload(ai.LearningPlan{
+		Title:       "Go 强化计划",
+		Description: "围绕近期高频问题的补强计划",
+		Tasks: []ai.PlanTask{
+			{
+				Title:       "并发复习",
+				Description: "理解并发模型",
+				TaskType:    model.TaskTypeStudy,
+				DayNumber:   1,
+			},
+			{
+				Title:       "状态定义不清专项训练",
+				Description: "围绕状态定义不清做一轮动态规划专项补练",
+				TaskType:    model.TaskTypePractice,
+				DayNumber:   2,
+				Priority:    "high",
+			},
+		},
+	}, planStoredContext{
+		IndustryCode: "go",
+		FocusSignals: []trainingFocusSignal{
+			{
+				Tag:                    "状态定义不清",
+				TopicCode:              "state-definition",
+				TopicTitle:             "状态定义不清",
+				PrimaryQuestionSet:     "algorithm-structure",
+				Source:                 "learning_archive",
+				SourceLabel:            "练习归档",
+				Reason:                 "最近练习归档里“状态定义不清”累计出现 2 次，说明这个问题还在持续影响你的输出。",
+				SourceRef:              "practice:7:701",
+				CollectionHint:         "algorithm-structure",
+				OccurrenceCount:        2,
+				ArchiveOccurrenceCount: 2,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildPlanStoredPayload returned error: %v", err)
+	}
+	currentPlan.PlanJSON = string(storedPayload)
 	recentPlans := []model.LearningPlan{
 		*currentPlan,
 		{
@@ -138,10 +179,12 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 			Status:    model.TaskStatusCompleted,
 		},
 		{
-			BaseModel: model.BaseModel{ID: 502},
-			PlanID:    401,
-			Title:     "项目拆解",
-			Status:    model.TaskStatusInProgress,
+			BaseModel:   model.BaseModel{ID: 502},
+			PlanID:      401,
+			Title:       "状态定义不清专项训练",
+			Description: "围绕状态定义不清做一轮动态规划专项补练",
+			Status:      model.TaskStatusInProgress,
+			TaskType:    model.TaskTypePractice,
 		},
 		{
 			BaseModel: model.BaseModel{ID: 503},
@@ -181,6 +224,22 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 				401: tasks,
 			},
 		},
+		learningArchiveRepo: growthLearningArchiveRepositoryStub{
+			entries: []model.LearningArchiveEntry{
+				{
+					IndustryCode:    "go",
+					SourceRef:       "practice:7:701",
+					MistakeTagsJSON: `["状态定义不清"]`,
+					SuggestionsJSON: `["先口述状态定义，再开始写代码。"]`,
+				},
+				{
+					IndustryCode:    "go",
+					SourceRef:       "practice:7:702",
+					MistakeTagsJSON: `["状态定义不清"]`,
+					SuggestionsJSON: `["把变量命名改成能反映语义的名称。"]`,
+				},
+			},
+		},
 	}
 
 	resp, err := svc.GetGrowthSummary(context.Background(), 7)
@@ -206,8 +265,14 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 	if resp.CurrentPlan == nil {
 		t.Fatal("expected current plan summary")
 	}
-	if resp.CurrentPlan.NextTaskTitle != "项目拆解" {
-		t.Fatalf("expected next task 项目拆解, got %q", resp.CurrentPlan.NextTaskTitle)
+	if resp.CurrentPlan.NextTaskTitle != "状态定义不清专项训练" {
+		t.Fatalf("expected next task 状态定义不清专项训练, got %q", resp.CurrentPlan.NextTaskTitle)
+	}
+	if resp.CurrentPlan.NextTaskSource != "practice_recommendation" {
+		t.Fatalf("expected next task source practice_recommendation, got %s", resp.CurrentPlan.NextTaskSource)
+	}
+	if resp.CurrentPlan.NextTaskSourceRef != "practice:7:701" || resp.CurrentPlan.NextTaskCollectionHint != "algorithm-structure" {
+		t.Fatalf("unexpected next task source ref or collection hint: %#v", resp.CurrentPlan)
 	}
 	if len(resp.RecentStudyLogs) != 1 || resp.RecentStudyLogs[0].CompletedTitles[0] != "并发复习" {
 		t.Fatalf("unexpected study logs: %#v", resp.RecentStudyLogs)
@@ -220,6 +285,116 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 	}
 	if resp.PracticeStats == nil || resp.PracticeStats.StreakDays != 6 {
 		t.Fatalf("unexpected practice stats: %#v", resp.PracticeStats)
+	}
+	if len(resp.FocusSignals) != 1 || resp.FocusSignals[0].FocusTag != "状态定义不清" {
+		t.Fatalf("unexpected focus signals: %#v", resp.FocusSignals)
+	}
+	if resp.TrendSummary == nil || resp.TrendSummary.TopFocusTag != "状态定义不清" {
+		t.Fatalf("unexpected trend summary: %#v", resp.TrendSummary)
+	}
+}
+
+// TestGrowthServiceGetGrowthSummaryUsesRecentInterviewsForTrend 验证成长页趋势摘要只会消费最近窗口的面试记录。
+func TestGrowthServiceGetGrowthSummaryUsesRecentInterviewsForTrend(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 25, 20, 0, 0, 0, time.UTC)
+	interviews := make([]model.MockInterview, 0, 11)
+	for i := 0; i < 5; i++ {
+		interviews = append(interviews, model.MockInterview{
+			BaseModel:      model.BaseModel{ID: uint(900 + i), CreatedAt: now.Add(time.Duration(-i) * time.Hour)},
+			IndustryID:     7,
+			Status:         model.InterviewStatusCompleted,
+			Score:          90,
+			TotalQuestions: 6,
+			ReportJSON:     `{"weaknesses":["状态定义不清"],"suggestions":["先口述状态定义，再开始写代码。"]}`,
+		})
+	}
+	for i := 0; i < 6; i++ {
+		interviews = append(interviews, model.MockInterview{
+			BaseModel:      model.BaseModel{ID: uint(950 + i), CreatedAt: now.Add(time.Duration(-(i + 5)) * time.Hour)},
+			IndustryID:     7,
+			Status:         model.InterviewStatusCompleted,
+			Score:          60,
+			TotalQuestions: 6,
+			ReportJSON:     `{"weaknesses":["边界条件生疏"],"suggestions":["写完主流程后单独列一组边界样例再检查。"]}`,
+		})
+	}
+
+	svc := &growthService{
+		studyLogRepo: &growthStudyLogRepositoryStub{},
+		recordRepo: &growthQuestionRecordRepositoryStub{
+			stats: &repository.UserPracticeStats{},
+		},
+		interviewRepo: &growthInterviewRepositoryStub{
+			interviews: interviews,
+		},
+		planRepo: &growthPlanRepositoryStub{},
+		taskRepo: &growthPlanTaskRepositoryStub{},
+		learningArchiveRepo: growthLearningArchiveRepositoryStub{
+			entries: []model.LearningArchiveEntry{},
+		},
+	}
+
+	resp, err := svc.GetGrowthSummary(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("GetGrowthSummary returned error: %v", err)
+	}
+
+	if resp.InterviewCount != int64(len(interviews)) {
+		t.Fatalf("expected interview count %d, got %d", len(interviews), resp.InterviewCount)
+	}
+	if resp.TrendSummary == nil {
+		t.Fatal("expected trend summary")
+	}
+	if resp.TrendSummary.TopFocusTag != "状态定义不清" {
+		t.Fatalf("expected recent trend to focus 状态定义不清, got %#v", resp.TrendSummary)
+	}
+	if len(resp.FocusSignals) == 0 || resp.FocusSignals[0].FocusTag != "状态定义不清" {
+		t.Fatalf("expected focus signals to use recent interviews, got %#v", resp.FocusSignals)
+	}
+}
+
+// TestGrowthServiceGetWeeklyFocusUsesStructuredSignals 验证本周重点补强会直接复用统一训练重点信号结构。
+func TestGrowthServiceGetWeeklyFocusUsesStructuredSignals(t *testing.T) {
+	t.Parallel()
+
+	reportJSON := `{"weaknesses":["状态定义不清"],"suggestions":["先口述状态定义，再开始写代码。"]}`
+	svc := &growthService{
+		interviewRepo: &growthInterviewRepositoryStub{
+			interviews: []model.MockInterview{
+				{
+					BaseModel:  model.BaseModel{ID: 801},
+					Status:     model.InterviewStatusCompleted,
+					ReportJSON: reportJSON,
+				},
+			},
+		},
+		learningArchiveRepo: growthLearningArchiveRepositoryStub{
+			entries: []model.LearningArchiveEntry{
+				{
+					IndustryCode:    "go",
+					SourceRef:       "practice:7:801",
+					MistakeTagsJSON: `["状态定义不清"]`,
+					SuggestionsJSON: `["把变量命名改成能反映语义的名称。"]`,
+				},
+			},
+		},
+	}
+
+	resp, err := svc.GetWeeklyFocus(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("GetWeeklyFocus returned error: %v", err)
+	}
+	if len(resp.Themes) != 1 {
+		t.Fatalf("expected 1 weekly focus theme, got %d", len(resp.Themes))
+	}
+	theme := resp.Themes[0]
+	if theme.Source != "mixed" || len(theme.RelatedQuestionSets) == 0 {
+		t.Fatalf("expected mixed theme with question sets, got %#v", theme)
+	}
+	if theme.OccurrenceCount != 2 || theme.InterviewOccurrenceCount != 1 {
+		t.Fatalf("unexpected occurrence stats: %#v", theme)
 	}
 }
 
@@ -396,4 +571,19 @@ func (s *growthPlanTaskRepositoryStub) DeleteByPlan(context.Context, uint) error
 // DeleteIncompleteByPlan 满足接口要求，当前测试不依赖该行为。
 func (s *growthPlanTaskRepositoryStub) DeleteIncompleteByPlan(context.Context, uint) error {
 	return nil
+}
+
+// growthLearningArchiveRepositoryStub 模拟学习档案仓库，供成长档案服务聚合训练重点信号。
+type growthLearningArchiveRepositoryStub struct {
+	entries []model.LearningArchiveEntry
+}
+
+// Upsert 满足接口要求，当前测试不依赖写入行为。
+func (s growthLearningArchiveRepositoryStub) Upsert(context.Context, *model.LearningArchiveEntry) error {
+	return nil
+}
+
+// ListRecentByUser 返回预置学习档案列表。
+func (s growthLearningArchiveRepositoryStub) ListRecentByUser(context.Context, uint, int, *uint) ([]model.LearningArchiveEntry, error) {
+	return append([]model.LearningArchiveEntry(nil), s.entries...), nil
 }

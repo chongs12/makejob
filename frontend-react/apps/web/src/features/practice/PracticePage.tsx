@@ -25,7 +25,12 @@ import {
   buildPracticeRecommendationsQueryKey,
 } from '../../shared/queryKeys'
 import { fetchMistakeTopic, fetchMistakeTopics, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
-import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
+import {
+  fetchPracticeRecommendations,
+  resolvePracticeRecommendationModeLabel,
+  resolvePracticeRecommendationRoute,
+  resolvePracticeRecommendationSourceLabel,
+} from '../../shared/practiceRecommendations'
 import {
   buildPracticeRecommendationRouteSearch,
   buildPracticeRouteSearch,
@@ -531,45 +536,62 @@ export function PracticePage() {
                 const collectionSearch = buildPracticeRecommendationRouteSearch({
                   focus_tag: item.focus_tag,
                   topic_code: item.topic_code,
+                  primary_question_set: item.primary_question_set,
                   reason: item.reason,
                   question_title: item.question.title,
                 }, linkedTopic)
 
                 return (
                   <article className="feature-card" key={`practice-recommendation-${item.question.id}`}>
-                  <div className="card-inline">
-                    <strong>{item.question.title}</strong>
-                    <span>{difficultyLabel(item.question.difficulty)}</span>
-                  </div>
-                  <p>聚焦标签：{item.focus_tag}</p>
-                  <p>{item.reason}</p>
-                  <p>推荐优先级：第 {item.priority} 位 · 来源：{item.source_type === 'interview_archive' ? '本场面试' : '最近学习档案'}</p>
-                  <p>题型：{questionTypeLabel(item.question.type)}</p>
-                  <div className="page-actions" style={{ marginTop: 12 }}>
-                    <Link
-                      className="secondary-link"
-                      to="/practice"
-                      search={collectionSearch}
-                    >
-                      进入这组补练
-                    </Link>
-                    <Link
-                      className="secondary-link"
-                      to={resolvePracticeRecommendationRoute(item.question.type)}
-                      params={{ questionId: String(item.question.id) }}
-                    >
-                      直接开始补练
-                    </Link>
-                    {item.topic_code ? (
+                    <div className="card-inline">
+                      <strong>{item.question.title}</strong>
+                      <span>{difficultyLabel(item.question.difficulty)}</span>
+                    </div>
+                    {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
+                    <p>聚焦标签：{item.focus_tag}</p>
+                    <p>{item.reason}</p>
+                    <p>推荐优先级：第 {item.priority} 位</p>
+                    <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
+                    <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
+                    {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
+                    {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
+                    {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
+                    {item.related_question_sets?.length ? (
+                      <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
+                    ) : null}
+                    <p>题型：{questionTypeLabel(item.question.type)}</p>
+                    {item.recommended_actions?.length ? (
+                      <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                        {item.recommended_actions.map((action) => (
+                          <li key={`${item.question.id}-${action}`}>{action}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="page-actions" style={{ marginTop: 12 }}>
                       <Link
                         className="secondary-link"
-                        to={resolveMistakeTopicRoute()}
-                        params={{ topicCode: item.topic_code }}
+                        to="/practice"
+                        search={collectionSearch}
                       >
-                        查看错因专题
+                        进入这组补练
                       </Link>
-                    ) : null}
-                  </div>
+                      <Link
+                        className="secondary-link"
+                        to={resolvePracticeRecommendationRoute(item.question.type)}
+                        params={{ questionId: String(item.question.id) }}
+                      >
+                        直接开始补练
+                      </Link>
+                      {item.topic_code ? (
+                        <Link
+                          className="secondary-link"
+                          to={resolveMistakeTopicRoute()}
+                          params={{ topicCode: item.topic_code }}
+                        >
+                          查看错因专题
+                        </Link>
+                      ) : null}
+                    </div>
                   </article>
                 )
               })}

@@ -23,6 +23,7 @@ import {
   buildCompanionPlanProgressQueryKey,
   invalidateCompanionPlanQueries,
 } from '../../shared/queryKeys'
+import { resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
 import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
 import {
   adjustCompanionPlan,
@@ -857,6 +858,11 @@ export function CompanionWorkspacePage() {
               <p className="companion-empty-text">
                 {focusedTask?.description || dailyDigestText}
               </p>
+              {focusedTask?.source_label ? <p className="companion-empty-text">任务来源：{focusedTask.source_label}</p> : null}
+              {focusedTask?.reason ? <p className="companion-empty-text">安排原因：{focusedTask.reason}</p> : null}
+              {focusedTask?.priority_explanation ? <p className="companion-empty-text">优先级说明：{focusedTask.priority_explanation}</p> : null}
+              {focusedTask?.collection_hint ? <p className="companion-empty-text">建议题单：{resolvePracticeQuestionSetTitle(focusedTask.collection_hint)}</p> : null}
+              {focusedTask?.source_ref ? <p className="companion-empty-text">来源引用：{focusedTask.source_ref}</p> : null}
               <div className="companion-hub-meta">
                 <span>{dailyDigestText}</span>
                 {focusTaskDraft?.updatedAt ? <span>最近续接：{formatCompanionDateTime(focusTaskDraft.updatedAt)}</span> : null}

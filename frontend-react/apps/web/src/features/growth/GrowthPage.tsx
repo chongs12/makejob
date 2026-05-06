@@ -6,8 +6,17 @@ import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
 import { AsyncEmptyState, AsyncInlineState, AsyncStatusCard } from '../../shared/asyncState'
 import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
-import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
-import { buildPracticeRecommendationRouteSearch, buildWeeklyFocusPracticeRouteSearch } from '../../shared/practiceRoute'
+import {
+  fetchPracticeRecommendations,
+  resolvePracticeRecommendationModeLabel,
+  resolvePracticeRecommendationRoute,
+  resolvePracticeRecommendationSourceLabel,
+} from '../../shared/practiceRecommendations'
+import {
+  buildPracticeRecommendationRouteSearch,
+  buildWeeklyFocusPracticeRouteSearch,
+  resolvePracticeQuestionSetTitle,
+} from '../../shared/practiceRoute'
 import { fetchWeeklyFocus } from '../../shared/weeklyFocus'
 
 interface GrowthCategoryStat {
@@ -69,6 +78,23 @@ interface GrowthCurrentPlan {
   completed_tasks: number
   progress: number
   next_task_title: string
+  next_task_source?: string
+  next_task_reason?: string
+  next_task_source_ref?: string
+  next_task_collection_hint?: string
+}
+
+interface GrowthFocusSignal {
+  label: string
+  source_label?: string
+  occurrence_count?: number
+  reason?: string
+}
+
+interface GrowthTrendSummary {
+  summary: string
+  strongest_signal?: string
+  weakest_signal?: string
 }
 
 interface GrowthSummaryResponse {
@@ -79,6 +105,8 @@ interface GrowthSummaryResponse {
   average_interview_score: number
   plan_count: number
   current_plan?: GrowthCurrentPlan | null
+  focus_signals: GrowthFocusSignal[]
+  trend_summary?: GrowthTrendSummary | null
   recent_study_logs: GrowthStudyLog[]
   recent_interviews: GrowthInterviewSnapshot[]
   recent_plans: GrowthPlanSnapshot[]
@@ -196,6 +224,17 @@ function buildGrowthLogSummary(log: GrowthStudyLog): string {
   }
 
   return fragments.join('，')
+}
+
+/**
+ * 将题单 slug 数组压缩成适合卡片展示的中文标题列表。
+ */
+function formatGrowthQuestionSets(questionSets: string[]): string {
+  const labels = questionSets
+    .map((item) => resolvePracticeQuestionSetTitle(item))
+    .filter(Boolean)
+
+  return labels.join('、')
 }
 
 /**
@@ -341,6 +380,18 @@ export default function GrowthPage() {
                     任务进度：{growthSummaryQuery.data.current_plan.completed_tasks}/{growthSummaryQuery.data.current_plan.total_tasks}
                   </p>
                   <p>下一步最值得推进：{growthSummaryQuery.data.current_plan.next_task_title || '当前没有待推进任务'}</p>
+                  {growthSummaryQuery.data.current_plan.next_task_source ? (
+                    <p>任务来源：{growthSummaryQuery.data.current_plan.next_task_source}</p>
+                  ) : null}
+                  {growthSummaryQuery.data.current_plan.next_task_reason ? (
+                    <p>安排原因：{growthSummaryQuery.data.current_plan.next_task_reason}</p>
+                  ) : null}
+                  {growthSummaryQuery.data.current_plan.next_task_collection_hint ? (
+                    <p>建议题单：{resolvePracticeQuestionSetTitle(growthSummaryQuery.data.current_plan.next_task_collection_hint)}</p>
+                  ) : null}
+                  {growthSummaryQuery.data.current_plan.next_task_source_ref ? (
+                    <p>来源引用：{growthSummaryQuery.data.current_plan.next_task_source_ref}</p>
+                  ) : null}
                   <div className="page-actions">
                     <Link className="secondary-link" to="/companion">回到学习陪伴</Link>
                   </div>
@@ -374,6 +425,41 @@ export default function GrowthPage() {
             </article>
           </div>
 
+          {growthSummaryQuery.data.trend_summary?.summary || growthSummaryQuery.data.focus_signals?.length ? (
+            <article className="status-card" style={{ marginTop: 24 }}>
+              <div className="card-inline">
+                <div>
+                  <span className="section-kicker">近期趋势</span>
+                  <h2>把最近练习与面试的变化压缩成可执行信号</h2>
+                </div>
+                <Link className="secondary-link" to="/companion">据此调整计划</Link>
+              </div>
+              {growthSummaryQuery.data.trend_summary?.summary ? (
+                <p>{growthSummaryQuery.data.trend_summary.summary}</p>
+              ) : null}
+              {growthSummaryQuery.data.trend_summary?.strongest_signal ? (
+                <p>当前强项信号：{growthSummaryQuery.data.trend_summary.strongest_signal}</p>
+              ) : null}
+              {growthSummaryQuery.data.trend_summary?.weakest_signal ? (
+                <p>当前最弱信号：{growthSummaryQuery.data.trend_summary.weakest_signal}</p>
+              ) : null}
+              {growthSummaryQuery.data.focus_signals?.length ? (
+                <div className="grid-cards" style={{ marginTop: 18 }}>
+                  {growthSummaryQuery.data.focus_signals.map((item, index) => (
+                    <article className="feature-card" key={`growth-focus-signal-${item.label}-${index}`}>
+                      <div className="card-inline">
+                        <strong>{item.label}</strong>
+                        <span>{item.source_label || '趋势信号'}</span>
+                      </div>
+                      {typeof item.occurrence_count === 'number' ? <p>出现次数：{item.occurrence_count}</p> : null}
+                      {item.reason ? <p>{item.reason}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+
           <article className="status-card" style={{ marginTop: 24 }}>
             <div className="card-inline">
               <div>
@@ -404,12 +490,22 @@ export default function GrowthPage() {
                         <span>{theme.source_label}</span>
                       </div>
                       <p>{theme.reason}</p>
+                      {(theme.occurrence_count > 0 || theme.interview_occurrence_count > 0) ? (
+                        <p>
+                          最近出现 {theme.occurrence_count} 次，其中面试暴露 {theme.interview_occurrence_count} 次
+                        </p>
+                      ) : null}
                       {theme.focus_tags.length ? (
                         <div className="community-tag-row">
                           {theme.focus_tags.map((tag) => (
                             <span key={`${theme.title}-${tag}`}>{tag}</span>
                           ))}
                         </div>
+                      ) : null}
+                      {theme.related_question_sets?.length ? (
+                        <p style={{ marginTop: 12 }}>
+                          关联题单：{formatGrowthQuestionSets(theme.related_question_sets)}
+                        </p>
                       ) : null}
                       {theme.suggestions.length ? (
                         <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
@@ -482,22 +578,37 @@ export default function GrowthPage() {
                   const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
                   return (
                     <article className="feature-card" key={`growth-practice-recommendation-${item.question.id}`}>
-                    <div className="card-inline">
-                      <strong>{item.question.title}</strong>
-                      <span>{item.focus_tag}</span>
-                    </div>
-                    <p>{item.reason}</p>
-                    <p>难度：{item.question.difficulty || '未标注'}</p>
-                    <div className="page-actions">
-                      <Link
-                        className="secondary-link"
-                        to="/practice"
-                        search={buildPracticeRecommendationRouteSearch({
-                          focus_tag: item.focus_tag,
-                          topic_code: item.topic_code,
-                          reason: item.reason,
-                          question_title: item.question.title,
-                        }, linkedTopic)}
+                      <div className="card-inline">
+                        <strong>{item.question.title}</strong>
+                        <span>{item.focus_tag}</span>
+                      </div>
+                      {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
+                      <p>{item.reason}</p>
+                      {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
+                      <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
+                      <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
+                      <p>难度：{item.question.difficulty || '未标注'}</p>
+                      {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
+                      {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
+                      {item.related_question_sets?.length ? <p>关联题单：{formatGrowthQuestionSets(item.related_question_sets)}</p> : null}
+                      {item.recommended_actions?.length ? (
+                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                          {item.recommended_actions.map((action) => (
+                            <li key={`${item.question.id}-${action}`}>{action}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="page-actions">
+                        <Link
+                          className="secondary-link"
+                          to="/practice"
+                          search={buildPracticeRecommendationRouteSearch({
+                            focus_tag: item.focus_tag,
+                            topic_code: item.topic_code,
+                            primary_question_set: item.primary_question_set,
+                            reason: item.reason,
+                            question_title: item.question.title,
+                          }, linkedTopic)}
                       >
                         进入这组补练
                       </Link>

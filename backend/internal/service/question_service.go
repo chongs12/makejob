@@ -33,13 +33,20 @@ type SubmitAnswerResponse struct {
 
 // PracticeRecommendationItem 表示一条对症练习推荐结果。
 type PracticeRecommendationItem struct {
-	Question        QuestionDetail `json:"question"`
-	FocusTag        string         `json:"focus_tag"`
-	TopicCode       string         `json:"topic_code,omitempty"`
-	Reason          string         `json:"reason"`
-	SourceType      string         `json:"source_type"`
-	Priority        int            `json:"priority"`
-	OccurrenceCount int            `json:"occurrence_count"`
+	Question            QuestionDetail `json:"question"`
+	FocusTag            string         `json:"focus_tag"`
+	TopicCode           string         `json:"topic_code,omitempty"`
+	TopicTitle          string         `json:"topic_title,omitempty"`
+	TopicProblemPattern string         `json:"topic_problem_pattern,omitempty"`
+	RelatedQuestionSets []string       `json:"related_question_sets"`
+	RecommendedActions  []string       `json:"recommended_actions"`
+	PrimaryQuestionSet  string         `json:"primary_question_set,omitempty"`
+	RecommendationMode  string         `json:"recommendation_mode"`
+	Reason              string         `json:"reason"`
+	SourceType          string         `json:"source_type"`
+	Priority            int            `json:"priority"`
+	OccurrenceCount     int            `json:"occurrence_count"`
+	PriorityExplanation string         `json:"priority_explanation"`
 }
 
 // PracticeRecommendationResponse 表示当前用户基于学习档案生成的推荐题单。
@@ -899,8 +906,8 @@ func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID
 		return nil, err
 	}
 
-	focusStats := rankPracticeFocusTags(entries)
-	if len(focusStats) == 0 {
+	focusSignals := buildTrainingFocusSignals(entries, nil, defaultTrainingFocusSignalLimit)
+	if len(focusSignals) == 0 {
 		return &PracticeRecommendationResponse{
 			FocusTags: []string{},
 			Items:     []PracticeRecommendationItem{},
@@ -909,14 +916,15 @@ func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID
 
 	items := make([]PracticeRecommendationItem, 0, limit)
 	seenQuestionIDs := make(map[uint]struct{}, limit)
-	focusTags := make([]string, 0, len(focusStats))
+	focusTags := make([]string, 0, len(focusSignals))
 	sourceType := "learning_archive"
 	if interviewID != nil && *interviewID > 0 {
 		sourceType = "interview_archive"
 	}
-	for index, focusStat := range focusStats {
-		focusTags = append(focusTags, focusStat.Tag)
-		for _, keyword := range expandPracticeFocusTagKeywords(focusStat.Tag) {
+	for index, focusSignal := range focusSignals {
+		focusTags = append(focusTags, focusSignal.Tag)
+		recommendationMode := buildPracticeRecommendationMode(focusSignal)
+		for _, keyword := range expandPracticeFocusTagKeywords(focusSignal.Tag) {
 			questions, _, err := s.questionRepo.List(ctx, repository.QuestionListParams{
 				Page:     1,
 				PageSize: limit * 2,
@@ -945,12 +953,19 @@ func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID
 						Solution:       parseQuestionStructuredSolution(question.SolutionJSON, &question),
 						AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, &question),
 					},
-					FocusTag:        focusStat.Tag,
-					TopicCode:       focusStat.TopicCode,
-					Reason:          buildPracticeRecommendationReason(focusStat.Tag, focusStat.Count, sourceType),
-					SourceType:      sourceType,
-					Priority:        index + 1,
-					OccurrenceCount: focusStat.Count,
+					FocusTag:            focusSignal.Tag,
+					TopicCode:           focusSignal.TopicCode,
+					TopicTitle:          focusSignal.TopicTitle,
+					TopicProblemPattern: focusSignal.TopicProblemPattern,
+					RelatedQuestionSets: append([]string(nil), focusSignal.RelatedQuestionSets...),
+					RecommendedActions:  append([]string(nil), focusSignal.RecommendedActions...),
+					PrimaryQuestionSet:  focusSignal.PrimaryQuestionSet,
+					RecommendationMode:  recommendationMode,
+					Reason:              buildPracticeRecommendationReason(focusSignal.Tag, focusSignal.OccurrenceCount, sourceType),
+					SourceType:          sourceType,
+					Priority:            index + 1,
+					OccurrenceCount:     focusSignal.OccurrenceCount,
+					PriorityExplanation: buildPracticeRecommendationPriorityExplanation(focusSignal, recommendationMode, sourceType),
 				})
 			}
 			if len(items) >= limit {
@@ -966,6 +981,32 @@ func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID
 		FocusTags: focusTags,
 		Items:     items,
 	}, nil
+}
+
+// buildPracticeRecommendationMode 根据训练重点信号判断推荐结果更适合以哪种方式承接。
+func buildPracticeRecommendationMode(signal trainingFocusSignal) string {
+	if strings.TrimSpace(signal.PrimaryQuestionSet) != "" {
+		return "question_set"
+	}
+	if strings.TrimSpace(signal.TopicCode) != "" || strings.TrimSpace(signal.TopicTitle) != "" {
+		return "topic"
+	}
+	return "keyword"
+}
+
+// buildPracticeRecommendationPriorityExplanation 生成推荐结果在当前轮次中应如何消费的优先级说明。
+func buildPracticeRecommendationPriorityExplanation(signal trainingFocusSignal, mode string, sourceType string) string {
+	switch mode {
+	case "question_set":
+		return fmt.Sprintf("这个推荐优先级较高，建议先围绕题单“%s”做一轮集中补练，快速处理“%s”反复出现的问题。", signal.PrimaryQuestionSet, signal.Tag)
+	case "topic":
+		return fmt.Sprintf("这个推荐适合作为当前专题补练入口，先通过单题把“%s”对应的方法链路补齐。", signal.Tag)
+	default:
+		if sourceType == "interview_archive" {
+			return "这个推荐来自单场面试后的即时补练，建议在记忆还新鲜时尽快完成。"
+		}
+		return fmt.Sprintf("这个推荐用于快速验证你是否已经修正“%s”这一类高频问题。", signal.Tag)
+	}
 }
 
 // syncPracticeLearningArchive 将代码题或主观题的分析结果同步到学习档案中。

@@ -26,6 +26,7 @@ interface PracticeMistakeTopicRouteIntent {
 interface PracticeRecommendationRouteIntent {
   focus_tag: string
   topic_code?: string
+  primary_question_set?: string
   reason: string
   question_title: string
 }
@@ -270,7 +271,7 @@ export function buildPracticeRecommendationRouteSearch(
   linkedTopic?: PracticeMistakeTopicRouteIntent | null,
 ): PracticeRouteSearch {
   return buildPracticeRouteSearch({
-    questionSetSlug: linkedTopic?.related_question_sets?.[0] || '',
+    questionSetSlug: linkedTopic?.related_question_sets?.[0] || recommendation.primary_question_set || '',
     focusTags: [linkedTopic?.tag || recommendation.focus_tag],
     topicCode: linkedTopic?.code || recommendation.topic_code,
     source: 'practice_recommendation',

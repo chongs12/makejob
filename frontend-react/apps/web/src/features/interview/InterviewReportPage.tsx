@@ -20,8 +20,17 @@ import {
 } from '../../shared/industryContext'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
-import { fetchPracticeRecommendations, resolvePracticeRecommendationRoute } from '../../shared/practiceRecommendations'
-import { buildInterviewFollowUpPracticeRouteSearch, buildPracticeRecommendationRouteSearch } from '../../shared/practiceRoute'
+import {
+  fetchPracticeRecommendations,
+  resolvePracticeRecommendationModeLabel,
+  resolvePracticeRecommendationRoute,
+  resolvePracticeRecommendationSourceLabel,
+} from '../../shared/practiceRecommendations'
+import {
+  buildInterviewFollowUpPracticeRouteSearch,
+  buildPracticeRecommendationRouteSearch,
+  resolvePracticeQuestionSetTitle,
+} from '../../shared/practiceRoute'
 import { fetchInterviewDetail, fetchInterviewReport } from './interviewApi'
 import {
   buildInterviewReadiness,
@@ -369,20 +378,35 @@ export function InterviewReportPage() {
                       const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
                       return (
                         <article className="timeline-item" key={`interview-practice-recommendation-${item.question.id}`}>
-                        <strong>{item.question.title}</strong>
-                        <p>聚焦标签：{item.focus_tag}</p>
-                        <p>{item.reason}</p>
-                        <p>推荐优先级：第 {item.priority} 位</p>
-                        <div className="page-actions">
-                          <Link
-                            className="secondary-link"
-                            to="/practice"
-                            search={buildPracticeRecommendationRouteSearch({
-                              focus_tag: item.focus_tag,
-                              topic_code: item.topic_code,
-                              reason: item.reason,
-                              question_title: item.question.title,
-                            }, linkedTopic)}
+                          <strong>{item.question.title}</strong>
+                          {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
+                          <p>聚焦标签：{item.focus_tag}</p>
+                          <p>{item.reason}</p>
+                          <p>推荐优先级：第 {item.priority} 位</p>
+                          <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
+                          <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
+                          {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
+                          {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
+                          {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
+                          {item.related_question_sets?.length ? (
+                            <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
+                          ) : null}
+                          {item.recommended_actions?.length ? (
+                            <ul className="interview-bullet-list">
+                              {item.recommended_actions.map((action) => <li key={`${item.question.id}-${action}`}>{action}</li>)}
+                            </ul>
+                          ) : null}
+                          <div className="page-actions">
+                            <Link
+                              className="secondary-link"
+                              to="/practice"
+                              search={buildPracticeRecommendationRouteSearch({
+                                focus_tag: item.focus_tag,
+                                topic_code: item.topic_code,
+                                primary_question_set: item.primary_question_set,
+                                reason: item.reason,
+                                question_title: item.question.title,
+                              }, linkedTopic)}
                           >
                             进入这组补练
                           </Link>
