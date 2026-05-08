@@ -9,6 +9,7 @@ import type {
   CompanionPlanDetail,
   CompanionPlanProgress,
   CompanionPlanTask,
+  CompanionTaskFeedbackPayload,
   CompanionSelectableLive2DModel,
   CompanionStudyLogPayload,
   CompanionTaskStatus,
@@ -137,6 +138,26 @@ export async function updateCompanionTaskStatus(
 
   if (!isSuccessCode(response.code)) {
     throw new Error(response.message || '更新任务状态失败')
+  }
+}
+
+/**
+ * 为指定学习任务提交结构化训练反馈，供后续诊断和计划调整直接消费。
+ */
+export async function submitCompanionTaskFeedback(
+  token: string,
+  planId: number,
+  taskId: number,
+  payload: CompanionTaskFeedbackPayload,
+): Promise<void> {
+  const response = await requestJson<ApiEnvelope<null>>(`/plans/${planId}/tasks/${taskId}/feedback`, {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '提交任务训练反馈失败')
   }
 }
 

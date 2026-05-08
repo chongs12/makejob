@@ -117,6 +117,13 @@ function buildWeeklyFocusGoalDescription(themes: WeeklyFocusTheme[]): string {
     return ''
   }
 
+  const phaseLabels = Array.from(
+    new Set(themes.map((item) => item.dominant_archive_phase_label?.trim() || '').filter(Boolean)),
+  ).slice(0, 2)
+  if (phaseLabels.length) {
+    return `本周优先补强${titles.map((item) => `「${item}」`).join('、')}，当前问题主要集中在${phaseLabels.join('、')}，并围绕这些问题安排连续复习、专项练习和复盘。`
+  }
+
   return `本周优先补强${titles.map((item) => `「${item}」`).join('、')}，并围绕这些问题安排连续复习、专项练习和复盘。`
 }
 

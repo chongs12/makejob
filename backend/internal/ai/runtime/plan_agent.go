@@ -24,6 +24,8 @@ type providerPlanAgent struct {
 type learningPlanPayload struct {
 	Title       string            `json:"title"`
 	Description string            `json:"description"`
+	Phase       string            `json:"phase"`
+	PhaseGoal   string            `json:"phase_goal"`
 	Duration    int               `json:"duration_days"`
 	Tasks       []planTaskPayload `json:"tasks"`
 }
@@ -33,6 +35,8 @@ type planTaskPayload struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	TaskType    string `json:"task_type"`
+	Phase       string `json:"phase"`
+	PhaseGoal   string `json:"phase_goal"`
 	DayNumber   int    `json:"day_number"`
 	Duration    int    `json:"duration_minutes"`
 	Priority    string `json:"priority"`
@@ -43,12 +47,16 @@ func learningPlanPayloadSchema() string {
 	return `{
   "title": "学习计划标题",
   "description": "学习计划说明",
+  "phase": "foundation|drill|review|mock",
+  "phase_goal": "phase goal",
   "duration_days": 30,
   "tasks": [
     {
       "title": "任务标题",
       "description": "任务说明",
       "task_type": "study|practice|interview|review",
+      "phase": "foundation|drill|review|mock",
+      "phase_goal": "phase goal",
       "day_number": 1,
       "duration_minutes": 60,
       "priority": "high|medium|low"
@@ -75,11 +83,11 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 	traceID := uuid.NewString()
 	industryID := a.resolveIndustryID(ctx, industryCode)
 	promptDetails := a.resolvePromptDetails(ctx, profile, industryCode)
-	userPrompt := buildPlanGenerateUserPrompt(profile, industryCode)
+	userPrompt := buildPlanGenerateUserPromptWithPhases(profile, industryCode)
 	messages := []ai.Message{
 		{
 			Role:    "system",
-			Content: buildPlanSystemPrompt(promptDetails.Prompt),
+			Content: buildPlanSystemPromptWithPhases(promptDetails.Prompt),
 		},
 		{
 			Role:    "user",
@@ -104,7 +112,7 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 }
 
 // AdjustPlan 根据执行反馈调整学习计划。
-func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, completedTasks []string, performance map[string]float64) (ai.LearningPlan, error) {
+func (a *providerPlanAgent) AdjustPlan(ctx context.Context, input ai.PlanAdjustmentInput) (ai.LearningPlan, error) {
 	if a.shouldUseFallback() {
 		return ai.LearningPlan{}, fmt.Errorf("ai provider is unavailable")
 	}
@@ -114,7 +122,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 		Prompt: buildPlanAdjustSystemPrompt(),
 		Source: "inline_builtin",
 	}
-	userPrompt := buildPlanAdjustUserPrompt(planID, completedTasks, performance)
+	userPrompt := buildPlanAdjustUserPromptWithContext(input)
 	messages := []ai.Message{
 		{
 			Role:    "system",
@@ -134,7 +142,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, planID string, compl
 	}
 
 	profile := ai.UserProfile{
-		DurationDays: maxInt(len(completedTasks)+7, 7),
+		DurationDays: maxInt(len(input.CompletedTasks)+7, 7),
 	}
 	plan, err := normalizeLearningPlan(payload, profile, "")
 	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
@@ -285,31 +293,44 @@ func buildPlanGenerateUserPrompt(profile ai.UserProfile, industryCode string) st
 		defaultString(strings.TrimSpace(profile.Level), "beginner"),
 		maxInt(profile.DailyStudyTime, 60),
 		maxInt(profile.DurationDays, 14),
-		defaultString(strings.TrimSpace(profile.GoalDescription), "提升面试能力"),
-		defaultString(strings.Join(profile.WeakTopics, "、"), "无"),
-		defaultString(strings.Join(profile.StrongTopics, "、"), "无"),
+		defaultString(truncateString(strings.TrimSpace(profile.GoalDescription), 200), "提升面试能力"),
+		defaultString(truncateString(strings.Join(profile.WeakTopics, "、"), 200), "无"),
+		defaultString(truncateString(strings.Join(profile.StrongTopics, "、"), 200), "无"),
 	)
 }
 
 // buildPlanAdjustSystemPrompt 构造调整学习计划的系统提示词。
 func buildPlanAdjustSystemPrompt() string {
-	return `请根据已有学习进度重新生成一个更合理的学习计划，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
+	return `请根据已有学习进度和调整上下文重新生成一个更合理的学习计划，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
 {
   "title": "调整后的计划标题",
   "description": "调整后的计划说明",
+  "phase": "foundation|drill|review|mock",
+  "phase_goal": "phase goal",
   "duration_days": 14,
   "tasks": [
     {
       "title": "任务标题",
       "description": "任务说明",
       "task_type": "study|practice|interview|review",
+      "phase": "foundation|drill|review|mock",
+      "phase_goal": "phase goal",
       "day_number": 1,
       "duration_minutes": 60,
       "priority": "high|medium|low"
     }
   ]
 }
-请重点体现未完成项补齐、薄弱项加练和节奏调整。`
+阶段约束规则：
+1. 计划和每个任务都必须输出 phase 与 phase_goal。
+2. 阶段推进必须遵循 foundation -> drill -> review -> mock 的顺序，严禁跨阶段或乱序安排。
+3. 每个任务的 day_number 必须落在该阶段蓝图规定的 start_day 到 end_day 范围内。
+4. foundation 阶段任务类型必须以 study 为主，仅可少量加入用于开题的 practice，严禁安排 interview。
+5. drill 阶段任务类型必须以 practice 为主，围绕弱项做密集巩固，严禁安排 interview。
+6. review 阶段任务类型必须以 review 或短 study 为主，用于复盘、纠偏和总结。
+7. mock 阶段任务类型必须以 interview 或限时综合 practice 为主，用于验证真实掌握度，严禁安排 study。
+8. 各阶段的任务数量和天数分配必须严格遵循阶段蓝图中的 day range 约束。
+9. 调整原因码是本轮调整的核心依据，必须严格按照原因码约束指令安排阶段和任务。`
 }
 
 // buildPlanAdjustUserPrompt 构造学习计划调整请求。
@@ -340,6 +361,8 @@ func normalizeLearningPlan(payload learningPlanPayload, profile ai.UserProfile, 
 	plan := ai.LearningPlan{
 		Title:       strings.TrimSpace(payload.Title),
 		Description: strings.TrimSpace(payload.Description),
+		Phase:       model.NormalizeLearningPhase(payload.Phase),
+		PhaseGoal:   strings.TrimSpace(payload.PhaseGoal),
 		Duration:    payload.Duration,
 		Tasks:       make([]ai.PlanTask, 0, len(payload.Tasks)),
 	}
@@ -360,6 +383,12 @@ func normalizeLearningPlan(payload learningPlanPayload, profile ai.UserProfile, 
 			continue
 		}
 		plan.Tasks = append(plan.Tasks, task)
+	}
+	if plan.Phase == "" && len(plan.Tasks) > 0 {
+		plan.Phase = plan.Tasks[0].Phase
+	}
+	if plan.PhaseGoal == "" && plan.Phase != "" {
+		plan.PhaseGoal = model.BuildLearningPhaseGoal(plan.Phase)
 	}
 
 	if len(plan.Tasks) == 0 {
@@ -382,6 +411,8 @@ func normalizePlanTask(taskPayload planTaskPayload, index int, durationDays int,
 		Title:       strings.TrimSpace(taskPayload.Title),
 		Description: strings.TrimSpace(taskPayload.Description),
 		TaskType:    normalizeTaskType(taskPayload.TaskType),
+		Phase:       model.NormalizeLearningPhase(taskPayload.Phase),
+		PhaseGoal:   strings.TrimSpace(taskPayload.PhaseGoal),
 		DayNumber:   taskPayload.DayNumber,
 		Duration:    taskPayload.Duration,
 		Priority:    normalizePriority(taskPayload.Priority),
@@ -395,6 +426,9 @@ func normalizePlanTask(taskPayload planTaskPayload, index int, durationDays int,
 	}
 	if task.Duration <= 0 {
 		task.Duration = defaultTaskDuration(dailyStudyTime, task.TaskType)
+	}
+	if task.PhaseGoal == "" && task.Phase != "" {
+		task.PhaseGoal = model.BuildLearningPhaseGoal(task.Phase)
 	}
 	if task.Description == "" {
 		task.Description = fmt.Sprintf("围绕 %s 安排一段聚焦练习。", task.Title)
@@ -492,4 +526,218 @@ func minInt(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+// truncateString 截断字符串到指定最大长度，超出部分用省略号替代。
+func truncateString(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
+}
+
+// buildPlanAdjustUserPromptWithContext 构造带阶段上下文的学习计划调优提示词。
+func buildPlanAdjustUserPromptWithContext(input ai.PlanAdjustmentInput) string {
+	parts := []string{
+		"请基于下面的计划调整上下文，生成一份后续 7 到 21 天的学习计划。",
+		fmt.Sprintf("计划ID: %s", input.PlanID),
+		fmt.Sprintf("已完成任务: %s", defaultString(truncateString(strings.Join(input.CompletedTasks, "；"), 200), "无")),
+		fmt.Sprintf("任务表现: %s", renderPerformance(input.Performance)),
+		fmt.Sprintf("当前阶段: %s", defaultString(strings.TrimSpace(input.CurrentPhase), "foundation")),
+		fmt.Sprintf("本轮入口阶段: %s", defaultString(strings.TrimSpace(input.EntryPhase), defaultString(strings.TrimSpace(input.CurrentPhase), "foundation"))),
+		fmt.Sprintf("最近诊断摘要: %s", defaultString(truncateString(strings.Join(input.ActionSummaries, "；"), 200), "无")),
+	}
+
+	if input.GoalDescription != "" {
+		parts = append(parts, fmt.Sprintf("学习目标: %s", truncateString(input.GoalDescription, 200)))
+	}
+	if len(input.WeakTopics) > 0 {
+		parts = append(parts, fmt.Sprintf("薄弱主题: %s", truncateString(strings.Join(input.WeakTopics, "、"), 200)))
+	}
+
+	if len(input.PhaseBlueprint) > 0 {
+		parts = append(parts, fmt.Sprintf("阶段蓝图:\n%s", formatPhaseBlueprintForPrompt(input.PhaseBlueprint)))
+	}
+
+	if len(input.ReasonCodes) > 0 {
+		parts = append(parts, fmt.Sprintf("调整原因码: %s", strings.Join(input.ReasonCodes, "、")))
+		parts = append(parts, fmt.Sprintf("原因码约束:\n%s", buildReasonCodeConstraint(input.ReasonCodes)))
+	}
+
+	parts = append(parts, "要求：优先让任务与入口阶段保持一致，严格按照阶段蓝图的 day range 安排任务，并在任务和计划中都输出 phase 与 phase_goal 字段。")
+	return strings.Join(parts, "\n")
+}
+
+// formatPhaseBlueprintForPrompt 将结构化蓝图格式化为 AI 可读的文本。
+func formatPhaseBlueprintForPrompt(blueprint []ai.PhaseBlueprintEntry) string {
+	var parts []string
+	for i, entry := range blueprint {
+		part := fmt.Sprintf("%d. %s (Day %d-%d): 目标「%s」；预期任务类型: %s；退出标准: %s",
+			i+1,
+			phaseDisplayName(entry.Phase),
+			entry.StartDay,
+			entry.EndDay,
+			entry.PhaseGoal,
+			strings.Join(entry.ExpectedTaskTypes, "、"),
+			strings.Join(entry.ExitCriteria, "；"),
+		)
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// buildReasonCodeConstraint 根据原因码生成对应的生成约束指令。
+func buildReasonCodeConstraint(codes []string) string {
+	constraintMap := map[string]string{
+		"mock_not_stable":     "mock_not_stable: 当前模拟验证不稳定，必须回退到 review 阶段，安排复盘和查漏补缺任务，暂时不要安排 mock 类型任务。",
+		"weakness_unresolved": "weakness_unresolved: 弱项尚未解决，必须继续 drill 阶段，安排专项 practice 巩固薄弱点，暂时不要推进到 review 或 mock。",
+		"partial_mastery":     "partial_mastery: 部分掌握但不够扎实，继续 drill 阶段，安排变式题和同类练习确认掌握度。",
+		"review_completed":    "review_completed: 复盘已完成，可以回到 drill 阶段提升难度，或推进到 mock 阶段做验证。",
+		"progress_verified":   "progress_verified: 进度已验证通过，可以进入 mock 阶段，安排 interview 或限时综合 practice 做真实验证。",
+	}
+
+	var parts []string
+	for _, code := range codes {
+		if constraint, ok := constraintMap[code]; ok {
+			parts = append(parts, constraint)
+		}
+	}
+	if len(parts) == 0 {
+		return "无特定约束。"
+	}
+	return strings.Join(parts, "\n")
+}
+
+// buildPlanSystemPromptWithPhases 构造带阶段约束的生成系统提示词。
+func buildPlanSystemPromptWithPhases(basePrompt string) string {
+	return buildPlanSystemPrompt(basePrompt) + `
+
+阶段生成补充要求：
+1. 计划和每个任务都必须输出 phase 与 phase_goal。
+2. 阶段推进必须遵循 foundation -> drill -> review -> mock 的顺序，严禁跨阶段或乱序安排。
+3. 每个任务的 day_number 必须落在该阶段蓝图规定的 start_day 到 end_day 范围内。
+4. foundation 阶段任务类型必须以 study 为主，仅可少量加入用于开题的 practice，严禁安排 interview。
+5. drill 阶段任务类型必须以 practice 为主，围绕弱项做密集巩固，严禁安排 interview。
+6. review 阶段任务类型必须以 review 或短 study 为主，用于复盘、纠偏和总结。
+7. mock 阶段任务类型必须以 interview 或限时综合 practice 为主，用于验证真实掌握度，严禁安排 study。
+8. 各阶段的任务数量和天数分配必须严格遵循阶段蓝图中的 day range 约束。`
+}
+
+// buildPlanGenerateUserPromptWithPhases 构造带阶段蓝图的生成提示词。
+func buildPlanGenerateUserPromptWithPhases(profile ai.UserProfile, industryCode string) string {
+	return fmt.Sprintf(
+		"%s\n阶段蓝图:\n%s\n\n要求：每个任务的 day_number 必须落在对应阶段的 day range 内，任务类型必须符合阶段预期。",
+		buildPlanGenerateUserPrompt(profile, industryCode),
+		buildStructuredPhaseBlueprintText(profile.DurationDays),
+	)
+}
+
+// buildGeneratePhaseBlueprint 根据计划周期给出阶段化编排蓝图。
+func buildGeneratePhaseBlueprint(durationDays int) string {
+	durationDays = maxInt(durationDays, 7)
+	if durationDays < 14 {
+		return "1. 前段先放 foundation，帮助补齐概念、方法和题型框架。\n2. 中段进入 drill，集中安排 practice 巩固弱项。\n3. 收尾进入 review，用 review 或短 study 做复盘总结。\n4. 短周期可以不强制安排 mock，但不要跳过 review。"
+	}
+	if durationDays < 21 {
+		return "1. 前段从 foundation 起步，先补齐核心概念和通用解题方法。\n2. 中段进入 drill，围绕弱项连续安排 practice。\n3. 后段先做 review，再安排少量 mock 验证掌握度。\n4. mock 阶段优先使用 interview 或限时综合 practice。"
+	}
+	return "1. 第一阶段使用 foundation 建立概念、方法和知识框架。\n2. 第二阶段进入 drill，持续做专项 practice 提升熟练度。\n3. 第三阶段进入 review，系统复盘近期错误与薄弱点。\n4. 最后一阶段进入 mock，用 interview 或限时综合 practice 做真实验证。"
+}
+
+// buildStructuredPhaseBlueprintText 根据计划周期生成结构化蓝图文本，包含 day range、预期任务类型和退出标准。
+func buildStructuredPhaseBlueprintText(durationDays int) string {
+	entries := buildPhaseBlueprintEntries(durationDays)
+	var parts []string
+	for i, entry := range entries {
+		part := fmt.Sprintf("%d. %s (Day %d-%d): 目标「%s」；预期任务类型: %s；退出标准: %s",
+			i+1,
+			phaseDisplayName(entry.Phase),
+			entry.StartDay,
+			entry.EndDay,
+			entry.PhaseGoal,
+			strings.Join(entry.ExpectedTaskTypes, "、"),
+			strings.Join(entry.ExitCriteria, "；"),
+		)
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// buildPhaseBlueprintEntries 根据计划周期生成阶段蓝图条目列表。
+func buildPhaseBlueprintEntries(durationDays int) []struct {
+	Phase             string
+	PhaseGoal         string
+	StartDay          int
+	EndDay            int
+	ExpectedTaskTypes []string
+	ExitCriteria      []string
+} {
+	durationDays = maxInt(durationDays, 7)
+	if durationDays < 14 {
+		foundationEnd := maxInt(durationDays*3/10, 2)
+		drillEnd := foundationEnd + maxInt(durationDays*4/10, 3)
+		return []struct {
+			Phase             string
+			PhaseGoal         string
+			StartDay          int
+			EndDay            int
+			ExpectedTaskTypes []string
+			ExitCriteria      []string
+		}{
+			{"foundation", "先补齐核心概念、基础方法和通用解题框架。", 1, foundationEnd, []string{"study", "practice"}, []string{"能说清核心解法步骤", "完成至少一题开题型练习"}},
+			{"drill", "围绕当前高频薄弱点做专项强化训练。", foundationEnd + 1, drillEnd, []string{"practice"}, []string{"同类题型正确率明显提升", "弱项标签覆盖次数达标"}},
+			{"review", "回看近期训练表现，修正易错点并巩固方法。", drillEnd + 1, durationDays, []string{"review", "study"}, []string{"近期高频错误已整理成固定检查点"}},
+		}
+	}
+	if durationDays < 21 {
+		foundationEnd := maxInt(durationDays*2/10, 2)
+		drillEnd := foundationEnd + maxInt(durationDays*3/10, 3)
+		reviewEnd := drillEnd + maxInt(durationDays*3/10, 3)
+		return []struct {
+			Phase             string
+			PhaseGoal         string
+			StartDay          int
+			EndDay            int
+			ExpectedTaskTypes []string
+			ExitCriteria      []string
+		}{
+			{"foundation", "先补齐核心概念、基础方法和通用解题框架。", 1, foundationEnd, []string{"study", "practice"}, []string{"能说清核心解法步骤", "完成至少一题开题型练习"}},
+			{"drill", "围绕当前高频薄弱点做专项强化训练。", foundationEnd + 1, drillEnd, []string{"practice"}, []string{"同类题型正确率明显提升", "弱项标签覆盖次数达标"}},
+			{"review", "回看近期训练表现，修正易错点并巩固方法。", drillEnd + 1, reviewEnd, []string{"review", "study"}, []string{"近期高频错误已整理成固定检查点"}},
+			{"mock", "用模拟或限时任务验证当前阶段的真实掌握度。", reviewEnd + 1, durationDays, []string{"interview", "practice"}, []string{"限时场景下能稳定输出正确解法"}},
+		}
+	}
+	foundationEnd := maxInt(durationDays*2/10, 3)
+	drillEnd := foundationEnd + maxInt(durationDays*2/10, 3)
+	reviewEnd := drillEnd + maxInt(durationDays*4/10, 5)
+	return []struct {
+		Phase             string
+		PhaseGoal         string
+		StartDay          int
+		EndDay            int
+		ExpectedTaskTypes []string
+		ExitCriteria      []string
+	}{
+		{"foundation", "先补齐核心概念、基础方法和通用解题框架。", 1, foundationEnd, []string{"study", "practice"}, []string{"能说清核心解法步骤", "完成至少一题开题型练习"}},
+		{"drill", "围绕当前高频薄弱点做专项强化训练。", foundationEnd + 1, drillEnd, []string{"practice"}, []string{"同类题型正确率明显提升", "弱项标签覆盖次数达标"}},
+		{"review", "回看近期训练表现，修正易错点并巩固方法。", drillEnd + 1, reviewEnd, []string{"review", "study"}, []string{"近期高频错误已整理成固定检查点"}},
+		{"mock", "用模拟或限时任务验证当前阶段的真实掌握度。", reviewEnd + 1, durationDays, []string{"interview", "practice"}, []string{"限时场景下能稳定输出正确解法"}},
+	}
+}
+
+// phaseDisplayName 返回阶段的中文显示名称。
+func phaseDisplayName(phase string) string {
+	switch phase {
+	case "foundation":
+		return "打基础"
+	case "drill":
+		return "专项突破"
+	case "review":
+		return "复盘纠偏"
+	case "mock":
+		return "模拟验证"
+	default:
+		return phase
+	}
 }

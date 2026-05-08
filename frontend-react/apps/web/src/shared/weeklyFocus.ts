@@ -9,6 +9,8 @@ export interface WeeklyFocusTheme {
   focus_tags: string[]
   topic_codes: string[]
   related_question_sets: string[]
+  dominant_archive_phase?: string
+  dominant_archive_phase_label?: string
   occurrence_count: number
   interview_occurrence_count: number
   suggestions: string[]

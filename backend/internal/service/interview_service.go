@@ -43,15 +43,15 @@ type InterviewResponse struct {
 
 // InterviewDetailResponse 面试详情响应DTO
 type InterviewDetailResponse struct {
-	ID             uint                       `json:"id"`
-	IndustryCode   string                     `json:"industry_code"`
-	Status         string                     `json:"status"`
-	Score          float64                    `json:"score"`
-	TotalQuestions int                        `json:"total_questions"`
-	Messages       []InterviewMessageResponse `json:"messages"`
-	CurrentQuestion *ai.InterviewQuestion     `json:"current_question,omitempty"`
-	StartedAt      *time.Time                 `json:"started_at"`
-	EndedAt        *time.Time                 `json:"ended_at"`
+	ID              uint                       `json:"id"`
+	IndustryCode    string                     `json:"industry_code"`
+	Status          string                     `json:"status"`
+	Score           float64                    `json:"score"`
+	TotalQuestions  int                        `json:"total_questions"`
+	Messages        []InterviewMessageResponse `json:"messages"`
+	CurrentQuestion *ai.InterviewQuestion      `json:"current_question,omitempty"`
+	StartedAt       *time.Time                 `json:"started_at"`
+	EndedAt         *time.Time                 `json:"ended_at"`
 }
 
 // InterviewMessageResponse 面试消息响应DTO
@@ -65,10 +65,10 @@ type InterviewMessageResponse struct {
 
 // InterviewAnswerRequest 提交回答请求DTO
 type InterviewAnswerRequest struct {
-	Answer       string                       `json:"answer"`
-	FinalCode    string                       `json:"final_code"`
-	Language     string                       `json:"language"`
-	QuestionType string                       `json:"question_type"`
+	Answer        string                        `json:"answer"`
+	FinalCode     string                        `json:"final_code"`
+	Language      string                        `json:"language"`
+	QuestionType  string                        `json:"question_type"`
 	ProcessEvents []InterviewCodingProcessEvent `json:"process_events"`
 }
 
@@ -233,15 +233,15 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 	industryCode := s.resolveInterviewIndustryCode(ctx, interview.IndustryID)
 
 	return &InterviewDetailResponse{
-		ID:             interview.ID,
-		IndustryCode:   industryCode,
-		Status:         interview.Status,
-		Score:          interview.Score,
-		TotalQuestions: interview.TotalQuestions,
-		Messages:       messageResponses,
+		ID:              interview.ID,
+		IndustryCode:    industryCode,
+		Status:          interview.Status,
+		Score:           interview.Score,
+		TotalQuestions:  interview.TotalQuestions,
+		Messages:        messageResponses,
 		CurrentQuestion: resolveCurrentInterviewQuestionFromMessages(messageResponses, interview.TotalQuestions, interview.Status),
-		StartedAt:      interview.StartedAt,
-		EndedAt:        interview.EndedAt,
+		StartedAt:       interview.StartedAt,
+		EndedAt:         interview.EndedAt,
 	}, nil
 }
 
@@ -808,6 +808,8 @@ func (s *interviewService) persistLearningArchiveEntries(
 			InterviewID:      interview.ID,
 			QuestionIndex:    diagnosis.QuestionIndex,
 			IndustryCode:     industryCode,
+			TaskPhase:        model.LearningPhaseMock,
+			TaskPhaseGoal:    model.BuildLearningPhaseGoal(model.LearningPhaseMock),
 			Language:         diagnosis.Language,
 			MistakeTagsJSON:  string(mistakeTagsJSON),
 			StrengthTagsJSON: string(strengthTagsJSON),

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"makejob-backend/internal/model"
@@ -150,10 +151,14 @@ func TestGetPracticeRecommendationsEnrichesQuestionSetHint(t *testing.T) {
 			entries: []model.LearningArchiveEntry{
 				{
 					SourceRef:       "practice:7:101",
+					TaskPhase:       model.LearningPhaseReview,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseReview),
 					MistakeTagsJSON: `["状态定义不清","状态定义不清"]`,
 				},
 				{
 					SourceRef:       "practice:7:102",
+					TaskPhase:       model.LearningPhaseReview,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseReview),
 					MistakeTagsJSON: `["状态定义不清"]`,
 				},
 			},
@@ -179,6 +184,9 @@ func TestGetPracticeRecommendationsEnrichesQuestionSetHint(t *testing.T) {
 	}
 	if item.PrimaryQuestionSet == "" || len(item.RelatedQuestionSets) == 0 {
 		t.Fatalf("expected related question set hints, got %#v", item)
+	}
+	if !strings.Contains(item.Reason, "复盘纠偏阶段") {
+		t.Fatalf("expected recommendation reason to include review phase label, got %s", item.Reason)
 	}
 	if item.PriorityExplanation == "" || len(item.RecommendedActions) == 0 {
 		t.Fatalf("expected enriched explanation and actions, got %#v", item)
@@ -207,6 +215,8 @@ func TestGetPracticeRecommendationsFallsBackToKeywordMode(t *testing.T) {
 				{
 					InterviewID:     interviewID,
 					SourceRef:       "interview:9",
+					TaskPhase:       model.LearningPhaseMock,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseMock),
 					MistakeTagsJSON: `["陌生自定义标签"]`,
 				},
 			},
@@ -229,6 +239,9 @@ func TestGetPracticeRecommendationsFallsBackToKeywordMode(t *testing.T) {
 	}
 	if item.TopicCode != "" || item.TopicTitle != "" || item.PrimaryQuestionSet != "" {
 		t.Fatalf("expected no mapped topic info, got %#v", item)
+	}
+	if !strings.Contains(item.Reason, "模拟验证阶段") {
+		t.Fatalf("expected interview recommendation reason to include mock phase label, got %s", item.Reason)
 	}
 	if item.PriorityExplanation == "" {
 		t.Fatalf("expected fallback priority explanation, got %#v", item)

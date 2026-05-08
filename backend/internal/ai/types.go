@@ -42,14 +42,14 @@ type AnswerFeedback struct {
 
 // InterviewReport 面试报告
 type InterviewReport struct {
-	OverallScore     float64                   `json:"overall_score"`
-	TotalQuestions   int                       `json:"total_questions"`
-	CorrectCount     int                       `json:"correct_count"`
-	DimensionScores  map[string]float64        `json:"dimension_scores"` // 各维度评分
-	Strengths        []string                  `json:"strengths"`
-	Weaknesses       []string                  `json:"weaknesses"`
-	Suggestions      []string                  `json:"suggestions"`
-	Summary          string                    `json:"summary"`
+	OverallScore      float64                   `json:"overall_score"`
+	TotalQuestions    int                       `json:"total_questions"`
+	CorrectCount      int                       `json:"correct_count"`
+	DimensionScores   map[string]float64        `json:"dimension_scores"` // 各维度评分
+	Strengths         []string                  `json:"strengths"`
+	Weaknesses        []string                  `json:"weaknesses"`
+	Suggestions       []string                  `json:"suggestions"`
+	Summary           string                    `json:"summary"`
 	CodingDiagnostics []CodingQuestionDiagnosis `json:"coding_diagnostics,omitempty"`
 }
 
@@ -62,11 +62,11 @@ type CodingProcessEvent struct {
 
 // InterviewCodingDiagnosisInput 表示编程面试诊断所需的完整上下文。
 type InterviewCodingDiagnosisInput struct {
-	Question       string               `json:"question"`
-	Language       string               `json:"language"`
-	FinalCode      string               `json:"final_code"`
-	FinalAnswer    string               `json:"final_answer"`
-	ProcessEvents  []CodingProcessEvent `json:"process_events"`
+	Question      string               `json:"question"`
+	Language      string               `json:"language"`
+	FinalCode     string               `json:"final_code"`
+	FinalAnswer   string               `json:"final_answer"`
+	ProcessEvents []CodingProcessEvent `json:"process_events"`
 }
 
 // CodingQuestionDiagnosis 表示单道编程题的结构化诊断结果。
@@ -85,6 +85,8 @@ type CodingQuestionDiagnosis struct {
 type LearningPlan struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
+	Phase       string     `json:"phase,omitempty"`
+	PhaseGoal   string     `json:"phase_goal,omitempty"`
 	Duration    int        `json:"duration_days"`
 	Tasks       []PlanTask `json:"tasks"`
 }
@@ -94,6 +96,8 @@ type PlanTask struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	TaskType    string `json:"task_type"` // study/practice/interview/review
+	Phase       string `json:"phase,omitempty"`
+	PhaseGoal   string `json:"phase_goal,omitempty"`
 	DayNumber   int    `json:"day_number"`
 	Duration    int    `json:"duration_minutes"`
 	Priority    string `json:"priority"` // high/medium/low

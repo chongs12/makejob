@@ -8,14 +8,45 @@ import {
 } from './companionStorage'
 import type {
   CompanionDailyDigest,
+  CompanionFeedbackDifficulty,
+  CompanionFeedbackTrainingType,
   CompanionFocusTaskDraft,
   CompanionPlanDetail,
   CompanionPlanProgress,
   CompanionPlanTask,
   CompanionStudyLogPayload,
+  CompanionTaskFeedbackDraft,
+  CompanionTaskFeedbackPayload,
   CompanionTaskActionSource,
   CompanionTaskStatus,
 } from './companionTypes'
+
+interface CompanionQuestionSetLookupQuestion {
+  id: number
+  title: string
+}
+
+interface CompanionQuestionSetLookupSource {
+  questions?: CompanionQuestionSetLookupQuestion[]
+}
+
+/**
+ * 将阶段枚举转换成更适合解释文案使用的中文名称，避免续接提示里直接暴露原始枚举值。
+ */
+function formatCompanionPhaseText(value?: string): string {
+  switch (String(value || '').trim()) {
+    case 'drill':
+      return '专项突破'
+    case 'review':
+      return '复盘纠偏'
+    case 'mock':
+      return '模拟验证'
+    case 'foundation':
+      return '打基础'
+    default:
+      return ''
+  }
+}
 
 /**
  * 判断任务日期是否与当前本地日期处于同一天，用于筛选今日目标。
@@ -114,6 +145,141 @@ export function taskStatusLabel(status: string): string {
 }
 
 /**
+ * 将默认反馈摘要候选片段整理成稳定文本，避免空字段和重复信息污染用户首屏输入。
+ */
+function buildCompanionFeedbackSummaryText(parts: string[]): string {
+  return Array.from(new Set(parts.map((item) => item.trim()).filter(Boolean))).join('；')
+}
+
+/**
+ * 根据当前任务类型预估默认反馈类型，减少用户首次提交反馈时的输入成本。
+ */
+function resolveDefaultFeedbackTrainingType(task: CompanionPlanTask | null): CompanionFeedbackTrainingType {
+  if (task?.collection_hint?.trim()) {
+    return 'coding'
+  }
+
+  switch (task?.task_type) {
+    case 'practice':
+      return 'coding'
+    case 'interview':
+      return 'short_answer'
+    default:
+      return 'generic'
+  }
+}
+
+/**
+ * 为任务完成反馈生成一份可直接编辑的默认表单草稿。
+ */
+export function buildDefaultCompanionTaskFeedbackDraft(
+  plan: CompanionPlanDetail | null,
+  task: CompanionPlanTask | null,
+): CompanionTaskFeedbackDraft {
+  const phaseHint = buildCompanionPhaseAdjustmentHint(plan)
+  const baseSummaryParts = [
+    task?.phase ? `当前任务阶段：${formatCompanionPhaseText(task.phase)}` : '',
+    task?.phase_goal ? `阶段目标：${task.phase_goal}` : '',
+    phaseHint ? `阶段调整说明：${phaseHint}` : '',
+    task?.source_label ? `任务来源：${task.source_label}` : '',
+    task?.reason ? `安排原因：${task.reason}` : '',
+  ].filter(Boolean)
+
+  return {
+    trainingType: resolveDefaultFeedbackTrainingType(task),
+    attemptCount: 1,
+    timeSpentMinutes: task?.task_type === 'interview' ? 30 : 20,
+    difficultySelfAssessment: 'just_right',
+    mistakeTagsText: '',
+    summary: buildCompanionFeedbackSummaryText(baseSummaryParts),
+  }
+}
+
+/**
+ * 将用户输入的错因标签文本拆成结构化标签数组，兼容中英文逗号和换行。
+ */
+export function parseCompanionFeedbackMistakeTags(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\n,，、;；]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+/**
+ * 从任务来源引用里提取明确题目 ID，命中时可直接回填到训练反馈中。
+ */
+function parseCompanionQuestionIdFromSourceRef(sourceRef?: string): number | undefined {
+  const normalizedSourceRef = String(sourceRef || '').trim()
+  if (!normalizedSourceRef) {
+    return undefined
+  }
+
+  const matched = normalizedSourceRef.match(/(?:question|practice-question|question_id)[:#-](\d+)/i)
+  if (!matched) {
+    return undefined
+  }
+
+  const questionId = Number(matched[1])
+  return Number.isFinite(questionId) && questionId > 0 ? questionId : undefined
+}
+
+/**
+ * 根据计划任务标题和题单详情最佳努力匹配对应题目 ID，避免反馈链路丢失可用题目上下文。
+ */
+export function resolveCompanionTaskQuestionId(
+  task: CompanionPlanTask | null,
+  questionSetDetail?: CompanionQuestionSetLookupSource | null,
+): number | undefined {
+  const sourceRefQuestionId = parseCompanionQuestionIdFromSourceRef(task?.source_ref)
+  if (sourceRefQuestionId) {
+    return sourceRefQuestionId
+  }
+
+  const normalizedTitle = String(task?.title || '').trim().toLowerCase()
+  if (!normalizedTitle || !questionSetDetail?.questions?.length) {
+    return undefined
+  }
+
+  const exactMatch = questionSetDetail.questions.find((item) => item.title.trim().toLowerCase() === normalizedTitle)
+  if (exactMatch) {
+    return exactMatch.id
+  }
+
+  const fuzzyMatches = questionSetDetail.questions.filter((item) => {
+    const normalizedQuestionTitle = item.title.trim().toLowerCase()
+    return normalizedQuestionTitle.includes(normalizedTitle) || normalizedTitle.includes(normalizedQuestionTitle)
+  })
+  if (fuzzyMatches.length === 1) {
+    return fuzzyMatches[0].id
+  }
+
+  return undefined
+}
+
+/**
+ * 将前端反馈草稿整理成后端学习计划反馈接口可直接接收的请求体。
+ */
+export function buildCompanionTaskFeedbackPayload(
+  draft: CompanionTaskFeedbackDraft,
+  questionId?: number,
+): CompanionTaskFeedbackPayload {
+  const difficulty = (draft.difficultySelfAssessment || '').trim() as CompanionFeedbackDifficulty
+  return {
+    training_type: draft.trainingType,
+    question_id: questionId && questionId > 0 ? questionId : undefined,
+    mistake_tags: parseCompanionFeedbackMistakeTags(draft.mistakeTagsText),
+    attempt_count: Math.max(0, Math.floor(draft.attemptCount || 0)),
+    time_spent_seconds: Math.max(0, Math.floor(draft.timeSpentMinutes || 0)) * 60,
+    difficulty_self_assessment: difficulty || undefined,
+    summary: draft.summary.trim(),
+  }
+}
+
+/**
  * 根据当前计划和本地续接草稿找出最应该继续推进的任务。
  */
 export function resolveFocusedCompanionTask(
@@ -171,6 +337,58 @@ export function buildCompanionDailyDigestText(
   }
 
   return segments.join('，') + '。'
+}
+
+/**
+ * 根据当前计划里的阶段入口与调整摘要生成一段更适合前端直接展示的阶段解释文案。
+ */
+export function buildCompanionPhaseAdjustmentHint(plan: CompanionPlanDetail | null): string {
+  if (!plan) {
+    return ''
+  }
+
+  const entryPhase = String(plan.entry_phase || '').trim()
+  const currentPhase = String(plan.phase || '').trim()
+  const entryPhaseLabel = formatCompanionPhaseText(entryPhase)
+  const currentPhaseLabel = formatCompanionPhaseText(currentPhase)
+  const summaries = Array.isArray(plan.adjustment_summaries)
+    ? plan.adjustment_summaries.map((item) => String(item).trim()).filter(Boolean)
+    : []
+
+  const parts: string[] = []
+  if (entryPhaseLabel && currentPhaseLabel && entryPhase !== currentPhase) {
+    parts.push(`本轮先从${entryPhaseLabel}切入，当前已推进到${currentPhaseLabel}。`)
+  } else if (entryPhaseLabel) {
+    parts.push(`本轮从${entryPhaseLabel}切入，说明当前更适合先按这一阶段收口。`)
+  } else if (currentPhaseLabel && summaries.length > 0) {
+    parts.push(`当前计划正处于${currentPhaseLabel}。`)
+  }
+
+  if (summaries[0]) {
+    parts.push(`触发原因：${summaries[0]}`)
+  }
+
+  return parts.join('')
+}
+
+/**
+ * 为“围绕这项继续”之类的追问生成一段更贴近当前阶段上下文的默认提问。
+ */
+export function buildCompanionContinuePrompt(
+  plan: CompanionPlanDetail | null,
+  task: CompanionPlanTask | null,
+): string {
+  const phaseHint = buildCompanionPhaseAdjustmentHint(plan)
+  const taskTitle = String(task?.title || '').trim()
+  if (!taskTitle) {
+    return phaseHint
+      ? `结合我当前计划（${phaseHint}），告诉我接下来最该推进什么。`
+      : '结合我当前计划，告诉我接下来最该推进什么。'
+  }
+
+  return phaseHint
+    ? `请结合我当前计划（${phaseHint}），继续推进「${taskTitle}」，先告诉我下一步最该做什么。`
+    : `请帮我继续推进「${taskTitle}」，先告诉我下一步最该做什么。`
 }
 
 /**
@@ -305,18 +523,43 @@ export function persistCompanionExecutionUpdate(
 /**
  * 根据当前聚焦任务生成可直接发送给陪伴助手的快捷提问入口。
  */
-export function buildCompanionQuickPrompts(focusedTask: CompanionPlanTask | null): Array<{ label: string; content: string }> {
+export function buildCompanionQuickPrompts(
+  plan: CompanionPlanDetail | null,
+  focusedTask: CompanionPlanTask | null,
+): Array<{ label: string; content: string }> {
+  const phaseHint = buildCompanionPhaseAdjustmentHint(plan)
   if (!focusedTask) {
     return [
       { label: '总结今天差什么', content: '结合我当前的学习计划，帮我总结今天还差什么没完成。' },
+      {
+        label: '解释这轮安排',
+        content: phaseHint
+          ? `结合我当前计划（${phaseHint}），解释一下为什么这轮要这样安排。`
+          : '结合我当前计划，解释一下为什么这轮要这样安排。',
+      },
       { label: '安排今晚顺序', content: '请结合我当前计划，帮我安排今晚的推进顺序和时间分配。' },
     ]
   }
 
   return [
-    { label: '拆解当前任务', content: `请把「${focusedTask.title}」拆成 3 个 20 分钟内可完成的小步骤。` },
-    { label: '我卡住了', content: `我现在卡在「${focusedTask.title}」这项任务上了，请帮我定位阻塞点并给出下一步。` },
-    { label: '总结今天差什么', content: `结合我当前聚焦的「${focusedTask.title}」，帮我总结今天还差什么没完成。` },
+    {
+      label: '拆解当前任务',
+      content: phaseHint
+        ? `请结合我当前计划（${phaseHint}），把「${focusedTask.title}」拆成 3 个 20 分钟内可完成的小步骤。`
+        : `请把「${focusedTask.title}」拆成 3 个 20 分钟内可完成的小步骤。`,
+    },
+    {
+      label: '为什么先做这项',
+      content: phaseHint
+        ? `结合我当前计划（${phaseHint}），解释为什么现在要先推进「${focusedTask.title}」，并告诉我第一步该怎么开始。`
+        : `解释为什么现在要先推进「${focusedTask.title}」，并告诉我第一步该怎么开始。`,
+    },
+    {
+      label: '总结今天差什么',
+      content: phaseHint
+        ? `结合我当前聚焦的「${focusedTask.title}」以及当前计划（${phaseHint}），帮我总结今天还差什么没完成。`
+        : `结合我当前聚焦的「${focusedTask.title}」，帮我总结今天还差什么没完成。`,
+    },
   ]
 }
 
@@ -333,11 +576,16 @@ export function buildCompanionWorkspaceResumeMessage(
   }
 
   const digestText = buildCompanionDailyDigestText(plan, digest, focusedTask)
+  const phaseHint = buildCompanionPhaseAdjustmentHint(plan)
   if (!focusedTask) {
-    return `当前计划是「${plan.title}」。${digestText}`
+    return phaseHint
+      ? `当前计划是「${plan.title}」。${phaseHint}${digestText}`
+      : `当前计划是「${plan.title}」。${digestText}`
   }
 
-  return `继续今天的推进：先盯住「${focusedTask.title}」。${digestText}`
+  return phaseHint
+    ? `继续今天的推进：先盯住「${focusedTask.title}」。${phaseHint}${digestText}`
+    : `继续今天的推进：先盯住「${focusedTask.title}」。${digestText}`
 }
 
 /**
@@ -373,11 +621,11 @@ export function buildTaskStatusActions(status: string): Array<{ status: Companio
     case 'pending':
       return [
         { status: 'in_progress', label: '开始' },
-        { status: 'completed', label: '直接完成' },
+        { status: 'completed', label: '反馈后完成' },
       ]
     case 'in_progress':
       return [
-        { status: 'completed', label: '标记完成' },
+        { status: 'completed', label: '反馈后完成' },
         { status: 'pending', label: '退回待办' },
         { status: 'skipped', label: '跳过' },
       ]
@@ -388,7 +636,7 @@ export function buildTaskStatusActions(status: string): Array<{ status: Companio
     case 'skipped':
       return [
         { status: 'pending', label: '恢复待办' },
-        { status: 'completed', label: '记为完成' },
+        { status: 'completed', label: '反馈后完成' },
       ]
     default:
       return []

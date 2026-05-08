@@ -12,30 +12,33 @@ const defaultTrainingFocusSignalLimit = 3
 
 // trainingFocusSignal 表示可被成长页、推荐接口和学习计划共同复用的训练重点信号。
 type trainingFocusSignal struct {
-	Tag                      string   `json:"tag"`
-	TopicCode                string   `json:"topic_code,omitempty"`
-	TopicTitle               string   `json:"topic_title,omitempty"`
-	TopicProblemPattern      string   `json:"topic_problem_pattern,omitempty"`
-	RelatedQuestionSets      []string `json:"related_question_sets,omitempty"`
-	RecommendedActions       []string `json:"recommended_actions,omitempty"`
-	PrimaryQuestionSet       string   `json:"primary_question_set,omitempty"`
-	ArchiveOccurrenceCount   int      `json:"archive_occurrence_count"`
-	InterviewOccurrenceCount int      `json:"interview_occurrence_count"`
-	OccurrenceCount          int      `json:"occurrence_count"`
-	Source                   string   `json:"source"`
-	SourceLabel              string   `json:"source_label"`
-	Reason                   string   `json:"reason"`
-	SourceRef                string   `json:"source_ref,omitempty"`
-	CollectionHint           string   `json:"collection_hint,omitempty"`
+	Tag                       string   `json:"tag"`
+	TopicCode                 string   `json:"topic_code,omitempty"`
+	TopicTitle                string   `json:"topic_title,omitempty"`
+	TopicProblemPattern       string   `json:"topic_problem_pattern,omitempty"`
+	RelatedQuestionSets       []string `json:"related_question_sets,omitempty"`
+	RecommendedActions        []string `json:"recommended_actions,omitempty"`
+	PrimaryQuestionSet        string   `json:"primary_question_set,omitempty"`
+	ArchiveOccurrenceCount    int      `json:"archive_occurrence_count"`
+	InterviewOccurrenceCount  int      `json:"interview_occurrence_count"`
+	OccurrenceCount           int      `json:"occurrence_count"`
+	DominantArchivePhase      string   `json:"dominant_archive_phase,omitempty"`
+	DominantArchivePhaseLabel string   `json:"dominant_archive_phase_label,omitempty"`
+	Source                    string   `json:"source"`
+	SourceLabel               string   `json:"source_label"`
+	Reason                    string   `json:"reason"`
+	SourceRef                 string   `json:"source_ref,omitempty"`
+	CollectionHint            string   `json:"collection_hint,omitempty"`
 }
 
 // trainingFocusSignalSeed 表示构造训练重点信号时使用的中间聚合结果。
 type trainingFocusSignalSeed struct {
-	Tag         string
-	Count       int
-	TopicCode   string
-	Suggestions []string
-	SourceRef   string
+	Tag           string
+	Count         int
+	TopicCode     string
+	Suggestions   []string
+	SourceRef     string
+	DominantPhase string
 }
 
 // buildTrainingFocusSignals 将学习档案与面试报告聚合为一组统一的训练重点信号。
@@ -53,6 +56,7 @@ func buildTrainingFocusSignals(entries []model.LearningArchiveEntry, interviews 
 		signal := ensureTrainingFocusSignal(merged, key, seed.Tag, seed.TopicCode)
 		signal.ArchiveOccurrenceCount += seed.Count
 		signal.OccurrenceCount += seed.Count
+		signal.DominantArchivePhase = pickTrainingFocusSignalDominantPhase(signal.DominantArchivePhase, seed.DominantPhase)
 		signal.SourceRef = pickTrainingFocusSignalSourceRef(signal.SourceRef, seed.SourceRef)
 		signal.RecommendedActions = appendUniqueStrings(signal.RecommendedActions, seed.Suggestions...)
 	}
@@ -110,6 +114,7 @@ func collectArchiveFocusSignalSeeds(entries []model.LearningArchiveEntry) []trai
 			if seed.SourceRef == "" {
 				seed.SourceRef = strings.TrimSpace(entry.SourceRef)
 			}
+			seed.DominantPhase = pickTrainingFocusSignalDominantPhase(seed.DominantPhase, resolveArchiveLearningPhase(entry))
 			seed.Suggestions = appendUniqueStrings(seed.Suggestions, suggestions...)
 		}
 	}
@@ -158,11 +163,12 @@ func sortTrainingFocusSignalSeeds(buckets map[string]*trainingFocusSignalSeed) [
 	items := make([]trainingFocusSignalSeed, 0, len(buckets))
 	for _, seed := range buckets {
 		items = append(items, trainingFocusSignalSeed{
-			Tag:         strings.TrimSpace(seed.Tag),
-			Count:       seed.Count,
-			TopicCode:   strings.TrimSpace(seed.TopicCode),
-			Suggestions: sanitizeWeeklyFocusTextList(seed.Suggestions),
-			SourceRef:   strings.TrimSpace(seed.SourceRef),
+			Tag:           strings.TrimSpace(seed.Tag),
+			Count:         seed.Count,
+			TopicCode:     strings.TrimSpace(seed.TopicCode),
+			Suggestions:   sanitizeWeeklyFocusTextList(seed.Suggestions),
+			SourceRef:     strings.TrimSpace(seed.SourceRef),
+			DominantPhase: model.NormalizeLearningPhase(seed.DominantPhase),
 		})
 	}
 
@@ -215,6 +221,8 @@ func hydrateTrainingFocusSignal(signal trainingFocusSignal) trainingFocusSignal 
 		signal.PrimaryQuestionSet = signal.RelatedQuestionSets[0]
 	}
 	signal.CollectionHint = signal.PrimaryQuestionSet
+	signal.DominantArchivePhase = model.NormalizeLearningPhase(signal.DominantArchivePhase)
+	signal.DominantArchivePhaseLabel = buildTrainingFocusSignalPhaseLabel(signal.DominantArchivePhase)
 	signal.Source, signal.SourceLabel = buildTrainingFocusSignalSource(signal)
 	signal.Reason = buildTrainingFocusSignalReason(signal)
 	return signal
@@ -232,6 +240,8 @@ func normalizeTrainingFocusSignals(items []trainingFocusSignal) []trainingFocusS
 		item.TopicTitle = strings.TrimSpace(item.TopicTitle)
 		item.TopicProblemPattern = strings.TrimSpace(item.TopicProblemPattern)
 		item.PrimaryQuestionSet = strings.TrimSpace(item.PrimaryQuestionSet)
+		item.DominantArchivePhase = model.NormalizeLearningPhase(item.DominantArchivePhase)
+		item.DominantArchivePhaseLabel = strings.TrimSpace(item.DominantArchivePhaseLabel)
 		item.Source = strings.TrimSpace(item.Source)
 		item.SourceLabel = strings.TrimSpace(item.SourceLabel)
 		item.Reason = strings.TrimSpace(item.Reason)
@@ -285,11 +295,66 @@ func buildTrainingFocusSignalSource(signal trainingFocusSignal) (string, string)
 func buildTrainingFocusSignalReason(signal trainingFocusSignal) string {
 	switch signal.Source {
 	case "mixed":
+		if signal.DominantArchivePhaseLabel != "" {
+			return fmt.Sprintf("最近练习里“%s”累计出现 %d 次，主要集中在%s，且最近 %d 场面试也反复暴露这个问题，适合本周优先补强。", signal.Tag, signal.ArchiveOccurrenceCount, signal.DominantArchivePhaseLabel, signal.InterviewOccurrenceCount)
+		}
 		return fmt.Sprintf("最近练习里“%s”累计出现 %d 次，且最近 %d 场面试也反复暴露这个问题，适合本周优先补强。", signal.Tag, signal.ArchiveOccurrenceCount, signal.InterviewOccurrenceCount)
 	case "interview_report":
 		return fmt.Sprintf("最近 %d 场已完成面试都指向“%s”，建议围绕这个薄弱点做一轮专项训练。", signal.InterviewOccurrenceCount, signal.Tag)
 	default:
+		if signal.DominantArchivePhaseLabel != "" {
+			return fmt.Sprintf("最近练习归档里“%s”累计出现 %d 次，主要集中在%s，说明这个问题还在持续影响你的输出。", signal.Tag, signal.ArchiveOccurrenceCount, signal.DominantArchivePhaseLabel)
+		}
 		return fmt.Sprintf("最近练习归档里“%s”累计出现 %d 次，说明这个问题还在持续影响你的输出。", signal.Tag, signal.ArchiveOccurrenceCount)
+	}
+}
+
+// resolveArchiveLearningPhase 为学习档案条目提取最贴近真实训练语义的阶段值。
+func resolveArchiveLearningPhase(entry model.LearningArchiveEntry) string {
+	for _, value := range []string{entry.TaskPhase, entry.PlanPhase, entry.EntryPhase} {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		return model.NormalizeLearningPhase(trimmed)
+	}
+
+	switch strings.TrimSpace(entry.SourceType) {
+	case model.LearningArchiveSourceInterviewCoding:
+		return model.LearningPhaseMock
+	case model.LearningArchiveSourcePracticeQuestion:
+		return model.LearningPhaseDrill
+	default:
+		return ""
+	}
+}
+
+// pickTrainingFocusSignalDominantPhase 在归档聚合时保留最先出现的有效阶段值，避免后续合并时被空值覆盖。
+func pickTrainingFocusSignalDominantPhase(current string, candidate string) string {
+	current = strings.TrimSpace(current)
+	candidate = strings.TrimSpace(candidate)
+	if current != "" {
+		return model.NormalizeLearningPhase(current)
+	}
+	if candidate == "" {
+		return ""
+	}
+	return model.NormalizeLearningPhase(candidate)
+}
+
+// buildTrainingFocusSignalPhaseLabel 将归档阶段枚举转换为更适合信号解释的中文阶段名称。
+func buildTrainingFocusSignalPhaseLabel(phase string) string {
+	switch model.NormalizeLearningPhase(phase) {
+	case model.LearningPhaseDrill:
+		return "专项突破阶段"
+	case model.LearningPhaseReview:
+		return "复盘纠偏阶段"
+	case model.LearningPhaseMock:
+		return "模拟验证阶段"
+	case model.LearningPhaseFoundation:
+		return "打基础阶段"
+	default:
+		return ""
 	}
 }
 

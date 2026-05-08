@@ -21,9 +21,11 @@ import {
   buildCompanionCurrentPlanQueryKey,
   buildCompanionLive2DModelsQueryKey,
   buildCompanionPlanProgressQueryKey,
+  buildPracticeQuestionSetDetailQueryKey,
   invalidateCompanionPlanQueries,
 } from '../../shared/queryKeys'
-import { resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
+import { buildPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
+import { fetchQuestionSetDetail } from '../../shared/practiceCatalog'
 import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
 import {
   adjustCompanionPlan,
@@ -31,21 +33,27 @@ import {
   fetchCurrentPlan,
   fetchSelectableCompanionLive2DModels,
   sendCompanionChatRequest,
+  submitCompanionTaskFeedback,
   updateCompanionTaskStatus,
 } from './companionApi'
 import {
+  buildCompanionContinuePrompt,
+  buildCompanionTaskFeedbackPayload,
   buildCompanionDailyDigestText,
+  buildCompanionPhaseAdjustmentHint,
   buildCompanionQuickPrompts,
   buildCompanionTaskActionFeedback,
+  buildDefaultCompanionTaskFeedbackDraft,
   buildCompanionWorkspaceResumeMessage,
   buildPlanProgressHint,
   deriveActiveGoals,
   deriveTodayGoals,
   persistCompanionExecutionUpdate,
+  resolveCompanionTaskQuestionId,
   resolveFocusedCompanionTask,
   taskStatusLabel,
 } from './companionHelpers'
-import { buildCompanionSessionSummary, formatCompanionDateTime, GoalList } from './companionShared'
+import { buildCompanionSessionSummary, CompanionPlanPhaseSection, CompanionTaskFeedbackPanel, formatCompanionDateTime, formatCompanionPhaseLabel, GoalList } from './companionShared'
 import {
   clearCompanionFocusTask,
   persistCompanionFocusTask,
@@ -63,6 +71,7 @@ import type {
   CompanionPlanTask,
   CompanionSelectableLive2DModel,
   CompanionSessionSummary,
+  CompanionTaskFeedbackDraft,
   CompanionTaskStatus,
 } from './companionTypes'
 import { useCompanionStudyLogSync } from './useCompanionStudyLogSync'
@@ -426,6 +435,8 @@ export function CompanionWorkspacePage() {
   const [composerMessage, setComposerMessage] = useState('')
   const [taskActionTaskId, setTaskActionTaskId] = useState<number | null>(null)
   const [planActionMessage, setPlanActionMessage] = useState('')
+  const [feedbackTask, setFeedbackTask] = useState<CompanionPlanTask | null>(null)
+  const [feedbackDraft, setFeedbackDraft] = useState<CompanionTaskFeedbackDraft>(() => buildDefaultCompanionTaskFeedbackDraft(null, null))
   const [preferredIndustryCode, setPreferredIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
   const [dailyDigest, setDailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
   const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
@@ -445,6 +456,12 @@ export function CompanionWorkspacePage() {
     enabled: Boolean(accessToken && currentPlanQuery.data?.id),
     retry: false,
   })
+  const feedbackQuestionSetQuery = useQuery({
+    queryKey: buildPracticeQuestionSetDetailQueryKey(currentPlanQuery.data?.industry_id || null, feedbackTask?.collection_hint || ''),
+    queryFn: () => fetchQuestionSetDetail(currentPlanQuery.data?.industry_id || null, feedbackTask?.collection_hint || ''),
+    enabled: Boolean(feedbackTask?.collection_hint && currentPlanQuery.data?.industry_id),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const todayGoals = useMemo(() => deriveTodayGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
   const activeGoals = useMemo(() => deriveActiveGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
@@ -457,10 +474,11 @@ export function CompanionWorkspacePage() {
     [currentPlanQuery.data, dailyDigest, focusedTask],
   )
   useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
-  const quickPrompts = useMemo(() => buildCompanionQuickPrompts(focusedTask), [focusedTask])
+  const quickPrompts = useMemo(() => buildCompanionQuickPrompts(currentPlanQuery.data || null, focusedTask), [currentPlanQuery.data, focusedTask])
   const currentDialogue = useMemo(() => resolveCurrentDialogue(history), [history])
   const stageFeedback = useMemo(() => resolveStageFeedback(history), [history])
   const planProgressHint = useMemo(() => buildPlanProgressHint(planProgressQuery.data), [planProgressQuery.data])
+  const phaseAdjustmentHint = useMemo(() => buildCompanionPhaseAdjustmentHint(currentPlanQuery.data || null), [currentPlanQuery.data])
   const workspaceIndustryCode = currentPlanQuery.data?.industry_code?.trim() || preferredIndustryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE
   const workspaceIndustry = useMemo(
     () => resolveCompanionIndustry(industriesQuery.data || [], workspaceIndustryCode),
@@ -470,8 +488,20 @@ export function CompanionWorkspacePage() {
   const isPlanPanelLoading = currentPlanQuery.isLoading || (Boolean(accessToken && currentPlanQuery.data?.id) && planProgressQuery.isLoading)
 
   const updateTaskMutation = useMutation({
-    mutationFn: (payload: { task: CompanionPlanTask; status: CompanionTaskStatus }) =>
-      updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status),
+    mutationFn: async (payload: { task: CompanionPlanTask; status: CompanionTaskStatus; feedback?: CompanionTaskFeedbackDraft }) => {
+      if (payload.feedback) {
+        await submitCompanionTaskFeedback(
+          accessToken as string,
+          currentPlanQuery.data?.id as number,
+          payload.task.id,
+          buildCompanionTaskFeedbackPayload(
+            payload.feedback,
+            resolveCompanionTaskQuestionId(payload.task, feedbackQuestionSetQuery.data || null),
+          ),
+        )
+      }
+      await updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status)
+    },
     onSuccess: async (_, variables) => {
       const { projectedPlan, nextDigest, nextFocusTask } = persistCompanionExecutionUpdate(
         currentPlanQuery.data || null,
@@ -481,9 +511,11 @@ export function CompanionWorkspacePage() {
         dailyDigest,
       )
       setTaskActionTaskId(null)
+      setFeedbackTask(null)
+      setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(null, null))
       setDailyDigest(nextDigest)
       setFocusTaskDraft(nextFocusTask)
-      setPlanActionMessage(`任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
+      setPlanActionMessage(variables.feedback ? '已记录训练反馈，并把任务标记为已完成。' : `任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
       setHistory((current) => [
         ...current,
         {
@@ -634,12 +666,48 @@ export function CompanionWorkspacePage() {
       return
     }
 
+    if (status === 'completed') {
+      setFeedbackTask(task)
+      setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(currentPlanQuery.data || null, task))
+      setPlanActionMessage(`完成「${task.title}」前，先补一份训练反馈，后续调整计划会更准。`)
+      return
+    }
+
     setTaskActionTaskId(task.id)
     setPlanActionMessage(`正在把「${task.title}」更新为「${taskStatusLabel(status)}」...`)
     try {
       await updateTaskMutation.mutateAsync({
         task,
         status,
+      })
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        requestLoginPrompt('/companion/room', 'expired')
+      }
+    }
+  }
+
+  /**
+   * 提交任务训练反馈，并在成功后把任务状态一并更新为已完成。
+   */
+  async function handleSubmitTaskFeedback() {
+    if (!accessToken) {
+      requestLoginPrompt('/companion/room', 'missing')
+      return
+    }
+
+    if (!currentPlanQuery.data?.id || !feedbackTask) {
+      setPlanActionMessage('请先登录并确保当前存在可操作的学习计划。')
+      return
+    }
+
+    setTaskActionTaskId(feedbackTask.id)
+    setPlanActionMessage(`正在记录「${feedbackTask.title}」的训练反馈...`)
+    try {
+      await updateTaskMutation.mutateAsync({
+        task: feedbackTask,
+        status: 'completed',
+        feedback: feedbackDraft,
       })
     } catch {
       if (!useAuthStore.getState().accessToken) {
@@ -834,6 +902,9 @@ export function CompanionWorkspacePage() {
                   </div>
                 </div>
                 <p className="companion-empty-text">{planActionMessage || planProgressHint}</p>
+                {currentPlanQuery.data?.phase ? <p className="companion-empty-text">当前阶段：{formatCompanionPhaseLabel(currentPlanQuery.data.phase)}</p> : null}
+                {currentPlanQuery.data?.phase_goal ? <p className="companion-empty-text">阶段目标：{currentPlanQuery.data.phase_goal}</p> : null}
+                {currentPlanQuery.data ? <CompanionPlanPhaseSection plan={currentPlanQuery.data} compact /> : null}
                 <div className="page-actions">
                   <button
                     className="secondary-button"
@@ -843,6 +914,11 @@ export function CompanionWorkspacePage() {
                   >
                     {adjustPlanMutation.isPending ? '调整中...' : '重新调整计划'}
                   </button>
+                  {!currentPlanQuery.data?.id ? (
+                    <Link className="secondary-link" to="/companion">
+                      去入口页生成计划
+                    </Link>
+                  ) : null}
                 </div>
               </article>
             )}
@@ -858,6 +934,9 @@ export function CompanionWorkspacePage() {
               <p className="companion-empty-text">
                 {focusedTask?.description || dailyDigestText}
               </p>
+              {focusedTask?.phase ? <p className="companion-empty-text">所处阶段：{formatCompanionPhaseLabel(focusedTask.phase)}</p> : null}
+              {focusedTask?.phase_goal ? <p className="companion-empty-text">阶段目标：{focusedTask.phase_goal}</p> : null}
+              {phaseAdjustmentHint ? <p className="companion-empty-text">阶段调整说明：{phaseAdjustmentHint}</p> : null}
               {focusedTask?.source_label ? <p className="companion-empty-text">任务来源：{focusedTask.source_label}</p> : null}
               {focusedTask?.reason ? <p className="companion-empty-text">安排原因：{focusedTask.reason}</p> : null}
               {focusedTask?.priority_explanation ? <p className="companion-empty-text">优先级说明：{focusedTask.priority_explanation}</p> : null}
@@ -867,6 +946,22 @@ export function CompanionWorkspacePage() {
                 <span>{dailyDigestText}</span>
                 {focusTaskDraft?.updatedAt ? <span>最近续接：{formatCompanionDateTime(focusTaskDraft.updatedAt)}</span> : null}
               </div>
+              {focusedTask?.collection_hint ? (
+                <div className="page-actions">
+                  <Link
+                    className="secondary-link"
+                    to="/practice"
+                    search={buildPracticeRouteSearch({
+                      questionSetSlug: focusedTask.collection_hint,
+                      source: 'practice_recommendation',
+                      title: focusedTask.title,
+                      reason: focusedTask.reason,
+                    })}
+                  >
+                    去刷建议题单
+                  </Link>
+                </div>
+              ) : null}
               <div className="companion-quick-actions">
                 {quickPrompts.map((item) => (
                   <button className="secondary-button" key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
@@ -875,6 +970,22 @@ export function CompanionWorkspacePage() {
                 ))}
               </div>
             </article>
+
+            {feedbackTask ? (
+              <CompanionTaskFeedbackPanel
+                task={feedbackTask}
+                draft={feedbackDraft}
+                pending={updateTaskMutation.isPending && taskActionTaskId === feedbackTask.id}
+                message={planActionMessage}
+                onChange={setFeedbackDraft}
+                onSubmit={() => void handleSubmitTaskFeedback()}
+                onCancel={() => {
+                  setFeedbackTask(null)
+                  setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(null, null))
+                  setPlanActionMessage('已取消本次反馈填写，你也可以稍后再记录。')
+                }}
+              />
+            ) : null}
 
             <article className="status-card companion-goal-card">
               <div className="companion-card-head">
@@ -889,7 +1000,7 @@ export function CompanionWorkspacePage() {
                 emptyText={accessToken ? '当前没有识别到今日目标，可以先去生成学习计划。' : '登录后会自动同步你的今日学习目标。'}
                 onStatusChange={handleTaskStatusChange}
                 pendingTaskId={taskActionTaskId}
-                onContinueTask={(task) => handleApplyQuickPrompt(`请帮我继续推进「${task.title}」，先告诉我下一步最该做什么。`)}
+                onContinueTask={(task) => handleApplyQuickPrompt(buildCompanionContinuePrompt(currentPlanQuery.data || null, task))}
               />
             </article>
 
@@ -906,7 +1017,7 @@ export function CompanionWorkspacePage() {
                 emptyText={accessToken ? '当前没有进行中的任务，陪伴助手会把下一项未完成目标顶上来。' : '登录后会显示你当前正在推进的任务。'}
                 onStatusChange={handleTaskStatusChange}
                 pendingTaskId={taskActionTaskId}
-                onContinueTask={(task) => handleApplyQuickPrompt(`围绕「${task.title}」这项任务，帮我安排接下来的推进顺序。`)}
+                onContinueTask={(task) => handleApplyQuickPrompt(buildCompanionContinuePrompt(currentPlanQuery.data || null, task))}
               />
             </article>
 

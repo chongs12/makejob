@@ -20,6 +20,8 @@ type LearningPlan struct {
 	IndustryID     uint       `json:"industry_id" gorm:"not null;index;comment:行业ID"`
 	Title          string     `json:"title" gorm:"size:200;not null;comment:计划标题"`
 	Description    string     `json:"description" gorm:"type:text;comment:计划描述"`
+	Phase          string     `json:"phase" gorm:"size:20;not null;default:'foundation';comment:当前学习阶段(foundation/drill/review/mock)"`
+	PhaseGoal      string     `json:"phase_goal" gorm:"type:text;comment:当前阶段目标"`
 	PlanJSON       string     `json:"plan_json" gorm:"type:text;comment:计划内容JSON"`
 	Status         string     `json:"status" gorm:"size:20;not null;default:'active';comment:状态(active/completed/paused/abandoned)"`
 	TotalTasks     int        `json:"total_tasks" gorm:"not null;default:0;comment:总任务数"`

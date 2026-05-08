@@ -21,6 +21,7 @@ type PlanService interface {
 	GetPlan(ctx context.Context, userID, planID uint) (*PlanDetailResponse, error)
 	ListPlans(ctx context.Context, userID uint, page, pageSize int) (*common.PageResult, error)
 	UpdateTaskStatus(ctx context.Context, userID, planID, taskID uint, req *UpdateTaskStatusRequest) error
+	SubmitTaskFeedback(ctx context.Context, userID, planID, taskID uint, req *SubmitTaskFeedbackRequest) error
 	AdjustPlan(ctx context.Context, userID, planID uint) (*PlanDetailResponse, error)
 	GetProgress(ctx context.Context, userID, planID uint) (*PlanProgressResponse, error)
 }
@@ -41,21 +42,39 @@ type UpdateTaskStatusRequest struct {
 	Status string `json:"status" binding:"required,oneof=pending in_progress completed skipped"`
 }
 
+// SubmitTaskFeedbackRequest 提交任务训练反馈请求DTO
+type SubmitTaskFeedbackRequest struct {
+	TrainingType             string          `json:"training_type" binding:"required"`
+	QuestionID               *uint           `json:"question_id"`
+	MistakeTags              []string        `json:"mistake_tags"`
+	AttemptCount             int             `json:"attempt_count"`
+	TimeSpentSeconds         int             `json:"time_spent_seconds"`
+	DifficultySelfAssessment string          `json:"difficulty_self_assessment"`
+	WrongAnswer              json.RawMessage `json:"wrong_answer"`
+	Summary                  string          `json:"summary"`
+}
+
 // PlanDetailResponse 学习计划详情响应DTO
 type PlanDetailResponse struct {
-	ID             uint           `json:"id"`
-	IndustryID     uint           `json:"industry_id"`
-	IndustryCode   string         `json:"industry_code"`
-	Title          string         `json:"title"`
-	Description    string         `json:"description"`
-	Status         string         `json:"status"`
-	TotalTasks     int            `json:"total_tasks"`
-	CompletedTasks int            `json:"completed_tasks"`
-	Progress       float64        `json:"progress"` // 0-100
-	StartDate      *time.Time     `json:"start_date"`
-	EndDate        *time.Time     `json:"end_date"`
-	Tasks          []TaskResponse `json:"tasks"`
-	CreatedAt      time.Time      `json:"created_at"`
+	ID                    uint                         `json:"id"`
+	IndustryID            uint                         `json:"industry_id"`
+	IndustryCode          string                       `json:"industry_code"`
+	Title                 string                       `json:"title"`
+	Description           string                       `json:"description"`
+	Phase                 string                       `json:"phase"`
+	PhaseGoal             string                       `json:"phase_goal"`
+	EntryPhase            string                       `json:"entry_phase,omitempty"`
+	AdjustmentSummaries   []string                     `json:"adjustment_summaries,omitempty"`
+	AdjustmentReasonCodes []string                     `json:"adjustment_reason_codes,omitempty"`
+	PhaseBlueprintSummary []phaseBlueprintSummaryEntry `json:"phase_blueprint_summary,omitempty"`
+	Status                string                       `json:"status"`
+	TotalTasks            int                          `json:"total_tasks"`
+	CompletedTasks        int                          `json:"completed_tasks"`
+	Progress              float64                      `json:"progress"` // 0-100
+	StartDate             *time.Time                   `json:"start_date"`
+	EndDate               *time.Time                   `json:"end_date"`
+	Tasks                 []TaskResponse               `json:"tasks"`
+	CreatedAt             time.Time                    `json:"created_at"`
 }
 
 // TaskResponse 任务响应DTO
@@ -64,6 +83,8 @@ type TaskResponse struct {
 	Title               string     `json:"title"`
 	Description         string     `json:"description"`
 	TaskType            string     `json:"task_type"`
+	Phase               string     `json:"phase"`
+	PhaseGoal           string     `json:"phase_goal"`
 	Status              string     `json:"status"`
 	DueDate             *time.Time `json:"due_date"`
 	CompletedAt         *time.Time `json:"completed_at"`
@@ -111,6 +132,9 @@ type planService struct {
 	planAgent           ai.PlanAgent
 	learningArchiveRepo repository.LearningArchiveRepository
 	interviewRepo       repository.InterviewRepository
+	feedbackRepo        repository.PlanTaskFeedbackRepository
+	diagnosisRepo       repository.PlanTaskDiagnosisRepository
+	quizAnalyzer        ai.QuizAnalyzer
 	industryRepo        repository.IndustryRepository
 }
 
@@ -121,6 +145,9 @@ func NewPlanService(
 	planAgent ai.PlanAgent,
 	learningArchiveRepo repository.LearningArchiveRepository,
 	interviewRepo repository.InterviewRepository,
+	feedbackRepo repository.PlanTaskFeedbackRepository,
+	diagnosisRepo repository.PlanTaskDiagnosisRepository,
+	quizAnalyzer ai.QuizAnalyzer,
 	industryRepo ...repository.IndustryRepository,
 ) PlanService {
 	s := &planService{
@@ -129,6 +156,9 @@ func NewPlanService(
 		planAgent:           planAgent,
 		learningArchiveRepo: learningArchiveRepo,
 		interviewRepo:       interviewRepo,
+		feedbackRepo:        feedbackRepo,
+		diagnosisRepo:       diagnosisRepo,
+		quizAnalyzer:        quizAnalyzer,
 	}
 	if len(industryRepo) > 0 {
 		s.industryRepo = industryRepo[0]
@@ -161,6 +191,8 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 	if err != nil {
 		return nil, fmt.Errorf("AI生成学习计划失败: %w", err)
 	}
+	aiPlan = normalizeLearningPlanPhases(aiPlan)
+	aiPlan = arrangeLearningPlanByPhase(aiPlan, false)
 
 	// 暂停用户的其他活跃计划
 	if err := s.planRepo.PauseActivePlans(ctx, userID); err != nil {
@@ -175,6 +207,8 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 	// 序列化计划JSON
 	storedContext := buildPlanStoredContext(req, industryCode)
 	storedContext.FocusSignals = normalizeTrainingFocusSignals(focusSignals)
+	storedContext.PhaseBlueprintVersion = PhaseBlueprintVersion
+	storedContext.PhaseBlueprint = buildPhaseBlueprintFromPlanTasks(aiPlan.Tasks, req.DurationDays, PhaseBlueprintSourceDuration)
 	planJSON, err := buildPlanStoredPayload(aiPlan, storedContext)
 	if err != nil {
 		return nil, fmt.Errorf("序列化计划失败: %w", err)
@@ -186,6 +220,8 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 		IndustryID:     industryID,
 		Title:          aiPlan.Title,
 		Description:    aiPlan.Description,
+		Phase:          aiPlan.Phase,
+		PhaseGoal:      aiPlan.PhaseGoal,
 		PlanJSON:       string(planJSON),
 		Status:         model.PlanStatusActive,
 		TotalTasks:     len(aiPlan.Tasks),
@@ -207,6 +243,8 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 			Title:       t.Title,
 			Description: t.Description,
 			TaskType:    t.TaskType,
+			Phase:       t.Phase,
+			PhaseGoal:   t.PhaseGoal,
 			Status:      model.TaskStatusPending,
 			DueDate:     &dueDate,
 			SortOrder:   i,
@@ -383,6 +421,7 @@ func (s *planService) UpdateTaskStatus(ctx context.Context, userID, planID, task
 		}
 	}
 	plan.CompletedTasks = completedCount
+	plan.Phase, plan.PhaseGoal = resolvePlanPhaseFields(plan, tasks)
 
 	// 如果所有任务都完成了，更新计划状态为completed
 	if completedCount >= plan.TotalTasks {
@@ -392,6 +431,67 @@ func (s *planService) UpdateTaskStatus(ctx context.Context, userID, planID, task
 	}
 
 	return s.planRepo.Update(ctx, plan)
+}
+
+// SubmitTaskFeedback 提交任务训练反馈。
+func (s *planService) SubmitTaskFeedback(ctx context.Context, userID, planID, taskID uint, req *SubmitTaskFeedbackRequest) error {
+	if req == nil {
+		return common.NewBusinessError(common.CodeBadRequest, "训练反馈不能为空")
+	}
+	if s.feedbackRepo == nil {
+		return fmt.Errorf("训练反馈仓库未配置")
+	}
+	if err := validateSubmitTaskFeedbackRequest(req); err != nil {
+		return err
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, planID)
+	if err != nil {
+		return err
+	}
+	if plan == nil {
+		return common.NewBusinessError(common.CodeNotFound, "学习计划不存在")
+	}
+	if plan.UserID != userID {
+		return common.NewBusinessError(common.CodeForbidden, "无权访问该学习计划")
+	}
+
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task == nil {
+		return common.NewBusinessError(common.CodeNotFound, "学习任务不存在")
+	}
+	if task.PlanID != planID {
+		return common.NewBusinessError(common.CodeBadRequest, "任务不属于该计划")
+	}
+
+	mistakeTagsJSON, err := marshalStringSlice(req.MistakeTags)
+	if err != nil {
+		return fmt.Errorf("序列化错因标签失败: %w", err)
+	}
+
+	feedback := &model.LearningTaskFeedback{
+		PlanID:                   planID,
+		TaskID:                   taskID,
+		UserID:                   userID,
+		QuestionID:               req.QuestionID,
+		TrainingType:             req.TrainingType,
+		MistakeTagsJSON:          mistakeTagsJSON,
+		AttemptCount:             req.AttemptCount,
+		TimeSpentSeconds:         req.TimeSpentSeconds,
+		DifficultySelfAssessment: req.DifficultySelfAssessment,
+		WrongAnswerJSON:          normalizeRawJSON(req.WrongAnswer),
+		Summary:                  strings.TrimSpace(req.Summary),
+	}
+
+	if err := s.feedbackRepo.Create(ctx, feedback); err != nil {
+		return err
+	}
+
+	s.enqueueTaskFeedbackDiagnosis(plan, task, feedback)
+	return nil
 }
 
 // AdjustPlan 动态调整学习计划
@@ -414,37 +514,50 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 		return nil, err
 	}
 
-	// 收集已完成任务和计算表现
+	// 收集已完成任务
 	completedTasks := make([]string, 0)
 	completedTaskModels := make([]model.LearningTask, 0)
-	performance := make(map[string]float64)
-	taskTypeScores := make(map[string][]float64)
 
 	for _, t := range tasks {
 		if t.Status == model.TaskStatusCompleted {
 			completedTaskModels = append(completedTaskModels, t)
 			completedTasks = append(completedTasks, t.Title)
-			// 简化：假设每种类型任务完成得分为80
-			taskTypeScores[t.TaskType] = append(taskTypeScores[t.TaskType], 80)
 		}
 	}
 
-	// 计算各类型平均分
-	for taskType, scores := range taskTypeScores {
-		if len(scores) > 0 {
-			sum := 0.0
-			for _, s := range scores {
-				sum += s
-			}
-			performance[taskType] = sum / float64(len(scores))
-		}
+	decision, err := s.loadPlanAdjustmentDecision(ctx, planID, tasks)
+	if err != nil {
+		return nil, err
+	}
+
+	// 提前读取已有的阶段蓝图和上下文，构建完整的 AI 调整上下文。
+	storedContext := readPlanStoredContext(plan.PlanJSON)
+	reasonCodes := buildAdjustmentReasonCodes(decision.Actions, decision.CurrentPhase, decision.EntryPhase)
+
+	adjustInput := ai.PlanAdjustmentInput{
+		PlanID:          fmt.Sprintf("%d", planID),
+		CompletedTasks:  completedTasks,
+		Performance:     decision.PerformanceByTaskType,
+		CurrentPhase:    decision.CurrentPhase,
+		EntryPhase:      decision.EntryPhase,
+		ActionSummaries: decision.ActionSummaries,
+		ReasonCodes:     reasonCodes,
+		WeakTopics:      storedContext.WeakTopics,
+		GoalDescription: storedContext.GoalDescription,
+	}
+	if len(storedContext.PhaseBlueprint) > 0 {
+		adjustInput.PhaseBlueprint = convertPhaseBlueprintToAI(storedContext.PhaseBlueprint)
 	}
 
 	// 调用AI调整计划
-	adjustedPlan, err := s.planAgent.AdjustPlan(ctx, fmt.Sprintf("%d", planID), completedTasks, performance)
+	adjustedPlan, err := s.planAgent.AdjustPlan(ctx, adjustInput)
 	if err != nil {
 		return nil, fmt.Errorf("AI调整学习计划失败: %w", err)
 	}
+	adjustmentApplication := applyPlanAdjustmentDecision(adjustedPlan, decision)
+	adjustedPlan = adjustmentApplication.Plan
+	adjustedPlan = normalizeLearningPlanPhases(adjustedPlan)
+	adjustedPlan = arrangeLearningPlanByPhase(adjustedPlan, true)
 
 	// 删除未完成的任务，保留已完成历史记录。
 	if err := s.taskRepo.DeleteIncompleteByPlan(ctx, planID); err != nil {
@@ -464,6 +577,8 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 			Title:       t.Title,
 			Description: t.Description,
 			TaskType:    t.TaskType,
+			Phase:       t.Phase,
+			PhaseGoal:   t.PhaseGoal,
 			Status:      model.TaskStatusPending,
 			DueDate:     &dueDate,
 			SortOrder:   nextSortOrder + i,
@@ -489,7 +604,6 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 	}
 
 	// 更新计划JSON
-	storedContext := readPlanStoredContext(plan.PlanJSON)
 	if strings.TrimSpace(storedContext.IndustryCode) == "" {
 		storedContext.IndustryCode = s.resolvePlanIndustryCode(ctx, plan.IndustryID)
 	}
@@ -498,16 +612,52 @@ func (s *planService) AdjustPlan(ctx context.Context, userID, planID uint) (*Pla
 		return nil, err
 	}
 	storedContext.FocusSignals = normalizeTrainingFocusSignals(focusSignals)
-	planJSON, _ := buildPlanStoredPayload(adjustedPlan, storedContext)
+	storedContext.EntryPhase = decision.EntryPhase
+	storedContext.AdjustmentSummaries = sanitizeWeeklyFocusTextList(decision.ActionSummaries)
+	// 合并任务解释上下文，保留已完成历史任务的解释链路。
+	allTasks := append(completedTaskModels, newTasks...)
+	storedContext.TaskExplanations = mergePlanTaskResponseContexts(
+		storedContext.TaskExplanations,
+		adjustmentApplication.TaskExplanations,
+		allTasks,
+	)
+
+	// 生成机器可读原因码（已在 AI 调用前计算，此处复用）
+	storedContext.AdjustmentReasonCodes = reasonCodes
+
+	// 记录阶段过渡历史
+	if decision.CurrentPhase != decision.EntryPhase || len(reasonCodes) > 0 {
+		diagnosisRefs := buildDiagnosisSourceRefs(decision.Actions)
+		transitionEntry := buildPhaseTransitionEntry(
+			decision.CurrentPhase,
+			decision.EntryPhase,
+			reasonCodes,
+			decision.ActionSummaries,
+			diagnosisRefs,
+		)
+		storedContext.PhaseTransitionHistory = append(storedContext.PhaseTransitionHistory, transitionEntry)
+	}
+
+	// 重建阶段蓝图，使其与调整后的真实任务窗口一致。
+	source := resolvePhaseBlueprintSource(len(reasonCodes) > 0, false)
+	storedContext.PhaseBlueprintVersion = PhaseBlueprintVersion
+	storedContext.PhaseBlueprint = buildPhaseBlueprintFromPlanTasks(
+		adjustedPlan.Tasks,
+		adjustedPlan.Duration,
+		source,
+	)
+
+	planJSON, err := buildPlanStoredPayload(adjustedPlan, storedContext)
+	if err != nil {
+		return nil, fmt.Errorf("序列化调整后的计划失败: %w", err)
+	}
 	plan.PlanJSON = string(planJSON)
+
+	plan.Phase, plan.PhaseGoal = resolveCurrentPlanPhase(allTasks)
 
 	if err := s.planRepo.Update(ctx, plan); err != nil {
 		return nil, err
 	}
-
-	allTasks := make([]model.LearningTask, 0, len(completedTaskModels)+len(newTasks))
-	allTasks = append(allTasks, completedTaskModels...)
-	allTasks = append(allTasks, newTasks...)
 
 	return s.buildPlanDetailResponse(ctx, plan, allTasks)
 }
@@ -550,10 +700,7 @@ func (s *planService) GetProgress(ctx context.Context, userID, planID uint) (*Pl
 		}
 
 		// 计算DayNumber（从DueDate反推）
-		dayNumber := 1
-		if t.DueDate != nil && plan.StartDate != nil {
-			dayNumber = int(t.DueDate.Sub(*plan.StartDate).Hours()/24) + 1
-		}
+		dayNumber := resolvePlanTaskDayNumber(plan, t)
 
 		// 更新每日统计
 		if ds, ok := dailyStats[dayNumber]; ok {
@@ -626,25 +773,23 @@ func (s *planService) GetProgress(ctx context.Context, userID, planID uint) (*Pl
 func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.LearningPlan, tasks []model.LearningTask) (*PlanDetailResponse, error) {
 	storedPlan := readPlanStoredPayload(plan.PlanJSON)
 	taskPriorityQueue := buildPlanTaskPriorityQueue(storedPlan.Plan)
+	planPhase, planPhaseGoal := resolvePlanPhaseFields(plan, tasks)
 	taskResponses := make([]TaskResponse, 0, len(tasks))
 	for _, t := range tasks {
 		// 计算DayNumber
-		dayNumber := 1
-		if t.DueDate != nil && plan.StartDate != nil {
-			dayNumber = int(t.DueDate.Sub(*plan.StartDate).Hours()/24) + 1
-		}
-		if dayNumber < 1 {
-			dayNumber = 1
-		}
+		dayNumber := resolvePlanTaskDayNumber(plan, t)
 
 		priority := popPlanTaskPriority(taskPriorityQueue, buildPlanTaskLookupKey(t.Title, t.Description, t.TaskType))
 		taskContext := buildPlanTaskResponseContext(t, priority, storedPlan.Context)
+		taskPhase, taskPhaseGoal := resolveTaskPhaseFields(t)
 
 		taskResponses = append(taskResponses, TaskResponse{
 			ID:                  t.ID,
 			Title:               t.Title,
 			Description:         t.Description,
 			TaskType:            t.TaskType,
+			Phase:               taskPhase,
+			PhaseGoal:           taskPhaseGoal,
 			Status:              t.Status,
 			DueDate:             t.DueDate,
 			CompletedAt:         t.CompletedAt,
@@ -666,19 +811,25 @@ func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.L
 	}
 
 	return &PlanDetailResponse{
-		ID:             plan.ID,
-		IndustryID:     plan.IndustryID,
-		IndustryCode:   s.resolvePlanIndustryCode(ctx, plan.IndustryID),
-		Title:          plan.Title,
-		Description:    plan.Description,
-		Status:         plan.Status,
-		TotalTasks:     plan.TotalTasks,
-		CompletedTasks: plan.CompletedTasks,
-		Progress:       progress,
-		StartDate:      plan.StartDate,
-		EndDate:        plan.EndDate,
-		Tasks:          taskResponses,
-		CreatedAt:      plan.CreatedAt,
+		ID:                    plan.ID,
+		IndustryID:            plan.IndustryID,
+		IndustryCode:          s.resolvePlanIndustryCode(ctx, plan.IndustryID),
+		Title:                 plan.Title,
+		Description:           plan.Description,
+		Phase:                 planPhase,
+		PhaseGoal:             planPhaseGoal,
+		EntryPhase:            storedPlan.Context.EntryPhase,
+		AdjustmentSummaries:   append([]string(nil), storedPlan.Context.AdjustmentSummaries...),
+		AdjustmentReasonCodes: append([]string(nil), storedPlan.Context.AdjustmentReasonCodes...),
+		PhaseBlueprintSummary: buildPhaseBlueprintSummary(resolvePlanContextPhaseBlueprint(plan, storedPlan.Context, storedPlan.Plan, tasks, resolvePlanDurationDays(plan, storedPlan.Context, storedPlan.Plan))),
+		Status:                plan.Status,
+		TotalTasks:            plan.TotalTasks,
+		CompletedTasks:        plan.CompletedTasks,
+		Progress:              progress,
+		StartDate:             plan.StartDate,
+		EndDate:               plan.EndDate,
+		Tasks:                 taskResponses,
+		CreatedAt:             plan.CreatedAt,
 	}, nil
 }
 
@@ -716,13 +867,20 @@ type planStoredPayload struct {
 
 // planStoredContext 表示用于回填任务解释信息的最小计划上下文。
 type planStoredContext struct {
-	IndustryCode    string                `json:"industry_code"`
-	Level           string                `json:"level"`
-	WeakTopics      []string              `json:"weak_topics"`
-	GoalDescription string                `json:"goal_description"`
-	DailyStudyTime  int                   `json:"daily_study_time"`
-	DurationDays    int                   `json:"duration_days"`
-	FocusSignals    []trainingFocusSignal `json:"focus_signals,omitempty"`
+	IndustryCode           string                             `json:"industry_code"`
+	Level                  string                             `json:"level"`
+	WeakTopics             []string                           `json:"weak_topics"`
+	GoalDescription        string                             `json:"goal_description"`
+	DailyStudyTime         int                                `json:"daily_study_time"`
+	DurationDays           int                                `json:"duration_days"`
+	FocusSignals           []trainingFocusSignal              `json:"focus_signals,omitempty"`
+	EntryPhase             string                             `json:"entry_phase,omitempty"`
+	AdjustmentSummaries    []string                           `json:"adjustment_summaries,omitempty"`
+	TaskExplanations       map[string]planTaskResponseContext `json:"task_explanations,omitempty"`
+	PhaseBlueprintVersion  string                             `json:"phase_blueprint_version,omitempty"`
+	PhaseBlueprint         []phaseBlueprintEntry              `json:"phase_blueprint,omitempty"`
+	AdjustmentReasonCodes  []string                           `json:"adjustment_reason_codes,omitempty"`
+	PhaseTransitionHistory []phaseTransitionEntry             `json:"phase_transition_history,omitempty"`
 }
 
 // planTaskResponseContext 表示单个任务返回给前端时附带的解释信息。
@@ -749,6 +907,22 @@ func buildPlanStoredContext(req *GeneratePlanRequest, industryCode string) planS
 		DailyStudyTime:  req.DailyStudyTime,
 		DurationDays:    req.DurationDays,
 	}
+}
+
+// convertPhaseBlueprintToAI 将 service 层的阶段蓝图转换为 ai 包的类型，避免循环依赖。
+func convertPhaseBlueprintToAI(entries []phaseBlueprintEntry) []ai.PhaseBlueprintEntry {
+	result := make([]ai.PhaseBlueprintEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, ai.PhaseBlueprintEntry{
+			Phase:             e.Phase,
+			PhaseGoal:         e.PhaseGoal,
+			StartDay:          e.StartDay,
+			EndDay:            e.EndDay,
+			ExpectedTaskTypes: append([]string(nil), e.ExpectedTaskTypes...),
+			ExitCriteria:      append([]string(nil), e.ExitCriteria...),
+		})
+	}
+	return result
 }
 
 // buildPlanStoredPayload 将学习计划和解释上下文序列化为增强版 plan_json 持久化载荷。
@@ -795,6 +969,12 @@ func normalizePlanStoredContext(context planStoredContext) planStoredContext {
 	context.GoalDescription = strings.TrimSpace(context.GoalDescription)
 	context.WeakTopics = sanitizePlanContextTopics(context.WeakTopics)
 	context.FocusSignals = normalizeTrainingFocusSignals(context.FocusSignals)
+	context.EntryPhase = model.NormalizeLearningPhase(context.EntryPhase)
+	context.AdjustmentSummaries = sanitizeWeeklyFocusTextList(context.AdjustmentSummaries)
+	context.TaskExplanations = normalizePlanTaskResponseContexts(context.TaskExplanations)
+	context.PhaseBlueprintVersion = strings.TrimSpace(context.PhaseBlueprintVersion)
+	context.PhaseBlueprint = normalizePhaseBlueprint(context.PhaseBlueprint)
+	context.AdjustmentReasonCodes = sanitizeWeeklyFocusTextList(context.AdjustmentReasonCodes)
 	if context.DailyStudyTime < 0 {
 		context.DailyStudyTime = 0
 	}
@@ -802,6 +982,145 @@ func normalizePlanStoredContext(context planStoredContext) planStoredContext {
 		context.DurationDays = 0
 	}
 	return context
+}
+
+// normalizePlanTaskResponseContexts 统一清理计划任务解释覆盖表，避免旧签名或空字段污染响应回填。
+func normalizePlanTaskResponseContexts(values map[string]planTaskResponseContext) map[string]planTaskResponseContext {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make(map[string]planTaskResponseContext, len(values))
+	for key, value := range values {
+		normalizedKey := strings.TrimSpace(key)
+		if normalizedKey == "" {
+			continue
+		}
+
+		value.Source = strings.TrimSpace(value.Source)
+		value.SourceLabel = strings.TrimSpace(value.SourceLabel)
+		value.Reason = strings.TrimSpace(value.Reason)
+		value.PriorityExplanation = strings.TrimSpace(value.PriorityExplanation)
+		value.SourceRef = strings.TrimSpace(value.SourceRef)
+		value.CollectionHint = strings.TrimSpace(value.CollectionHint)
+		if value.Source == "" && value.SourceLabel == "" && value.Reason == "" && value.SourceRef == "" && value.CollectionHint == "" {
+			continue
+		}
+		result[normalizedKey] = value
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// mergePlanTaskResponseContexts 合并新旧任务解释上下文，保留已完成历史任务的解释链路，同时裁剪已不存在的任务。
+func mergePlanTaskResponseContexts(
+	existing map[string]planTaskResponseContext,
+	updates map[string]planTaskResponseContext,
+	tasks []model.LearningTask,
+) map[string]planTaskResponseContext {
+	normalizedExisting := normalizePlanTaskResponseContexts(existing)
+	normalizedUpdates := normalizePlanTaskResponseContexts(updates)
+
+	merged := make(map[string]planTaskResponseContext, len(normalizedExisting)+len(normalizedUpdates))
+	for k, v := range normalizedExisting {
+		merged[k] = v
+	}
+	for k, v := range normalizedUpdates {
+		merged[k] = v
+	}
+
+	// 裁剪：只保留当前真实仍存在的任务签名。
+	validKeys := make(map[string]struct{}, len(tasks))
+	for _, t := range tasks {
+		validKeys[buildPlanTaskLookupKey(t.Title, t.Description, t.TaskType)] = struct{}{}
+	}
+	result := make(map[string]planTaskResponseContext, len(validKeys))
+	for k, v := range merged {
+		if _, ok := validKeys[k]; ok {
+			result[k] = v
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// resolvePlanTaskDayNumber 根据计划起止时间和任务截止时间回推出计划内的自然日序号。
+func resolvePlanTaskDayNumber(plan *model.LearningPlan, task model.LearningTask) int {
+	dayNumber := 1
+	if plan != nil && task.DueDate != nil && plan.StartDate != nil {
+		dayNumber = int(task.DueDate.Sub(*plan.StartDate).Hours()/24) + 1
+	}
+	if dayNumber < 1 {
+		return 1
+	}
+	return dayNumber
+}
+
+// resolvePlanContextPhaseBlueprint 读时兜底解析阶段蓝图，优先使用已有蓝图，否则从计划任务或周期天数推导。
+func resolvePlanContextPhaseBlueprint(
+	plan *model.LearningPlan,
+	stored planStoredContext,
+	storedPlan ai.LearningPlan,
+	tasks []model.LearningTask,
+	durationDays int,
+) []phaseBlueprintEntry {
+	normalized := normalizePhaseBlueprint(stored.PhaseBlueprint)
+	if len(normalized) > 0 {
+		return normalized
+	}
+
+	// 尝试从持久化计划任务重建蓝图。
+	if len(storedPlan.Tasks) > 0 {
+		planTasks := storedPlan.Tasks
+		rebuilt := buildPhaseBlueprintFromPlanTasks(planTasks, durationDays, PhaseBlueprintSourceDuration)
+		if len(rebuilt) > 0 {
+			return rebuilt
+		}
+	}
+
+	// 尝试从数据库任务列表重建蓝图。
+	if len(tasks) > 0 {
+		planTasks := make([]ai.PlanTask, 0, len(tasks))
+		for _, t := range tasks {
+			taskPhase, taskPhaseGoal := resolveTaskPhaseFields(t)
+			planTasks = append(planTasks, ai.PlanTask{
+				Title:       t.Title,
+				Description: t.Description,
+				TaskType:    t.TaskType,
+				Phase:       taskPhase,
+				PhaseGoal:   taskPhaseGoal,
+				DayNumber:   resolvePlanTaskDayNumber(plan, t),
+			})
+		}
+		rebuilt := buildPhaseBlueprintFromPlanTasks(planTasks, durationDays, PhaseBlueprintSourceDuration)
+		if len(rebuilt) > 0 {
+			return rebuilt
+		}
+	}
+
+	return buildPhaseBlueprint(durationDays, PhaseBlueprintSourceDuration)
+}
+
+// resolvePlanDurationDays 从多个来源解析计划周期天数，按优先级回退。
+func resolvePlanDurationDays(plan *model.LearningPlan, stored planStoredContext, storedPlan ai.LearningPlan) int {
+	if stored.DurationDays > 0 {
+		return stored.DurationDays
+	}
+	if storedPlan.Duration > 0 {
+		return storedPlan.Duration
+	}
+	if plan != nil && plan.StartDate != nil && plan.EndDate != nil {
+		days := int(plan.EndDate.Sub(*plan.StartDate).Hours() / 24)
+		if days > 0 {
+			return days
+		}
+	}
+	return 14
 }
 
 // sanitizePlanContextTopics 清理计划上下文中的弱项标签列表，避免重复值和空白项进入解释规则。
@@ -872,6 +1191,10 @@ func popPlanTaskPriority(queue map[string][]string, key string) string {
 
 // buildPlanTaskResponseContext 根据任务内容、持久化上下文和优先级生成前端可直接消费的解释字段。
 func buildPlanTaskResponseContext(task model.LearningTask, priority string, context planStoredContext) planTaskResponseContext {
+	if storedContext, ok := resolveStoredPlanTaskResponseContext(task, priority, context.TaskExplanations); ok {
+		return storedContext
+	}
+
 	if signal := matchTrainingFocusSignal(task, context.FocusSignals); signal != nil {
 		source := "weekly_focus"
 		sourceLabel := "本周重点补强"
@@ -916,6 +1239,32 @@ func buildPlanTaskResponseContext(task model.LearningTask, priority string, cont
 	}
 }
 
+// resolveStoredPlanTaskResponseContext 按任务稳定签名读取持久化的解释覆盖结果，优先保留诊断驱动的明确承接信息。
+func resolveStoredPlanTaskResponseContext(
+	task model.LearningTask,
+	priority string,
+	values map[string]planTaskResponseContext,
+) (planTaskResponseContext, bool) {
+	if len(values) == 0 {
+		return planTaskResponseContext{}, false
+	}
+
+	key := buildPlanTaskLookupKey(task.Title, task.Description, task.TaskType)
+	value, exists := values[key]
+	if !exists {
+		return planTaskResponseContext{}, false
+	}
+	value.Source = strings.TrimSpace(value.Source)
+	value.SourceLabel = strings.TrimSpace(value.SourceLabel)
+	value.Reason = strings.TrimSpace(value.Reason)
+	value.SourceRef = strings.TrimSpace(value.SourceRef)
+	value.CollectionHint = strings.TrimSpace(value.CollectionHint)
+	if strings.TrimSpace(value.PriorityExplanation) == "" {
+		value.PriorityExplanation = buildPlanTaskPriorityExplanation(priority, value.Source)
+	}
+	return value, true
+}
+
 // matchPlanWeakTopic 从任务标题和描述中匹配最贴近的弱项标签，命中后用于标记任务来源。
 func matchPlanWeakTopic(task model.LearningTask, weakTopics []string) string {
 	searchText := strings.ToLower(strings.Join([]string{
@@ -938,6 +1287,9 @@ func matchPlanWeakTopic(task model.LearningTask, weakTopics []string) string {
 func buildPlanTaskPriorityExplanation(priority string, source string) string {
 	switch strings.TrimSpace(priority) {
 	case "high":
+		if source == "plan_feedback_diagnosis" {
+			return "该任务在计划中被标记为高优先级，并且直接来自最近一轮训练反馈诊断，建议优先完成这一轮纠偏动作。"
+		}
 		if source == "practice_recommendation" {
 			return "该任务在计划中被标记为高优先级，且直接对应当前高频问题，建议优先完成这一轮专项补练。"
 		}
@@ -958,10 +1310,16 @@ func buildPlanTaskPriorityExplanation(priority string, source string) string {
 		if source == "goal" {
 			return "该任务被安排为中优先级，用于持续推进当前学习目标，同时不给主线节奏造成中断。"
 		}
+		if source == "plan_feedback_diagnosis" {
+			return "该任务被安排为中优先级，并且直接来自最近一轮训练反馈诊断，建议尽快完成这一轮纠偏动作。"
+		}
 		return "该任务被安排为中优先级，适合在完成最高优先级事项后紧接着推进。"
 	case "low":
 		return "该任务被安排为低优先级，更适合作为当前阶段的补充巩固或后续延伸。"
 	default:
+		if source == "plan_feedback_diagnosis" {
+			return "该任务直接来自最近一轮训练反馈诊断，建议不要长期后移，优先把这轮纠偏动作收口。"
+		}
 		if source == "practice_recommendation" {
 			return "该任务对应当前高频问题，建议尽量不要长期后移，避免同类错误继续积累。"
 		}
@@ -1046,6 +1404,54 @@ func mergePlanProfileWeakTopics(weakTopics []string, focusSignals []trainingFocu
 		result = sanitizePlanContextTopics(append(result, signal.Tag))
 	}
 	return result
+}
+
+// validateSubmitTaskFeedbackRequest 校验训练反馈请求的核心字段。
+func validateSubmitTaskFeedbackRequest(req *SubmitTaskFeedbackRequest) error {
+	switch req.TrainingType {
+	case model.TrainingTypeCoding, model.TrainingTypeChoice, model.TrainingTypeShortAnswer, model.TrainingTypeGeneric:
+	default:
+		return common.NewBusinessError(common.CodeBadRequest, "training_type 无效")
+	}
+
+	if req.AttemptCount < 0 {
+		return common.NewBusinessError(common.CodeBadRequest, "attempt_count 不能小于0")
+	}
+	if req.TimeSpentSeconds < 0 {
+		return common.NewBusinessError(common.CodeBadRequest, "time_spent_seconds 不能小于0")
+	}
+
+	switch req.DifficultySelfAssessment {
+	case "", model.DifficultyTooEasy, model.DifficultyJustRight, model.DifficultyTooHard:
+	default:
+		return common.NewBusinessError(common.CodeBadRequest, "difficulty_self_assessment 无效")
+	}
+
+	if len(req.WrongAnswer) > 0 && !json.Valid(req.WrongAnswer) {
+		return common.NewBusinessError(common.CodeBadRequest, "wrong_answer 必须是合法JSON")
+	}
+
+	return nil
+}
+
+// marshalStringSlice 将字符串切片序列化为JSON字符串。
+func marshalStringSlice(values []string) (string, error) {
+	if len(values) == 0 {
+		return "[]", nil
+	}
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+// normalizeRawJSON 将原始JSON载荷规范化为可落库字符串。
+func normalizeRawJSON(payload json.RawMessage) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(payload))
 }
 
 // boolToInt 布尔转整数

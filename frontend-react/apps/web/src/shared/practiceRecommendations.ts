@@ -22,6 +22,8 @@ export interface PracticeRecommendationItem {
   related_question_sets: string[]
   recommended_actions: string[]
   primary_question_set?: string
+  dominant_archive_phase?: string
+  dominant_archive_phase_label?: string
   recommendation_mode: string
   reason: string
   source_type: string

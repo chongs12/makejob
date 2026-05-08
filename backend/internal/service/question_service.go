@@ -961,7 +961,7 @@ func (s *questionService) GetPracticeRecommendations(ctx context.Context, userID
 					RecommendedActions:  append([]string(nil), focusSignal.RecommendedActions...),
 					PrimaryQuestionSet:  focusSignal.PrimaryQuestionSet,
 					RecommendationMode:  recommendationMode,
-					Reason:              buildPracticeRecommendationReason(focusSignal.Tag, focusSignal.OccurrenceCount, sourceType),
+					Reason:              buildPracticeRecommendationReason(focusSignal, sourceType),
 					SourceType:          sourceType,
 					Priority:            index + 1,
 					OccurrenceCount:     focusSignal.OccurrenceCount,
@@ -1042,6 +1042,8 @@ func (s *questionService) syncPracticeLearningArchive(
 		SourceRef:        sourceRef,
 		QuestionIndex:    0,
 		IndustryCode:     strconv.FormatUint(uint64(question.IndustryID), 10),
+		TaskPhase:        model.LearningPhaseDrill,
+		TaskPhaseGoal:    model.BuildLearningPhaseGoal(model.LearningPhaseDrill),
 		Language:         detectQuestionLanguage(question),
 		MistakeTagsJSON:  string(mistakeTagsJSON),
 		StrengthTagsJSON: string(strengthTagsJSON),
@@ -1095,12 +1097,18 @@ func rankPracticeFocusTags(entries []model.LearningArchiveEntry) []practiceFocus
 }
 
 // buildPracticeRecommendationReason 生成更可解释的推荐理由文案。
-func buildPracticeRecommendationReason(focusTag string, occurrenceCount int, sourceType string) string {
+func buildPracticeRecommendationReason(signal trainingFocusSignal, sourceType string) string {
 	if sourceType == "interview_archive" {
-		return fmt.Sprintf("这场面试里“%s”相关问题反复出现 %d 次，建议优先补这类题。", focusTag, occurrenceCount)
+		if signal.DominantArchivePhaseLabel != "" {
+			return fmt.Sprintf("这场面试里“%s”相关问题反复出现 %d 次，主要集中在%s，建议优先补这类题。", signal.Tag, signal.OccurrenceCount, signal.DominantArchivePhaseLabel)
+		}
+		return fmt.Sprintf("这场面试里“%s”相关问题反复出现 %d 次，建议优先补这类题。", signal.Tag, signal.OccurrenceCount)
 	}
 
-	return fmt.Sprintf("你最近的学习档案里“%s”累计出现 %d 次，先用这题做对症补练。", focusTag, occurrenceCount)
+	if signal.DominantArchivePhaseLabel != "" {
+		return fmt.Sprintf("你最近的学习档案里“%s”累计出现 %d 次，主要集中在%s，先用这题做对症补练。", signal.Tag, signal.OccurrenceCount, signal.DominantArchivePhaseLabel)
+	}
+	return fmt.Sprintf("你最近的学习档案里“%s”累计出现 %d 次，先用这题做对症补练。", signal.Tag, signal.OccurrenceCount)
 }
 
 // expandPracticeFocusTagKeywords 将错因标签扩展为更适合题库检索的关键词集合。

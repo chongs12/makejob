@@ -1,12 +1,16 @@
 export type CompanionMessageRole = 'assistant' | 'user'
 export type CompanionTaskActionSource = 'hub' | 'room'
 export type CompanionTaskStatus = 'pending' | 'in_progress' | 'completed' | 'skipped'
+export type CompanionFeedbackTrainingType = 'coding' | 'choice' | 'short_answer' | 'generic'
+export type CompanionFeedbackDifficulty = '' | 'too_easy' | 'just_right' | 'too_hard'
 
 export interface CompanionPlanTask {
   id: number
   title: string
   description: string
   task_type: string
+  phase?: string
+  phase_goal?: string
   status: string
   due_date?: string
   completed_at?: string
@@ -20,12 +24,44 @@ export interface CompanionPlanTask {
   collection_hint?: string
 }
 
+export interface CompanionTaskFeedbackDraft {
+  trainingType: CompanionFeedbackTrainingType
+  attemptCount: number
+  timeSpentMinutes: number
+  difficultySelfAssessment: CompanionFeedbackDifficulty
+  mistakeTagsText: string
+  summary: string
+}
+
+export interface CompanionTaskFeedbackPayload {
+  training_type: CompanionFeedbackTrainingType
+  question_id?: number
+  mistake_tags: string[]
+  attempt_count: number
+  time_spent_seconds: number
+  difficulty_self_assessment?: Exclude<CompanionFeedbackDifficulty, ''>
+  summary: string
+}
+
+export interface CompanionPhaseBlueprintSummaryEntry {
+  phase: string
+  phase_goal: string
+  start_day: number
+  end_day: number
+}
+
 export interface CompanionPlanDetail {
   id: number
   industry_id?: number
   industry_code?: string
   title: string
   description: string
+  phase?: string
+  phase_goal?: string
+  entry_phase?: string
+  adjustment_summaries?: string[]
+  adjustment_reason_codes?: string[]
+  phase_blueprint_summary?: CompanionPhaseBlueprintSummaryEntry[]
   status: string
   total_tasks: number
   completed_tasks: number

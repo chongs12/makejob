@@ -88,19 +88,21 @@ type GrowthCurrentPlan struct {
 
 // GrowthFocusSignal 表示成长档案首页可直接展示的一条结构化训练重点信号。
 type GrowthFocusSignal struct {
-	FocusTag                 string   `json:"focus_tag"`
-	TopicCode                string   `json:"topic_code,omitempty"`
-	TopicTitle               string   `json:"topic_title,omitempty"`
-	TopicProblemPattern      string   `json:"topic_problem_pattern,omitempty"`
-	RelatedQuestionSets      []string `json:"related_question_sets"`
-	RecommendedActions       []string `json:"recommended_actions"`
-	PrimaryQuestionSet       string   `json:"primary_question_set,omitempty"`
-	OccurrenceCount          int      `json:"occurrence_count"`
-	ArchiveOccurrenceCount   int      `json:"archive_occurrence_count"`
-	InterviewOccurrenceCount int      `json:"interview_occurrence_count"`
-	Source                   string   `json:"source"`
-	SourceLabel              string   `json:"source_label"`
-	Reason                   string   `json:"reason"`
+	FocusTag                  string   `json:"focus_tag"`
+	TopicCode                 string   `json:"topic_code,omitempty"`
+	TopicTitle                string   `json:"topic_title,omitempty"`
+	TopicProblemPattern       string   `json:"topic_problem_pattern,omitempty"`
+	RelatedQuestionSets       []string `json:"related_question_sets"`
+	RecommendedActions        []string `json:"recommended_actions"`
+	PrimaryQuestionSet        string   `json:"primary_question_set,omitempty"`
+	DominantArchivePhase      string   `json:"dominant_archive_phase,omitempty"`
+	DominantArchivePhaseLabel string   `json:"dominant_archive_phase_label,omitempty"`
+	OccurrenceCount           int      `json:"occurrence_count"`
+	ArchiveOccurrenceCount    int      `json:"archive_occurrence_count"`
+	InterviewOccurrenceCount  int      `json:"interview_occurrence_count"`
+	Source                    string   `json:"source"`
+	SourceLabel               string   `json:"source_label"`
+	Reason                    string   `json:"reason"`
 }
 
 // GrowthTrendSummary 表示成长档案首页用于概括当前训练趋势的摘要块。
@@ -131,16 +133,18 @@ type GrowthSummaryResponse struct {
 
 // WeeklyFocusTheme 表示本周最值得集中补强的一项主题。
 type WeeklyFocusTheme struct {
-	Title                    string   `json:"title"`
-	Reason                   string   `json:"reason"`
-	Source                   string   `json:"source"`
-	SourceLabel              string   `json:"source_label"`
-	FocusTags                []string `json:"focus_tags"`
-	TopicCodes               []string `json:"topic_codes"`
-	RelatedQuestionSets      []string `json:"related_question_sets"`
-	Suggestions              []string `json:"suggestions"`
-	OccurrenceCount          int      `json:"occurrence_count"`
-	InterviewOccurrenceCount int      `json:"interview_occurrence_count"`
+	Title                     string   `json:"title"`
+	Reason                    string   `json:"reason"`
+	Source                    string   `json:"source"`
+	SourceLabel               string   `json:"source_label"`
+	FocusTags                 []string `json:"focus_tags"`
+	TopicCodes                []string `json:"topic_codes"`
+	RelatedQuestionSets       []string `json:"related_question_sets"`
+	Suggestions               []string `json:"suggestions"`
+	DominantArchivePhase      string   `json:"dominant_archive_phase,omitempty"`
+	DominantArchivePhaseLabel string   `json:"dominant_archive_phase_label,omitempty"`
+	OccurrenceCount           int      `json:"occurrence_count"`
+	InterviewOccurrenceCount  int      `json:"interview_occurrence_count"`
 }
 
 // WeeklyFocusResponse 表示成长页和学习陪伴页共用的本周重点补强摘要。
@@ -437,19 +441,21 @@ func buildGrowthFocusSignals(signals []trainingFocusSignal) []GrowthFocusSignal 
 	items := make([]GrowthFocusSignal, 0, len(signals))
 	for _, signal := range signals {
 		items = append(items, GrowthFocusSignal{
-			FocusTag:                 signal.Tag,
-			TopicCode:                signal.TopicCode,
-			TopicTitle:               signal.TopicTitle,
-			TopicProblemPattern:      signal.TopicProblemPattern,
-			RelatedQuestionSets:      append([]string(nil), signal.RelatedQuestionSets...),
-			RecommendedActions:       append([]string(nil), signal.RecommendedActions...),
-			PrimaryQuestionSet:       signal.PrimaryQuestionSet,
-			OccurrenceCount:          signal.OccurrenceCount,
-			ArchiveOccurrenceCount:   signal.ArchiveOccurrenceCount,
-			InterviewOccurrenceCount: signal.InterviewOccurrenceCount,
-			Source:                   signal.Source,
-			SourceLabel:              signal.SourceLabel,
-			Reason:                   signal.Reason,
+			FocusTag:                  signal.Tag,
+			TopicCode:                 signal.TopicCode,
+			TopicTitle:                signal.TopicTitle,
+			TopicProblemPattern:       signal.TopicProblemPattern,
+			RelatedQuestionSets:       append([]string(nil), signal.RelatedQuestionSets...),
+			RecommendedActions:        append([]string(nil), signal.RecommendedActions...),
+			PrimaryQuestionSet:        signal.PrimaryQuestionSet,
+			DominantArchivePhase:      signal.DominantArchivePhase,
+			DominantArchivePhaseLabel: signal.DominantArchivePhaseLabel,
+			OccurrenceCount:           signal.OccurrenceCount,
+			ArchiveOccurrenceCount:    signal.ArchiveOccurrenceCount,
+			InterviewOccurrenceCount:  signal.InterviewOccurrenceCount,
+			Source:                    signal.Source,
+			SourceLabel:               signal.SourceLabel,
+			Reason:                    signal.Reason,
 		})
 	}
 	return items
@@ -486,16 +492,18 @@ func buildWeeklyFocusThemesFromSignals(signals []trainingFocusSignal) []WeeklyFo
 			title = fmt.Sprintf("补强「%s」", signal.Tag)
 		}
 		themes = append(themes, WeeklyFocusTheme{
-			Title:                    title,
-			Reason:                   signal.Reason,
-			Source:                   signal.Source,
-			SourceLabel:              signal.SourceLabel,
-			FocusTags:                []string{signal.Tag},
-			TopicCodes:               sanitizeWeeklyFocusTopicCodes([]string{signal.TopicCode}),
-			RelatedQuestionSets:      append([]string(nil), signal.RelatedQuestionSets...),
-			Suggestions:              append([]string(nil), signal.RecommendedActions...),
-			OccurrenceCount:          signal.OccurrenceCount,
-			InterviewOccurrenceCount: signal.InterviewOccurrenceCount,
+			Title:                     title,
+			Reason:                    signal.Reason,
+			Source:                    signal.Source,
+			SourceLabel:               signal.SourceLabel,
+			FocusTags:                 []string{signal.Tag},
+			TopicCodes:                sanitizeWeeklyFocusTopicCodes([]string{signal.TopicCode}),
+			RelatedQuestionSets:       append([]string(nil), signal.RelatedQuestionSets...),
+			Suggestions:               append([]string(nil), signal.RecommendedActions...),
+			DominantArchivePhase:      signal.DominantArchivePhase,
+			DominantArchivePhaseLabel: signal.DominantArchivePhaseLabel,
+			OccurrenceCount:           signal.OccurrenceCount,
+			InterviewOccurrenceCount:  signal.InterviewOccurrenceCount,
 		})
 	}
 	return themes

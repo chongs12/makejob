@@ -18,28 +18,35 @@ import {
 } from '../../shared/companionContext'
 import { useFrontendIndustriesQuery, usePracticeStatsQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
-import { fetchMistakeTopics } from '../../shared/mistakeTopics'
+import { fetchMistakeTopics, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
 import {
   buildCompanionCategoryOptionsQueryKey,
   buildCompanionCurrentPlanQueryKey,
   buildCompanionPlanProgressQueryKey,
+  buildPracticeQuestionSetDetailQueryKey,
   buildCompanionWeeklyFocusQueryKey,
   invalidateCompanionPlanQueries,
 } from '../../shared/queryKeys'
-import { buildWeeklyFocusPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
+import { buildPracticeRouteSearch, buildWeeklyFocusPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
 import { fetchWeeklyFocus, type WeeklyFocusTheme } from '../../shared/weeklyFocus'
+import { fetchQuestionSetDetail } from '../../shared/practiceCatalog'
 import {
   createCompanionPlan,
   fetchCompanionCategoryTree,
   fetchCompanionPlanProgress,
   fetchCurrentPlan,
+  submitCompanionTaskFeedback,
   updateCompanionTaskStatus,
 } from './companionApi'
 import {
+  buildCompanionTaskFeedbackPayload,
   buildCompanionDailyDigestText,
+  buildDefaultCompanionTaskFeedbackDraft,
+  buildCompanionPhaseAdjustmentHint,
   deriveActiveGoals,
   deriveTodayGoals,
   persistCompanionExecutionUpdate,
+  resolveCompanionTaskQuestionId,
   resolveFocusedCompanionTask,
   taskStatusLabel,
 } from './companionHelpers'
@@ -56,7 +63,7 @@ import {
   planLevelLabel,
   planStatusLabel,
 } from './companionHubHelpers'
-import { buildCompanionSessionSummary, formatCompanionDateTime, GoalList } from './companionShared'
+import { buildCompanionSessionSummary, CompanionPlanPhaseSection, CompanionTaskFeedbackPanel, formatCompanionDateTime, formatCompanionPhaseLabel, GoalList } from './companionShared'
 import {
   persistCompanionFocusTask,
   readCompanionDailyDigest,
@@ -70,9 +77,45 @@ import type {
   CompanionGeneratePlanPayload,
   CompanionPlanTask,
   CompanionSessionSummary,
+  CompanionTaskFeedbackDraft,
   CompanionTaskStatus,
 } from './companionTypes'
 import { useCompanionStudyLogSync } from './useCompanionStudyLogSync'
+
+/**
+ * 根据上下文来源返回陪伴入口页更适合展示的来源标签。
+ */
+function companionContextSourceLabel(source: 'interview-report' | 'growth-summary'): string {
+  return source === 'growth-summary' ? '来自成长档案' : '来自面试报告'
+}
+
+/**
+ * 根据上下文来源返回陪伴入口页更适合展示的标题文案。
+ */
+function companionContextTitle(
+  source: 'interview-report' | 'growth-summary',
+  interviewId: string,
+): string {
+  if (source === 'growth-summary') {
+    return '成长档案里的主攻方向已接入学习陪伴入口'
+  }
+
+  return `报告 #${interviewId || '-'} 已接入学习陪伴入口`
+}
+
+/**
+ * 根据上下文来源生成自动带入和手动重带入时的提示语。
+ */
+function companionContextApplyMessage(
+  source: 'interview-report' | 'growth-summary',
+  interviewId: string,
+): string {
+  if (source === 'growth-summary') {
+    return '已根据成长档案自动带入强化计划上下文。'
+  }
+
+  return `已根据面试报告 #${interviewId || '-'} 自动带入强化计划上下文。`
+}
 
 /**
  * 在入口页当前计划概览仍在同步时渲染固定骨架，减少右侧概览区布局抖动。
@@ -127,6 +170,8 @@ export function CompanionHubPage() {
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE)
   const [planFormMessage, setPlanFormMessage] = useState('先选择学习方向，再让陪伴助手生成对应计划。')
   const [taskActionTaskId, setTaskActionTaskId] = useState<number | null>(null)
+  const [feedbackTask, setFeedbackTask] = useState<CompanionPlanTask | null>(null)
+  const [feedbackDraft, setFeedbackDraft] = useState<CompanionTaskFeedbackDraft>(() => buildDefaultCompanionTaskFeedbackDraft(null, null))
 
   const industriesQuery = useFrontendIndustriesQuery()
 
@@ -176,6 +221,12 @@ export function CompanionHubPage() {
     enabled: Boolean(accessToken && currentPlanQuery.data?.id),
     retry: false,
   })
+  const feedbackQuestionSetQuery = useQuery({
+    queryKey: buildPracticeQuestionSetDetailQueryKey(currentPlanQuery.data?.industry_id || null, feedbackTask?.collection_hint || ''),
+    queryFn: () => fetchQuestionSetDetail(currentPlanQuery.data?.industry_id || null, feedbackTask?.collection_hint || ''),
+    enabled: Boolean(feedbackTask?.collection_hint && currentPlanQuery.data?.industry_id),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const createPlanMutation = useMutation({
     mutationFn: (payload: CompanionGeneratePlanPayload) => createCompanionPlan(accessToken as string, payload),
@@ -195,8 +246,20 @@ export function CompanionHubPage() {
   })
 
   const updateTaskMutation = useMutation({
-    mutationFn: (payload: { task: CompanionPlanTask; status: CompanionTaskStatus }) =>
-      updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status),
+    mutationFn: async (payload: { task: CompanionPlanTask; status: CompanionTaskStatus; feedback?: CompanionTaskFeedbackDraft }) => {
+      if (payload.feedback) {
+        await submitCompanionTaskFeedback(
+          accessToken as string,
+          currentPlanQuery.data?.id as number,
+          payload.task.id,
+          buildCompanionTaskFeedbackPayload(
+            payload.feedback,
+            resolveCompanionTaskQuestionId(payload.task, feedbackQuestionSetQuery.data || null),
+          ),
+        )
+      }
+      await updateCompanionTaskStatus(accessToken as string, currentPlanQuery.data?.id as number, payload.task.id, payload.status)
+    },
     onSuccess: async (_, variables) => {
       const { nextDigest, nextFocusTask } = persistCompanionExecutionUpdate(
         currentPlanQuery.data || null,
@@ -206,9 +269,11 @@ export function CompanionHubPage() {
         dailyDigest,
       )
       setTaskActionTaskId(null)
+      setFeedbackTask(null)
+      setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(null, null))
       setDailyDigest(nextDigest)
       setFocusTaskDraft(nextFocusTask)
-      setPlanFormMessage(`任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
+      setPlanFormMessage(variables.feedback ? '已记录训练反馈，并把任务标记为已完成。' : `任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
       await invalidateCompanionPlanQueries(queryClient)
     },
     onError: (error) => {
@@ -260,7 +325,7 @@ export function CompanionHubPage() {
     hasAppliedPlanContextRef.current = true
     setSelectedIndustryCode(planContextDraft.industryCode || DEFAULT_COMPANION_INDUSTRY_CODE)
     setPlanForm((current) => applyCompanionPlanContextToForm(current, planContextDraft))
-    setPlanFormMessage(`已根据面试报告 #${planContextDraft.interviewId || '-'} 自动带入强化计划上下文。`)
+    setPlanFormMessage(companionContextApplyMessage(planContextDraft.source, planContextDraft.interviewId))
   }, [planContextDraft])
 
   /**
@@ -295,6 +360,7 @@ export function CompanionHubPage() {
     () => buildCompanionDailyDigestText(currentPlanQuery.data || null, dailyDigest, focusedTask),
     [currentPlanQuery.data, dailyDigest, focusedTask],
   )
+  const phaseAdjustmentHint = useMemo(() => buildCompanionPhaseAdjustmentHint(currentPlanQuery.data || null), [currentPlanQuery.data])
   useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
   const continueHint = useMemo(
     () => buildContinueHint(currentPlanQuery.data || null, sessionSummary),
@@ -392,12 +458,48 @@ export function CompanionHubPage() {
       return
     }
 
+    if (status === 'completed') {
+      setFeedbackTask(task)
+      setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(currentPlanQuery.data || null, task))
+      setPlanFormMessage(`完成「${task.title}」前，先补一份训练反馈，后续调整计划会更准。`)
+      return
+    }
+
     setTaskActionTaskId(task.id)
     setPlanFormMessage(`正在把「${task.title}」更新为「${taskStatusLabel(status)}」...`)
     try {
       await updateTaskMutation.mutateAsync({
         task,
         status,
+      })
+    } catch {
+      if (!useAuthStore.getState().accessToken) {
+        requestLoginPrompt('/companion', 'expired')
+      }
+    }
+  }
+
+  /**
+   * 提交任务训练反馈，并在成功后把任务状态一并更新为已完成。
+   */
+  async function handleSubmitTaskFeedback() {
+    if (!accessToken) {
+      requestLoginPrompt('/companion', 'missing')
+      return
+    }
+
+    if (!currentPlanQuery.data?.id || !feedbackTask) {
+      setPlanFormMessage('请先登录并确保当前存在可推进的学习计划。')
+      return
+    }
+
+    setTaskActionTaskId(feedbackTask.id)
+    setPlanFormMessage(`正在记录「${feedbackTask.title}」的训练反馈...`)
+    try {
+      await updateTaskMutation.mutateAsync({
+        task: feedbackTask,
+        status: 'completed',
+        feedback: feedbackDraft,
       })
     } catch {
       if (!useAuthStore.getState().accessToken) {
@@ -419,7 +521,9 @@ export function CompanionHubPage() {
       ...planContextDraft,
       weakTopics: Array.from(new Set(planContextDraft.weakTopics)),
     }))
-    setPlanFormMessage(`已重新带入面试报告 #${planContextDraft.interviewId || '-'} 的强化计划上下文。`)
+    setPlanFormMessage(planContextDraft.source === 'growth-summary'
+      ? '已重新带入成长档案提炼出的强化计划上下文。'
+      : `已重新带入面试报告 #${planContextDraft.interviewId || '-'} 的强化计划上下文。`)
   }
 
   /**
@@ -590,13 +694,15 @@ export function CompanionHubPage() {
                 <article className="timeline-item companion-context-card">
                   <div className="companion-card-head">
                     <div>
-                      <span className="section-kicker">来自面试报告</span>
-                      <h3>报告 #{planContextDraft.interviewId || '-'} 已接入学习陪伴入口</h3>
+                      <span className="section-kicker">{companionContextSourceLabel(planContextDraft.source)}</span>
+                      <h3>{companionContextTitle(planContextDraft.source, planContextDraft.interviewId)}</h3>
                     </div>
                     <span className="companion-card-note">{planContextDraft.industryLabel}</span>
                   </div>
 
-                  <p>{planContextDraft.summary || '当前报告未提供总结，已优先带入低分维度和后续建议。'}</p>
+                  <p>{planContextDraft.summary || (planContextDraft.source === 'growth-summary'
+                    ? '当前已按成长档案里的趋势和主攻主题带入计划表单。'
+                    : '当前报告未提供总结，已优先带入低分维度和后续建议。')}</p>
 
                   <div className="companion-hub-meta">
                     <span>准备度：{planContextDraft.readinessLabel || '待补强'}</span>
@@ -648,40 +754,54 @@ export function CompanionHubPage() {
                 {weeklyFocusQuery.data?.themes.length ? (
                   <>
                     <div className="stack-list">
-                      {weeklyFocusQuery.data.themes.map((theme) => (
-                        <article className="timeline-item" key={`companion-weekly-focus-${theme.title}`}>
-                          <div className="card-inline">
-                            <strong>{theme.title}</strong>
-                            <span>{theme.source_label}</span>
-                          </div>
-                          <p>{theme.reason}</p>
-                          {(theme.occurrence_count > 0 || theme.interview_occurrence_count > 0) ? (
-                            <p>最近出现 {theme.occurrence_count} 次，其中面试暴露 {theme.interview_occurrence_count} 次</p>
-                          ) : null}
-                          {theme.focus_tags.length ? (
-                            <div className="community-tag-row">
-                              {theme.focus_tags.map((item) => (
-                                <span key={`${theme.title}-${item}`}>{item}</span>
-                              ))}
+                      {weeklyFocusQuery.data.themes.map((theme) => {
+                        const linkedTopic = weeklyFocusTopicMap.get(theme.title) || null
+                        return (
+                          <article className="timeline-item" key={`companion-weekly-focus-${theme.title}`}>
+                            <div className="card-inline">
+                              <strong>{theme.title}</strong>
+                              <span>{theme.source_label}</span>
                             </div>
-                          ) : null}
-                          {theme.related_question_sets?.length ? (
-                            <p>关联题单：{theme.related_question_sets.map((item) => resolvePracticeQuestionSetTitle(item)).filter(Boolean).join('、')}</p>
-                          ) : null}
-                          {theme.suggestions.length ? (
-                            <ul className="interview-bullet-list companion-context-list">
-                              {theme.suggestions.map((item) => (
-                                <li key={`${theme.title}-${item}`}>{item}</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          <div className="page-actions">
-                            <button className="secondary-button" type="button" onClick={() => handleOpenWeeklyFocusPractice(theme)}>
-                              先去补练
-                            </button>
-                          </div>
-                        </article>
-                      ))}
+                            {theme.dominant_archive_phase_label ? <p>主导阶段：{theme.dominant_archive_phase_label}</p> : null}
+                            <p>{theme.reason}</p>
+                            {(theme.occurrence_count > 0 || theme.interview_occurrence_count > 0) ? (
+                              <p>最近出现 {theme.occurrence_count} 次，其中面试暴露 {theme.interview_occurrence_count} 次</p>
+                            ) : null}
+                            {theme.focus_tags.length ? (
+                              <div className="community-tag-row">
+                                {theme.focus_tags.map((item) => (
+                                  <span key={`${theme.title}-${item}`}>{item}</span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {theme.related_question_sets?.length ? (
+                              <p>关联题单：{theme.related_question_sets.map((item) => resolvePracticeQuestionSetTitle(item)).filter(Boolean).join('、')}</p>
+                            ) : null}
+                            {linkedTopic ? <p>专题提示：{linkedTopic.problem_pattern}</p> : null}
+                            {theme.suggestions.length ? (
+                              <ul className="interview-bullet-list companion-context-list">
+                                {theme.suggestions.map((item) => (
+                                  <li key={`${theme.title}-${item}`}>{item}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            <div className="page-actions">
+                              <button className="secondary-button" type="button" onClick={() => handleOpenWeeklyFocusPractice(theme)}>
+                                先去补练
+                              </button>
+                              {linkedTopic ? (
+                                <Link
+                                  className="secondary-link"
+                                  to={resolveMistakeTopicRoute()}
+                                  params={{ topicCode: linkedTopic.code }}
+                                >
+                                  查看专题
+                                </Link>
+                              ) : null}
+                            </div>
+                          </article>
+                        )
+                      })}
                     </div>
 
                     <div className="page-actions">
@@ -827,20 +947,55 @@ export function CompanionHubPage() {
               <article className="timeline-item">
                 <strong>{focusedTask ? `继续「${focusedTask.title}」` : '当前还没有明确续接任务'}</strong>
                 <p>{dailyDigestText}</p>
+                {focusedTask?.phase ? <p>所处阶段：{formatCompanionPhaseLabel(focusedTask.phase)}</p> : null}
+                {focusedTask?.phase_goal ? <p>阶段目标：{focusedTask.phase_goal}</p> : null}
+                {phaseAdjustmentHint ? <p>阶段调整说明：{phaseAdjustmentHint}</p> : null}
                 {focusedTask?.source_label ? <p>任务来源：{focusedTask.source_label}</p> : null}
                 {focusedTask?.reason ? <p>安排原因：{focusedTask.reason}</p> : null}
                 {focusedTask?.priority_explanation ? <p>优先级说明：{focusedTask.priority_explanation}</p> : null}
+                {focusedTask?.collection_hint ? <p>建议题单：{resolvePracticeQuestionSetTitle(focusedTask.collection_hint)}</p> : null}
+                {focusedTask?.source_ref ? <p>来源引用：{focusedTask.source_ref}</p> : null}
                 <div className="page-actions">
                   <button className="primary-button" type="button" onClick={() => handleContinueTask(focusedTask)}>
                     {focusedTask ? '进入陪伴页继续' : '进入陪伴页'}
                   </button>
+                  {focusedTask?.collection_hint ? (
+                    <Link
+                      className="secondary-link"
+                      to="/practice"
+                      search={buildPracticeRouteSearch({
+                        questionSetSlug: focusedTask.collection_hint,
+                        source: 'practice_recommendation',
+                        title: focusedTask.title,
+                        reason: focusedTask.reason,
+                      })}
+                    >
+                      去刷建议题单
+                    </Link>
+                  ) : null}
                   {focusedTask ? (
                     <button className="secondary-button" type="button" onClick={() => void handleHubTaskStatusChange(focusedTask, 'completed')}>
-                      直接记为完成
+                      记录反馈后完成
                     </button>
                   ) : null}
                 </div>
               </article>
+
+              {feedbackTask ? (
+                <CompanionTaskFeedbackPanel
+                  task={feedbackTask}
+                  draft={feedbackDraft}
+                  pending={updateTaskMutation.isPending && taskActionTaskId === feedbackTask.id}
+                  message={planFormMessage}
+                  onChange={setFeedbackDraft}
+                  onSubmit={() => void handleSubmitTaskFeedback()}
+                  onCancel={() => {
+                    setFeedbackTask(null)
+                    setFeedbackDraft(buildDefaultCompanionTaskFeedbackDraft(null, null))
+                    setPlanFormMessage('已取消本次反馈填写，你也可以稍后再记录。')
+                  }}
+                />
+              ) : null}
 
               <GoalList
                 items={todayGoals}
@@ -873,6 +1028,9 @@ export function CompanionHubPage() {
                 {currentPlanQuery.data ? (
                   <>
                     <p className="companion-empty-text">{currentPlanQuery.data.description || '当前计划暂未补充描述。'}</p>
+                    {currentPlanQuery.data.phase ? <p className="companion-empty-text">当前阶段：{formatCompanionPhaseLabel(currentPlanQuery.data.phase)}</p> : null}
+                    {currentPlanQuery.data.phase_goal ? <p className="companion-empty-text">阶段目标：{currentPlanQuery.data.phase_goal}</p> : null}
+                    <CompanionPlanPhaseSection plan={currentPlanQuery.data} />
                     <div className="companion-progress-block">
                       <div className="companion-progress-head">
                         <strong>总进度 {Math.round(currentPlanQuery.data.progress || 0)}%</strong>
@@ -925,8 +1083,13 @@ export function CompanionHubPage() {
                                   <span>{taskStatusLabel(item.status)}</span>
                                 </div>
                                 <p>{item.title}</p>
+                                {item.phase ? <p>阶段：{formatCompanionPhaseLabel(item.phase)}</p> : null}
+                                {item.phase_goal ? <p>阶段目标：{item.phase_goal}</p> : null}
                                 {item.source_label ? <p>{item.source_label}</p> : null}
                                 {item.reason ? <p>{item.reason}</p> : null}
+                                {item.priority_explanation ? <p>{item.priority_explanation}</p> : null}
+                                {item.collection_hint ? <p>建议题单：{resolvePracticeQuestionSetTitle(item.collection_hint)}</p> : null}
+                                {item.source_ref ? <p>来源引用：{item.source_ref}</p> : null}
                               </div>
                             ))}
                           </div>

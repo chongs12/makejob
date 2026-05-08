@@ -32,8 +32,9 @@ func (h *PlanHandler) RegisterRoutes(protected *gin.RouterGroup) {
 		plans.GET("", h.ListPlans)                          // 计划列表
 		plans.GET("/:id", h.GetPlan)                        // 计划详情
 		plans.PUT("/:id/tasks/:taskId", h.UpdateTaskStatus) // 更新任务状态
-		plans.POST("/:id/adjust", h.AdjustPlan)             // 动态调整计划
-		plans.GET("/:id/progress", h.GetProgress)           // 进度统计
+		plans.POST("/:id/tasks/:taskId/feedback", h.SubmitTaskFeedback)
+		plans.POST("/:id/adjust", h.AdjustPlan)   // 动态调整计划
+		plans.GET("/:id/progress", h.GetProgress) // 进度统计
 	}
 }
 
@@ -223,6 +224,56 @@ func (h *PlanHandler) UpdateTaskStatus(c *gin.Context) {
 	}
 
 	common.SuccessWithMessage(c, "更新成功", nil)
+}
+
+// SubmitTaskFeedback 提交任务训练反馈。
+// @Summary 提交任务训练反馈
+// @Description 为学习计划中的指定任务写入结构化训练反馈
+// @Tags 学习计划
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "计划ID"
+// @Param taskId path int true "任务ID"
+// @Param request body service.SubmitTaskFeedbackRequest true "训练反馈"
+// @Success 200 {object} common.Response
+// @Failure 400 {object} common.Response
+// @Router /api/plans/{id}/tasks/{taskId}/feedback [post]
+func (h *PlanHandler) SubmitTaskFeedback(c *gin.Context) {
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		common.Unauthorized(c, "未登录")
+		return
+	}
+
+	planID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		common.BadRequest(c, "无效的计划ID")
+		return
+	}
+
+	taskID, err := strconv.ParseUint(c.Param("taskId"), 10, 32)
+	if err != nil {
+		common.BadRequest(c, "无效的任务ID")
+		return
+	}
+
+	var req service.SubmitTaskFeedbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.BadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if err := h.planService.SubmitTaskFeedback(c.Request.Context(), userID, uint(planID), uint(taskID), &req); err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "提交任务训练反馈失败: "+err.Error())
+		}
+		return
+	}
+
+	common.SuccessWithMessage(c, "提交成功", nil)
 }
 
 // AdjustPlan 动态调整学习计划

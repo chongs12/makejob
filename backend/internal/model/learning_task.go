@@ -28,6 +28,8 @@ type LearningTask struct {
 	Title       string     `json:"title" gorm:"size:200;not null;comment:任务标题"`
 	Description string     `json:"description" gorm:"type:text;comment:任务描述"`
 	TaskType    string     `json:"task_type" gorm:"size:20;not null;comment:任务类型(study/practice/interview/review)"`
+	Phase       string     `json:"phase" gorm:"size:20;not null;default:'foundation';comment:任务所属学习阶段(foundation/drill/review/mock)"`
+	PhaseGoal   string     `json:"phase_goal" gorm:"type:text;comment:任务阶段目标"`
 	TargetID    *uint      `json:"target_id" gorm:"comment:关联目标ID(题目或面试ID)"`
 	Status      string     `json:"status" gorm:"size:20;not null;default:'pending';comment:状态(pending/in_progress/completed/skipped)"`
 	DueDate     *time.Time `json:"due_date" gorm:"comment:截止日期"`

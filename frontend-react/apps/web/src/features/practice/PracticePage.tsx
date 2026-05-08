@@ -501,112 +501,137 @@ export function PracticePage() {
         </div>
       ) : null}
 
-      {accessToken ? (
-        <article className="status-card" style={{ marginTop: 24 }}>
-          <div className="card-inline">
-            <div>
-              <span className="section-kicker">对症练习推荐</span>
-              <h2>先补最近反复暴露的问题</h2>
-            </div>
-            <Link className="secondary-link" to="/practice/wrong">查看错题本</Link>
+      <article className="status-card" style={{ marginTop: 24 }}>
+        <div className="card-inline">
+          <div>
+            <span className="section-kicker">对症练习推荐</span>
+            <h2>先补最近反复暴露的问题</h2>
           </div>
+          {accessToken ? (
+            <Link className="secondary-link" to="/practice/wrong">查看错题本</Link>
+          ) : (
+            <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}>
+              登录后查看错题本
+            </button>
+          )}
+        </div>
 
-          {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在根据最近错因生成推荐..." style={{ marginTop: 12 }} /> : null}
+        {accessToken ? (
+          <>
+            {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在根据最近错因生成推荐..." style={{ marginTop: 12 }} /> : null}
 
-          {practiceRecommendationsQuery.isError ? (
-            <AsyncInlineState
-              message={extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
-              style={{ marginTop: 12 }}
-              tone="error"
-            />
-          ) : null}
+            {practiceRecommendationsQuery.isError ? (
+              <AsyncInlineState
+                message={extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
+                style={{ marginTop: 12 }}
+                tone="error"
+              />
+            ) : null}
 
-          {practiceRecommendationsQuery.data?.focus_tags.length ? (
-            <div className="community-tag-row" style={{ marginTop: 12 }}>
-              {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
-                <span key={tag}>{tag}</span>
-              ))}
-            </div>
-          ) : null}
+            {practiceRecommendationsQuery.data?.focus_tags.length ? (
+              <div className="community-tag-row" style={{ marginTop: 12 }}>
+                {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+            ) : null}
 
-          {practiceRecommendationsQuery.data?.items.length ? (
-            <div className="grid-cards" style={{ marginTop: 18 }}>
-              {practiceRecommendationsQuery.data.items.map((item) => {
-                const linkedTopic = item.topic_code ? recommendationTopicMap.get(item.topic_code) || null : null
-                const collectionSearch = buildPracticeRecommendationRouteSearch({
-                  focus_tag: item.focus_tag,
-                  topic_code: item.topic_code,
-                  primary_question_set: item.primary_question_set,
-                  reason: item.reason,
-                  question_title: item.question.title,
-                }, linkedTopic)
+            {practiceRecommendationsQuery.data?.items.length ? (
+              <div className="grid-cards" style={{ marginTop: 18 }}>
+                {practiceRecommendationsQuery.data.items.map((item) => {
+                  const linkedTopic = item.topic_code ? recommendationTopicMap.get(item.topic_code) || null : null
+                  const collectionSearch = buildPracticeRecommendationRouteSearch({
+                    focus_tag: item.focus_tag,
+                    topic_code: item.topic_code,
+                    primary_question_set: item.primary_question_set,
+                    reason: item.reason,
+                    question_title: item.question.title,
+                  }, linkedTopic)
 
-                return (
-                  <article className="feature-card" key={`practice-recommendation-${item.question.id}`}>
-                    <div className="card-inline">
-                      <strong>{item.question.title}</strong>
-                      <span>{difficultyLabel(item.question.difficulty)}</span>
-                    </div>
-                    {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
-                    <p>聚焦标签：{item.focus_tag}</p>
-                    <p>{item.reason}</p>
-                    <p>推荐优先级：第 {item.priority} 位</p>
-                    <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
-                    <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
-                    {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
-                    {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
-                    {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
-                    {item.related_question_sets?.length ? (
-                      <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
-                    ) : null}
-                    <p>题型：{questionTypeLabel(item.question.type)}</p>
-                    {item.recommended_actions?.length ? (
-                      <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                        {item.recommended_actions.map((action) => (
-                          <li key={`${item.question.id}-${action}`}>{action}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <div className="page-actions" style={{ marginTop: 12 }}>
-                      <Link
-                        className="secondary-link"
-                        to="/practice"
-                        search={collectionSearch}
-                      >
-                        进入这组补练
-                      </Link>
-                      <Link
-                        className="secondary-link"
-                        to={resolvePracticeRecommendationRoute(item.question.type)}
-                        params={{ questionId: String(item.question.id) }}
-                      >
-                        直接开始补练
-                      </Link>
-                      {item.topic_code ? (
+                  return (
+                    <article className="feature-card" key={`practice-recommendation-${item.question.id}`}>
+                      <div className="card-inline">
+                        <strong>{item.question.title}</strong>
+                        <span>{difficultyLabel(item.question.difficulty)}</span>
+                      </div>
+                      {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
+                      {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
+                      <p>聚焦标签：{item.focus_tag}</p>
+                      <p>{item.reason}</p>
+                      <p>推荐优先级：第 {item.priority} 位</p>
+                      <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
+                      <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
+                      {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
+                      {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
+                      {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
+                      {item.related_question_sets?.length ? (
+                        <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
+                      ) : null}
+                      <p>题型：{questionTypeLabel(item.question.type)}</p>
+                      {item.recommended_actions?.length ? (
+                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                          {item.recommended_actions.map((action) => (
+                            <li key={`${item.question.id}-${action}`}>{action}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="page-actions" style={{ marginTop: 12 }}>
                         <Link
                           className="secondary-link"
-                          to={resolveMistakeTopicRoute()}
-                          params={{ topicCode: item.topic_code }}
+                          to="/practice"
+                          search={collectionSearch}
                         >
-                          查看错因专题
+                          进入这组补练
                         </Link>
-                      ) : null}
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-          ) : null}
+                        <Link
+                          className="secondary-link"
+                          to={resolvePracticeRecommendationRoute(item.question.type)}
+                          params={{ questionId: String(item.question.id) }}
+                        >
+                          直接开始补练
+                        </Link>
+                        {item.topic_code ? (
+                          <Link
+                            className="secondary-link"
+                            to={resolveMistakeTopicRoute()}
+                            params={{ topicCode: item.topic_code }}
+                          >
+                            查看错因专题
+                          </Link>
+                        ) : null}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : null}
 
-          {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
-            <AsyncEmptyState
-              title="还没有形成推荐"
-              message="先做几道编程题或主观题，系统会根据错因标签逐步给出更具体的补题建议。"
-              style={{ marginTop: 18 }}
-            />
-          ) : null}
-        </article>
-      ) : null}
+            {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
+              <AsyncEmptyState
+                title="还没有形成推荐"
+                message="先做几道编程题或主观题，系统会根据错因标签逐步给出更具体的补题建议。"
+                style={{ marginTop: 18 }}
+                action={(
+                  <button className="secondary-button" type="button" onClick={() => void handleGenerateExam('random')}>
+                    先开始随机练习
+                  </button>
+                )}
+              />
+            ) : null}
+          </>
+        ) : (
+          <AsyncEmptyState
+            title="登录后解锁对症练习推荐"
+            message="登录后系统会根据最近错因、错题本和面试记录，自动生成更具体的补题建议。"
+            style={{ marginTop: 18 }}
+            action={(
+              <button className="secondary-button" type="button" onClick={() => requestLoginPrompt('/practice', 'missing')}>
+                去登录
+              </button>
+            )}
+          />
+        )}
+      </article>
 
       <article className="status-card" style={{ marginTop: 24 }}>
         <div className="card-inline">
@@ -684,6 +709,11 @@ export function PracticePage() {
             title="当前方向还没有整理出核心题单"
             message="优先补齐该行业下的高价值题目后，这里会自动收敛成更稳定的主题入口。"
             style={{ marginTop: 18 }}
+            action={(
+              <button className="secondary-button" type="button" onClick={() => handleIndustryChange(DEFAULT_FRONTEND_INDUSTRY_CODE)}>
+                切回默认方向
+              </button>
+            )}
           />
         ) : null}
       </article>
@@ -831,6 +861,11 @@ export function PracticePage() {
               title="当前题单下没有命中结果"
               message="可以切换关键词或难度继续筛选，这里仍然只会展示当前正式题单内的题目。"
               style={{ marginTop: 24 }}
+              action={(
+                <button className="secondary-button" type="button" onClick={() => navigatePractice({ keyword: '', difficulty: '', page: 1 })}>
+                  清空筛选后重试
+                </button>
+              )}
             />
           )}
         </>
@@ -864,6 +899,22 @@ export function PracticePage() {
               title="当前筛选条件下暂无题目"
               message="可以切换行业、难度或分类后再试，或者直接使用随机练习快速开始。"
               style={{ marginTop: 24 }}
+              action={(
+                <button className="secondary-button" type="button" onClick={() => navigatePractice({
+                  keyword: '',
+                  difficulty: '',
+                  category: undefined,
+                  page: 1,
+                  questionSet: undefined,
+                  topic: undefined,
+                  focus: undefined,
+                  source: undefined,
+                  title: undefined,
+                  reason: undefined,
+                })}>
+                  重置筛选
+                </button>
+              )}
             />
           )}
 

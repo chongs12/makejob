@@ -33,20 +33,22 @@ import (
 const Version = "1.0.0"
 
 type AppDependencies struct {
-	UserRepo             repository.UserRepository
-	MembershipRepo       repository.MembershipRepository
-	InterviewRepo        repository.InterviewRepository
-	InterviewMessageRepo repository.InterviewMessageRepository
-	InterviewCodingRepo  repository.InterviewCodingAttemptRepository
-	QuestionRepo         repository.QuestionRepository
-	CategoryRepo         repository.CategoryRepository
-	RecordRepo           repository.QuestionRecordRepository
-	FavoriteRepo         repository.FavoriteRepository
-	NoteRepo             repository.NoteRepository
-	PlanRepo             repository.PlanRepository
-	PlanTaskRepo         repository.PlanTaskRepository
-	StudyLogRepo         repository.StudyLogRepository
-	LearningArchiveRepo  repository.LearningArchiveRepository
+	UserRepo              repository.UserRepository
+	MembershipRepo        repository.MembershipRepository
+	InterviewRepo         repository.InterviewRepository
+	InterviewMessageRepo  repository.InterviewMessageRepository
+	InterviewCodingRepo   repository.InterviewCodingAttemptRepository
+	QuestionRepo          repository.QuestionRepository
+	CategoryRepo          repository.CategoryRepository
+	RecordRepo            repository.QuestionRecordRepository
+	FavoriteRepo          repository.FavoriteRepository
+	NoteRepo              repository.NoteRepository
+	PlanRepo              repository.PlanRepository
+	PlanTaskRepo          repository.PlanTaskRepository
+	PlanTaskFeedbackRepo  repository.PlanTaskFeedbackRepository
+	PlanTaskDiagnosisRepo repository.PlanTaskDiagnosisRepository
+	StudyLogRepo          repository.StudyLogRepository
+	LearningArchiveRepo   repository.LearningArchiveRepository
 
 	AuthService       service.AuthService
 	MembershipService service.MembershipService
@@ -170,6 +172,8 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.NoteRepo = repository.NewNoteRepository(db)
 		deps.PlanRepo = repository.NewPlanRepository(db)
 		deps.PlanTaskRepo = repository.NewPlanTaskRepository(db)
+		deps.PlanTaskFeedbackRepo = repository.NewPlanTaskFeedbackRepository(db)
+		deps.PlanTaskDiagnosisRepo = repository.NewPlanTaskDiagnosisRepository(db)
 		deps.StudyLogRepo = repository.NewStudyLogRepository(db)
 		deps.LearningArchiveRepo = repository.NewLearningArchiveRepository(db)
 
@@ -216,6 +220,9 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			aiClient.PlanAgent,
 			deps.LearningArchiveRepo,
 			deps.InterviewRepo,
+			deps.PlanTaskFeedbackRepo,
+			deps.PlanTaskDiagnosisRepo,
+			aiClient.QuizAnalyzer,
 			industryRepo,
 		)
 		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)

@@ -1470,6 +1470,83 @@ button {
   color: #51657f;
 }
 
+.companion-phase-timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.companion-phase-timeline-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.companion-phase-timeline-segment {
+  padding: 10px 14px;
+  background: #f5f8fc;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.companion-phase-timeline-active {
+  background: linear-gradient(135deg, rgba(255, 179, 22, 0.18) 0%, rgba(240, 130, 30, 0.12) 100%);
+  border-color: rgba(240, 130, 30, 0.35);
+  font-weight: 700;
+}
+
+.companion-phase-timeline-segment strong {
+  color: #16263c;
+}
+
+.companion-phase-timeline-segment span {
+  color: #687b92;
+  font-size: 13px;
+}
+
+.companion-phase-timeline-goal {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(19, 34, 56, 0.04);
+  color: #51657f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.companion-phase-timeline-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.companion-phase-timeline-compact-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(19, 34, 56, 0.1);
+  background: #f5f8fc;
+  color: #204062;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.companion-phase-timeline-compact-active {
+  background: #132238;
+  color: #fff6e8;
+  box-shadow: 0 8px 16px rgba(19, 34, 56, 0.14);
+}
+
+.companion-phase-timeline-compact-days {
+  color: #718198;
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
 .companion-room-toolbar {
   margin-bottom: 16px;
 }
@@ -1512,6 +1589,7 @@ button {
 }
 
 .companion-goal-card,
+.companion-feedback-panel,
 .companion-history-card,
 .companion-input-panel {
   display: grid;
@@ -1590,6 +1668,20 @@ button {
 
 .companion-task-button {
   min-width: 96px;
+}
+
+.companion-feedback-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.companion-feedback-panel .field {
+  margin: 0;
+}
+
+.companion-feedback-panel .field textarea {
+  min-height: 120px;
 }
 
 .companion-history-card {
@@ -1931,5 +2023,9 @@ button {
     right: 16px;
     bottom: 16px;
     left: 16px;
+  }
+
+  .companion-feedback-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

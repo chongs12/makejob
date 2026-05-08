@@ -1,5 +1,5 @@
 export interface CompanionPlanContextDraft {
-  source: 'interview-report'
+  source: 'interview-report' | 'growth-summary'
   interviewId: string
   createdAt: number
   industryCode: string
@@ -21,6 +21,15 @@ export interface InterviewCompanionContextInput {
   overallScore: number
   summary: string
   readinessLabel: string
+  weakTopics: string[]
+  suggestions: string[]
+}
+
+export interface GrowthCompanionContextInput {
+  industryCode: string
+  industryLabel: string
+  summary: string
+  focusTitle: string
   weakTopics: string[]
   suggestions: string[]
 }
@@ -67,6 +76,37 @@ function recommendCompanionPlanPreset(score: number): {
 }
 
 /**
+ * 根据成长档案里聚合出的待补强主题数量，推导更合适的计划强度预设。
+ */
+function recommendGrowthCompanionPlanPreset(weakTopicCount: number): {
+  level: string
+  dailyStudyTime: number
+  durationDays: number
+} {
+  if (weakTopicCount >= 5) {
+    return {
+      level: 'beginner',
+      dailyStudyTime: 90,
+      durationDays: 21,
+    }
+  }
+
+  if (weakTopicCount >= 3) {
+    return {
+      level: 'intermediate',
+      dailyStudyTime: 75,
+      durationDays: 14,
+    }
+  }
+
+  return {
+    level: 'intermediate',
+    dailyStudyTime: 60,
+    durationDays: 10,
+  }
+}
+
+/**
  * 基于面试报告生成学习陪伴入口页可直接消费的上下文草稿。
  */
 export function buildInterviewCompanionContextDraft(
@@ -87,6 +127,35 @@ export function buildInterviewCompanionContextDraft(
     summary: input.summary.trim(),
     readinessLabel: input.readinessLabel.trim(),
     goalDescription: `基于第 ${input.interviewId.trim() || '-'} 场${input.industryLabel.trim() || '当前方向'}面试报告，优先补强${focusText}，并整理一份可连续执行的强化复习计划。`,
+    weakTopics,
+    suggestions,
+    recommendedLevel: preset.level,
+    recommendedDailyStudyTime: preset.dailyStudyTime,
+    recommendedDurationDays: preset.durationDays,
+  }
+}
+
+/**
+ * 基于成长档案摘要生成学习陪伴入口页可直接消费的上下文草稿。
+ */
+export function buildGrowthCompanionContextDraft(
+  input: GrowthCompanionContextInput,
+): CompanionPlanContextDraft {
+  const weakTopics = Array.from(new Set(input.weakTopics.map((item) => item.trim()).filter(Boolean))).slice(0, 6)
+  const suggestions = Array.from(new Set(input.suggestions.map((item) => item.trim()).filter(Boolean))).slice(0, 4)
+  const preset = recommendGrowthCompanionPlanPreset(weakTopics.length)
+  const focusTitle = input.focusTitle.trim()
+  const focusText = focusTitle || weakTopics.slice(0, 3).join('、') || `${input.industryLabel.trim() || '当前方向'}关键模块`
+
+  return {
+    source: 'growth-summary',
+    interviewId: '',
+    createdAt: Date.now(),
+    industryCode: input.industryCode.trim(),
+    industryLabel: input.industryLabel.trim() || '当前方向',
+    summary: input.summary.trim(),
+    readinessLabel: '趋势补强',
+    goalDescription: `基于成长档案当前趋势，优先补强${focusText}，并整理一份可连续执行的强化学习计划。`,
     weakTopics,
     suggestions,
     recommendedLevel: preset.level,
@@ -122,7 +191,7 @@ export function readCompanionPlanContext(): CompanionPlanContextDraft | null {
 
     const parsed = JSON.parse(raw) as Partial<CompanionPlanContextDraft>
     return {
-      source: 'interview-report',
+      source: parsed.source === 'growth-summary' ? 'growth-summary' : 'interview-report',
       interviewId: parsed.interviewId?.trim() || '',
       createdAt: Number(parsed.createdAt) || Date.now(),
       industryCode: parsed.industryCode?.trim() || '',

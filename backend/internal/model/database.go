@@ -71,6 +71,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&InterviewCodingEvent{},
 		&LearningPlan{},
 		&LearningTask{},
+		&LearningTaskFeedback{},
+		&LearningTaskDiagnosis{},
 		&LearningArchiveEntry{},
 		&StudyLog{},
 		&UserFavorite{},

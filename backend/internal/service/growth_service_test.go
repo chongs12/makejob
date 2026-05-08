@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,12 +230,16 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 				{
 					IndustryCode:    "go",
 					SourceRef:       "practice:7:701",
+					TaskPhase:       model.LearningPhaseReview,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseReview),
 					MistakeTagsJSON: `["状态定义不清"]`,
 					SuggestionsJSON: `["先口述状态定义，再开始写代码。"]`,
 				},
 				{
 					IndustryCode:    "go",
 					SourceRef:       "practice:7:702",
+					TaskPhase:       model.LearningPhaseReview,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseReview),
 					MistakeTagsJSON: `["状态定义不清"]`,
 					SuggestionsJSON: `["把变量命名改成能反映语义的名称。"]`,
 				},
@@ -288,6 +293,12 @@ func TestGrowthServiceGetGrowthSummaryAggregatesData(t *testing.T) {
 	}
 	if len(resp.FocusSignals) != 1 || resp.FocusSignals[0].FocusTag != "状态定义不清" {
 		t.Fatalf("unexpected focus signals: %#v", resp.FocusSignals)
+	}
+	if resp.FocusSignals[0].DominantArchivePhase != model.LearningPhaseReview || resp.FocusSignals[0].DominantArchivePhaseLabel != "复盘纠偏阶段" {
+		t.Fatalf("expected focus signal to expose review phase metadata, got %#v", resp.FocusSignals[0])
+	}
+	if !strings.Contains(resp.FocusSignals[0].Reason, "复盘纠偏阶段") {
+		t.Fatalf("expected focus signal reason to include review phase label, got %s", resp.FocusSignals[0].Reason)
 	}
 	if resp.TrendSummary == nil || resp.TrendSummary.TopFocusTag != "状态定义不清" {
 		t.Fatalf("unexpected trend summary: %#v", resp.TrendSummary)
@@ -375,6 +386,8 @@ func TestGrowthServiceGetWeeklyFocusUsesStructuredSignals(t *testing.T) {
 				{
 					IndustryCode:    "go",
 					SourceRef:       "practice:7:801",
+					TaskPhase:       model.LearningPhaseReview,
+					TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseReview),
 					MistakeTagsJSON: `["状态定义不清"]`,
 					SuggestionsJSON: `["把变量命名改成能反映语义的名称。"]`,
 				},
@@ -392,6 +405,12 @@ func TestGrowthServiceGetWeeklyFocusUsesStructuredSignals(t *testing.T) {
 	theme := resp.Themes[0]
 	if theme.Source != "mixed" || len(theme.RelatedQuestionSets) == 0 {
 		t.Fatalf("expected mixed theme with question sets, got %#v", theme)
+	}
+	if theme.DominantArchivePhase != model.LearningPhaseReview || theme.DominantArchivePhaseLabel != "复盘纠偏阶段" {
+		t.Fatalf("expected weekly focus theme to expose review phase metadata, got %#v", theme)
+	}
+	if !strings.Contains(theme.Reason, "复盘纠偏阶段") {
+		t.Fatalf("expected weekly focus reason to include review phase label, got %s", theme.Reason)
 	}
 	if theme.OccurrenceCount != 2 || theme.InterviewOccurrenceCount != 1 {
 		t.Fatalf("unexpected occurrence stats: %#v", theme)

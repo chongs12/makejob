@@ -228,6 +228,32 @@ export function InterviewReportPage() {
     })
   }
 
+  /**
+   * 将单条补题建议直接转成学习陪伴上下文，便于用户围绕某个弱项单独生成计划。
+   */
+  function handleCompanionRecommendationFollowUp(input: {
+    focusTag: string
+    topicTitle?: string
+    reason: string
+    suggestions: string[]
+  }): void {
+    persistCompanionPlanContext(
+      buildInterviewCompanionContextDraft({
+        interviewId,
+        industryCode: reportIndustryCode,
+        industryLabel: reportIndustryLabel,
+        overallScore: report?.overall_score || 0,
+        summary: input.reason,
+        readinessLabel: readiness.label,
+        weakTopics: [input.topicTitle || '', input.focusTag],
+        suggestions: input.suggestions,
+      }),
+    )
+    navigate({
+      to: '/companion',
+    })
+  }
+
   return (
     <section className="page-panel interview-page-panel">
       <div className="companion-room-toolbar">
@@ -249,6 +275,18 @@ export function InterviewReportPage() {
               {reportCompletedAt ? `完成于 ${formatInterviewDateTime(reportCompletedAt)}` : '等待报告加载'}
             </span>
           </div>
+
+          {!accessToken ? (
+            <AsyncEmptyState
+              title="登录后查看面试报告"
+              message="面试报告里的弱项解释、补题建议和后续计划上下文都依赖当前登录态，登录后才能继续串联后续动作。"
+              action={(
+                <button className="secondary-button" type="button" onClick={() => requestLoginPrompt(`/interview/${interviewId}/report`, 'missing')}>
+                  去登录
+                </button>
+              )}
+            />
+          ) : null}
 
           {reportQuery.isLoading ? <AsyncInlineState className="companion-empty-text" message="报告加载中..." /> : null}
           {reportQuery.isError ? (
@@ -380,14 +418,17 @@ export function InterviewReportPage() {
                         <article className="timeline-item" key={`interview-practice-recommendation-${item.question.id}`}>
                           <strong>{item.question.title}</strong>
                           {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
+                          {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
                           <p>聚焦标签：{item.focus_tag}</p>
                           <p>{item.reason}</p>
                           <p>推荐优先级：第 {item.priority} 位</p>
+                          <p>最近重复暴露：{item.occurrence_count} 次</p>
                           <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
                           <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
                           {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
                           {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
                           {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
+                          <p>难度：{item.question.difficulty || '未标注'}</p>
                           {item.related_question_sets?.length ? (
                             <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
                           ) : null}
@@ -414,12 +455,24 @@ export function InterviewReportPage() {
                             className="secondary-link"
                             to={resolvePracticeRecommendationRoute(item.question.type)}
                             params={{ questionId: String(item.question.id) }}
-                          >
-                            直接去补这题
-                          </Link>
-                          {item.topic_code ? (
-                            <Link
-                              className="secondary-link"
+                            >
+                              直接去补这题
+                            </Link>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => handleCompanionRecommendationFollowUp({
+                                focusTag: item.focus_tag,
+                                topicTitle: item.topic_title,
+                                reason: item.reason,
+                                suggestions: item.recommended_actions || [],
+                              })}
+                            >
+                              带入学习计划
+                            </button>
+                            {item.topic_code ? (
+                              <Link
+                                className="secondary-link"
                               to={resolveMistakeTopicRoute()}
                               params={{ topicCode: item.topic_code }}
                             >
