@@ -106,3 +106,7 @@ admin_bootstrap:
   email: "admin@makejob.com"
   password: "admin123456"
   membership_level: "pro"
+
+piston:
+  endpoint: "http://localhost:2000/api/v2/execute"
+  timeout: 30

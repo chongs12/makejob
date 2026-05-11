@@ -1,0 +1,25 @@
+services:
+  piston_api:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: piston_api
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "2000:2000"
+    environment:
+      - PISTON_API_WORKERS=4
+      - PISTON_API_TIMEOUT=60
+      - PISTON_OUTPUT_MAX_SIZE=1024000
+      - PISTON_MAX_CONCURRENT_JOBS=64
+      - PISTON_DISABLE_NETWORKING=true
+      - http_proxy=http://host.docker.internal:7897
+      - https_proxy=http://host.docker.internal:7897
+      - HTTP_PROXY=http://host.docker.internal:7897
+      - HTTPS_PROXY=http://host.docker.internal:7897
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - piston_data:/piston
+
+volumes:
+  piston_data:

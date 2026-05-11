@@ -21,6 +21,13 @@ type Config struct {
 	MiniMax        MiniMaxConfig        `mapstructure:"minimax"`
 	Volcengine     VolcengineConfig     `mapstructure:"volcengine"`
 	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
+	Piston         PistonConfig         `mapstructure:"piston"`
+}
+
+// PistonConfig 代码执行引擎配置
+type PistonConfig struct {
+	Endpoint string `mapstructure:"endpoint"` // Piston API 地址，如 http://localhost:2000/api/v2/piston/execute
+	Timeout  int    `mapstructure:"timeout"`  // 超时秒数，默认 30
 }
 
 // ServerConfig 服务器相关配置
@@ -308,6 +315,10 @@ func GetConfig() *Config {
 					Email:           "admin@makejob.com",
 					Password:        "admin123456",
 					MembershipLevel: "pro",
+				},
+				Piston: PistonConfig{
+					Endpoint: "http://localhost:2000/api/v2/execute",
+					Timeout:  30,
 				},
 			}
 		}

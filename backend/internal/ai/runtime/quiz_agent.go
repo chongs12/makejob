@@ -281,27 +281,28 @@ func (a *providerQuizAnalyzer) recordCall(
 func buildQuizAnalysisSystemPrompt(basePrompt string) string {
 	return mergePrompt(basePrompt, `请分析这道题的答案，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
 {
-  "is_correct": true,
-  "score": 0,
-  "feedback": "整体评价",
-  "issues": ["问题1", "问题2"],
-  "improvements": ["改进建议1", "改进建议2"],
-  "mistake_tags": ["错因标签1"],
-  "strength_tags": ["优势标签1"],
-  "time_complexity": "O(n)",
-  "space_complexity": "O(1)"
+  “is_correct”: true,
+  “score”: 0,
+  “feedback”: “整体评价”,
+  “issues”: [“问题1”, “问题2”],
+  “improvements”: [“改进建议1”, “改进建议2”],
+  “mistake_tags”: [“错因标签1”],
+  “strength_tags”: [“优势标签1”],
+  “time_complexity”: “O(n)”,
+  “space_complexity”: “O(1)”
 }
 要求：
 1. score 必须在 0 到 100 之间。
-2. 评价要兼顾正确性、完整性和表达质量。
-3. issues 和 improvements 至少各返回 1 条。
-4. mistake_tags 要尽量具体，不要只写“基础不好”这类空泛表述。`)
+2. 只评价答案本身是否正确、完整、高质量。不要评价题目描述中与答案无关的内容（如岗位要求、面试题目生成、岗位关联等）。
+3. is_correct 应基于答案是否正确回应了题目的核心要求来判定。
+4. issues 和 improvements 至少各返回 1 条。
+5. mistake_tags 要尽量具体，不要只写”基础不好”这类空泛表述。`)
 }
 
 // buildQuizAnalysisUserPrompt 构造答题分析请求。
 func buildQuizAnalysisUserPrompt(code string, language string, question string) string {
 	return fmt.Sprintf(
-		"题目：\n%s\n\n答案语言：%s\n\n用户答案：\n%s",
+		"题目（仅参考核心要求，忽略其中与答案评价无关的岗位描述等内容）：\n%s\n\n答案语言：%s\n\n用户答案：\n%s",
 		defaultString(strings.TrimSpace(question), "未提供题目"),
 		defaultString(strings.TrimSpace(language), "text"),
 		defaultString(strings.TrimSpace(code), "未提供答案"),

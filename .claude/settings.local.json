@@ -4,7 +4,10 @@
       "Bash(go build *)",
       "Bash(go version *)",
       "Bash(go test *)",
-      "Bash(npm.cmd run *)"
+      "Bash(npm.cmd run *)",
+      "Bash(npx tsc *)",
+      "Bash(docker *)",
+      "Bash(curl *)"
     ]
   }
 }

@@ -312,6 +312,110 @@ export function PracticePage() {
     })
   }
 
+  if (isQuestionSetCollectionMode) {
+    const QUESTION_SET_PAGE_SIZE = 15
+    const questionSetTotal = filteredQuestionSetQuestions.length
+    const questionSetTotalPages = Math.max(1, Math.ceil(questionSetTotal / QUESTION_SET_PAGE_SIZE))
+    const questionSetPage = Math.min(page, questionSetTotalPages)
+    const questionSetPageQuestions = filteredQuestionSetQuestions.slice(
+      (questionSetPage - 1) * QUESTION_SET_PAGE_SIZE,
+      questionSetPage * QUESTION_SET_PAGE_SIZE,
+    )
+
+    return (
+      <section className="page-panel">
+        <div style={{ marginBottom: 24 }}>
+          <Link
+            className="secondary-link"
+            to="/practice"
+            search={buildPracticeRouteSearch({
+              industryCode: effectiveIndustryCode,
+              page: 1,
+            })}
+          >
+            ← 返回题库
+          </Link>
+        </div>
+
+        {activeQuestionSetQuery.isLoading ? <AsyncStatusCard message="题单加载中..." /> : null}
+
+        {activeQuestionSetQuery.isError ? (
+          <AsyncStatusCard
+            message={extractErrorMessage(activeQuestionSetQuery.error, '题单详情加载失败')}
+            tone="error"
+          />
+        ) : null}
+
+        {activeQuestionSetQuery.data ? (
+          <>
+            <div className="status-card" style={{ marginBottom: 24 }}>
+              <div className="card-inline">
+                <div>
+                  <span className="section-kicker">题单练习</span>
+                  <h2>{activeQuestionSetQuery.data.title}</h2>
+                </div>
+                <span>{questionSetTotal}/{activeQuestionSetQuery.data.question_count} 题</span>
+              </div>
+              {activeQuestionSetQuery.data.description ? (
+                <p style={{ marginTop: 12 }}>{activeQuestionSetQuery.data.description}</p>
+              ) : null}
+            </div>
+
+            {questionSetPageQuestions.length ? (
+              <div className="grid-cards">
+                {questionSetPageQuestions.map((question) => (
+                  <article className="feature-card" key={`question-set-mode-${question.id}`}>
+                    <div className="card-inline">
+                      <strong>#{question.id}</strong>
+                      <span>{difficultyLabel(question.difficulty)}</span>
+                    </div>
+                    <h2>{question.title}</h2>
+                    <p>题型：{questionTypeLabel(question.type)}</p>
+                    <p>来源：{resolvePracticeQuestionSetTitle(activeQuestionSetSlug)}</p>
+                    <div style={{ marginTop: 12 }}>
+                      <Link className="secondary-link" to={resolvePracticeTarget(question.id, question.type)} params={{ questionId: String(question.id) }}>
+                        进入做题
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <AsyncEmptyState
+                title="当前题单下没有题目"
+                message="该题单暂无题目数据，请稍后再试。"
+              />
+            )}
+
+            {questionSetTotalPages > 1 ? (
+              <div className="card-inline" style={{ marginTop: 24 }}>
+                <span>共 {questionSetTotal} 题，第 {questionSetPage}/{questionSetTotalPages} 页</span>
+                <div className="page-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={questionSetPage <= 1}
+                    onClick={() => navigatePractice({ page: Math.max(questionSetPage - 1, 1) })}
+                  >
+                    上一页
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={questionSetPage >= questionSetTotalPages}
+                    onClick={() => navigatePractice({ page: questionSetPage + 1 })}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    )
+  }
+
   return (
     <section className="page-panel">
       <span className="page-tag">刷题总览</span>
@@ -768,7 +872,6 @@ export function PracticePage() {
           <span>分类筛选</span>
           <select
             value={categoryId || ''}
-            disabled={isQuestionSetCollectionMode}
             onChange={(event) => {
               navigatePractice({
                 category: event.target.value ? Number(event.target.value) : undefined,
@@ -782,12 +885,6 @@ export function PracticePage() {
             ))}
           </select>
         </label>
-        {isQuestionSetCollectionMode ? (
-          <AsyncInlineState
-            className="companion-empty-text"
-            message="正式题单模式下会优先固定题目集合，分类筛选已暂时关闭。"
-          />
-        ) : null}
 
         {industriesQuery.isError ? (
           <AsyncInlineState
@@ -814,9 +911,9 @@ export function PracticePage() {
         练习提示：{examMessage}
       </div>
 
-      {!isQuestionSetCollectionMode && questionsQuery.isLoading ? <AsyncStatusCard message="题目列表加载中..." style={{ marginTop: 24 }} /> : null}
+      {questionsQuery.isLoading ? <AsyncStatusCard message="题目列表加载中..." style={{ marginTop: 24 }} /> : null}
 
-      {!isQuestionSetCollectionMode && questionsQuery.isError ? (
+      {questionsQuery.isError ? (
         <AsyncStatusCard
           message={questionsQuery.error instanceof Error ? questionsQuery.error.message : '题目列表加载失败'}
           style={{ marginTop: 24 }}
@@ -824,54 +921,7 @@ export function PracticePage() {
         />
       ) : null}
 
-      {isQuestionSetCollectionMode && activeQuestionSetQuery.data ? (
-        <>
-          <div className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <div>
-                <span className="section-kicker">正式练习集合</span>
-                <h2>{activeQuestionSetQuery.data.title}</h2>
-              </div>
-              <span>{filteredQuestionSetQuestions.length}/{activeQuestionSetQuery.data.question_count} 题</span>
-            </div>
-            <p style={{ marginTop: 12 }}>{activeQuestionSetQuery.data.description}</p>
-          </div>
-
-          {filteredQuestionSetQuestions.length ? (
-            <div className="grid-cards" style={{ marginTop: 24 }}>
-              {filteredQuestionSetQuestions.map((question) => (
-                <article className="feature-card" key={`question-set-mode-${question.id}`}>
-                  <div className="card-inline">
-                    <strong>#{question.id}</strong>
-                    <span>{difficultyLabel(question.difficulty)}</span>
-                  </div>
-                  <h2>{question.title}</h2>
-                  <p>题型：{questionTypeLabel(question.type)}</p>
-                  <p>来源：{resolvePracticeQuestionSetTitle(activeQuestionSetSlug)}</p>
-                  <div style={{ marginTop: 12 }}>
-                    <Link className="secondary-link" to={resolvePracticeTarget(question.id, question.type)} params={{ questionId: String(question.id) }}>
-                      进入做题
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <AsyncEmptyState
-              title="当前题单下没有命中结果"
-              message="可以切换关键词或难度继续筛选，这里仍然只会展示当前正式题单内的题目。"
-              style={{ marginTop: 24 }}
-              action={(
-                <button className="secondary-button" type="button" onClick={() => navigatePractice({ keyword: '', difficulty: '', page: 1 })}>
-                  清空筛选后重试
-                </button>
-              )}
-            />
-          )}
-        </>
-      ) : null}
-
-      {!isQuestionSetCollectionMode && questionsQuery.data ? (
+      {questionsQuery.data ? (
         <>
           {questionsQuery.data.list.length ? (
             <div className="grid-cards" style={{ marginTop: 24 }}>

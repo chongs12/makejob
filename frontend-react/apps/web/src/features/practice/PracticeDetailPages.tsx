@@ -85,6 +85,11 @@ interface SubmitAnswerResult {
   ai_analysis?: string
 }
 
+interface RunCodeResult {
+  output: string
+  passed: boolean
+}
+
 interface FavoriteRecord {
   id: number
   question_id: number
@@ -382,6 +387,20 @@ async function submitAnswerRequest(token: string, questionId: number, answer: st
 
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '提交答案失败')
+  }
+
+  return response.data
+}
+
+async function runCodeRequest(token: string, questionId: number, answer: string, language?: string): Promise<RunCodeResult> {
+  const response = await requestJson<ApiEnvelope<RunCodeResult>>(`/questions/${questionId}/run`, {
+    method: 'POST',
+    token,
+    body: { answer, language },
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '运行代码失败')
   }
 
   return response.data
@@ -912,14 +931,19 @@ export function PracticeEditorPage() {
   const queryClient = useQueryClient()
   const { questionId } = useParams({ from: '/practice/editor/$questionId' })
   const accessToken = useAuthStore((state) => state.accessToken)
+  const user = useAuthStore((state) => state.user)
+  const logout = useAuthStore((state) => state.logout)
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
   const [editorLanguage, setEditorLanguage] = useState('go')
   const [codeContent, setCodeContent] = useState(buildDefaultCodeTemplate())
   const [submitting, setSubmitting] = useState(false)
+  const [running, setRunning] = useState(false)
   const [submitMessage, setSubmitMessage] = useState('等待运行')
   const [submitResult, setSubmitResult] = useState<SubmitAnswerResult | null>(null)
+  const [runOutput, setRunOutput] = useState<string | null>(null)
+  const [runPassed, setRunPassed] = useState<boolean | null>(null)
   const [favoriteMessage, setFavoriteMessage] = useState('未操作')
   const [favoriteState, setFavoriteState] = useState(false)
   const [startedAt] = useState(() => Date.now())
@@ -1080,9 +1104,46 @@ export function PracticeEditorPage() {
   }
 
   /**
-   * 提交代码题答案，并返回后端当前的分析结果。
+   * 运行代码：仅返回基础输出，不触发AI分析，不保存记录。
    */
-  async function handleEvaluate(label: '运行代码' | '提交代码') {
+  async function handleRunCode() {
+    if (!question) {
+      return
+    }
+
+    if (!accessToken) {
+      requestLoginPrompt(readCurrentBrowserPath(), 'missing')
+      return
+    }
+
+    if (!codeContent.trim()) {
+      setSubmitMessage('请先输入代码')
+      return
+    }
+
+    setRunning(true)
+    setSubmitMessage('运行代码中...')
+
+    try {
+      const result = await runCodeRequest(accessToken, question.id, codeContent, editorLanguage)
+      setRunOutput(result.output)
+      setRunPassed(result.passed)
+      setSubmitMessage('运行完成')
+    } catch (error) {
+      if (!useAuthStore.getState().accessToken) {
+        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
+        return
+      }
+      setSubmitMessage(extractErrorMessage(error, '运行代码失败'))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  /**
+   * 提交代码题答案，并返回AI分析结果。
+   */
+  async function handleSubmitCode() {
     if (!question) {
       return
     }
@@ -1098,7 +1159,7 @@ export function PracticeEditorPage() {
     }
 
     setSubmitting(true)
-    setSubmitMessage(`${label}中...`)
+    setSubmitMessage('提交代码中...')
 
     try {
       const result = await submitAnswerRequest(
@@ -1109,7 +1170,9 @@ export function PracticeEditorPage() {
       )
 
       setSubmitResult(result)
-      setSubmitMessage(result.is_correct ? `${label}通过` : `${label}完成`)
+      setRunOutput(null)
+      setRunPassed(null)
+      setSubmitMessage(result.is_correct ? '提交通过' : '提交完成')
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
@@ -1118,7 +1181,7 @@ export function PracticeEditorPage() {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
         return
       }
-      setSubmitMessage(extractErrorMessage(error, `${label}失败`))
+      setSubmitMessage(extractErrorMessage(error, '提交代码失败'))
     } finally {
       setSubmitting(false)
     }
@@ -1149,65 +1212,91 @@ export function PracticeEditorPage() {
 
   if (detailQuery.isLoading) {
     return (
-      <section className="page-panel">
-        <span className="page-tag">代码编辑器</span>
-        <div className="status-card" style={{ marginTop: 24 }}>题目详情加载中...</div>
-      </section>
+      <div className="editor-immersive">
+        <header className="editor-topbar">
+          <div className="editor-topbar-left">
+            <button type="button" onClick={handleGoBackFromEditor}>← 退出</button>
+          </div>
+          <div className="editor-topbar-right">
+            <span>{user?.username || '游客'}</span>
+          </div>
+        </header>
+        <div className="editor-body" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ color: '#969696', fontSize: 14 }}>题目详情加载中...</div>
+        </div>
+      </div>
     )
   }
 
   if (detailQuery.isError) {
     return (
-      <section className="page-panel">
-        <span className="page-tag">代码编辑器</span>
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {detailQuery.error instanceof Error ? detailQuery.error.message : '题目详情加载失败'}
+      <div className="editor-immersive">
+        <header className="editor-topbar">
+          <div className="editor-topbar-left">
+            <button type="button" onClick={handleGoBackFromEditor}>← 退出</button>
+          </div>
+          <div className="editor-topbar-right">
+            <span>{user?.username || '游客'}</span>
+          </div>
+        </header>
+        <div className="editor-body" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ color: '#f44747', fontSize: 14 }}>
+            {detailQuery.error instanceof Error ? detailQuery.error.message : '题目详情加载失败'}
+          </div>
         </div>
-      </section>
+      </div>
     )
   }
 
   if (question && question.type !== 'code') {
     return (
-      <section className="page-panel">
-        <span className="page-tag">代码编辑器</span>
-        <h1>当前题目不是代码题</h1>
-        <p className="page-copy">这道题更适合走普通答题页，不需要 Monaco 编辑器。</p>
-        <Link className="secondary-link" to="/practice/$questionId" params={{ questionId }}>
-          返回普通题目页
-        </Link>
-      </section>
+      <div className="editor-immersive">
+        <header className="editor-topbar">
+          <div className="editor-topbar-left">
+            <button type="button" onClick={handleGoBackFromEditor}>← 退出</button>
+          </div>
+          <div className="editor-topbar-right">
+            <span>{user?.username || '游客'}</span>
+          </div>
+        </header>
+        <div className="editor-body" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+          <div style={{ color: '#d4d4d4', fontSize: 16 }}>当前题目不是代码题</div>
+          <Link style={{ color: '#569cd6', textDecoration: 'none' }} to="/practice/$questionId" params={{ questionId }}>
+            返回普通题目页 →
+          </Link>
+        </div>
+      </div>
     )
   }
 
   return (
-    <>
-      <div className="companion-room-toolbar" style={{ marginBottom: 20 }}>
-        <div className="page-actions">
-          <button className="ghost-button" type="button" onClick={handleGoBackFromEditor}>
-            返回上一页
-          </button>
-          <Link className="ghost-button" to="/practice">
-            返回题库
-          </Link>
+    <div className="editor-immersive">
+      <header className="editor-topbar">
+        <div className="editor-topbar-left">
+          <button type="button" onClick={handleGoBackFromEditor}>← 退出</button>
+          <span style={{ fontSize: 13, color: '#969696' }}>{question?.title || `题目 #${questionId}`}</span>
         </div>
-        <span className="companion-room-note">代码题编辑器 · {questionIndustryLabel}</span>
-      </div>
+        <div className="editor-topbar-right">
+          <span>{user?.username || '游客'}</span>
+          {accessToken ? (
+            <button type="button" onClick={() => logout()}>退出登录</button>
+          ) : null}
+        </div>
+      </header>
 
-      <section className="editor-layout">
-        <div className="editor-sidebar">
-          <span className="page-tag">代码练习</span>
+      <div className="editor-body">
+        <div className="editor-problem">
           <h1>{question?.title || `题目 #${questionId}`}</h1>
           <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
           <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
           {question?.tag_list?.length ? (
-            <div className="community-tag-row" style={{ marginTop: 12 }}>
+            <div className="community-tag-row">
               {question.tag_list.map((tag) => (
                 <span key={`editor-question-tag-${tag}`}>{tag}</span>
               ))}
             </div>
           ) : null}
-          <div className="page-actions" style={{ marginTop: 16 }}>
+          <div className="page-actions">
             <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
               {favoriteState ? '取消收藏' : '加入收藏'}
             </button>
@@ -1215,13 +1304,15 @@ export function PracticeEditorPage() {
               查看题目详情
             </Link>
           </div>
-          <div style={{ marginTop: 12 }}>收藏状态：{favoriteMessage}</div>
+          {favoriteMessage !== '未操作' ? (
+            <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{favoriteMessage}</div>
+          ) : null}
           {question ? (
             <QuestionNotePanel questionId={question.id} questionTitle={question.title} token={accessToken} />
           ) : null}
         </div>
 
-        <div className="editor-main">
+        <div className="editor-workspace">
           <div className="editor-toolbar">
             <select value={editorLanguage} onChange={(event) => handleLanguageChange(event.target.value)}>
               <option value="go">Go</option>
@@ -1232,69 +1323,94 @@ export function PracticeEditorPage() {
             </select>
             <div className="page-actions">
               <button className="secondary-button" type="button" onClick={handleResetCode}>重置代码</button>
-              <button className="secondary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('运行代码')}>
-                运行代码
+              <button className="secondary-button" type="button" disabled={running} onClick={() => void handleRunCode()}>
+                {running ? '运行中...' : '运行代码'}
               </button>
-              <button className="primary-button" type="button" disabled={submitting} onClick={() => void handleEvaluate('提交代码')}>
-                提交代码
+              <button className="primary-button" type="button" disabled={submitting} onClick={() => void handleSubmitCode()}>
+                {submitting ? '提交中...' : '提交代码'}
               </button>
             </div>
           </div>
 
           <div className="editor-surface" ref={editorContainerRef} />
 
-          <div className="status-card" style={{ marginTop: 16 }}>
-            <div>执行状态：{submitMessage}</div>
+          <div className="editor-output-panel">
+            <div className="editor-output-panel-title">
+              <span>输出</span>
+              <span style={{ fontWeight: 400, color: '#666' }}>{submitMessage}</span>
+            </div>
+
+            {!runOutput && !submitResult ? (
+              <div className="output-line" style={{ color: '#666' }}>点击「运行代码」查看运行结果，或点击「提交代码」获取AI分析</div>
+            ) : null}
+
+            {runOutput ? (
+              <pre className={`output-pre ${runPassed ? 'success' : 'error'}`}>{runOutput}</pre>
+            ) : null}
+
             {submitResult ? (
               <>
-                <div>判定结果：{submitResult.is_correct ? '正确' : '错误'}</div>
-                <div>正确答案：{submitResult.correct_answer || '未返回'}</div>
-                <div>解析说明：{submitResult.explanation || '暂无解析'}</div>
+                <div className={`output-line ${submitResult.is_correct ? 'success' : 'error'}`}>
+                  {submitResult.is_correct ? '解答正确' : '解答错误'}
+                </div>
+                {submitResult.correct_answer ? (
+                  <div className="output-line">参考答案：{submitResult.correct_answer}</div>
+                ) : null}
+                {submitResult.explanation ? (
+                  <div className="output-line">解析：{submitResult.explanation}</div>
+                ) : null}
                 {submitResult.ai_analysis ? (
-                  <pre className="analysis-block">{submitResult.ai_analysis}</pre>
+                  <div className="output-section">
+                    <div className="output-section-title">AI 分析</div>
+                    <pre className="output-json">{submitResult.ai_analysis}</pre>
+                  </div>
                 ) : null}
                 {question?.solution ? (
-                  <div style={{ marginTop: 16 }}>
-                    <strong>结构化解析</strong>
+                  <div className="output-section output-solution">
+                    <div className="output-section-title">结构化解析</div>
                     <p>题意总结：{question.solution.summary || '暂无'}</p>
                     <p>解题思路：{question.solution.approach || '暂无'}</p>
                     <p>复杂度分析：{question.solution.complexity || '暂无'}</p>
                     {question.solution.key_steps.length ? (
-                      <div style={{ marginTop: 8 }}>
+                      <>
                         <strong>关键步骤</strong>
                         <ul>
                           {question.solution.key_steps.map((item) => <li key={item}>{item}</li>)}
                         </ul>
-                      </div>
+                      </>
                     ) : null}
                     {question.solution.edge_cases.length ? (
-                      <div style={{ marginTop: 8 }}>
+                      <>
                         <strong>边界条件</strong>
                         <ul>
                           {question.solution.edge_cases.map((item) => <li key={item}>{item}</li>)}
                         </ul>
-                      </div>
+                      </>
                     ) : null}
                     {question.solution.common_mistakes.length ? (
-                      <div style={{ marginTop: 8 }}>
+                      <>
                         <strong>常见错法</strong>
                         <ul>
                           {question.solution.common_mistakes.map((item) => <li key={item}>{item}</li>)}
                         </ul>
-                      </div>
+                      </>
                     ) : null}
                   </div>
                 ) : null}
-                <MistakeTopicHighlights
-                  tags={practiceAnalysis?.mistake_tags || []}
-                  title="建议继续补的错因专题"
-                />
+                {practiceAnalysis?.mistake_tags?.length ? (
+                  <div className="output-section">
+                    <MistakeTopicHighlights
+                      tags={practiceAnalysis.mistake_tags}
+                      title="建议继续补的错因专题"
+                    />
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
         </div>
-      </section>
-    </>
+      </div>
+    </div>
   )
 }
 

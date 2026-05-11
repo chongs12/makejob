@@ -21,6 +21,7 @@ import (
 type SubmitAnswerRequest struct {
 	Answer    string `json:"answer" binding:"required"`
 	TimeSpent int    `json:"time_spent"` // 答题用时(秒)
+	Language  string `json:"language"`   // 编程语言（运行代码时可选）
 }
 
 // SubmitAnswerResponse 提交答案响应DTO
@@ -29,6 +30,12 @@ type SubmitAnswerResponse struct {
 	CorrectAnswer string `json:"correct_answer"`
 	Explanation   string `json:"explanation"`
 	AIAnalysis    string `json:"ai_analysis,omitempty"`
+}
+
+// RunCodeResponse 运行代码响应DTO
+type RunCodeResponse struct {
+	Output string `json:"output"`
+	Passed bool   `json:"passed"`
 }
 
 // PracticeRecommendationItem 表示一条对症练习推荐结果。
@@ -155,6 +162,7 @@ type QuestionService interface {
 
 	// 答题
 	SubmitAnswer(ctx context.Context, userID, questionID uint, req *SubmitAnswerRequest) (*SubmitAnswerResponse, error)
+	RunCode(ctx context.Context, questionID uint, req *SubmitAnswerRequest) (*RunCodeResponse, error)
 
 	// 收藏
 	ToggleFavorite(ctx context.Context, userID, questionID uint) (bool, error)
@@ -183,6 +191,17 @@ type QuestionService interface {
 	GetMistakeTopic(ctx context.Context, code string) (*MistakeTopicCard, error)
 }
 
+// CodeExecutor 代码执行器接口
+type CodeExecutor interface {
+	Execute(ctx context.Context, language, code string) (*CodeExecResult, error)
+}
+
+// CodeExecResult 代码执行结果
+type CodeExecResult struct {
+	Output string
+	Passed bool
+}
+
 // questionService 题目服务实现
 type questionService struct {
 	questionRepo        QuestionRepository
@@ -193,6 +212,7 @@ type questionService struct {
 	quizAnalyzer        ai.QuizAnalyzer
 	learningArchiveRepo repository.LearningArchiveRepository
 	industryRepo        repository.IndustryRepository
+	codeExecutor        CodeExecutor
 }
 
 // QuestionRepository 题目仓库接口 (本地定义，避免循环导入)
@@ -213,6 +233,7 @@ type CategoryRepository interface {
 // QuestionRecordRepository 答题记录仓库接口
 type QuestionRecordRepository interface {
 	Create(ctx context.Context, record *model.UserQuestionRecord) error
+	Upsert(ctx context.Context, record *model.UserQuestionRecord) error
 	GetByUserAndQuestion(ctx context.Context, userID, questionID uint) ([]model.UserQuestionRecord, error)
 	GetWrongQuestions(ctx context.Context, userID uint, page, pageSize int) ([]model.UserQuestionRecord, int64, error)
 	GetUserStats(ctx context.Context, userID uint) (*UserPracticeStats, error)
@@ -276,6 +297,14 @@ func NewQuestionService(
 		s.industryRepo = industryRepo[0]
 	}
 	return s
+}
+
+// SetCodeExecutor 设置代码执行器（可选，支持延迟注入）。
+// 需要先将返回值断言为 *questionService 再调用。
+func SetCodeExecutor(svc QuestionService, executor CodeExecutor) {
+	if qs, ok := svc.(*questionService); ok {
+		qs.codeExecutor = executor
+	}
 }
 
 // ListQuestions 获取题目列表
@@ -479,7 +508,7 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 	}
 
 	record.IsCorrect = resp.IsCorrect
-	if err := s.recordRepo.Create(ctx, record); err != nil {
+	if err := s.recordRepo.Upsert(ctx, record); err != nil {
 		return nil, err
 	}
 
@@ -488,6 +517,54 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 	}
 
 	return resp, nil
+}
+
+// RunCode 运行代码（通过代码执行器运行，不保存记录）
+func (s *questionService) RunCode(ctx context.Context, questionID uint, req *SubmitAnswerRequest) (*RunCodeResponse, error) {
+	question, err := s.questionRepo.GetByID(ctx, questionID)
+	if err != nil {
+		return nil, err
+	}
+	if question == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "题目不存在")
+	}
+
+	userAnswer := strings.TrimSpace(req.Answer)
+	if userAnswer == "" {
+		return &RunCodeResponse{
+			Output: "请先输入代码",
+			Passed: false,
+		}, nil
+	}
+
+	switch question.Type {
+	case model.QuestionTypeCode:
+		if s.codeExecutor == nil {
+			return nil, common.NewBusinessError(common.CodeInternalError, "代码执行器未配置")
+		}
+		lang := req.Language
+		if lang == "" {
+			lang = detectQuestionLanguage(question)
+		}
+		result, err := s.codeExecutor.Execute(ctx, lang, userAnswer)
+		if err != nil {
+			return nil, fmt.Errorf("代码执行失败: %w", err)
+		}
+		return &RunCodeResponse{
+			Output: result.Output,
+			Passed: result.Passed,
+		}, nil
+	case model.QuestionTypeSubjective:
+		return &RunCodeResponse{
+			Output: "主观题请直接点击「提交代码」获取AI分析",
+			Passed: false,
+		}, nil
+	default:
+		return &RunCodeResponse{
+			Output: "该题型不支持运行代码",
+			Passed: false,
+		}, nil
+	}
 }
 
 // judgeAnswer 判分逻辑

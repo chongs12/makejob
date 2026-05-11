@@ -18,6 +18,7 @@ import (
 	asrfactory "makejob-backend/internal/asr/factory"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/config"
+	"makejob-backend/internal/executor"
 	"makejob-backend/internal/handler"
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/middleware"
@@ -31,6 +32,19 @@ import (
 )
 
 const Version = "1.0.0"
+
+// pistonAdapter 适配 PistonClient 到 service.CodeExecutor 接口。
+type pistonAdapter struct {
+	client *executor.PistonClient
+}
+
+func (a *pistonAdapter) Execute(ctx context.Context, language, code string) (*service.CodeExecResult, error) {
+	result, err := a.client.Execute(ctx, language, code)
+	if err != nil {
+		return nil, err
+	}
+	return &service.CodeExecResult{Output: result.Output, Passed: result.Passed}, nil
+}
 
 type AppDependencies struct {
 	UserRepo              repository.UserRepository
@@ -214,6 +228,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.LearningArchiveRepo,
 			industryRepo,
 		)
+		service.SetCodeExecutor(deps.QuestionService, &pistonAdapter{client: executor.NewPistonClient(cfg.Piston.Endpoint, cfg.Piston.Timeout)})
 		deps.PlanService = service.NewPlanService(
 			deps.PlanRepo,
 			deps.PlanTaskRepo,

@@ -457,6 +457,11 @@ func (s *growthQuestionRecordRepositoryStub) Create(context.Context, *model.User
 	return nil
 }
 
+// Upsert 满足接口要求，当前测试不依赖该行为。
+func (s *growthQuestionRecordRepositoryStub) Upsert(context.Context, *model.UserQuestionRecord) error {
+	return nil
+}
+
 // GetByUserAndQuestion 满足接口要求，当前测试不依赖该行为。
 func (s *growthQuestionRecordRepositoryStub) GetByUserAndQuestion(context.Context, uint, uint) ([]model.UserQuestionRecord, error) {
 	return nil, nil

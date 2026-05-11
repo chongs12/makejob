@@ -43,6 +43,7 @@ func (h *QuestionHandler) RegisterRoutes(public *gin.RouterGroup, protected *gin
 	if protected != nil {
 		// 答题相关
 		protected.POST("/questions/:id/submit", h.SubmitAnswer)
+		protected.POST("/questions/:id/run", h.RunCode)
 		protected.POST("/questions/:id/favorite", h.ToggleFavorite)
 
 		// 用户相关
@@ -372,6 +373,33 @@ func (h *QuestionHandler) SubmitAnswer(c *gin.Context) {
 			common.Error(c, businessErr.Code, businessErr.Message)
 		} else {
 			common.InternalError(c, "提交答案失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, resp)
+}
+
+// RunCode 运行代码（不触发AI分析，不保存记录）
+func (h *QuestionHandler) RunCode(c *gin.Context) {
+	questionID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		common.BadRequest(c, "无效的题目ID")
+		return
+	}
+
+	var req service.SubmitAnswerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.BadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	resp, err := h.questionService.RunCode(c.Request.Context(), uint(questionID), &req)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "运行代码失败: "+err.Error())
 		}
 		return
 	}

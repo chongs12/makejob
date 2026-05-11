@@ -297,6 +297,7 @@ function RootLayout() {
   ]
   const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
+  const isStandaloneEditor = pathname.startsWith('/practice/editor')
   const loginPromptDialog = (
     <LoginRequiredDialog
       open={loginPromptState.open}
@@ -306,7 +307,7 @@ function RootLayout() {
     />
   )
 
-  if (isStandaloneCompanionRoom) {
+  if (isStandaloneCompanionRoom || isStandaloneEditor) {
     return (
       <div className="app-shell companion-room-shell">
         <AuthBootstrap />

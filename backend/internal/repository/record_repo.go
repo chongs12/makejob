@@ -34,6 +34,7 @@ type UserPracticeStats struct {
 // QuestionRecordRepository 答题记录数据访问接口
 type QuestionRecordRepository interface {
 	Create(ctx context.Context, record *model.UserQuestionRecord) error
+	Upsert(ctx context.Context, record *model.UserQuestionRecord) error
 	GetByUserAndQuestion(ctx context.Context, userID, questionID uint) ([]model.UserQuestionRecord, error)
 	GetWrongQuestions(ctx context.Context, userID uint, page, pageSize int) ([]model.UserQuestionRecord, int64, error)
 	GetUserStats(ctx context.Context, userID uint) (*UserPracticeStats, error)
@@ -56,6 +57,23 @@ func NewQuestionRecordRepository(db *gorm.DB) QuestionRecordRepository {
 func (r *questionRecordRepository) Create(ctx context.Context, record *model.UserQuestionRecord) error {
 	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
 		return fmt.Errorf("创建答题记录失败: %w", err)
+	}
+	return nil
+}
+
+// Upsert 创建或更新答题记录（按 user_id + question_id 去重）
+func (r *questionRecordRepository) Upsert(ctx context.Context, record *model.UserQuestionRecord) error {
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND question_id = ?", record.UserID, record.QuestionID).
+		Assign(map[string]interface{}{
+			"user_answer":   record.UserAnswer,
+			"is_correct":    record.IsCorrect,
+			"time_spent":    record.TimeSpent,
+			"analysis_json": record.AnalysisJSON,
+		}).
+		FirstOrCreate(record).Error
+	if err != nil {
+		return fmt.Errorf("保存答题记录失败: %w", err)
 	}
 	return nil
 }
