@@ -6,7 +6,7 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "baseUrl", "value": "http://localhost:8082", "type": "string" },
     { "key": "user_email", "value": "test@test.com", "type": "string" },
     { "key": "user_password", "value": "test123456", "type": "string" },
     { "key": "admin_email", "value": "admin@makejob.com", "type": "string" },

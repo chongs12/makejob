@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
@@ -43,6 +43,49 @@ interface PracticeQuestionAnswerTemplate {
   pitfalls: string[]
 }
 
+interface PracticeQuestionTestCase {
+  input: string
+  expected_output: string
+  description?: string
+}
+
+interface PracticeQuestionReferenceSolution {
+  language: string
+  title?: string
+  code: string
+  explanation?: string
+}
+
+interface PracticeQuestionJudgeConfig {
+  evaluation_mode: 'analysis_only' | 'testcase'
+  default_language: string
+  allowed_languages: string[]
+  starter_code: string
+  public_test_cases: PracticeQuestionTestCase[]
+  time_limit_ms: number
+  memory_limit_mb: number
+}
+
+interface PracticeJudgeCaseResult {
+  index: number
+  description?: string
+  input?: string
+  expected_output?: string
+  actual_output?: string
+  passed: boolean
+  error_output?: string
+}
+
+interface PracticeJudgeSummary {
+  mode: string
+  passed_count: number
+  total_count: number
+  all_passed: boolean
+  case_results?: PracticeJudgeCaseResult[]
+  time_limit_ms?: number
+  memory_limit_mb?: number
+}
+
 interface PageResult<T> {
   list: T[]
   total: number
@@ -73,6 +116,7 @@ interface PracticeQuestionDetail extends PracticeQuestion {
   explanation?: string
   tag_list?: string[]
   solution?: PracticeQuestionSolution | null
+  judge_config?: PracticeQuestionJudgeConfig | null
   answer_template?: PracticeQuestionAnswerTemplate | null
   is_favorited?: boolean
   user_note?: PracticeNote | null
@@ -83,11 +127,15 @@ interface SubmitAnswerResult {
   correct_answer: string
   explanation: string
   ai_analysis?: string
+  evaluation_mode?: string
+  judge_summary?: PracticeJudgeSummary | null
 }
 
 interface RunCodeResult {
   output: string
   passed: boolean
+  evaluation_mode?: string
+  judge_summary?: PracticeJudgeSummary | null
 }
 
 interface FavoriteRecord {
@@ -190,6 +238,17 @@ func main() {
     solution()
 }
 `
+}
+
+/**
+ * 根据题目判题配置生成更贴近真实题目的默认模板，并兼容旧题回退模板。
+ */
+function buildCodeTemplateFromQuestion(question?: PracticeQuestionDetail | null): string {
+  const starterCode = question?.judge_config?.starter_code?.trim() || ''
+  if (starterCode) {
+    return starterCode
+  }
+  return buildDefaultCodeTemplate()
 }
 
 /**
@@ -375,13 +434,20 @@ async function deleteQuestionNote(token: string, noteId: number): Promise<void> 
 /**
  * 提交题目答案，并返回统一的判题结果结构。
  */
-async function submitAnswerRequest(token: string, questionId: number, answer: string, timeSpent: number): Promise<SubmitAnswerResult> {
+async function submitAnswerRequest(
+  token: string,
+  questionId: number,
+  answer: string,
+  timeSpent: number,
+  language?: string,
+): Promise<SubmitAnswerResult> {
   const response = await requestJson<ApiEnvelope<SubmitAnswerResult>>(`/questions/${questionId}/submit`, {
     method: 'POST',
     token,
     body: {
       answer,
       time_spent: timeSpent,
+      language,
     },
   })
 
@@ -944,9 +1010,12 @@ export function PracticeEditorPage() {
   const [submitResult, setSubmitResult] = useState<SubmitAnswerResult | null>(null)
   const [runOutput, setRunOutput] = useState<string | null>(null)
   const [runPassed, setRunPassed] = useState<boolean | null>(null)
+  const [runJudgeSummary, setRunJudgeSummary] = useState<PracticeJudgeSummary | null>(null)
   const [favoriteMessage, setFavoriteMessage] = useState('未操作')
   const [favoriteState, setFavoriteState] = useState(false)
   const [startedAt] = useState(() => Date.now())
+  const [leftPanelWidth, setLeftPanelWidth] = useState(40)
+  const [editorHeight, setEditorHeight] = useState(60)
 
   const detailQuery = useQuery({
     queryKey: ['practice-code-question-detail', questionId],
@@ -959,6 +1028,7 @@ export function PracticeEditorPage() {
   })
 
   const question = detailQuery.data
+  const evaluationMode = question?.judge_config?.evaluation_mode || 'analysis_only'
   const practiceAnalysis = useMemo(
     () => parsePracticeAnalysis(submitResult?.ai_analysis),
     [submitResult?.ai_analysis],
@@ -974,12 +1044,22 @@ export function PracticeEditorPage() {
   useEffect(() => {
     setSubmitResult(null)
     setSubmitMessage('等待运行')
+    setRunOutput(null)
+    setRunPassed(null)
+    setRunJudgeSummary(null)
     setFavoriteMessage('未操作')
   }, [questionId])
 
   useEffect(() => {
     setFavoriteState(Boolean(question?.is_favorited))
   }, [question?.is_favorited])
+
+  useEffect(() => {
+    if (!question?.judge_config?.default_language) {
+      return
+    }
+    setEditorLanguage(question.judge_config.default_language)
+  }, [question?.judge_config?.default_language])
 
   useEffect(() => {
     if (!questionIndustry?.code) {
@@ -1011,7 +1091,7 @@ export function PracticeEditorPage() {
       }
 
       monacoRef.current = monaco
-      const initialValue = readCodeDraft(question.id, editorLanguage, buildDefaultCodeTemplate())
+      const initialValue = readCodeDraft(question.id, editorLanguage, buildCodeTemplateFromQuestion(question))
       setCodeContent(initialValue)
       editorInstanceRef.current = monaco.editor.create(editorContainerRef.current, {
         value: initialValue,
@@ -1046,7 +1126,7 @@ export function PracticeEditorPage() {
       return
     }
 
-    const draft = readCodeDraft(question.id, editorLanguage, buildDefaultCodeTemplate())
+    const draft = readCodeDraft(question.id, editorLanguage, buildCodeTemplateFromQuestion(question))
     setCodeContent(draft)
 
     if (editorInstanceRef.current && editorInstanceRef.current.getValue() !== draft) {
@@ -1081,7 +1161,7 @@ export function PracticeEditorPage() {
    * 重置代码内容为默认模板，方便重新开始作答。
    */
   function handleResetCode() {
-    const template = buildDefaultCodeTemplate()
+    const template = buildCodeTemplateFromQuestion(question)
     setCodeContent(template)
 
     if (editorInstanceRef.current) {
@@ -1123,11 +1203,13 @@ export function PracticeEditorPage() {
 
     setRunning(true)
     setSubmitMessage('运行代码中...')
+    setSubmitResult(null)
 
     try {
       const result = await runCodeRequest(accessToken, question.id, codeContent, editorLanguage)
       setRunOutput(result.output)
       setRunPassed(result.passed)
+      setRunJudgeSummary(result.judge_summary || null)
       setSubmitMessage('运行完成')
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
@@ -1167,11 +1249,13 @@ export function PracticeEditorPage() {
         question.id,
         codeContent,
         Math.max(Math.round((Date.now() - startedAt) / 1000), 1),
+        editorLanguage,
       )
 
       setSubmitResult(result)
       setRunOutput(null)
       setRunPassed(null)
+      setRunJudgeSummary(null)
       setSubmitMessage(result.is_correct ? '提交通过' : '提交完成')
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
@@ -1209,6 +1293,57 @@ export function PracticeEditorPage() {
       setFavoriteMessage(extractErrorMessage(error, '收藏操作失败'))
     }
   }
+
+  const handleVerticalResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const containerWidth = document.querySelector('.editor-body')?.clientWidth || window.innerWidth
+    const startWidth = leftPanelWidth
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX
+      const newPercent = Math.min(60, Math.max(20, startWidth + (delta / containerWidth) * 100))
+      setLeftPanelWidth(newPercent)
+    }
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [leftPanelWidth])
+
+  const handleHorizontalResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const workspaceEl = document.querySelector('.editor-workspace')
+    const containerHeight = workspaceEl?.clientHeight || window.innerHeight * 0.6
+    const startHeight = editorHeight
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientY - startY
+      const newPercent = Math.min(85, Math.max(25, startHeight + (delta / containerHeight) * 100))
+      setEditorHeight(newPercent)
+    }
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }, [editorHeight])
 
   if (detailQuery.isLoading) {
     return (
@@ -1285,7 +1420,7 @@ export function PracticeEditorPage() {
       </header>
 
       <div className="editor-body">
-        <div className="editor-problem">
+        <div className="editor-problem" style={{ width: `${leftPanelWidth}%` }}>
           <h1>{question?.title || `题目 #${questionId}`}</h1>
           <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
           <p className="companion-empty-text">当前行业：{questionIndustryLabel}</p>
@@ -1312,6 +1447,8 @@ export function PracticeEditorPage() {
           ) : null}
         </div>
 
+        <div className="editor-resize-handle-vertical" onMouseDown={handleVerticalResize} />
+
         <div className="editor-workspace">
           <div className="editor-toolbar">
             <select value={editorLanguage} onChange={(event) => handleLanguageChange(event.target.value)}>
@@ -1332,7 +1469,9 @@ export function PracticeEditorPage() {
             </div>
           </div>
 
-          <div className="editor-surface" ref={editorContainerRef} />
+          <div className="editor-surface" ref={editorContainerRef} style={{ flex: `0 0 ${editorHeight}%` }} />
+
+          <div className="editor-resize-handle-horizontal" onMouseDown={handleHorizontalResize} />
 
           <div className="editor-output-panel">
             <div className="editor-output-panel-title">
@@ -1341,11 +1480,63 @@ export function PracticeEditorPage() {
             </div>
 
             {!runOutput && !submitResult ? (
-              <div className="output-line" style={{ color: '#666' }}>点击「运行代码」查看运行结果，或点击「提交代码」获取AI分析</div>
+              <div className="output-line" style={{ color: '#666' }}>
+                {evaluationMode === 'testcase'
+                  ? '点击「运行代码」执行固定 3 条公开测试用例，点击「提交代码」执行隐藏用例并生成反馈'
+                  : '点击「运行代码」查看运行结果，或点击「提交代码」获取AI分析'}
+              </div>
             ) : null}
 
             {runOutput ? (
               <pre className={`output-pre ${runPassed ? 'success' : 'error'}`}>{runOutput}</pre>
+            ) : null}
+
+            {runJudgeSummary ? (
+              <div className="output-section">
+                <div className="output-section-title">运行结果</div>
+                <div className="output-line">
+                  公开用例通过 {runJudgeSummary.passed_count}/{runJudgeSummary.total_count}
+                </div>
+                {runJudgeSummary.case_results?.length ? (
+                  <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                    {runJudgeSummary.case_results.map((item) => (
+                      <li key={`run-case-${item.index}`}>
+                        用例 #{item.index}：{item.passed ? '通过' : '失败'}
+                        {item.description ? `，${item.description}` : ''}
+                        {item.input ? `，输入 ${item.input}` : ''}
+                        {item.expected_output ? `，期望 ${item.expected_output}` : ''}
+                        {item.actual_output ? `，实际 ${item.actual_output}` : ''}
+                        {item.error_output ? `，错误 ${item.error_output}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            {question?.judge_config ? (
+              <div className="output-section output-solution">
+                <div className="output-section-title">判题配置</div>
+                <p>模式：{question.judge_config.evaluation_mode === 'testcase' ? '测试用例判题' : 'AI 分析'}</p>
+                <p>默认语言：{question.judge_config.default_language || 'go'}</p>
+                <p>支持语言：{(question.judge_config.allowed_languages || []).join('、') || 'go'}</p>
+                <p>时间限制：{question.judge_config.time_limit_ms || 2000}ms</p>
+                <p>内存限制：{question.judge_config.memory_limit_mb || 128}MB</p>
+                {question.judge_config.public_test_cases?.length ? (
+                  <>
+                    <strong>公开样例（运行时固定取前 3 条）</strong>
+                    <ul>
+                      {question.judge_config.public_test_cases.slice(0, 3).map((item, index) => (
+                        <li key={`public-case-${index}`}>
+                          样例 #{index + 1}
+                          {item.description ? ` - ${item.description}` : ''}：
+                          输入 `{item.input || '(空)'}`，期望输出 `{item.expected_output || '(空)'}`
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
             ) : null}
 
             {submitResult ? (
@@ -1358,6 +1549,27 @@ export function PracticeEditorPage() {
                 ) : null}
                 {submitResult.explanation ? (
                   <div className="output-line">解析：{submitResult.explanation}</div>
+                ) : null}
+                {submitResult.judge_summary ? (
+                  <div className="output-section">
+                    <div className="output-section-title">判题汇总</div>
+                    <div className="output-line">
+                      通过 {submitResult.judge_summary.passed_count}/{submitResult.judge_summary.total_count} 条测试用例
+                    </div>
+                    {submitResult.judge_summary.case_results?.length ? (
+                      <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
+                        {submitResult.judge_summary.case_results.map((item) => (
+                          <li key={`judge-case-${item.index}`}>
+                            用例 #{item.index}：{item.passed ? '通过' : '失败'}
+                            {item.description ? `，${item.description}` : ''}
+                            {item.expected_output ? `，期望 ${item.expected_output}` : ''}
+                            {item.actual_output ? `，实际 ${item.actual_output}` : ''}
+                            {item.error_output ? `，错误 ${item.error_output}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 ) : null}
                 {submitResult.ai_analysis ? (
                   <div className="output-section">

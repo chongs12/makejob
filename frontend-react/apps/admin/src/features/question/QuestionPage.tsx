@@ -36,6 +36,7 @@ interface QuestionListItem {
   answer: string
   explanation: string
   solution?: QuestionSolution | null
+  judge_config?: QuestionJudgeConfig | null
   answer_template?: QuestionAnswerTemplate | null
   tags: string[]
   is_active: boolean
@@ -59,6 +60,31 @@ interface QuestionAnswerTemplate {
   sample_answer: string
   follow_ups: string[]
   pitfalls: string[]
+}
+
+interface QuestionTestCase {
+  input: string
+  expected_output: string
+  description?: string
+}
+
+interface QuestionReferenceSolution {
+  language: string
+  title?: string
+  code: string
+  explanation?: string
+}
+
+interface QuestionJudgeConfig {
+  evaluation_mode: 'analysis_only' | 'testcase'
+  default_language: string
+  allowed_languages: string[]
+  starter_code: string
+  public_test_cases: QuestionTestCase[]
+  hidden_test_cases?: QuestionTestCase[]
+  reference_solutions?: QuestionReferenceSolution[]
+  time_limit_ms: number
+  memory_limit_mb: number
 }
 
 interface QuestionTagTaxonomyGroup {
@@ -97,6 +123,15 @@ interface QuestionFormState {
   solutionEdgeCasesText: string
   solutionComplexity: string
   solutionMistakesText: string
+  evaluationMode: 'analysis_only' | 'testcase'
+  defaultLanguage: string
+  allowedLanguagesText: string
+  starterCode: string
+  publicCasesText: string
+  hiddenCasesText: string
+  referenceSolutionsText: string
+  timeLimitMs: string
+  memoryLimitMb: string
   answerTemplateConclusion: string
   answerTemplateKeyPointsText: string
   answerTemplateSampleAnswer: string
@@ -303,6 +338,15 @@ function buildInitialQuestionForm(): QuestionFormState {
     solutionEdgeCasesText: '',
     solutionComplexity: '',
     solutionMistakesText: '',
+    evaluationMode: 'analysis_only',
+    defaultLanguage: 'go',
+    allowedLanguagesText: 'go',
+    starterCode: '',
+    publicCasesText: '',
+    hiddenCasesText: '',
+    referenceSolutionsText: '',
+    timeLimitMs: '2000',
+    memoryLimitMb: '128',
     answerTemplateConclusion: '',
     answerTemplateKeyPointsText: '',
     answerTemplateSampleAnswer: '',
@@ -337,6 +381,15 @@ function buildQuestionForm(question?: QuestionListItem | null): QuestionFormStat
     solutionEdgeCasesText: (question.solution?.edge_cases || []).join('\n'),
     solutionComplexity: question.solution?.complexity || '',
     solutionMistakesText: (question.solution?.common_mistakes || []).join('\n'),
+    evaluationMode: question.judge_config?.evaluation_mode || 'analysis_only',
+    defaultLanguage: question.judge_config?.default_language || 'go',
+    allowedLanguagesText: (question.judge_config?.allowed_languages || []).join(', '),
+    starterCode: question.judge_config?.starter_code || '',
+    publicCasesText: JSON.stringify(question.judge_config?.public_test_cases || [], null, 2),
+    hiddenCasesText: JSON.stringify(question.judge_config?.hidden_test_cases || [], null, 2),
+    referenceSolutionsText: JSON.stringify(question.judge_config?.reference_solutions || [], null, 2),
+    timeLimitMs: String(question.judge_config?.time_limit_ms || 2000),
+    memoryLimitMb: String(question.judge_config?.memory_limit_mb || 128),
     answerTemplateConclusion: question.answer_template?.core_conclusion || '',
     answerTemplateKeyPointsText: (question.answer_template?.key_points || []).join('\n'),
     answerTemplateSampleAnswer: question.answer_template?.sample_answer || '',
@@ -386,6 +439,28 @@ function parseQuestionLineListText(value: string): string[] {
 }
 
 /**
+ * 解析测试用例 JSON 文本，供编程题判题配置表单复用。
+ */
+function parseQuestionCasesText(value: string): QuestionTestCase[] {
+  if (!value.trim()) {
+    return []
+  }
+  const parsed = JSON.parse(value) as unknown
+  return Array.isArray(parsed) ? (parsed as QuestionTestCase[]) : []
+}
+
+/**
+ * 解析参考实现 JSON 文本，供编程题判题配置表单复用。
+ */
+function parseQuestionReferenceSolutionsText(value: string): QuestionReferenceSolution[] {
+  if (!value.trim()) {
+    return []
+  }
+  const parsed = JSON.parse(value) as unknown
+  return Array.isArray(parsed) ? (parsed as QuestionReferenceSolution[]) : []
+}
+
+/**
  * 根据题型判断当前题目是否需要选项列表。
  */
 function requiresQuestionOptions(questionType: QuestionType): boolean {
@@ -419,6 +494,20 @@ function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> 
           pitfalls: parseQuestionLineListText(form.answerTemplatePitfallsText),
         }
       : null
+  const judgeConfig =
+    form.type === 'code'
+      ? {
+          evaluation_mode: form.evaluationMode,
+          default_language: form.defaultLanguage.trim() || 'go',
+          allowed_languages: parseQuestionTagsText(form.allowedLanguagesText),
+          starter_code: form.starterCode,
+          public_test_cases: parseQuestionCasesText(form.publicCasesText),
+          hidden_test_cases: parseQuestionCasesText(form.hiddenCasesText),
+          reference_solutions: parseQuestionReferenceSolutionsText(form.referenceSolutionsText),
+          time_limit_ms: Number(form.timeLimitMs) || 2000,
+          memory_limit_mb: Number(form.memoryLimitMb) || 128,
+        }
+      : null
 
   return {
     industry_id: Number(form.industryId),
@@ -431,6 +520,7 @@ function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> 
     answer: form.answer.trim(),
     explanation: form.explanation.trim(),
     solution: solution || undefined,
+    judge_config: judgeConfig || undefined,
     answer_template: answerTemplate || undefined,
     tags: parseQuestionTagsText(form.tagsText).join(','),
     is_active: form.isActive,
@@ -560,6 +650,27 @@ function validateQuestionForm(form: QuestionFormState): string {
   }
   if (form.type === 'code' && (!form.solutionSummary.trim() || !form.solutionApproach.trim())) {
     return '编程题至少需要补齐结构化解析中的“题意总结”和“解题思路”'
+  }
+  if (form.type === 'code' && form.evaluationMode === 'testcase') {
+    try {
+      const publicCases = parseQuestionCasesText(form.publicCasesText)
+      const hiddenCases = parseQuestionCasesText(form.hiddenCasesText)
+      const referenceSolutions = parseQuestionReferenceSolutionsText(form.referenceSolutionsText)
+      if (!form.defaultLanguage.trim()) {
+        return '测试用例判题模式必须填写默认语言'
+      }
+      if (publicCases.length === 0) {
+        return '测试用例判题模式至少需要一条公开样例'
+      }
+      if (hiddenCases.length === 0) {
+        return '测试用例判题模式至少需要一条隐藏用例'
+      }
+      if (referenceSolutions.length === 0) {
+        return '测试用例判题模式至少需要一份参考实现'
+      }
+    } catch {
+      return '测试用例和参考实现必须是合法 JSON'
+    }
   }
   if (form.type === 'subjective' && !form.answerTemplateConclusion.trim()) {
     return '主观题至少需要补齐参考作答模板中的“核心结论”'
@@ -1235,6 +1346,103 @@ export function QuestionPage() {
                   value={form.solutionMistakesText}
                   onChange={(event) => updateQuestionField('solutionMistakesText', event.target.value)}
                   placeholder={'每行一条，例如：\n漏掉边界判断\n索引越界\n复杂度分析缺失'}
+                />
+              </label>
+
+              <div className="admin-question-import__head">
+                <div>
+                  <strong>编程题判题配置</strong>
+                  <p>测试用例模式下将使用公开样例运行、隐藏用例提交判题；AI 只负责讲解，不负责最终裁决。</p>
+                </div>
+              </div>
+
+              <label className="admin-field">
+                <span>判题模式</span>
+                <select
+                  value={form.evaluationMode}
+                  onChange={(event) => updateQuestionField('evaluationMode', event.target.value as 'analysis_only' | 'testcase')}
+                >
+                  <option value="analysis_only">AI 分析模式</option>
+                  <option value="testcase">测试用例判题模式</option>
+                </select>
+              </label>
+
+              <div className="admin-question-editor__grid admin-question-editor__grid--triple">
+                <label className="admin-field">
+                  <span>默认语言</span>
+                  <input
+                    value={form.defaultLanguage}
+                    onChange={(event) => updateQuestionField('defaultLanguage', event.target.value)}
+                    placeholder="go"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>允许语言</span>
+                  <input
+                    value={form.allowedLanguagesText}
+                    onChange={(event) => updateQuestionField('allowedLanguagesText', event.target.value)}
+                    placeholder="go, python, javascript"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>起始模板代码</span>
+                  <input
+                    value={form.starterCode}
+                    onChange={(event) => updateQuestionField('starterCode', event.target.value)}
+                    placeholder="可选，用于初始化编辑器内容"
+                  />
+                </label>
+              </div>
+
+              <div className="admin-question-editor__grid admin-question-editor__grid--triple">
+                <label className="admin-field">
+                  <span>时间限制(ms)</span>
+                  <input
+                    value={form.timeLimitMs}
+                    onChange={(event) => updateQuestionField('timeLimitMs', event.target.value)}
+                    placeholder="2000"
+                  />
+                </label>
+
+                <label className="admin-field">
+                  <span>内存限制(MB)</span>
+                  <input
+                    value={form.memoryLimitMb}
+                    onChange={(event) => updateQuestionField('memoryLimitMb', event.target.value)}
+                    placeholder="128"
+                  />
+                </label>
+              </div>
+
+              <label className="admin-field">
+                <span>公开样例 JSON</span>
+                <textarea
+                  className="admin-question-editor__content"
+                  value={form.publicCasesText}
+                  onChange={(event) => updateQuestionField('publicCasesText', event.target.value)}
+                  placeholder={'[\n  {\n    "input": "3\\n1 2 3",\n    "expected_output": "6",\n    "description": "基础样例"\n  }\n]'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>隐藏用例 JSON</span>
+                <textarea
+                  className="admin-question-editor__content"
+                  value={form.hiddenCasesText}
+                  onChange={(event) => updateQuestionField('hiddenCasesText', event.target.value)}
+                  placeholder={'[\n  {\n    "input": "0",\n    "expected_output": "0",\n    "description": "边界场景"\n  }\n]'}
+                />
+              </label>
+
+              <label className="admin-field">
+                <span>参考实现 JSON</span>
+                <textarea
+                  className="admin-question-editor__content"
+                  value={form.referenceSolutionsText}
+                  onChange={(event) => updateQuestionField('referenceSolutionsText', event.target.value)}
+                  placeholder={'[\n  {\n    "language": "go",\n    "title": "Go 参考实现",\n    "code": "package main\\n\\nfunc main() {}"\n  }\n]'}
                 />
               </label>
             </div>

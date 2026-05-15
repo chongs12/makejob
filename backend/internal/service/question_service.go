@@ -26,16 +26,20 @@ type SubmitAnswerRequest struct {
 
 // SubmitAnswerResponse 提交答案响应DTO
 type SubmitAnswerResponse struct {
-	IsCorrect     bool   `json:"is_correct"`
-	CorrectAnswer string `json:"correct_answer"`
-	Explanation   string `json:"explanation"`
-	AIAnalysis    string `json:"ai_analysis,omitempty"`
+	IsCorrect      bool                  `json:"is_correct"`
+	CorrectAnswer  string                `json:"correct_answer"`
+	Explanation    string                `json:"explanation"`
+	AIAnalysis     string                `json:"ai_analysis,omitempty"`
+	EvaluationMode string                `json:"evaluation_mode,omitempty"`
+	JudgeSummary   *QuestionJudgeSummary `json:"judge_summary,omitempty"`
 }
 
 // RunCodeResponse 运行代码响应DTO
 type RunCodeResponse struct {
-	Output string `json:"output"`
-	Passed bool   `json:"passed"`
+	Output         string                `json:"output"`
+	Passed         bool                  `json:"passed"`
+	EvaluationMode string                `json:"evaluation_mode,omitempty"`
+	JudgeSummary   *QuestionJudgeSummary `json:"judge_summary,omitempty"`
 }
 
 // PracticeRecommendationItem 表示一条对症练习推荐结果。
@@ -77,6 +81,7 @@ type QuestionDetail struct {
 	TagList        []string                    `json:"tag_list"`
 	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
 	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
+	JudgeConfig    *QuestionJudgeConfigDetail  `json:"judge_config,omitempty"`
 }
 
 // RandomExamRequest 随机组卷请求DTO
@@ -194,6 +199,7 @@ type QuestionService interface {
 // CodeExecutor 代码执行器接口
 type CodeExecutor interface {
 	Execute(ctx context.Context, language, code string) (*CodeExecResult, error)
+	ExecuteWithInput(ctx context.Context, language, code string, stdin string) (*CodeExecResult, error)
 }
 
 // CodeExecResult 代码执行结果
@@ -339,6 +345,7 @@ func (s *questionService) GetQuestion(ctx context.Context, id uint, userID uint)
 		TagList:        parseQuestionTagsFromStorage(question.Tags),
 		Solution:       parseQuestionStructuredSolution(question.SolutionJSON, question),
 		AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, question),
+		JudgeConfig:    buildQuestionJudgeConfigDetail(parseQuestionJudgeConfig(question.JudgeConfigJSON, question), false),
 	}
 
 	// 如果用户已登录，查询收藏状态和笔记
@@ -475,8 +482,10 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 		return nil, common.NewBusinessError(common.CodeNotFound, "题目不存在")
 	}
 
+	judgeConfig := parseQuestionJudgeConfig(question.JudgeConfigJSON, question)
+
 	// 判分
-	isCorrect := s.judgeAnswer(question, req.Answer)
+	isCorrect := s.judgeAnswer(question, req.Answer, judgeConfig)
 
 	// 保存答题记录
 	record := &model.UserQuestionRecord{
@@ -489,18 +498,50 @@ func (s *questionService) SubmitAnswer(ctx context.Context, userID, questionID u
 
 	// 构建响应
 	resp := &SubmitAnswerResponse{
-		IsCorrect:     isCorrect,
-		CorrectAnswer: question.Answer,
-		Explanation:   question.Explanation,
+		IsCorrect:      isCorrect,
+		CorrectAnswer:  question.Answer,
+		Explanation:    question.Explanation,
+		EvaluationMode: resolveQuestionEvaluationMode(question, judgeConfig),
+	}
+
+	if question.IsCode() && judgeConfig != nil && judgeConfig.EvaluationMode == QuestionEvaluationModeTestcase {
+		summary, err := s.evaluateQuestionTestCases(ctx, question, judgeConfig, strings.TrimSpace(req.Answer), false)
+		if err != nil {
+			return nil, err
+		}
+		resp.IsCorrect = summary.AllPassed
+		resp.JudgeSummary = summary
+		resp.Explanation = buildQuestionJudgeExplanation(summary)
+		resp.CorrectAnswer = ""
 	}
 
 	// 对于编程题和主观题，调用AI分析
 	if question.Type == model.QuestionTypeCode || question.Type == model.QuestionTypeSubjective {
 		if s.quizAnalyzer != nil {
-			analysis, err := s.quizAnalyzer.AnalyzeCode(ctx, req.Answer, detectQuestionLanguage(question), question.Content)
+			analysis, err := s.quizAnalyzer.AnalyzeCode(ctx, req.Answer, resolveQuestionAnswerLanguage(question, judgeConfig), question.Content)
 			if err == nil {
-				resp.IsCorrect = analysis.IsCorrect
+				if !(question.IsCode() && judgeConfig != nil && judgeConfig.EvaluationMode == QuestionEvaluationModeTestcase) {
+					resp.IsCorrect = analysis.IsCorrect
+				}
 				analysisJSON, _ := json.Marshal(analysis)
+				resp.AIAnalysis = string(analysisJSON)
+				record.AnalysisJSON = resp.AIAnalysis
+			} else if question.IsCode() || question.Type == model.QuestionTypeSubjective {
+				fallbackAnalysis := ai.CodeAnalysis{
+					IsCorrect:       false,
+					Score:           55,
+					Feedback:        "当前未获取到模型分析结果，已回退为基础点评。",
+					Issues:          []string{"建议补充边界条件、自测过程和复杂度说明。"},
+					Improvements:    []string{"建议先按样例验证输入输出，再补充关键思路说明。"},
+					MistakeTags:     []string{"边界条件生疏"},
+					StrengthTags:    []string{},
+					TimeComplexity:  "待进一步分析",
+					SpaceComplexity: "待进一步分析",
+				}
+				if !(question.IsCode() && judgeConfig != nil && judgeConfig.EvaluationMode == QuestionEvaluationModeTestcase) {
+					resp.IsCorrect = fallbackAnalysis.IsCorrect
+				}
+				analysisJSON, _ := json.Marshal(fallbackAnalysis)
 				resp.AIAnalysis = string(analysisJSON)
 				record.AnalysisJSON = resp.AIAnalysis
 			}
@@ -529,11 +570,13 @@ func (s *questionService) RunCode(ctx context.Context, questionID uint, req *Sub
 		return nil, common.NewBusinessError(common.CodeNotFound, "题目不存在")
 	}
 
+	judgeConfig := parseQuestionJudgeConfig(question.JudgeConfigJSON, question)
 	userAnswer := strings.TrimSpace(req.Answer)
 	if userAnswer == "" {
 		return &RunCodeResponse{
-			Output: "请先输入代码",
-			Passed: false,
+			Output:         "请先输入代码",
+			Passed:         false,
+			EvaluationMode: resolveQuestionEvaluationMode(question, judgeConfig),
 		}, nil
 	}
 
@@ -542,17 +585,27 @@ func (s *questionService) RunCode(ctx context.Context, questionID uint, req *Sub
 		if s.codeExecutor == nil {
 			return nil, common.NewBusinessError(common.CodeInternalError, "代码执行器未配置")
 		}
-		lang := req.Language
-		if lang == "" {
-			lang = detectQuestionLanguage(question)
+		lang := resolveRequestedQuestionLanguage(req.Language, question, judgeConfig)
+		if judgeConfig != nil && judgeConfig.EvaluationMode == QuestionEvaluationModeTestcase {
+			summary, err := s.evaluateQuestionTestCases(ctx, question, judgeConfig, userAnswer, true)
+			if err != nil {
+				return nil, err
+			}
+			return &RunCodeResponse{
+				Output:         buildQuestionJudgeOutput(summary),
+				Passed:         summary.AllPassed,
+				EvaluationMode: judgeConfig.EvaluationMode,
+				JudgeSummary:   summary,
+			}, nil
 		}
 		result, err := s.codeExecutor.Execute(ctx, lang, userAnswer)
 		if err != nil {
 			return nil, fmt.Errorf("代码执行失败: %w", err)
 		}
 		return &RunCodeResponse{
-			Output: result.Output,
-			Passed: result.Passed,
+			Output:         result.Output,
+			Passed:         result.Passed,
+			EvaluationMode: resolveQuestionEvaluationMode(question, judgeConfig),
 		}, nil
 	case model.QuestionTypeSubjective:
 		return &RunCodeResponse{
@@ -568,7 +621,7 @@ func (s *questionService) RunCode(ctx context.Context, questionID uint, req *Sub
 }
 
 // judgeAnswer 判分逻辑
-func (s *questionService) judgeAnswer(question *model.Question, userAnswer string) bool {
+func (s *questionService) judgeAnswer(question *model.Question, userAnswer string, judgeConfig *QuestionJudgeConfig) bool {
 	userAnswer = strings.TrimSpace(userAnswer)
 	correctAnswer := strings.TrimSpace(question.Answer)
 
@@ -581,7 +634,12 @@ func (s *questionService) judgeAnswer(question *model.Question, userAnswer strin
 		userChoices := splitAndSort(userAnswer)
 		correctChoices := splitAndSort(correctAnswer)
 		return strings.EqualFold(userChoices, correctChoices)
-	case model.QuestionTypeCode, model.QuestionTypeSubjective:
+	case model.QuestionTypeCode:
+		if judgeConfig != nil && judgeConfig.EvaluationMode == QuestionEvaluationModeTestcase {
+			return false
+		}
+		return false
+	case model.QuestionTypeSubjective:
 		// 编程题和主观题：预留AI判分，当前返回false
 		return false
 	default:
@@ -925,7 +983,7 @@ func (s *questionService) SubmitExam(ctx context.Context, userID uint, req *Subm
 			timeSpent = ans.TimeSpent
 		}
 
-		isCorrect := s.judgeAnswer(question, userAnswer)
+		isCorrect := s.judgeAnswer(question, userAnswer, parseQuestionJudgeConfig(question.JudgeConfigJSON, question))
 		if isCorrect {
 			result.CorrectCount++
 		}

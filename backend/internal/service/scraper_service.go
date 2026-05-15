@@ -237,6 +237,15 @@ func (s *scraperService) importQuestions(ctx context.Context, req scraper.Import
 			Tags:        strings.Join(q.Tags, ","),
 			IsActive:    true,
 		}
+		if question.IsCode() {
+			judgeConfigJSON, err := marshalQuestionJudgeConfig(parseQuestionJudgeConfigPayload(q.JudgeConfig), &question)
+			if err != nil {
+				result.FailCount++
+				result.Errors = append(result.Errors, fmt.Sprintf("第%d题: judge_config 字段格式错误", i+1))
+				continue
+			}
+			question.JudgeConfigJSON = judgeConfigJSON
+		}
 
 		questionsToImport = append(questionsToImport, question)
 	}

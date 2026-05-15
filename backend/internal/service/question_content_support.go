@@ -27,6 +27,19 @@ type QuestionAnswerTemplate struct {
 	Pitfalls       []string `json:"pitfalls"`
 }
 
+// QuestionJudgeConfigDetail 描述前台与后台可直接消费的编程题判题配置。
+type QuestionJudgeConfigDetail struct {
+	EvaluationMode   string                      `json:"evaluation_mode"`
+	DefaultLanguage  string                      `json:"default_language"`
+	AllowedLanguages []string                    `json:"allowed_languages"`
+	StarterCode      string                      `json:"starter_code"`
+	PublicTestCases  []QuestionTestCase          `json:"public_test_cases"`
+	HiddenTestCases  []QuestionTestCase          `json:"hidden_test_cases,omitempty"`
+	ReferenceAnswers []QuestionReferenceSolution `json:"reference_solutions,omitempty"`
+	TimeLimitMS      int                         `json:"time_limit_ms"`
+	MemoryLimitMB    int                         `json:"memory_limit_mb"`
+}
+
 // QuestionTagTaxonomyGroup 描述一组标准题目标签及其用途说明。
 type QuestionTagTaxonomyGroup struct {
 	Group       string   `json:"group"`
@@ -380,6 +393,28 @@ func marshalQuestionAnswerTemplate(value *QuestionAnswerTemplate, question *mode
 		return "", err
 	}
 	return string(content), nil
+}
+
+// buildQuestionJudgeConfigDetail 将内部判题配置转换为对外返回结构，并按场景隐藏敏感字段。
+func buildQuestionJudgeConfigDetail(config *QuestionJudgeConfig, includeSensitive bool) *QuestionJudgeConfigDetail {
+	if config == nil {
+		return nil
+	}
+
+	detail := &QuestionJudgeConfigDetail{
+		EvaluationMode:   config.EvaluationMode,
+		DefaultLanguage:  config.DefaultLanguage,
+		AllowedLanguages: append([]string(nil), config.AllowedLanguages...),
+		StarterCode:      config.StarterCode,
+		PublicTestCases:  append([]QuestionTestCase(nil), config.PublicTestCases...),
+		TimeLimitMS:      config.TimeLimitMS,
+		MemoryLimitMB:    config.MemoryLimitMB,
+	}
+	if includeSensitive {
+		detail.HiddenTestCases = append([]QuestionTestCase(nil), config.HiddenTestCases...)
+		detail.ReferenceAnswers = append([]QuestionReferenceSolution(nil), config.ReferenceAnswers...)
+	}
+	return detail
 }
 
 // buildQuestionSetSummaries 根据当前题库内容构建核心题单摘要。

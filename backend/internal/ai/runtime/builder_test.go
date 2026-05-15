@@ -31,8 +31,8 @@ func (r *fakeAdminConfigRepo) BatchUpsert(context.Context, []model.AdminConfig) 
 	return nil
 }
 
-// TestLoadRuntimeConfigPrefersBaseConfig 验证 config.yaml 显式配置优先于后台配置。
-func TestLoadRuntimeConfigPrefersBaseConfig(t *testing.T) {
+// TestLoadRuntimeConfigPrefersAdminConfig 验证后台配置优先于 config.yaml 默认值。
+func TestLoadRuntimeConfigPrefersAdminConfig(t *testing.T) {
 	builder := &Builder{
 		configRepo: &fakeAdminConfigRepo{
 			items: []model.AdminConfig{
@@ -51,14 +51,14 @@ func TestLoadRuntimeConfigPrefersBaseConfig(t *testing.T) {
 
 	config := builder.loadRuntimeConfig(context.Background())
 
-	if got := config["ai_provider"]; got != "eino" {
-		t.Fatalf("expected ai_provider=eino, got %q", got)
+	if got := config["ai_provider"]; got != "azure" {
+		t.Fatalf("expected ai_provider=azure, got %q", got)
 	}
-	if got := config["ai_model"]; got != "cfg-model" {
-		t.Fatalf("expected ai_model=cfg-model, got %q", got)
+	if got := config["ai_model"]; got != "db-model" {
+		t.Fatalf("expected ai_model=db-model, got %q", got)
 	}
-	if got := config["ai_timeout_seconds"]; got != "30" {
-		t.Fatalf("expected ai_timeout_seconds=30, got %q", got)
+	if got := config["ai_timeout_seconds"]; got != "45" {
+		t.Fatalf("expected ai_timeout_seconds=45, got %q", got)
 	}
 }
 

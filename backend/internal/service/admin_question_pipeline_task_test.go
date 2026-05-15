@@ -37,7 +37,7 @@ func (s *pipelineCategoryRepositoryStub) Delete(_ context.Context, _ uint) error
 	return nil
 }
 
-// TestBuildQuestionPipelineTaskPayloadNormalizesDefaults 验证异步题目流水线任务入队前会补齐默认模式、数量和抓取开关。
+// TestBuildQuestionPipelineTaskPayloadNormalizesDefaults 验证异步题目流水线任务入队前会补齐默认逐张模式、数量和抓取开关。
 func TestBuildQuestionPipelineTaskPayloadNormalizesDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -57,8 +57,8 @@ func TestBuildQuestionPipelineTaskPayloadNormalizesDefaults(t *testing.T) {
 	if normalized.IndustryCode != "go" || normalized.Requirement != "生成 Go 并发题卡" {
 		t.Fatalf("expected trimmed request, got %#v", normalized)
 	}
-	if normalized.GenerationMode != questionPipelineModePlanned {
-		t.Fatalf("expected planned mode fallback, got %s", normalized.GenerationMode)
+	if normalized.GenerationMode != questionPipelineModeDirect {
+		t.Fatalf("expected direct mode fallback, got %s", normalized.GenerationMode)
 	}
 	if normalized.CandidateCount != maxQuestionPipelineCount {
 		t.Fatalf("expected normalized candidate count %d, got %d", maxQuestionPipelineCount, normalized.CandidateCount)

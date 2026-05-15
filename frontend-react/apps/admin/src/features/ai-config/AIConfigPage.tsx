@@ -133,7 +133,7 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
   {
     key: 'ai_scene_interview_model',
     label: '面试场景模型',
-    description: '为空时继承默认模型。',
+    description: '题卡流水线使用面试场景模型；为空时继承默认模型。',
     type: 'string',
     group: 'scene',
     placeholder: '留空则继承默认模型',
@@ -277,6 +277,8 @@ function buildAIConfigFieldMetas(
  * 计算当前页头部要展示的运行时摘要，便于管理员快速确认主 Provider、模型和兜底值。
  */
 function buildRuntimeSummary(configs: Record<string, string>): Array<{ label: string; value: string }> {
+  const interviewModel = configs.ai_scene_interview_model?.trim() || configs.ai_model || '未配置'
+
   return [
     {
       label: '当前主 Provider',
@@ -285,6 +287,10 @@ function buildRuntimeSummary(configs: Record<string, string>): Array<{ label: st
     {
       label: '当前默认模型',
       value: configs.ai_model || '未配置',
+    },
+    {
+      label: '题卡流水线模型',
+      value: interviewModel,
     },
     {
       label: '当前兜底 Provider',
@@ -493,7 +499,7 @@ export function AIConfigPage() {
           <span className="admin-tag">AI 运行时</span>
           <h2>AI 配置</h2>
           <p className="admin-copy">
-            当前页直接管理运行时 Provider、默认模型和场景模型覆盖。保存后会整体回写后台配置，陪伴、计划、面试等能力会按新配置生效。
+            当前页直接管理运行时 Provider、默认模型和场景模型覆盖。保存后会整体回写后台配置，陪伴、计划、面试等能力会按新配置生效；题卡流水线使用面试场景模型。
           </p>
           {runtimeAttentionNotes.length ? (
             <ul className="admin-ai-config__notes">
@@ -590,7 +596,7 @@ export function AIConfigPage() {
         <section className="admin-ai-config__section">
           <div className="admin-ai-config__section-head">
             <h3>场景模型覆盖</h3>
-            <p>留空表示沿用默认模型，仅在场景差异明显时单独指定。</p>
+            <p>留空表示沿用默认模型，仅在场景差异明显时单独指定。题卡流水线使用面试场景模型。</p>
           </div>
           <div className="admin-ai-config__grid">
             {groupedFields.scene.map((field) => (

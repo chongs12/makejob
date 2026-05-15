@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"makejob-backend/internal/ai"
 	"makejob-backend/internal/model"
 )
 
@@ -202,5 +203,37 @@ func TestDebuggerRunRejectsRemovedMockProvider(t *testing.T) {
 	}
 	if result.Provider != "unavailable" {
 		t.Fatalf("expected provider unavailable, got %q", result.Provider)
+	}
+}
+
+func TestApplyDebugRuntimeOverridesPreservesExistingSecrets(t *testing.T) {
+	/* 验证仅覆盖显式传入字段，不会把现有 api_key/base_url/model 覆盖成默认值 */
+	runtimeConfig := map[string]string{
+		ai.ConfigKeyProvider:       "eino",
+		ai.ConfigKeyModel:          "MiniMax-M2.7",
+		ai.ConfigKeyAPIKey:         "secret-token",
+		ai.ConfigKeyBaseURL:        "https://api.minimaxi.com/v1",
+		ai.ConfigKeyTimeoutSeconds: "30",
+	}
+
+	merged := applyDebugRuntimeOverrides(runtimeConfig, map[string]string{
+		ai.ConfigKeyTimeoutSeconds: "90",
+		"max_tokens":               "1400",
+	})
+
+	if merged[ai.ConfigKeyAPIKey] != "secret-token" {
+		t.Fatalf("expected api key to be preserved, got %q", merged[ai.ConfigKeyAPIKey])
+	}
+	if merged[ai.ConfigKeyBaseURL] != "https://api.minimaxi.com/v1" {
+		t.Fatalf("expected base url to be preserved, got %q", merged[ai.ConfigKeyBaseURL])
+	}
+	if merged[ai.ConfigKeyModel] != "MiniMax-M2.7" {
+		t.Fatalf("expected model to be preserved, got %q", merged[ai.ConfigKeyModel])
+	}
+	if merged[ai.ConfigKeyTimeoutSeconds] != "90" {
+		t.Fatalf("expected timeout override to apply, got %q", merged[ai.ConfigKeyTimeoutSeconds])
+	}
+	if merged[ai.ConfigKeyMaxTokens] != "1400" {
+		t.Fatalf("expected max_tokens override to apply, got %q", merged[ai.ConfigKeyMaxTokens])
 	}
 }

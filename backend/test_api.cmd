@@ -5,7 +5,7 @@ echo ============================================
 echo MakeJob API Test Suite
 echo ============================================
 
-set BASE=http://localhost:8080
+set BASE=http://localhost:8082
 
 echo.
 echo [1] Health Check

@@ -10,7 +10,8 @@ import type { ScraperTaskDetail } from '../runtime/runtimeTypes'
 
 type QuestionType = 'choice' | 'multi' | 'code' | 'subjective'
 type QuestionDifficulty = 'easy' | 'medium' | 'hard'
-type QuestionPipelineGenerationMode = 'planned' | 'direct_single'
+type QuestionPipelineGenerationMode = 'direct_single'
+type QuestionEvaluationMode = 'analysis_only' | 'testcase'
 
 interface Industry {
   id: number
@@ -33,6 +34,31 @@ interface ScraperSource {
   is_active: boolean
 }
 
+interface QuestionTestCase {
+  input: string
+  expected_output: string
+  description?: string
+}
+
+interface QuestionReferenceSolution {
+  language: string
+  title?: string
+  code: string
+  explanation?: string
+}
+
+interface QuestionJudgeConfig {
+  evaluation_mode: QuestionEvaluationMode
+  default_language: string
+  allowed_languages: string[]
+  starter_code: string
+  public_test_cases: QuestionTestCase[]
+  hidden_test_cases: QuestionTestCase[]
+  reference_solutions: QuestionReferenceSolution[]
+  time_limit_ms: number
+  memory_limit_mb: number
+}
+
 interface QuestionPipelineCard {
   id: string
   title: string
@@ -41,8 +67,10 @@ interface QuestionPipelineCard {
   difficulty: QuestionDifficulty
   category: string
   answer: string
+  solution: string
   explanation: string
   tags: string[]
+  judge_config?: QuestionJudgeConfig | null
   confidence: number
   source_type: string
   source_label: string
@@ -76,8 +104,10 @@ interface RawQuestionPipelineCard {
   difficulty?: unknown
   category?: unknown
   answer?: unknown
+  solution?: unknown
   explanation?: unknown
   tags?: unknown
+  judge_config?: unknown
   confidence?: unknown
   source_type?: unknown
   source_label?: unknown
@@ -99,6 +129,10 @@ interface RawQuestionPipelineStreamEvent {
   message?: unknown
   trace_id?: unknown
   raw_output?: unknown
+  failure_stage?: unknown
+  candidate_excerpt?: unknown
+  repair_attempted?: unknown
+  supplement_attempted?: unknown
   slot_index?: unknown
   retry_index?: unknown
   card?: unknown
@@ -122,7 +156,6 @@ interface PipelineFormState {
   industryCode: string
   requirement: string
   agentPrompt: string
-  generationMode: QuestionPipelineGenerationMode
   candidateCount: string
   includeScraped: boolean
   includeGenerated: boolean
@@ -132,6 +165,7 @@ interface PipelineFormState {
 interface EditablePipelineCard extends QuestionPipelineCard {
   selected: boolean
   tagsText: string
+  judgeConfigText: string
 }
 
 interface StreamErrorPayload {
@@ -143,6 +177,10 @@ interface PipelineDebugEntry {
   message: string
   traceId: string
   rawOutput: string
+  failureStage: string
+  candidateExcerpt: string
+  repairAttempted: boolean
+  supplementAttempted: boolean
   slotIndex: number
   retryIndex: number
 }
@@ -236,7 +274,7 @@ function buildQuestionPipelineGeneratePayload(form: PipelineFormState): Record<s
     industry_code: form.industryCode,
     requirement: form.requirement.trim(),
     agent_prompt: form.agentPrompt.trim(),
-    generation_mode: form.generationMode,
+    generation_mode: 'direct_single',
     candidate_count: Number(form.candidateCount) || 8,
     include_scraped: form.includeScraped,
     include_generated: form.includeGenerated,
@@ -309,6 +347,10 @@ async function streamQuestionPipeline(
     const message = typeof rawPayload.message === 'string' ? rawPayload.message.trim() : ''
     const traceId = typeof rawPayload.trace_id === 'string' ? rawPayload.trace_id.trim() : ''
     const rawOutput = typeof rawPayload.raw_output === 'string' ? rawPayload.raw_output.trim() : ''
+    const failureStage = typeof rawPayload.failure_stage === 'string' ? rawPayload.failure_stage.trim() : ''
+    const candidateExcerpt = typeof rawPayload.candidate_excerpt === 'string' ? rawPayload.candidate_excerpt.trim() : ''
+    const repairAttempted = rawPayload.repair_attempted === true
+    const supplementAttempted = rawPayload.supplement_attempted === true
     const slotIndex = typeof rawPayload.slot_index === 'number' ? rawPayload.slot_index : 0
     const retryIndex = typeof rawPayload.retry_index === 'number' ? rawPayload.retry_index : 0
 
@@ -321,12 +363,16 @@ async function streamQuestionPipeline(
       case 'warning':
         if (message) {
           callbacks.onWarning(
-            rawOutput || traceId
+            rawOutput || traceId || failureStage || candidateExcerpt
               ? {
-                  id: `${traceId || 'warning'}-${slotIndex || 0}-${retryIndex || 0}-${message}`,
+                  id: `${traceId || 'warning'}-${failureStage || 'unknown'}-${slotIndex || 0}-${retryIndex || 0}-${message}`,
                   message,
                   traceId,
                   rawOutput,
+                  failureStage,
+                  candidateExcerpt,
+                  repairAttempted,
+                  supplementAttempted,
                   slotIndex,
                   retryIndex,
                 }
@@ -473,8 +519,7 @@ function buildInitialPipelineForm(): PipelineFormState {
   return {
     industryCode: '',
     requirement: '',
-    agentPrompt: '确保每张题卡考察不同考点，优先生成真正区分度高的问答题，避免模板化和重复表述。',
-    generationMode: 'planned',
+    agentPrompt: '确保每张题卡考察不同考点，严格遵守岗位要求里的题型与输出结构，避免模板化和重复表述。',
     candidateCount: '8',
     includeScraped: true,
     includeGenerated: true,
@@ -490,6 +535,7 @@ function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard
     ...card,
     selected: true,
     tagsText: (card.tags || []).join(', '),
+    judgeConfigText: formatQuestionJudgeConfigText(card.judge_config),
   }))
 }
 
@@ -499,16 +545,27 @@ function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard
 function buildSelectedImportPayload(cards: EditablePipelineCard[]) {
   return cards
     .filter((item) => item.selected)
-    .map((item) => ({
-      title: item.title.trim(),
-      content: item.content.trim(),
-      type: item.type,
-      difficulty: item.difficulty,
-      category: item.category,
-      answer: item.answer.trim(),
-      explanation: item.explanation.trim(),
-      tags: parseTagsInput(item.tagsText),
-    }))
+    .map((item) => {
+      const judgeConfig = item.type === 'code' ? parseQuestionPipelineJudgeConfigText(item.judgeConfigText) : undefined
+      if (item.type === 'code') {
+        if (!item.solution.trim()) {
+          throw new Error(`编程题《${item.title || '未命名题卡'}》缺少代码思路解析`)
+        }
+        validateQuestionPipelineCodeJudgeConfig(judgeConfig)
+      }
+      return {
+        title: item.title.trim(),
+        content: item.content.trim(),
+        type: item.type,
+        difficulty: item.difficulty,
+        category: item.category,
+        answer: item.answer.trim(),
+        solution: item.solution.trim(),
+        explanation: item.explanation.trim(),
+        tags: parseTagsInput(item.tagsText),
+        judge_config: judgeConfig,
+      }
+    })
 }
 
 /**
@@ -532,7 +589,6 @@ function restoreQuestionPipelineFormFromTaskPayload(
       industryCode: typeof payload.industry_code === 'string' ? payload.industry_code.trim() : current.industryCode,
       requirement: typeof payload.requirement === 'string' ? payload.requirement.trim() : current.requirement,
       agentPrompt: typeof payload.agent_prompt === 'string' ? payload.agent_prompt.trim() : current.agentPrompt,
-      generationMode: normalizeQuestionPipelineGenerationMode(payload.generation_mode),
       candidateCount,
       includeScraped: typeof payload.include_scraped === 'boolean' ? payload.include_scraped : current.includeScraped,
       includeGenerated: typeof payload.include_generated === 'boolean' ? payload.include_generated : current.includeGenerated,
@@ -611,8 +667,11 @@ function reconcileEditableCards(current: EditablePipelineCard[], incoming: Edita
       difficulty: existing.difficulty,
       category: existing.category,
       answer: existing.answer,
+      solution: existing.solution,
       explanation: existing.explanation,
       tagsText: existing.tagsText,
+      judge_config: existing.judge_config,
+      judgeConfigText: existing.judgeConfigText,
     }
   })
 }
@@ -632,11 +691,136 @@ function normalizeStringList(value: unknown): string[] {
 }
 
 /**
+ * 为流水线卡片构造最小可编辑的编程题判题配置，避免前端把编程题退回成空白结构。
+ */
+function buildDefaultPipelineJudgeConfig(): QuestionJudgeConfig {
+  return {
+    evaluation_mode: 'testcase',
+    default_language: 'go',
+    allowed_languages: ['go'],
+    starter_code: '',
+    public_test_cases: [],
+    hidden_test_cases: [],
+    reference_solutions: [],
+    time_limit_ms: 2000,
+    memory_limit_mb: 128,
+  }
+}
+
+/**
+ * 解析后端或模型返回的 judge_config，统一收敛为前端可编辑对象。
+ */
+function normalizeQuestionJudgeConfigValue(value: unknown): QuestionJudgeConfig | null {
+  if (!value) {
+    return null
+  }
+
+  let payload = value
+  if (typeof value === 'string') {
+    try {
+      payload = JSON.parse(value) as unknown
+    } catch {
+      return null
+    }
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+  const evaluationMode: QuestionEvaluationMode = record.evaluation_mode === 'testcase' ? 'testcase' : 'analysis_only'
+  const defaultLanguage = typeof record.default_language === 'string' && record.default_language.trim() ? record.default_language.trim() : 'go'
+  const allowedLanguages = normalizeStringList(record.allowed_languages)
+
+  return {
+    evaluation_mode: evaluationMode,
+    default_language: defaultLanguage,
+    allowed_languages: allowedLanguages.length > 0 ? allowedLanguages : [defaultLanguage],
+    starter_code: typeof record.starter_code === 'string' ? record.starter_code : '',
+    public_test_cases: Array.isArray(record.public_test_cases) ? (record.public_test_cases as QuestionTestCase[]) : [],
+    hidden_test_cases: Array.isArray(record.hidden_test_cases) ? (record.hidden_test_cases as QuestionTestCase[]) : [],
+    reference_solutions: Array.isArray(record.reference_solutions) ? (record.reference_solutions as QuestionReferenceSolution[]) : [],
+    time_limit_ms: typeof record.time_limit_ms === 'number' && record.time_limit_ms > 0 ? record.time_limit_ms : 2000,
+    memory_limit_mb: typeof record.memory_limit_mb === 'number' && record.memory_limit_mb > 0 ? record.memory_limit_mb : 128,
+  }
+}
+
+/**
+ * 把编程题判题配置格式化为多行 JSON，便于流水线人工复核与补录。
+ */
+function formatQuestionJudgeConfigText(value?: QuestionJudgeConfig | null): string {
+  return JSON.stringify(value || buildDefaultPipelineJudgeConfig(), null, 2)
+}
+
+/**
+ * 解析流水线卡片中的 judge_config 文本，并在 JSON 不合法时直接阻止导入。
+ */
+function parseQuestionPipelineJudgeConfigText(value: string): QuestionJudgeConfig | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed) as unknown
+  } catch {
+    throw new Error('编程题 judge_config 必须是合法 JSON')
+  }
+
+  const normalized = normalizeQuestionJudgeConfigValue(parsed)
+  if (!normalized) {
+    throw new Error('编程题 judge_config 必须是 JSON 对象')
+  }
+  return normalized
+}
+
+/**
+ * 校验编程题判题配置是否满足当前流水线导入要求。
+ */
+function validateQuestionPipelineCodeJudgeConfig(value?: QuestionJudgeConfig): void {
+  if (!value) {
+    throw new Error('编程题缺少 judge_config')
+  }
+  if (value.evaluation_mode !== 'testcase') {
+    throw new Error('编程题 judge_config 必须使用 testcase 判题模式')
+  }
+  if ((value.public_test_cases || []).length !== 3) {
+    throw new Error('编程题必须提供 3 条公开测试用例')
+  }
+  if ((value.hidden_test_cases || []).length === 0) {
+    throw new Error('编程题必须提供隐藏测试用例')
+  }
+  if ((value.reference_solutions || []).length === 0) {
+    throw new Error('编程题必须提供代码参考答案')
+  }
+}
+
+/**
  * 规范化题型枚举，保证页面下拉框始终拿到受控值。
  */
 function normalizeQuestionType(value: unknown): QuestionType {
-  if (value === 'choice' || value === 'multi' || value === 'code' || value === 'subjective') {
-    return value
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (normalized === 'choice' || normalized === 'single' || normalized === 'singlechoice') {
+    return 'choice'
+  }
+  if (normalized === 'multi' || normalized === 'multiple' || normalized === 'multiplechoice') {
+    return 'multi'
+  }
+  if (
+    normalized === 'code'
+    || normalized === 'coding'
+    || normalized === 'programming'
+    || normalized === 'algorithm'
+    || normalized === '编程题'
+    || normalized === '代码题'
+    || normalized === '算法题'
+  ) {
+    return 'code'
+  }
+  if (normalized === 'subjective' || normalized === 'qa' || normalized === 'essay' || normalized === '问答题' || normalized === '主观题') {
+    return 'subjective'
   }
   return 'subjective'
 }
@@ -655,7 +839,7 @@ function normalizeQuestionDifficulty(value: unknown): QuestionDifficulty {
  * 规范化题目流水线生成模式，避免接口返回未知值导致页面状态不一致。
  */
 function normalizeQuestionPipelineGenerationMode(value: unknown): QuestionPipelineGenerationMode {
-  return value === 'direct_single' ? 'direct_single' : 'planned'
+  return 'direct_single'
 }
 
 /**
@@ -665,17 +849,22 @@ function normalizeQuestionPipelineCard(card: RawQuestionPipelineCard, index: num
   const title = typeof card.title === 'string' ? card.title.trim() : ''
   const content = typeof card.content === 'string' ? card.content.trim() : ''
   const answer = typeof card.answer === 'string' ? card.answer.trim() : ''
+  const solution = typeof card.solution === 'string' ? card.solution.trim() : ''
+  const type = normalizeQuestionType(card.type)
+  const judgeConfig = normalizeQuestionJudgeConfigValue(card.judge_config)
 
   return {
     id: typeof card.id === 'string' && card.id.trim() ? card.id.trim() : `pipeline-card-${index + 1}`,
     title,
     content,
-    type: normalizeQuestionType(card.type),
+    type,
     difficulty: normalizeQuestionDifficulty(card.difficulty),
     category: typeof card.category === 'string' ? card.category.trim() : '',
     answer,
+    solution,
     explanation: typeof card.explanation === 'string' ? card.explanation.trim() : '',
     tags: normalizeStringList(card.tags),
+    judge_config: type === 'code' ? (judgeConfig || buildDefaultPipelineJudgeConfig()) : judgeConfig,
     confidence: typeof card.confidence === 'number' ? card.confidence : 0,
     source_type: typeof card.source_type === 'string' ? card.source_type.trim() : 'generated',
     source_label: typeof card.source_label === 'string' ? card.source_label.trim() : 'AI 智能体生成',
@@ -724,10 +913,34 @@ function normalizeQuestionPipelineGenerateResponse(
 }
 
 /**
+ * 将后端失败阶段映射为更易读的中文标签，便于页面快速定位问题发生在哪一层。
+ */
+function formatQuestionPipelineFailureStage(stage: string): string {
+  switch (stage.trim()) {
+    case 'parse':
+      return '结构解析失败'
+    case 'supplement':
+      return '编程题补齐失败'
+    case 'constraint':
+      return '约束校验失败'
+    case 'slot_exhausted':
+      return '重试耗尽'
+    case 'model_call':
+      return '模型调用失败'
+    case 'provider':
+      return 'Provider 配置异常'
+    case 'normalize':
+      return '题卡归一化失败'
+    default:
+      return stage.trim() || '未标注阶段'
+  }
+}
+
+/**
  * 为题目流水线生成模式返回简洁中文文案，方便页面提示当前链路。
  */
 function questionPipelineGenerationModeLabel(mode: QuestionPipelineGenerationMode): string {
-  return mode === 'direct_single' ? '逐张直生' : '两阶段规划'
+  return '逐张直生'
 }
 
 /**
@@ -990,7 +1203,7 @@ export function QuestionPipelinePage() {
    */
   function handleGenerate(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    if (form.generationMode === 'direct_single' && form.includeGenerated) {
+    if (form.includeGenerated) {
       const controller = new AbortController()
       streamAbortRef.current?.abort()
       streamAbortRef.current = controller
@@ -1141,6 +1354,39 @@ export function QuestionPipelinePage() {
     )
   }
 
+  /**
+   * 切换题卡题型时，为编程题自动补一个最小 judge_config 模板，避免导入时字段完全缺失。
+   */
+  function handleCardTypeChange(cardId: string, nextType: QuestionType): void {
+    setCards((current) =>
+      current.map((item) => {
+        if (item.id !== cardId) {
+          return item
+        }
+
+        if (nextType !== 'code') {
+          return {
+            ...item,
+            type: nextType,
+          }
+        }
+
+        let nextJudgeConfig = item.judge_config || buildDefaultPipelineJudgeConfig()
+        try {
+          nextJudgeConfig = parseQuestionPipelineJudgeConfigText(item.judgeConfigText || '') || nextJudgeConfig
+        } catch {
+          nextJudgeConfig = nextJudgeConfig || buildDefaultPipelineJudgeConfig()
+        }
+        return {
+          ...item,
+          type: nextType,
+          judge_config: nextJudgeConfig,
+          judgeConfigText: formatQuestionJudgeConfigText(nextJudgeConfig),
+        }
+      }),
+    )
+  }
+
   if (industriesQuery.isLoading || categoriesQuery.isLoading || sourcesQuery.isLoading) {
     return (
       <section className="admin-panel">
@@ -1173,7 +1419,7 @@ export function QuestionPipelinePage() {
           <span className="admin-tag">题目流水线</span>
           <h2>大模型题库流水线</h2>
           <p className="admin-copy">
-            输入岗位要求和智能体命令后，你可以切换“两阶段规划”或“逐张直生”两种模式。前者先拆解考点再批量生成，后者按单卡循环生成，便于对比稳定性与指令遵循效果。
+            输入岗位要求和智能体命令后，系统会统一采用逐张直生模式生成候选题卡，并实时展示单卡结果、失败原因与原始调试输出。
           </p>
         </div>
         <div className="admin-question-pipeline-page__summary">
@@ -1213,21 +1459,6 @@ export function QuestionPipelinePage() {
             </select>
           </label>
 
-          <label className="admin-field">
-            <span>生成模式</span>
-            <select
-              value={form.generationMode}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  generationMode: normalizeQuestionPipelineGenerationMode(event.target.value),
-                }))
-              }
-            >
-              <option value="planned">两阶段规划</option>
-              <option value="direct_single">逐张直生</option>
-            </select>
-          </label>
         </div>
 
         <label className="admin-field">
@@ -1382,9 +1613,18 @@ export function QuestionPipelinePage() {
               <summary>
                 {entry.slotIndex > 0 ? `第 ${entry.slotIndex} 张` : '未定位卡位'}
                 {entry.retryIndex > 0 ? ` · 第 ${entry.retryIndex} 次尝试` : ''}
+                {entry.failureStage ? ` · ${formatQuestionPipelineFailureStage(entry.failureStage)}` : ''}
                 {entry.traceId ? ` · trace_id: ${entry.traceId}` : ''}
               </summary>
               <p>{entry.message}</p>
+              {entry.repairAttempted || entry.supplementAttempted ? (
+                <p>
+                  {entry.repairAttempted ? '已触发 JSON 修复' : '未触发 JSON 修复'}
+                  {' · '}
+                  {entry.supplementAttempted ? '已触发编程题补齐' : '未触发编程题补齐'}
+                </p>
+              ) : null}
+              {entry.candidateExcerpt ? <pre>{entry.candidateExcerpt}</pre> : null}
               {entry.traceId ? <p>你也可以去 AI 调用日志页按 trace_id 检索这次调用。</p> : null}
               <pre>{entry.rawOutput || '当前事件未携带原始输出。'}</pre>
             </details>
@@ -1469,7 +1709,7 @@ export function QuestionPipelinePage() {
                   <span>题型</span>
                   <select
                     value={card.type}
-                    onChange={(event) => updateCardField(card.id, 'type', event.target.value as QuestionType)}
+                    onChange={(event) => handleCardTypeChange(card.id, event.target.value as QuestionType)}
                   >
                     {QUESTION_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1514,20 +1754,31 @@ export function QuestionPipelinePage() {
                 />
               </label>
 
-              <label className="admin-field">
-                <span>标准答案</span>
-                <textarea
-                  className="admin-question-pipeline-card__answer"
-                  value={card.answer}
-                  onChange={(event) => updateCardField(card.id, 'answer', event.target.value)}
-                />
-              </label>
+                <label className="admin-field">
+                  <span>{card.type === 'code' ? '代码参考答案' : '标准答案'}</span>
+                  <textarea
+                    className="admin-question-pipeline-card__answer"
+                    value={card.answer}
+                    onChange={(event) => updateCardField(card.id, 'answer', event.target.value)}
+                  />
+                </label>
 
-              <label className="admin-field">
-                <span>解析</span>
-                <textarea
-                  className="admin-question-pipeline-card__answer"
-                  value={card.explanation}
+                {card.type === 'code' ? (
+                  <label className="admin-field">
+                    <span>代码思路解析</span>
+                    <textarea
+                      className="admin-question-pipeline-card__answer"
+                      value={card.solution}
+                      onChange={(event) => updateCardField(card.id, 'solution', event.target.value)}
+                    />
+                  </label>
+                ) : null}
+
+                <label className="admin-field">
+                  <span>{card.type === 'code' ? '考察意图 / 补充说明' : '解析'}</span>
+                  <textarea
+                    className="admin-question-pipeline-card__answer"
+                    value={card.explanation}
                   onChange={(event) => updateCardField(card.id, 'explanation', event.target.value)}
                 />
               </label>
@@ -1536,6 +1787,17 @@ export function QuestionPipelinePage() {
                 <span>标签</span>
                 <input value={card.tagsText} onChange={(event) => updateCardField(card.id, 'tagsText', event.target.value)} />
               </label>
+
+              {card.type === 'code' ? (
+                <label className="admin-field">
+                  <span>判题配置 judge_config</span>
+                  <textarea
+                    className="admin-question-pipeline-card__content"
+                    value={card.judgeConfigText}
+                    onChange={(event) => updateCardField(card.id, 'judgeConfigText', event.target.value)}
+                  />
+                </label>
+              ) : null}
             </article>
           ))}
         </div>

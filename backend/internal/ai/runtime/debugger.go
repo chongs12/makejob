@@ -17,14 +17,15 @@ import (
 
 // DebugRequest 定义管理端 AI 调试请求。
 type DebugRequest struct {
-	Scene           string            `json:"scene"`
-	TaskID          *uint             `json:"task_id,omitempty"`
-	IndustryID      *uint             `json:"industry_id,omitempty"`
-	TemplateID      *uint             `json:"template_id,omitempty"`
-	TemplateContent string            `json:"template_content,omitempty"`
-	Variables       map[string]string `json:"variables,omitempty"`
-	RunModel        bool              `json:"run_model"`
-	UserInput       string            `json:"user_input,omitempty"`
+	Scene            string            `json:"scene"`
+	TaskID           *uint             `json:"task_id,omitempty"`
+	IndustryID       *uint             `json:"industry_id,omitempty"`
+	TemplateID       *uint             `json:"template_id,omitempty"`
+	TemplateContent  string            `json:"template_content,omitempty"`
+	Variables        map[string]string `json:"variables,omitempty"`
+	RuntimeOverrides map[string]string `json:"runtime_overrides,omitempty"`
+	RunModel         bool              `json:"run_model"`
+	UserInput        string            `json:"user_input,omitempty"`
 }
 
 // DebugResponse 定义管理端 AI 调试响应。
@@ -83,6 +84,7 @@ func (d *Debugger) Run(ctx context.Context, req DebugRequest) (*DebugResponse, e
 		baseConfig:   d.baseConfig,
 	}
 	runtimeConfig := builder.loadRuntimeConfig(ctx)
+	runtimeConfig = applyDebugRuntimeOverrides(runtimeConfig, req.RuntimeOverrides)
 	sceneConfig := buildSceneConfig(runtimeConfig, scene)
 
 	prompts := &promptResolver{
@@ -249,6 +251,67 @@ func defaultDebugUserInput(scene string, userInput string) string {
 		return "请示例性评估一个解题答案，并给出简短建议。"
 	default:
 		return "请返回一个调试用示例输出。"
+	}
+}
+
+// applyDebugRuntimeOverrides 将调试请求中显式传入的 runtime 覆盖项合并进当前配置。
+func applyDebugRuntimeOverrides(runtimeConfig map[string]string, overrides map[string]string) map[string]string {
+	if len(overrides) == 0 {
+		return runtimeConfig
+	}
+
+	merged := ai.NormalizeRuntimeConfig(runtimeConfig)
+	for key, value := range normalizeExplicitDebugRuntimeOverrides(overrides) {
+		merged[key] = value
+	}
+	return ai.NormalizeRuntimeConfig(merged)
+}
+
+// normalizeExplicitDebugRuntimeOverrides 仅规范化调试请求显式传入的覆盖键，避免默认值覆盖现有运行时配置。
+func normalizeExplicitDebugRuntimeOverrides(overrides map[string]string) map[string]string {
+	normalized := make(map[string]string, len(overrides))
+	for rawKey, rawValue := range overrides {
+		key := normalizeExplicitDebugRuntimeOverrideKey(rawKey)
+		value := strings.TrimSpace(rawValue)
+		if key == "" || value == "" {
+			continue
+		}
+		normalized[key] = value
+	}
+	return normalized
+}
+
+// normalizeExplicitDebugRuntimeOverrideKey 将调试覆盖项键名收敛为 runtime 使用的标准配置键。
+func normalizeExplicitDebugRuntimeOverrideKey(key string) string {
+	trimmed := strings.TrimSpace(key)
+	switch trimmed {
+	case "provider":
+		return ai.ConfigKeyProvider
+	case "model_name":
+		return ai.ConfigKeyModel
+	case "api_key":
+		return ai.ConfigKeyAPIKey
+	case "base_url":
+		return ai.ConfigKeyBaseURL
+	case "temperature":
+		return ai.ConfigKeyTemperature
+	case "top_p":
+		return ai.ConfigKeyTopP
+	case "max_tokens":
+		return ai.ConfigKeyMaxTokens
+	case "interview_model":
+		return ai.ConfigKeyInterviewModel
+	case "plan_model":
+		return ai.ConfigKeyPlanModel
+	case "companion_model":
+		return ai.ConfigKeyCompanionModel
+	case "quiz_model":
+		return ai.ConfigKeyQuizModel
+	default:
+		if ai.IsRuntimeConfigKey(trimmed) {
+			return trimmed
+		}
+		return ""
 	}
 }
 

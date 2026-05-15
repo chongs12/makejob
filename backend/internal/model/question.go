@@ -29,6 +29,7 @@ type Question struct {
 	Answer             string `json:"answer" gorm:"type:text;not null;comment:答案"`
 	Explanation        string `json:"explanation" gorm:"type:text;comment:答案解析"`
 	SolutionJSON       string `json:"solution_json,omitempty" gorm:"type:text;comment:结构化解题解析JSON"`
+	JudgeConfigJSON    string `json:"judge_config_json,omitempty" gorm:"type:text;comment:编程题判题配置JSON"`
 	AnswerTemplateJSON string `json:"answer_template_json,omitempty" gorm:"type:text;comment:主观题参考回答模板JSON"`
 	Tags               string `json:"tags" gorm:"size:500;comment:标签，逗号分隔"`
 	IsActive           bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`

@@ -7,11 +7,11 @@ export default defineConfig({
     port: 3102,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:8082',
         changeOrigin: true,
       },
       '/live2d-assets': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:8082',
         changeOrigin: true,
       },
     },

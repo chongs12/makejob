@@ -66,6 +66,7 @@ type CleanedQuestion struct {
 	Explanation string   `json:"explanation"`
 	Tags        []string `json:"tags"`
 	Confidence  float64  `json:"confidence"` // AI置信度 0-1
+	JudgeConfig any      `json:"judge_config,omitempty"`
 }
 
 // CleanResult 清洗结果

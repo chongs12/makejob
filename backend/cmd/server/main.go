@@ -46,6 +46,15 @@ func (a *pistonAdapter) Execute(ctx context.Context, language, code string) (*se
 	return &service.CodeExecResult{Output: result.Output, Passed: result.Passed}, nil
 }
 
+// ExecuteWithInput 适配带标准输入的代码执行接口，供测试用例判题复用。
+func (a *pistonAdapter) ExecuteWithInput(ctx context.Context, language, code string, stdin string) (*service.CodeExecResult, error) {
+	result, err := a.client.ExecuteWithInput(ctx, language, code, stdin)
+	if err != nil {
+		return nil, err
+	}
+	return &service.CodeExecResult{Output: result.Output, Passed: result.Passed}, nil
+}
+
 type AppDependencies struct {
 	UserRepo              repository.UserRepository
 	MembershipRepo        repository.MembershipRepository

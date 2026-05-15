@@ -54,6 +54,7 @@ type AdminQuestionListItem struct {
 	Answer         string                      `json:"answer"`
 	Explanation    string                      `json:"explanation"`
 	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	JudgeConfig    *QuestionJudgeConfigDetail  `json:"judge_config,omitempty"`
 	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
 	Tags           []string                    `json:"tags"`
 	IsActive       bool                        `json:"is_active"`
@@ -70,6 +71,7 @@ type AdminCreateQuestionRequest struct {
 	Answer         string                      `json:"answer" binding:"required"`
 	Explanation    string                      `json:"explanation"`
 	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	JudgeConfig    *QuestionJudgeConfig        `json:"judge_config,omitempty"`
 	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
 	Tags           string                      `json:"tags"`
 	IsActive       bool                        `json:"is_active"`
@@ -86,6 +88,7 @@ type AdminUpdateQuestionRequest struct {
 	Answer         string                      `json:"answer,omitempty"`
 	Explanation    string                      `json:"explanation,omitempty"`
 	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	JudgeConfig    *QuestionJudgeConfig        `json:"judge_config,omitempty"`
 	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
 	Tags           string                      `json:"tags,omitempty"`
 	IsActive       *bool                       `json:"is_active,omitempty"`
@@ -106,6 +109,7 @@ type ImportQuestionItem struct {
 	Answer         string                      `json:"answer" binding:"required"`
 	Explanation    string                      `json:"explanation"`
 	Solution       *QuestionStructuredSolution `json:"solution,omitempty"`
+	JudgeConfig    *QuestionJudgeConfig        `json:"judge_config,omitempty"`
 	AnswerTemplate *QuestionAnswerTemplate     `json:"answer_template,omitempty"`
 	Tags           string                      `json:"tags"`
 }
@@ -425,6 +429,7 @@ func (s *adminService) ListQuestions(ctx context.Context, page, pageSize int, ke
 			Answer:         question.Answer,
 			Explanation:    question.Explanation,
 			Solution:       parseQuestionStructuredSolution(question.SolutionJSON, &question),
+			JudgeConfig:    buildQuestionJudgeConfigDetail(parseQuestionJudgeConfig(question.JudgeConfigJSON, &question), true),
 			AnswerTemplate: parseQuestionAnswerTemplate(question.AnswerTemplateJSON, &question),
 			Tags:           parseQuestionTagsFromStorage(question.Tags),
 			IsActive:       question.IsActive,
@@ -459,11 +464,19 @@ func (s *adminService) CreateQuestion(ctx context.Context, req *AdminCreateQuest
 	if err != nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "solution 字段格式错误")
 	}
+	judgeConfigJSON, err := marshalQuestionJudgeConfig(req.JudgeConfig, normalizedQuestion)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "judge_config 字段格式错误")
+	}
+	if err := validateQuestionJudgeConfig(normalizedQuestion, normalizeQuestionJudgeConfig(req.JudgeConfig, normalizedQuestion)); err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
 	answerTemplateJSON, err := marshalQuestionAnswerTemplate(req.AnswerTemplate, normalizedQuestion)
 	if err != nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "answer_template 字段格式错误")
 	}
 	normalizedQuestion.SolutionJSON = solutionJSON
+	normalizedQuestion.JudgeConfigJSON = judgeConfigJSON
 	normalizedQuestion.AnswerTemplateJSON = answerTemplateJSON
 
 	if err := s.adminQuestionRepo.Create(ctx, normalizedQuestion); err != nil {
@@ -534,6 +547,16 @@ func (s *adminService) UpdateQuestion(ctx context.Context, id uint, req *AdminUp
 			return common.NewBusinessError(common.CodeBadRequest, "solution 字段格式错误")
 		}
 		question.SolutionJSON = solutionJSON
+	}
+	if req.JudgeConfig != nil || (question.IsCode() && strings.TrimSpace(question.JudgeConfigJSON) == "") {
+		judgeConfigJSON, err := marshalQuestionJudgeConfig(req.JudgeConfig, question)
+		if err != nil {
+			return common.NewBusinessError(common.CodeBadRequest, "judge_config 字段格式错误")
+		}
+		if err := validateQuestionJudgeConfig(question, normalizeQuestionJudgeConfig(req.JudgeConfig, question)); err != nil {
+			return common.NewBusinessError(common.CodeBadRequest, err.Error())
+		}
+		question.JudgeConfigJSON = judgeConfigJSON
 	}
 	if req.AnswerTemplate != nil || (question.Type == model.QuestionTypeSubjective && strings.TrimSpace(question.AnswerTemplateJSON) == "") {
 		answerTemplateJSON, err := marshalQuestionAnswerTemplate(req.AnswerTemplate, question)
@@ -612,6 +635,17 @@ func (s *adminService) BatchImportQuestions(ctx context.Context, req *BatchImpor
 			questionsToImport = questionsToImport[:len(questionsToImport)-1]
 			continue
 		}
+		judgeConfigJSON, err := marshalQuestionJudgeConfig(item.JudgeConfig, lastQuestion)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("question %d: judge_config 字段格式错误", index+1))
+			questionsToImport = questionsToImport[:len(questionsToImport)-1]
+			continue
+		}
+		if err := validateQuestionJudgeConfig(lastQuestion, normalizeQuestionJudgeConfig(item.JudgeConfig, lastQuestion)); err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("question %d: %s", index+1, err.Error()))
+			questionsToImport = questionsToImport[:len(questionsToImport)-1]
+			continue
+		}
 		answerTemplateJSON, err := marshalQuestionAnswerTemplate(item.AnswerTemplate, lastQuestion)
 		if err != nil {
 			response.Errors = append(response.Errors, fmt.Sprintf("question %d: answer_template 字段格式错误", index+1))
@@ -619,6 +653,7 @@ func (s *adminService) BatchImportQuestions(ctx context.Context, req *BatchImpor
 			continue
 		}
 		lastQuestion.SolutionJSON = solutionJSON
+		lastQuestion.JudgeConfigJSON = judgeConfigJSON
 		lastQuestion.AnswerTemplateJSON = answerTemplateJSON
 	}
 

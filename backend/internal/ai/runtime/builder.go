@@ -143,9 +143,13 @@ func newProvider(ctx context.Context, providerType string, config map[string]str
 	return wrapNamedProvider(provider, providerType), nil
 }
 
-// loadRuntimeConfig 加载 AI runtime 配置，并让 config.yaml 中的显式配置优先生效。
+// loadRuntimeConfig 加载 AI runtime 配置，以 config.yaml 为默认值，并让后台配置优先生效。
 func (b *Builder) loadRuntimeConfig(ctx context.Context) map[string]string {
 	merged := ai.DefaultRuntimeConfig()
+
+	for key, value := range ai.NormalizeRuntimeConfig(b.baseConfig) {
+		merged[key] = value
+	}
 
 	if b.configRepo != nil {
 		items, err := b.configRepo.List(ctx)
@@ -154,10 +158,6 @@ func (b *Builder) loadRuntimeConfig(ctx context.Context) map[string]string {
 				merged[item.ConfigKey] = item.ConfigValue
 			}
 		}
-	}
-
-	for key, value := range ai.NormalizeRuntimeConfig(b.baseConfig) {
-		merged[key] = value
 	}
 
 	return ai.NormalizeRuntimeConfig(merged)

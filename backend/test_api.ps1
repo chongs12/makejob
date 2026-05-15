@@ -1,4 +1,4 @@
-$base = "http://localhost:8080"
+$base = "http://localhost:8082"
 $results = @()
 
 function Test-API {

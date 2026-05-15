@@ -18,6 +18,7 @@ type PistonRequest struct {
 	Language string         `json:"language"`
 	Version  string         `json:"version"`
 	Files    []PistonFile   `json:"files"`
+	Stdin    string         `json:"stdin,omitempty"`
 }
 
 // PistonFile 表示提交给 Piston 的源代码文件。
@@ -69,6 +70,11 @@ func NewPistonClient(endpoint string, timeoutSec int) *PistonClient {
 
 // Execute 提交代码到 Piston 并返回执行结果。
 func (c *PistonClient) Execute(ctx context.Context, language, code string) (*CodeResult, error) {
+	return c.ExecuteWithInput(ctx, language, code, "")
+}
+
+// ExecuteWithInput 提交代码与标准输入到 Piston 并返回执行结果。
+func (c *PistonClient) ExecuteWithInput(ctx context.Context, language, code string, stdin string) (*CodeResult, error) {
 	langID, filename, err := resolveLanguage(language)
 	if err != nil {
 		return nil, err
@@ -80,6 +86,7 @@ func (c *PistonClient) Execute(ctx context.Context, language, code string) (*Cod
 		Files: []PistonFile{
 			{Name: filename, Content: code},
 		},
+		Stdin: stdin,
 	}
 
 	body, err := json.Marshal(reqBody)

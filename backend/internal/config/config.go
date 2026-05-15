@@ -246,7 +246,7 @@ func GetConfig() *Config {
 			// 如果加载失败，使用默认配置
 			cfg = &Config{
 				Server: ServerConfig{
-					Port: 8080,
+					Port: 8082,
 					Mode: "debug",
 				},
 				Database: DatabaseConfig{

@@ -4,7 +4,6 @@ const (
 	defaultQuestionPipelineCount = 8
 	maxQuestionPipelineCount     = 20
 	maxPipelineMaterialSources   = 6
-	questionPipelineModePlanned  = "planned"
 	questionPipelineModeDirect   = "direct_single"
 )
 
@@ -29,8 +28,10 @@ type AdminQuestionPipelineCard struct {
 	Difficulty  string   `json:"difficulty"`
 	Category    string   `json:"category"`
 	Answer      string   `json:"answer"`
+	Solution    string   `json:"solution,omitempty"`
 	Explanation string   `json:"explanation"`
 	Tags        []string `json:"tags"`
+	JudgeConfig any      `json:"judge_config,omitempty"`
 	Confidence  float64  `json:"confidence"`
 	SourceType  string   `json:"source_type"`
 	SourceLabel string   `json:"source_label"`
@@ -60,14 +61,18 @@ type AdminQuestionPipelineGenerateResponse struct {
 
 // AdminQuestionPipelineStreamEvent 描述题目流水线 SSE 推送事件的统一结构。
 type AdminQuestionPipelineStreamEvent struct {
-	Event      string                                 `json:"event"`
-	Message    string                                 `json:"message,omitempty"`
-	TraceID    string                                 `json:"trace_id,omitempty"`
-	RawOutput  string                                 `json:"raw_output,omitempty"`
-	SlotIndex  int                                    `json:"slot_index,omitempty"`
-	RetryIndex int                                    `json:"retry_index,omitempty"`
-	Card       *AdminQuestionPipelineCard             `json:"card,omitempty"`
-	Response   *AdminQuestionPipelineGenerateResponse `json:"response,omitempty"`
+	Event               string                                 `json:"event"`
+	Message             string                                 `json:"message,omitempty"`
+	TraceID             string                                 `json:"trace_id,omitempty"`
+	RawOutput           string                                 `json:"raw_output,omitempty"`
+	FailureStage        string                                 `json:"failure_stage,omitempty"`
+	CandidateExcerpt    string                                 `json:"candidate_excerpt,omitempty"`
+	RepairAttempted     bool                                   `json:"repair_attempted,omitempty"`
+	SupplementAttempted bool                                   `json:"supplement_attempted,omitempty"`
+	SlotIndex           int                                    `json:"slot_index,omitempty"`
+	RetryIndex          int                                    `json:"retry_index,omitempty"`
+	Card                *AdminQuestionPipelineCard             `json:"card,omitempty"`
+	Response            *AdminQuestionPipelineGenerateResponse `json:"response,omitempty"`
 }
 
 // AdminQuestionPipelineStreamEmitter 描述题目流水线流式推送回调。
@@ -87,8 +92,10 @@ type AdminQuestionPipelineImportCard struct {
 	Difficulty  string   `json:"difficulty" binding:"required"`
 	Category    string   `json:"category" binding:"required"`
 	Answer      string   `json:"answer" binding:"required"`
+	Solution    string   `json:"solution,omitempty"`
 	Explanation string   `json:"explanation"`
 	Tags        []string `json:"tags"`
+	JudgeConfig any      `json:"judge_config,omitempty"`
 }
 
 type questionPipelineMaterial struct {
@@ -121,8 +128,10 @@ type questionPipelineModelCard struct {
 	Difficulty  string   `json:"difficulty"`
 	Category    string   `json:"category"`
 	Answer      string   `json:"answer"`
+	Solution    string   `json:"solution,omitempty"`
 	Explanation string   `json:"explanation"`
 	Tags        []string `json:"tags"`
+	JudgeConfig any      `json:"judge_config,omitempty"`
 }
 
 // questionPipelineCardsResponse 描述模型返回的题卡数组。
@@ -134,6 +143,7 @@ type questionPipelineCardsResponse struct {
 type questionPipelineConstraintProfile struct {
 	CandidateCount      int
 	RequireSubjective   bool
+	RequireCode         bool
 	PreferDistinctTopic bool
 	ExcludeProjectCards bool
 	GoFeatureOnly       bool
