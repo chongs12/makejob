@@ -67,5 +67,5 @@ coverage/
 *.coverprofile
 _skill_staging/
 docs/*
-!docs/live2d-ai-interview-spec.md
+!docs/*.md
 live2d-src/

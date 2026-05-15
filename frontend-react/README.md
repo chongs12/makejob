@@ -1,37 +1,101 @@
 # MakeJob React Frontend
 
-这个目录是 MakeJob 新前端重构的 React + Vite 工作区。
+本文档基于当前代码状态更新于 `2026-05-15`，描述 `frontend-react` 工作区的真实现状。
 
-当前目标不是一次性搬完全部页面，而是先建立稳定的新主干：
+## 1. 目录定位
 
-- `apps/web`：业务前台，承载刷题、面试、陪伴、AI 实时交互
-- `apps/admin`：后台管理，承载题库、Live2D、提示词、TTS、运营配置
-- `packages/api-client`：统一的 HTTP 客户端与鉴权头注入
-- `packages/shared-types`：共享接口类型与基础数据结构
+`frontend-react` 是 MakeJob 当前有效前端主线，包含两个应用和两个共享包：
 
-## 设计原则
+- `apps/web`：用户前台
+- `apps/admin`：后台管理
+- `packages/api-client`：共享 HTTP 客户端与鉴权能力
+- `packages/shared-types`：前后端共享接口类型
 
-- 先并行重构，不覆盖现有 `frontend`
-- 先打通登录、路由、鉴权、基础布局，再逐步迁移业务模块
-- 文本流、语音流、Live2D 渲染分别设计，不把实时能力混成一团
+## 2. 技术栈
 
-## 启动方式
+- React 19
+- Vite 7
+- TanStack Router
+- TanStack Query
+- Zustand
+- `pixi.js` + `pixi-live2d-display`
+- 前台编程题编辑器使用 `monaco-editor`
 
-依赖安装完成后，可分别启动：
+## 3. 当前实现状态
+
+这不是纯骨架项目，当前已经落地到可运行业务页阶段。
+
+### 3.1 前台 Web
+
+当前已经接入并实现页面主线：
+
+- 首页 `/`
+- 题库 `/practice`
+- 题目详情 `/practice/$questionId`
+- 编程题编辑页 `/practice/editor/$questionId`
+- 错题 `/practice/wrong`
+- 收藏 `/practice/favorites`
+- 笔记 `/practice/notes`
+- 错因专题 `/practice/topics/$topicCode`
+- 社区列表、详情、发帖、编辑、我的帖子
+- AI 面试入口、实时面试页、面试报告页
+- 学习陪伴首页和陪伴工作区
+- 成长档案 `/growth`
+- 登录页 `/auth/login`
+
+### 3.2 后台 Admin
+
+当前已经接入并实现页面主线：
+
+- 总览 `/dashboard`
+- 运行任务 `/runtime`
+- AI 配置 `/ai-configs`
+- Prompt 管理 `/prompts`
+- Live2D 管理 `/live2d`
+- TTS 配置 `/tts`
+- 行业与分类 `/taxonomy`
+- 题目流水线 `/question-pipeline`
+- 题库管理 `/questions`
+- 后台登录 `/auth/login`
+
+## 4. 已经接起来的关键能力
+
+- 登录态初始化、令牌恢复和鉴权守卫
+- 前后台共享 API 客户端
+- 社区发帖、评论、点赞
+- 题库检索、答题、收藏、笔记、错题与推荐
+- AI 面试实时页的 WebSocket、TTS 播放、ASR 录音、Live2D 舞台
+- 学习陪伴与成长档案联动
+- 后台题目流水线的同步生成、流式生成、异步恢复和导入
+
+## 5. 启动命令
 
 ```bash
 npm run dev:web
 npm run dev:admin
 ```
 
-## 当前状态
+构建命令：
 
-当前骨架已具备：
+```bash
+npm run build
+```
 
-- React 19 + Vite 7 基础结构
-- TanStack Router 路由骨架
-- TanStack Query 预留上下文
-- Zustand 登录态存储
-- `Bearer {token}` 自动注入的共享 API 客户端
+前台测试命令：
 
-业务页面仍是占位页，后续按迁移文档逐页替换。
+```bash
+npm run test:web
+```
+
+## 6. 当前验证结论
+
+基于 `2026-05-15` 的本地核验：
+
+- `npm run build` 通过
+- `npm run test:web` 通过
+
+## 7. 当前需要注意的点
+
+- 当前 README 只描述 React 工作区，不再为旧前端提供说明。
+- AI 面试和陪伴页对后端接口、Live2D 资源和第三方配置有依赖。
+- 后台存在少量样式层面的构建告警，但不阻塞产物生成。
