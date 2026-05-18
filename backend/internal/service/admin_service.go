@@ -200,6 +200,15 @@ type ImportLive2DPackageResponse struct {
 	AssetDir     string `json:"asset_dir"`
 	ModelURL     string `json:"model_url"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+	ModelID      uint   `json:"model_id,omitempty"`
+	Created      bool   `json:"created"`
+	IsActive     bool   `json:"is_active"`
+}
+
+// ImportLive2DBackgroundResponse 描述后台上传舞台背景图后的可访问资源结果。
+type ImportLive2DBackgroundResponse struct {
+	FileName string `json:"file_name"`
+	AssetURL string `json:"asset_url"`
 }
 
 type CreateTTSConfigRequest struct {
@@ -266,6 +275,7 @@ type AdminService interface {
 	UpdateLive2DModel(ctx context.Context, id uint, req *UpdateLive2DModelRequest) error
 	DeleteLive2DModel(ctx context.Context, id uint) error
 	ImportLive2DPackage(ctx context.Context, filename string, content []byte) (*ImportLive2DPackageResponse, error)
+	ImportLive2DBackground(ctx context.Context, filename string, content []byte) (*ImportLive2DBackgroundResponse, error)
 
 	ListTTSConfigs(ctx context.Context) ([]model.TTSConfig, error)
 	CreateTTSConfig(ctx context.Context, req *CreateTTSConfigRequest) (*model.TTSConfig, error)
@@ -891,6 +901,9 @@ func (s *adminService) UpdateAIConfigs(ctx context.Context, configs map[string]s
 
 // ListLive2DModels 返回后台可维护的 Live2D 模型列表。
 func (s *adminService) ListLive2DModels(ctx context.Context) ([]model.Live2DModel, error) {
+	if err := s.syncDiscoveredLive2DModels(ctx); err != nil {
+		return nil, err
+	}
 	return s.live2DRepo.List(ctx)
 }
 
@@ -959,16 +972,35 @@ func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *Upda
 
 // DeleteLive2DModel 删除指定的 Live2D 模型记录。
 func (s *adminService) DeleteLive2DModel(ctx context.Context, id uint) error {
+	if s.live2DRepo == nil {
+		return common.NewBusinessError(common.CodeInternalError, "live2d repository not configured")
+	}
+
+	targetModel, err := s.live2DRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if targetModel == nil {
+		return common.NewBusinessError(common.CodeNotFound, "live2d model not found")
+	}
+
+	if err := s.deleteManagedLive2DAssetsIfUnused(ctx, targetModel); err != nil {
+		return err
+	}
+
 	return s.live2DRepo.Delete(ctx, id)
 }
 
 // ImportLive2DPackage 导入后台上传的 Live2D ZIP 包，并返回可直接回填的资源地址。
 func (s *adminService) ImportLive2DPackage(ctx context.Context, filename string, content []byte) (*ImportLive2DPackageResponse, error) {
-	_ = ctx
-
 	importedPackage, err := live2dassets.ImportZip(filename, content)
 	if err != nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "导入Live2D模型包失败: "+err.Error())
+	}
+
+	importedModel, created, err := s.ensureImportedLive2DModel(ctx, importedPackage)
+	if err != nil {
+		return nil, err
 	}
 
 	return &ImportLive2DPackageResponse{
@@ -976,6 +1008,24 @@ func (s *adminService) ImportLive2DPackage(ctx context.Context, filename string,
 		AssetDir:     importedPackage.AssetDir,
 		ModelURL:     importedPackage.ModelURL,
 		ThumbnailURL: importedPackage.ThumbnailURL,
+		ModelID:      importedModel.ID,
+		Created:      created,
+		IsActive:     importedModel.IsActive,
+	}, nil
+}
+
+// ImportLive2DBackground 导入后台上传的舞台背景图，并返回可直接回填的静态地址。
+func (s *adminService) ImportLive2DBackground(ctx context.Context, filename string, content []byte) (*ImportLive2DBackgroundResponse, error) {
+	_ = ctx
+
+	importedBackground, err := live2dassets.ImportBackgroundImage(filename, content)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "导入Live2D背景图失败: "+err.Error())
+	}
+
+	return &ImportLive2DBackgroundResponse{
+		FileName: importedBackground.FileName,
+		AssetURL: importedBackground.AssetURL,
 	}, nil
 }
 
@@ -1156,6 +1206,135 @@ func (s *adminService) normalizeOptionalIndustryID(ctx context.Context, industry
 	}
 
 	return industryID, nil
+}
+
+// deleteManagedLive2DAssetsIfUnused 在没有其他模型复用同一资源目录时，删除对应的本地模型目录。
+func (s *adminService) deleteManagedLive2DAssetsIfUnused(ctx context.Context, targetModel *model.Live2DModel) error {
+	if s.live2DRepo == nil || targetModel == nil {
+		return nil
+	}
+
+	managedAssetDir := live2dassets.ManagedModelAssetDirFromURL(targetModel.ModelURL)
+	if managedAssetDir == "" {
+		return nil
+	}
+
+	allModels, err := s.live2DRepo.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, currentModel := range allModels {
+		if currentModel.ID == targetModel.ID {
+			continue
+		}
+		if normalizeLive2DAssetURL(currentModel.ModelURL) == normalizeLive2DAssetURL(targetModel.ModelURL) {
+			return nil
+		}
+		if live2dassets.ManagedModelAssetDirFromURL(currentModel.ModelURL) == managedAssetDir {
+			return nil
+		}
+	}
+
+	if err := live2dassets.DeleteManagedModelAssetDir(managedAssetDir); err != nil {
+		return common.NewBusinessError(common.CodeInternalError, "删除Live2D模型资源失败: "+err.Error())
+	}
+	return nil
+}
+
+// syncDiscoveredLive2DModels 将本地资源目录中未入库的模型补登记到后台管理列表。
+func (s *adminService) syncDiscoveredLive2DModels(ctx context.Context) error {
+	if s.live2DRepo == nil {
+		return nil
+	}
+
+	discoveredModels, err := live2dassets.DiscoverLocalModels()
+	if err != nil {
+		return common.NewBusinessError(common.CodeInternalError, "扫描本地Live2D资源失败: "+err.Error())
+	}
+	if len(discoveredModels) == 0 {
+		return nil
+	}
+
+	existingModels, err := s.live2DRepo.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	existingByModelURL := make(map[string]struct{}, len(existingModels))
+	for _, existingModel := range existingModels {
+		modelURL := normalizeLive2DAssetURL(existingModel.ModelURL)
+		if modelURL == "" {
+			continue
+		}
+		existingByModelURL[modelURL] = struct{}{}
+	}
+
+	for _, discoveredModel := range discoveredModels {
+		modelURL := normalizeLive2DAssetURL(discoveredModel.ModelURL)
+		if modelURL == "" {
+			continue
+		}
+		if _, exists := existingByModelURL[modelURL]; exists {
+			continue
+		}
+
+		newModel := buildPendingImportedLive2DModel(&discoveredModel)
+		if err := s.live2DRepo.Create(ctx, newModel); err != nil {
+			return err
+		}
+		existingByModelURL[modelURL] = struct{}{}
+	}
+
+	return nil
+}
+
+// ensureImportedLive2DModel 确保导入出来的模型资源同步存在于后台模型表中。
+func (s *adminService) ensureImportedLive2DModel(
+	ctx context.Context,
+	importedPackage *live2dassets.ImportedPackage,
+) (*model.Live2DModel, bool, error) {
+	if s.live2DRepo == nil {
+		return nil, false, common.NewBusinessError(common.CodeInternalError, "live2d repository not configured")
+	}
+	if importedPackage == nil {
+		return nil, false, common.NewBusinessError(common.CodeBadRequest, "imported live2d package is required")
+	}
+
+	existingModels, err := s.live2DRepo.List(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+
+	targetModelURL := normalizeLive2DAssetURL(importedPackage.ModelURL)
+	for i := range existingModels {
+		if normalizeLive2DAssetURL(existingModels[i].ModelURL) == targetModelURL {
+			return &existingModels[i], false, nil
+		}
+	}
+
+	newModel := buildPendingImportedLive2DModel(importedPackage)
+	if err := s.live2DRepo.Create(ctx, newModel); err != nil {
+		return nil, false, err
+	}
+	return newModel, true, nil
+}
+
+// buildPendingImportedLive2DModel 基于自动识别结果创建一条待后台确认的模型记录。
+func buildPendingImportedLive2DModel(importedPackage *live2dassets.ImportedPackage) *model.Live2DModel {
+	return &model.Live2DModel{
+		Name:         strings.TrimSpace(importedPackage.Name),
+		Scene:        model.Live2DSceneCompanion,
+		ModelURL:     strings.TrimSpace(importedPackage.ModelURL),
+		ThumbnailURL: strings.TrimSpace(importedPackage.ThumbnailURL),
+		ConfigJSON:   "",
+		IsActive:     false,
+	}
+}
+
+// normalizeLive2DAssetURL 统一清洗资源地址，避免因空格或斜杠差异导致重复落库。
+func normalizeLive2DAssetURL(value string) string {
+	return strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
 }
 
 func (s *adminService) requireIndustry(ctx context.Context, industryID uint) (*model.Industry, error) {

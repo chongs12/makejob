@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
 )
 
@@ -113,7 +114,7 @@ func TestLive2DServiceGetCurrentModelFallbackToGeneric(t *testing.T) {
 	}
 }
 
-// TestLive2DServiceListSelectableModels 验证前台切换列表会返回数据库模型和内置回退模型。
+// TestLive2DServiceListSelectableModels 验证前台切换列表只返回后台已入库且启用的模型。
 func TestLive2DServiceListSelectableModels(t *testing.T) {
 	goIndustryID := uint(2)
 	javaIndustryID := uint(9)
@@ -127,6 +128,7 @@ func TestLive2DServiceListSelectableModels(t *testing.T) {
 					Scene:      model.Live2DSceneCompanion,
 					IndustryID: &goIndustryID,
 					ModelURL:   "/live2d-assets/go/companion.model3.json",
+					ConfigJSON: `{"background_image_url":"/live2d-assets/backgrounds/go-room.webp"}`,
 					IsActive:   true,
 				},
 				{
@@ -161,11 +163,14 @@ func TestLive2DServiceListSelectableModels(t *testing.T) {
 		t.Fatalf("ListSelectableModels returned error: %v", err)
 	}
 
-	if len(items) != 4 {
-		t.Fatalf("expected 4 selectable models, got %d", len(items))
+	if len(items) != 3 {
+		t.Fatalf("expected 3 selectable models, got %d", len(items))
 	}
 	if items[0].Key != "db:101" || !items[0].IsRecommended || items[0].MatchType != "industry" {
 		t.Fatalf("expected first item to be recommended go model, got %#v", items[0])
+	}
+	if items[0].ConfigJSON == "" {
+		t.Fatalf("expected first item to carry config_json, got %#v", items[0])
 	}
 	if items[1].Key != "db:102" || items[1].MatchType != "generic" {
 		t.Fatalf("expected second item to be generic model, got %#v", items[1])
@@ -173,13 +178,10 @@ func TestLive2DServiceListSelectableModels(t *testing.T) {
 	if items[2].Key != "db:103" || items[2].MatchType != "other" {
 		t.Fatalf("expected third item to be other active model, got %#v", items[2])
 	}
-	if items[3].Key != buildBundledLive2DModelKey() || items[3].Source != "bundled" {
-		t.Fatalf("expected bundled fallback item, got %#v", items[3])
-	}
 }
 
-// TestLive2DServiceListSelectableModelsFallbackToBundled 验证无数据库模型时仍会返回内置回退模型。
-func TestLive2DServiceListSelectableModelsFallbackToBundled(t *testing.T) {
+// TestLive2DServiceListSelectableModelsWithoutConfirmedModels 验证未确认模型时前台切换列表为空。
+func TestLive2DServiceListSelectableModelsWithoutConfirmedModels(t *testing.T) {
 	svc := NewLive2DService(nil, nil)
 
 	items, err := svc.ListSelectableModels(context.Background(), &SelectableLive2DModelsRequest{
@@ -188,37 +190,24 @@ func TestLive2DServiceListSelectableModelsFallbackToBundled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSelectableModels returned error: %v", err)
 	}
-
-	if len(items) != 1 {
-		t.Fatalf("expected only bundled model, got %d items", len(items))
-	}
-	if items[0].Key != buildBundledLive2DModelKey() || !items[0].IsRecommended {
-		t.Fatalf("expected bundled model to be recommended fallback, got %#v", items[0])
+	if len(items) != 0 {
+		t.Fatalf("expected no selectable models, got %#v", items)
 	}
 }
 
-// TestLive2DServiceGetCurrentModelFallbackToBundled 验证仓库为空时会回退到内置模型。
-func TestLive2DServiceGetCurrentModelFallbackToBundled(t *testing.T) {
+// TestLive2DServiceGetCurrentModelWithoutConfirmedModels 验证未确认模型时公开接口返回未找到。
+func TestLive2DServiceGetCurrentModelWithoutConfirmedModels(t *testing.T) {
 	svc := NewLive2DService(nil, nil)
 
 	resp, err := svc.GetCurrentModel(context.Background(), &CurrentLive2DModelRequest{
 		Scene: model.Live2DSceneCompanion,
 	})
-	if err != nil {
-		t.Fatalf("GetCurrentModel returned error: %v", err)
+	if err == nil {
+		t.Fatalf("expected not found error, got response %#v", resp)
 	}
-
-	if resp.Source != "bundled" {
-		t.Fatalf("expected bundled source, got %s", resp.Source)
-	}
-	if resp.Name != bundledLive2DName {
-		t.Fatalf("expected bundled model %s, got %s", bundledLive2DName, resp.Name)
-	}
-	if resp.ModelURL == "" {
-		t.Fatalf("expected bundled model url")
-	}
-	if resp.Config["voice_source"] != "volcengine" {
-		t.Fatalf("expected volcengine voice source, got %#v", resp.Config["voice_source"])
+	businessErr, ok := err.(*common.BusinessError)
+	if !ok || businessErr.Code != common.CodeNotFound {
+		t.Fatalf("expected not found business error, got %v", err)
 	}
 }
 

@@ -74,6 +74,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Live2D模型管理
 	r.GET("/live2d-models", h.ListLive2DModels)
 	r.POST("/live2d-models/import", h.ImportLive2DPackage)
+	r.POST("/live2d-models/backgrounds/import", h.ImportLive2DBackground)
 	r.POST("/live2d-models", h.CreateLive2DModel)
 	r.PUT("/live2d-models/:id", h.UpdateLive2DModel)
 	r.DELETE("/live2d-models/:id", h.DeleteLive2DModel)
@@ -785,7 +786,10 @@ func (h *AdminHandler) UpdateAIConfigs(c *gin.Context) {
 
 // ==================== Live2D模型管理 ====================
 
-const maxLive2DPackageBytes = 200 << 20
+const (
+	maxLive2DPackageBytes    = 200 << 20
+	maxLive2DBackgroundBytes = 20 << 20
+)
 
 // ListLive2DModels 获取Live2D模型列表
 // @Summary 获取Live2D模型列表
@@ -859,6 +863,65 @@ func (h *AdminHandler) ImportLive2DPackage(c *gin.Context) {
 			common.Error(c, businessErr.Code, businessErr.Message)
 		} else {
 			common.InternalError(c, "导入Live2D模型包失败: "+err.Error())
+		}
+		return
+	}
+
+	common.Success(c, resp)
+}
+
+// ImportLive2DBackground 导入管理员上传的舞台背景图。
+// @Summary 导入Live2D背景图
+// @Description 上传舞台背景图并返回可直接访问的静态资源地址
+// @Tags 管理后台-Live2D管理
+// @Accept mpfd
+// @Produce json
+// @Security Bearer
+// @Param file formData file true "Live2D 舞台背景图"
+// @Success 200 {object} common.Response{data=service.ImportLive2DBackgroundResponse}
+// @Router /api/admin/live2d-models/backgrounds/import [post]
+func (h *AdminHandler) ImportLive2DBackground(c *gin.Context) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		common.BadRequest(c, "请上传Live2D舞台背景图")
+		return
+	}
+
+	extension := strings.ToLower(strings.TrimSpace(filepath.Ext(fileHeader.Filename)))
+	switch extension {
+	case ".png", ".jpg", ".jpeg", ".webp":
+	default:
+		common.BadRequest(c, "仅支持上传 png/jpg/jpeg/webp 图片")
+		return
+	}
+	if fileHeader.Size <= 0 {
+		common.BadRequest(c, "上传的背景图为空")
+		return
+	}
+	if fileHeader.Size > maxLive2DBackgroundBytes {
+		common.BadRequest(c, "背景图过大，请控制在20MB以内")
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		common.InternalError(c, "打开Live2D背景图失败: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		common.InternalError(c, "读取Live2D背景图失败: "+err.Error())
+		return
+	}
+
+	resp, err := h.adminService.ImportLive2DBackground(c.Request.Context(), fileHeader.Filename, content)
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "导入Live2D背景图失败: "+err.Error())
 		}
 		return
 	}

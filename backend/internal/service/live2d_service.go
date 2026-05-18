@@ -7,15 +7,8 @@ import (
 	"strings"
 
 	"makejob-backend/internal/common"
-	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
-)
-
-const (
-	bundledLive2DName          = "Ariu"
-	bundledLive2DRelativeModel = "ariu/ariu.model3.json"
-	bundledLive2DThumbnail     = "ariu/ariu.png"
 )
 
 // CurrentLive2DModelRequest 描述前台查询当前场景模型的请求。
@@ -49,6 +42,7 @@ type SelectableLive2DModelResponse struct {
 	Scene         string `json:"scene"`
 	ModelURL      string `json:"model_url"`
 	ThumbnailURL  string `json:"thumbnail_url"`
+	ConfigJSON    string `json:"config_json,omitempty"`
 	Source        string `json:"source"`
 	MatchType     string `json:"match_type"`
 	IsGeneric     bool   `json:"is_generic"`
@@ -103,7 +97,7 @@ func (s *live2dService) GetCurrentModel(ctx context.Context, req *CurrentLive2DM
 		}
 	}
 
-	return buildBundledLive2DResponse(scene)
+	return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
 }
 
 // ListSelectableModels 返回当前场景下可供前台切换的 Live2D 模型列表。
@@ -132,18 +126,6 @@ func (s *live2dService) ListSelectableModels(ctx context.Context, req *Selectabl
 
 	recommended := selectActiveLive2DModel(models, scene, requestIndustryID)
 	items := buildSelectableDatabaseLive2DModels(models, scene, requestIndustryID, recommended)
-
-	bundledItem, err := buildBundledSelectableLive2DModel(scene, recommended == nil)
-	if err == nil {
-		items = append(items, bundledItem)
-	}
-	if len(items) == 0 {
-		if err != nil {
-			return nil, err
-		}
-		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
-	}
-
 	return items, nil
 }
 
@@ -248,6 +230,7 @@ func buildSelectableDatabaseLive2DModels(
 			Scene:         scene,
 			ModelURL:      strings.TrimSpace(item.ModelURL),
 			ThumbnailURL:  strings.TrimSpace(item.ThumbnailURL),
+			ConfigJSON:    strings.TrimSpace(item.ConfigJSON),
 			Source:        "database",
 			MatchType:     matchType,
 			IsGeneric:     item.IsGeneric(),
@@ -271,61 +254,9 @@ func buildSelectableDatabaseLive2DModels(
 	return items
 }
 
-// buildBundledSelectableLive2DModel 组装内置回退模型的可切换条目。
-func buildBundledSelectableLive2DModel(scene string, isRecommended bool) (SelectableLive2DModelResponse, error) {
-	if !live2dassets.HasAsset(bundledLive2DRelativeModel) {
-		return SelectableLive2DModelResponse{}, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
-	}
-
-	thumbnailURL := ""
-	if live2dassets.HasAsset(bundledLive2DThumbnail) {
-		thumbnailURL = live2dassets.AssetURL(bundledLive2DThumbnail)
-	}
-
-	return SelectableLive2DModelResponse{
-		Key:           buildBundledLive2DModelKey(),
-		Name:          bundledLive2DName,
-		Scene:         scene,
-		ModelURL:      live2dassets.AssetURL(bundledLive2DRelativeModel),
-		ThumbnailURL:  thumbnailURL,
-		Source:        "bundled",
-		MatchType:     "bundled",
-		IsGeneric:     true,
-		IsRecommended: isRecommended,
-	}, nil
-}
-
 // buildDatabaseLive2DModelKey 为数据库模型生成稳定的前台选择键。
 func buildDatabaseLive2DModelKey(id uint) string {
 	return "db:" + strconv.FormatUint(uint64(id), 10)
-}
-
-// buildBundledLive2DModelKey 返回内置回退模型的固定选择键。
-func buildBundledLive2DModelKey() string {
-	return "bundled:ariu"
-}
-
-// buildBundledLive2DResponse 组装内置模型回退响应。
-func buildBundledLive2DResponse(scene string) (*CurrentLive2DModelResponse, error) {
-	if !live2dassets.HasAsset(bundledLive2DRelativeModel) {
-		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
-	}
-
-	thumbnailURL := ""
-	if live2dassets.HasAsset(bundledLive2DThumbnail) {
-		thumbnailURL = live2dassets.AssetURL(bundledLive2DThumbnail)
-	}
-
-	return &CurrentLive2DModelResponse{
-		Name:         bundledLive2DName,
-		Scene:        scene,
-		IndustryCode: "",
-		Path:         live2dassets.AssetURL(bundledLive2DRelativeModel),
-		ModelURL:     live2dassets.AssetURL(bundledLive2DRelativeModel),
-		ThumbnailURL: thumbnailURL,
-		Config:       defaultLive2DConfig(scene),
-		Source:       "bundled",
-	}, nil
 }
 
 // parseLive2DConfig 解析模型配置并补齐默认值。

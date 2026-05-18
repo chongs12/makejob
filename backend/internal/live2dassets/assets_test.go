@@ -54,6 +54,97 @@ func TestImportZipRejectsTraversal(t *testing.T) {
 	}
 }
 
+// TestDiscoverLocalModels 验证本地资源目录扫描会返回可访问的模型和缩略图地址。
+func TestDiscoverLocalModels(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(AssetsDirEnv, assetsDir)
+
+	modelDir := filepath.Join(assetsDir, "yumi")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("create model dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "yumi.model3.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write model file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "yumi.webp"), []byte("image"), 0o644); err != nil {
+		t.Fatalf("write thumbnail file: %v", err)
+	}
+
+	models, err := DiscoverLocalModels()
+	if err != nil {
+		t.Fatalf("DiscoverLocalModels returned error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 discovered model, got %d", len(models))
+	}
+	if models[0].Name != "yumi" {
+		t.Fatalf("expected model name yumi, got %s", models[0].Name)
+	}
+	if !strings.HasSuffix(models[0].ModelURL, "/yumi/yumi.model3.json") {
+		t.Fatalf("unexpected model url: %s", models[0].ModelURL)
+	}
+	if !strings.HasSuffix(models[0].ThumbnailURL, "/yumi/yumi.webp") {
+		t.Fatalf("unexpected thumbnail url: %s", models[0].ThumbnailURL)
+	}
+}
+
+// TestImportBackgroundImage 验证上传舞台背景图后会返回可直接访问的静态地址。
+func TestImportBackgroundImage(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(AssetsDirEnv, assetsDir)
+
+	importedBackground, err := ImportBackgroundImage("stage-cover.png", []byte("fake-image"))
+	if err != nil {
+		t.Fatalf("expected import success, got error: %v", err)
+	}
+
+	if importedBackground.FileName != "stage-cover.png" {
+		t.Fatalf("expected file name stage-cover.png, got %s", importedBackground.FileName)
+	}
+	if !strings.HasSuffix(importedBackground.AssetURL, "/backgrounds/stage-cover.png") {
+		t.Fatalf("unexpected background asset url: %s", importedBackground.AssetURL)
+	}
+
+	backgroundPath := filepath.Join(assetsDir, filepath.FromSlash(importedBackground.AssetPath))
+	if _, err := os.Stat(backgroundPath); err != nil {
+		t.Fatalf("expected extracted background file, got stat error: %v", err)
+	}
+}
+
+// TestManagedModelAssetDirFromURL 验证模型 URL 可以正确解析为受管资源目录。
+func TestManagedModelAssetDirFromURL(t *testing.T) {
+	if dir := ManagedModelAssetDirFromURL("/live2d-assets/yumi/yumi.model3.json"); dir != "yumi" {
+		t.Fatalf("expected asset dir yumi, got %s", dir)
+	}
+	if dir := ManagedModelAssetDirFromURL("/live2d-assets/backgrounds/stage-cover.png"); dir != "" {
+		t.Fatalf("expected backgrounds to be ignored, got %s", dir)
+	}
+	if dir := ManagedModelAssetDirFromURL("https://example.com/yumi.model3.json"); dir != "" {
+		t.Fatalf("expected external url to be ignored, got %s", dir)
+	}
+}
+
+// TestDeleteManagedModelAssetDir 验证删除受管模型目录时不会误删其他目录。
+func TestDeleteManagedModelAssetDir(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(AssetsDirEnv, assetsDir)
+
+	modelDir := filepath.Join(assetsDir, "yumi")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("create model dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(modelDir, "yumi.model3.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write model file: %v", err)
+	}
+
+	if err := DeleteManagedModelAssetDir("yumi"); err != nil {
+		t.Fatalf("DeleteManagedModelAssetDir returned error: %v", err)
+	}
+	if _, err := os.Stat(modelDir); !os.IsNotExist(err) {
+		t.Fatalf("expected model dir to be removed, got err=%v", err)
+	}
+}
+
 // buildZipArchive 构造测试用的 ZIP 数据。
 func buildZipArchive(t *testing.T, files map[string]string) []byte {
 	t.Helper()

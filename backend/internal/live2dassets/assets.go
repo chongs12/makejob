@@ -30,6 +30,13 @@ type ImportedPackage struct {
 	ThumbnailURL  string
 }
 
+// ImportedBackground 描述后台上传后的舞台背景图资源结果。
+type ImportedBackground struct {
+	FileName  string
+	AssetPath string
+	AssetURL  string
+}
+
 var assetDirCandidates = []string{
 	"live2d-src",
 	filepath.Join("..", "live2d-src"),
@@ -99,6 +106,141 @@ func HasAsset(relativePath string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// DiscoverLocalModels 扫描当前资源目录下的模型文件夹，并返回可直接访问的模型信息列表。
+func DiscoverLocalModels() ([]ImportedPackage, error) {
+	assetRoot := ResolveAssetsDir()
+	if assetRoot == "" {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(assetRoot)
+	if err != nil {
+		return nil, fmt.Errorf("read live2d assets dir: %w", err)
+	}
+
+	models := make([]ImportedPackage, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		assetDir := entry.Name()
+		targetDir := filepath.Join(assetRoot, assetDir)
+		modelPath, thumbnailPath, modelName, err := detectImportedAssets(targetDir, assetDir)
+		if err != nil {
+			continue
+		}
+
+		thumbnailURL := ""
+		if strings.TrimSpace(thumbnailPath) != "" {
+			thumbnailURL = AssetURL(thumbnailPath)
+		}
+
+		models = append(models, ImportedPackage{
+			Name:          firstNonEmpty(strings.TrimSpace(modelName), assetDir),
+			AssetDir:      filepath.ToSlash(assetDir),
+			ModelPath:     modelPath,
+			ModelURL:      AssetURL(modelPath),
+			ThumbnailPath: thumbnailPath,
+			ThumbnailURL:  thumbnailURL,
+		})
+	}
+
+	slices.SortFunc(models, func(left ImportedPackage, right ImportedPackage) int {
+		return comparePreferredPath(left.AssetDir, right.AssetDir)
+	})
+	return models, nil
+}
+
+// ManagedModelAssetDirFromURL 从模型 URL 中解析受管资源目录名，无法安全识别时返回空字符串。
+func ManagedModelAssetDirFromURL(modelURL string) string {
+	relativePath := managedAssetRelativePathFromURL(modelURL)
+	if relativePath == "" {
+		return ""
+	}
+
+	parts := strings.Split(relativePath, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	assetDir := strings.TrimSpace(parts[0])
+	if assetDir == "" || strings.EqualFold(assetDir, "backgrounds") {
+		return ""
+	}
+	return assetDir
+}
+
+// DeleteManagedModelAssetDir 删除指定受管模型资源目录，供后台确认删除模型时同步清理文件。
+func DeleteManagedModelAssetDir(assetDir string) error {
+	normalizedAssetDir := strings.TrimSpace(filepath.ToSlash(assetDir))
+	if normalizedAssetDir == "" || strings.Contains(normalizedAssetDir, "/") || strings.EqualFold(normalizedAssetDir, "backgrounds") {
+		return nil
+	}
+
+	assetsRoot := ResolveAssetsDir()
+	if assetsRoot == "" {
+		return nil
+	}
+
+	targetDir := filepath.Join(assetsRoot, filepath.FromSlash(normalizedAssetDir))
+	if !isExistingDir(targetDir) {
+		return nil
+	}
+	if !isSubPath(assetsRoot, targetDir) {
+		return fmt.Errorf("invalid live2d asset dir: %s", assetDir)
+	}
+
+	if err := os.RemoveAll(targetDir); err != nil {
+		return fmt.Errorf("remove live2d asset dir: %w", err)
+	}
+	return nil
+}
+
+// ImportBackgroundImage 导入后台上传的舞台背景图，并返回可直接访问的静态地址。
+func ImportBackgroundImage(filename string, raw []byte) (*ImportedBackground, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("empty live2d background image")
+	}
+
+	assetsDir, err := EnsureAssetsDir()
+	if err != nil {
+		return nil, err
+	}
+
+	extension := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
+	if !isImageFile(extension) {
+		return nil, fmt.Errorf("unsupported background image type")
+	}
+
+	backgroundsDir := filepath.Join(assetsDir, "backgrounds")
+	if err := os.MkdirAll(backgroundsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create live2d backgrounds dir: %w", err)
+	}
+
+	baseName := sanitizeAssetDirName(strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
+	if baseName == "" {
+		baseName = "background"
+	}
+
+	targetFileName, err := allocateBackgroundFileName(backgroundsDir, baseName, extension)
+	if err != nil {
+		return nil, err
+	}
+
+	targetPath := filepath.Join(backgroundsDir, targetFileName)
+	if err := os.WriteFile(targetPath, raw, 0o644); err != nil {
+		return nil, fmt.Errorf("write live2d background image: %w", err)
+	}
+
+	assetPath := filepath.ToSlash(filepath.Join("backgrounds", targetFileName))
+	return &ImportedBackground{
+		FileName:  targetFileName,
+		AssetPath: assetPath,
+		AssetURL:  AssetURL(assetPath),
+	}, nil
+}
+
 // ImportZip 导入后台上传的 Live2D ZIP 包，并返回自动识别的模型信息。
 func ImportZip(filename string, raw []byte) (*ImportedPackage, error) {
 	if len(raw) == 0 {
@@ -140,6 +282,24 @@ func ImportZip(filename string, raw []byte) (*ImportedPackage, error) {
 	}
 
 	return result, nil
+}
+
+// allocateBackgroundFileName 为舞台背景图分配一个不冲突的目标文件名。
+func allocateBackgroundFileName(backgroundsDir string, baseName string, extension string) (string, error) {
+	candidateName := baseName + extension
+	if !isExistingPath(filepath.Join(backgroundsDir, candidateName)) {
+		return candidateName, nil
+	}
+
+	for index := 2; index <= 9999; index++ {
+		candidateName = fmt.Sprintf("%s-%d%s", baseName, index, extension)
+		if isExistingPath(filepath.Join(backgroundsDir, candidateName)) {
+			continue
+		}
+		return candidateName, nil
+	}
+
+	return "", fmt.Errorf("unable to allocate live2d background filename")
 }
 
 // detectPackageName 推导上传包的展示名称。
@@ -342,6 +502,22 @@ func toAssetRelativePath(targetDir string, assetDir string, targetFile string) (
 		return "", fmt.Errorf("resolve live2d asset path: %w", err)
 	}
 	return filepath.ToSlash(filepath.Join(assetDir, relativePath)), nil
+}
+
+// managedAssetRelativePathFromURL 将受管静态资源 URL 转换为资源根目录相对路径。
+func managedAssetRelativePathFromURL(assetURL string) string {
+	normalizedURL := strings.TrimSpace(strings.ReplaceAll(assetURL, "\\", "/"))
+	prefix := MountPath + "/"
+	if !strings.HasPrefix(normalizedURL, prefix) {
+		return ""
+	}
+
+	relativePath := strings.TrimPrefix(normalizedURL, prefix)
+	relativePath = filepath.ToSlash(filepath.Clean(relativePath))
+	if relativePath == "." || relativePath == "" || strings.HasPrefix(relativePath, "../") {
+		return ""
+	}
+	return relativePath
 }
 
 // sanitizeAssetDirName 生成适合作为资源目录名的安全名称。
