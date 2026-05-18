@@ -1166,13 +1166,6 @@ button {
   overflow-x: auto;
   white-space: pre-wrap;
 }
-  margin-top: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  background: #eef4fb;
-  overflow-x: auto;
-  white-space: pre-wrap;
-}
 
 .interview-page-panel {
   max-width: 1240px;
@@ -2209,6 +2202,373 @@ button {
   margin: 0;
   color: #64748b;
   line-height: 1.6;
+}
+
+.live2d-stage-panel {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 32px;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  box-shadow: 0 22px 56px rgba(18, 36, 68, 0.1);
+  overflow: hidden;
+}
+
+.live2d-stage-panel-companion {
+  background:
+    radial-gradient(circle at top left, rgba(255, 194, 90, 0.18), transparent 24%),
+    radial-gradient(circle at top right, rgba(111, 168, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.94));
+}
+
+.live2d-stage-panel-interview {
+  background:
+    radial-gradient(circle at top left, rgba(84, 184, 255, 0.18), transparent 24%),
+    radial-gradient(circle at top right, rgba(255, 204, 128, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(250, 252, 255, 0.96), rgba(241, 246, 255, 0.94));
+}
+
+.live2d-stage-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, auto);
+  gap: 16px;
+  align-items: start;
+}
+
+.live2d-stage-head,
+.live2d-stage-side {
+  display: grid;
+  gap: 10px;
+}
+
+.live2d-stage-head h2 {
+  margin: 10px 0 0;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  color: #14233a;
+}
+
+.live2d-stage-copy {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.live2d-stage-toolbar,
+.live2d-stage-pill-row,
+.live2d-stage-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.live2d-stage-side {
+  justify-items: end;
+}
+
+.live2d-stage-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #46607f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.live2d-stage-selector select {
+  min-width: 220px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(19, 34, 56, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  color: #17304f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.live2d-stage-tool-button {
+  min-height: 40px;
+}
+
+.live2d-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: rgba(19, 34, 56, 0.05);
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  color: #24405f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.live2d-stage-shell {
+  position: relative;
+  min-height: clamp(620px, 76vh, 1000px);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  background:
+    radial-gradient(circle at 50% 14%, rgba(237, 181, 87, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(35, 42, 56, 0.94), rgba(12, 16, 24, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 28px 60px rgba(11, 20, 36, 0.2);
+}
+
+.live2d-stage-panel-companion .live2d-stage-shell {
+  background:
+    radial-gradient(circle at 50% 16%, rgba(234, 183, 94, 0.2), transparent 32%),
+    linear-gradient(180deg, rgba(43, 47, 61, 0.94), rgba(13, 18, 27, 0.98));
+}
+
+.live2d-stage-panel-interview .live2d-stage-shell {
+  background:
+    radial-gradient(circle at 50% 16%, rgba(102, 180, 248, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(30, 40, 58, 0.94), rgba(10, 16, 24, 0.98));
+}
+
+.live2d-stage-shell:active {
+  cursor: grabbing;
+}
+
+.live2d-stage-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  filter: saturate(1.02) contrast(1.02);
+}
+
+.live2d-stage-canvas,
+.live2d-stage-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.live2d-stage-canvas {
+  position: relative;
+  z-index: 1;
+}
+
+.live2d-stage-hint,
+.live2d-stage-status {
+  position: absolute;
+  z-index: 2;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(9, 12, 18, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(238, 232, 221, 0.92);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(10px);
+}
+
+.live2d-stage-hint {
+  top: 18px;
+  left: 18px;
+  pointer-events: none;
+}
+
+.live2d-stage-status {
+  right: 18px;
+  bottom: 18px;
+}
+
+.live2d-stage-overlay {
+  position: absolute;
+  inset: 24px;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  border-radius: 24px;
+  text-align: center;
+  color: #f7efe3;
+  background: rgba(8, 11, 16, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.live2d-stage-overlay span {
+  color: rgba(230, 220, 207, 0.88);
+  line-height: 1.7;
+}
+
+.live2d-stage-overlay-error {
+  background: rgba(69, 16, 16, 0.72);
+  color: #ffe7e7;
+}
+
+.live2d-stage-dialogue {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  left: 20px;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 20px;
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+    rgba(10, 15, 23, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 44px rgba(7, 13, 23, 0.22);
+  backdrop-filter: blur(16px);
+}
+
+.live2d-stage-dialogue .section-kicker {
+  width: fit-content;
+  background: rgba(255, 215, 139, 0.16);
+  color: #ffd586;
+}
+
+.live2d-stage-dialogue-text {
+  margin: 0;
+  min-height: calc(1.85em * 2);
+  color: rgba(248, 250, 255, 0.94);
+  font-size: clamp(15px, 1.7vw, 18px);
+  line-height: 1.85;
+  white-space: pre-wrap;
+}
+
+.live2d-stage-dialogue-text.is-typing::after {
+  content: '|';
+  display: inline-block;
+  margin-left: 2px;
+  color: #ffd586;
+  animation: interview-dialogue-caret 0.9s steps(1, end) infinite;
+}
+
+.live2d-stage-control-drawer {
+  border-radius: 24px;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  overflow: hidden;
+}
+
+.live2d-stage-control-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 0;
+  background:
+    linear-gradient(135deg, rgba(19, 34, 56, 0.04), rgba(255, 255, 255, 0.7)),
+    rgba(255, 255, 255, 0.72);
+  color: #193250;
+  text-align: left;
+}
+
+.live2d-stage-control-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.live2d-stage-control-section {
+  display: grid;
+  gap: 10px;
+}
+
+.live2d-stage-control-section strong {
+  color: #203854;
+}
+
+.live2d-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  background: rgba(241, 246, 255, 0.96);
+  color: #27405d;
+  font-size: 13px;
+}
+
+.live2d-stage-chip-active {
+  background: rgba(255, 231, 182, 0.96);
+  border-color: rgba(214, 162, 65, 0.3);
+  color: #8c5c00;
+}
+
+@media (max-width: 1120px) {
+  .live2d-stage-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .live2d-stage-side {
+    justify-items: start;
+  }
+
+  .live2d-stage-shell {
+    min-height: min(540px, 58vh);
+  }
+}
+
+@media (max-width: 760px) {
+  .live2d-stage-panel {
+    padding: 16px;
+    border-radius: 24px;
+  }
+
+  .live2d-stage-head h2 {
+    font-size: 24px;
+  }
+
+  .live2d-stage-selector {
+    width: 100%;
+    display: grid;
+  }
+
+  .live2d-stage-selector select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .live2d-stage-shell {
+    min-height: min(460px, 54vh);
+    border-radius: 22px;
+  }
+
+  .live2d-stage-hint,
+  .live2d-stage-status {
+    font-size: 11px;
+  }
+
+  .live2d-stage-dialogue {
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+    padding: 14px 15px 16px;
+    border-radius: 18px;
+  }
+
+  .live2d-stage-overlay {
+    inset: 14px;
+  }
+
+  .live2d-stage-control-toggle {
+    align-items: start;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 1120px) {

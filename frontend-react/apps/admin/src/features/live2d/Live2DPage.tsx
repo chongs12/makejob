@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
@@ -32,6 +32,14 @@ interface ImportedLive2DPackage {
   asset_dir: string
   model_url: string
   thumbnail_url?: string
+  model_id?: number
+  created: boolean
+  is_active: boolean
+}
+
+interface ImportedLive2DBackground {
+  file_name: string
+  asset_url: string
 }
 
 interface Live2DFormState {
@@ -40,6 +48,7 @@ interface Live2DFormState {
   scene: Live2DScene
   modelUrl: string
   thumbnailUrl: string
+  backgroundImageUrl: string
   configJson: string
   isActive: boolean
 }
@@ -109,6 +118,26 @@ async function importLive2DPackage(token: string | null, file: File): Promise<Im
 }
 
 /**
+ * 上传舞台背景图并获取后端分配好的静态资源地址。
+ */
+async function importLive2DBackground(token: string | null, file: File): Promise<ImportedLive2DBackground> {
+  const body = new FormData()
+  body.append('file', file)
+
+  const response = await requestJson<ApiEnvelope<ImportedLive2DBackground>>('/admin/live2d-models/backgrounds/import', {
+    method: 'POST',
+    token,
+    body,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '导入 Live2D 背景图失败')
+  }
+
+  return response.data
+}
+
+/**
  * 创建新的 Live2D 模型记录。
  */
 async function createLive2DModel(token: string | null, payload: Record<string, unknown>): Promise<Live2DModel> {
@@ -164,6 +193,7 @@ function buildInitialLive2DForm(): Live2DFormState {
     scene: 'companion',
     modelUrl: '',
     thumbnailUrl: '',
+    backgroundImageUrl: '',
     configJson: '{\n  "scale": 0.4,\n  "offset_x": 0,\n  "offset_y": 0.08\n}',
     isActive: true,
   }
@@ -197,6 +227,35 @@ function buildDefaultLive2DConfig(scene: Live2DScene): Record<string, unknown> {
 }
 
 /**
+ * 解析配置 JSON 为对象，失败时返回空对象，避免单次编辑态被异常输入打断。
+ */
+function parseLive2DConfigObject(rawConfig: string): Record<string, unknown> {
+  const trimmed = rawConfig.trim()
+  if (!trimmed) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      return {}
+    }
+
+    return parsed as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 从配置对象里提取背景图地址，供后台独立输入框回填和前台舞台复用。
+ */
+function resolveLive2DBackgroundImageUrl(rawConfig: string): string {
+  const value = parseLive2DConfigObject(rawConfig).background_image_url
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
  * 将数据库中的 Live2D 模型记录转换为可编辑表单。
  */
 function buildLive2DForm(model?: Live2DModel | null): Live2DFormState {
@@ -210,6 +269,7 @@ function buildLive2DForm(model?: Live2DModel | null): Live2DFormState {
     scene: model.scene,
     modelUrl: model.model_url,
     thumbnailUrl: model.thumbnail_url || '',
+    backgroundImageUrl: resolveLive2DBackgroundImageUrl(model.config_json || ''),
     configJson: model.config_json || '',
     isActive: model.is_active,
   }
@@ -220,6 +280,14 @@ function buildLive2DForm(model?: Live2DModel | null): Live2DFormState {
  */
 function buildLive2DPayload(form: Live2DFormState): Record<string, unknown> {
   const industryId = Number(form.industryId) || 0
+  const configObject = parseLive2DConfigObject(form.configJson)
+  const backgroundImageUrl = form.backgroundImageUrl.trim()
+
+  if (backgroundImageUrl) {
+    configObject.background_image_url = backgroundImageUrl
+  } else {
+    delete configObject.background_image_url
+  }
 
   return {
     name: form.name.trim(),
@@ -227,7 +295,7 @@ function buildLive2DPayload(form: Live2DFormState): Record<string, unknown> {
     scene: form.scene,
     model_url: form.modelUrl.trim(),
     thumbnail_url: form.thumbnailUrl.trim(),
-    config_json: form.configJson.trim(),
+    config_json: JSON.stringify(configObject),
     is_active: form.isActive,
   }
 }
@@ -272,16 +340,24 @@ function looksLikeLive2DModelUrl(value: string): boolean {
 /**
  * 解析当前配置 JSON，并合并场景默认值生成后台页预览。
  */
-function buildLive2DConfigPreview(scene: Live2DScene, rawConfig: string): Live2DConfigPreview {
+function buildLive2DConfigPreview(
+  scene: Live2DScene,
+  rawConfig: string,
+  backgroundImageUrl: string,
+): Live2DConfigPreview {
   const baseConfig = buildDefaultLive2DConfig(scene)
   const trimmed = rawConfig.trim()
 
   if (!trimmed) {
+    const mergedConfig = {
+      ...baseConfig,
+      ...(backgroundImageUrl.trim() ? { background_image_url: backgroundImageUrl.trim() } : {}),
+    }
     return {
       valid: true,
       error: '',
-      mergedConfig: baseConfig,
-      formattedConfig: JSON.stringify(baseConfig, null, 2),
+      mergedConfig,
+      formattedConfig: JSON.stringify(mergedConfig, null, 2),
     }
   }
 
@@ -299,6 +375,11 @@ function buildLive2DConfigPreview(scene: Live2DScene, rawConfig: string): Live2D
     const mergedConfig = {
       ...baseConfig,
       ...(parsed as Record<string, unknown>),
+    }
+    if (backgroundImageUrl.trim()) {
+      mergedConfig.background_image_url = backgroundImageUrl.trim()
+    } else {
+      delete mergedConfig.background_image_url
     }
 
     return {
@@ -323,10 +404,13 @@ function buildLive2DConfigPreview(scene: Live2DScene, rawConfig: string): Live2D
 export function Live2DPage() {
   const accessToken = useAdminAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
+  const packageInputRef = useRef<HTMLInputElement | null>(null)
+  const backgroundInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [form, setForm] = useState<Live2DFormState>(buildInitialLive2DForm())
   const [message, setMessage] = useState('读取 Live2D 模型中')
   const [importFile, setImportFile] = useState<File | null>(null)
+  const [backgroundImportFile, setBackgroundImportFile] = useState<File | null>(null)
 
   const industriesQuery = useQuery({
     queryKey: ['admin', 'industries', accessToken],
@@ -343,8 +427,12 @@ export function Live2DPage() {
   const industryMap = useMemo(() => {
     return new Map((industriesQuery.data || []).map((industry) => [industry.id, industry]))
   }, [industriesQuery.data])
-  const configPreview = useMemo(() => buildLive2DConfigPreview(form.scene, form.configJson), [form.configJson, form.scene])
+  const configPreview = useMemo(
+    () => buildLive2DConfigPreview(form.scene, form.configJson, form.backgroundImageUrl),
+    [form.backgroundImageUrl, form.configJson, form.scene],
+  )
   const hasValidModelUrl = useMemo(() => looksLikeLive2DModelUrl(form.modelUrl), [form.modelUrl])
+  const hasBackgroundImageUrl = useMemo(() => Boolean(form.backgroundImageUrl.trim()), [form.backgroundImageUrl])
   const canSubmit = useMemo(() => {
     return Boolean(form.name.trim()) && Boolean(form.modelUrl.trim()) && configPreview.valid
   }, [configPreview.valid, form.modelUrl, form.name])
@@ -379,12 +467,50 @@ export function Live2DPage() {
         name: result.name || current.name,
         modelUrl: result.model_url || current.modelUrl,
         thumbnailUrl: result.thumbnail_url || current.thumbnailUrl,
+        isActive: result.is_active,
       }))
-      setMessage(`模型包导入完成，资源目录：${result.asset_dir}`)
+      if (result.model_id) {
+        setSelectedModelId(result.model_id)
+      }
+      setMessage(
+        result.created
+          ? `模型包已导入并加入后台待确认列表，资源目录：${result.asset_dir}。当前默认未启用，启用后前台才可见。`
+          : `模型资源已存在于后台列表，资源目录：${result.asset_dir}。当前仍需在后台确认启用后前台才可见。`,
+      )
       setImportFile(null)
+      if (packageInputRef.current) {
+        packageInputRef.current.value = ''
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ['admin', 'live2d-models'],
+      })
     },
     onError: (error) => {
       setMessage(extractErrorMessage(error, '导入 Live2D 模型包失败，请稍后重试'))
+    },
+  })
+
+  const importBackgroundMutation = useMutation({
+    mutationFn: async () => {
+      if (!backgroundImportFile) {
+        throw new Error('请先选择一张背景图')
+      }
+
+      return importLive2DBackground(accessToken, backgroundImportFile)
+    },
+    onSuccess: (result) => {
+      setForm((current) => ({
+        ...current,
+        backgroundImageUrl: result.asset_url || current.backgroundImageUrl,
+      }))
+      setMessage(`背景图导入完成：${result.file_name}`)
+      setBackgroundImportFile(null)
+      if (backgroundInputRef.current) {
+        backgroundInputRef.current.value = ''
+      }
+    },
+    onError: (error) => {
+      setMessage(extractErrorMessage(error, '导入 Live2D 背景图失败，请稍后重试'))
     },
   })
 
@@ -458,6 +584,17 @@ export function Live2DPage() {
   }
 
   /**
+   * 更新原始配置 JSON，并在解析成功时同步回填背景图独立输入框。
+   */
+  function handleConfigJsonChange(value: string): void {
+    setForm((current) => ({
+      ...current,
+      configJson: value,
+      backgroundImageUrl: resolveLive2DBackgroundImageUrl(value) || current.backgroundImageUrl,
+    }))
+  }
+
+  /**
    * 提交 Live2D 表单并执行创建或更新。
    */
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -473,6 +610,34 @@ export function Live2DPage() {
     event.preventDefault()
     setMessage('正在导入 Live2D 模型包。')
     importMutation.mutate()
+  }
+
+  /**
+   * 触发模型包文件选择框，并让用户先完成 ZIP 选择再上传。
+   */
+  function openPackagePicker(): void {
+    packageInputRef.current?.click()
+  }
+
+  /**
+   * 触发舞台背景图文件选择框，避免用户点击上传按钮时没有任何反馈。
+   */
+  function openBackgroundPicker(): void {
+    backgroundInputRef.current?.click()
+  }
+
+  /**
+   * 执行背景图上传；若尚未选择文件，则直接打开文件选择框并给出提示。
+   */
+  function handleBackgroundImport(): void {
+    if (!backgroundImportFile) {
+      setMessage('请先选择一张舞台背景图，再执行上传。')
+      openBackgroundPicker()
+      return
+    }
+
+    setMessage('正在导入 Live2D 背景图。')
+    importBackgroundMutation.mutate()
   }
 
   /**
@@ -520,7 +685,7 @@ export function Live2DPage() {
           <span className="admin-tag">Live2D 中心</span>
           <h2>Live2D 管理</h2>
           <p className="admin-copy">
-            当前页用于维护陪伴与面试场景的 Live2D 模型，支持 ZIP 导入自动识别资源地址，并支持通用模型和行业专属模型并存。
+            当前页用于维护陪伴与面试场景的 Live2D 模型。ZIP 导入或本地资源自动识别后，只会先加入后台待确认列表，默认未启用；只有管理员手动启用后，前台用户才可以切换到这些模型。
           </p>
         </div>
         <div className="admin-live2d-page__summary">
@@ -532,14 +697,43 @@ export function Live2DPage() {
       <div className="admin-live2d-page__toolbar">
         <form className="admin-live2d-import" onSubmit={handleImport}>
           <input
+            ref={packageInputRef}
+            className="admin-upload-input"
             type="file"
             accept=".zip"
             onChange={(event) => setImportFile(event.target.files?.[0] || null)}
           />
+          <div className="admin-upload-meta">
+            <strong>模型 ZIP</strong>
+            <span>{importFile?.name || '尚未选择模型包'}</span>
+          </div>
+          <button className="admin-link" type="button" onClick={openPackagePicker} disabled={importMutation.isPending}>
+            选择模型包
+          </button>
           <button className="admin-link" type="submit" disabled={importMutation.isPending || !importFile}>
             {importMutation.isPending ? '导入中...' : '导入 ZIP 模型包'}
           </button>
         </form>
+
+        <div className="admin-live2d-import">
+          <input
+            ref={backgroundInputRef}
+            className="admin-upload-input"
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp"
+            onChange={(event) => setBackgroundImportFile(event.target.files?.[0] || null)}
+          />
+          <div className="admin-upload-meta">
+            <strong>舞台背景图</strong>
+            <span>{backgroundImportFile?.name || '尚未选择背景图'}</span>
+          </div>
+          <button className="admin-link" type="button" onClick={openBackgroundPicker} disabled={importBackgroundMutation.isPending}>
+            选择背景图
+          </button>
+          <button className="admin-link" type="button" onClick={handleBackgroundImport} disabled={importBackgroundMutation.isPending}>
+            {importBackgroundMutation.isPending ? '上传中...' : '上传舞台背景图'}
+          </button>
+        </div>
 
         <button className="admin-link" type="button" onClick={startCreatingModel}>
           新建模型
@@ -642,9 +836,26 @@ export function Live2DPage() {
             />
           </label>
 
+          <label className="admin-field">
+            <span>舞台背景图地址</span>
+            <input
+              value={form.backgroundImageUrl}
+              onChange={(event) => updateLive2DField('backgroundImageUrl', event.target.value)}
+              placeholder="/live2d-assets/backgrounds/stage-cover.webp"
+            />
+          </label>
+
           {form.thumbnailUrl ? (
             <div className="admin-live2d-editor__preview">
+              <strong>缩略图预览</strong>
               <img src={form.thumbnailUrl} alt={form.name || 'Live2D 缩略图'} />
+            </div>
+          ) : null}
+
+          {form.backgroundImageUrl ? (
+            <div className="admin-live2d-editor__preview admin-live2d-editor__preview-stage">
+              <strong>舞台背景预览</strong>
+              <img src={form.backgroundImageUrl} alt={form.name ? `${form.name} 舞台背景` : 'Live2D 舞台背景'} />
             </div>
           ) : null}
 
@@ -655,6 +866,22 @@ export function Live2DPage() {
                 {hasValidModelUrl
                   ? '模型地址看起来是可加载的 .model3.json 文件。'
                   : '模型地址建议指向 .model3.json 文件，避免前台无法加载。'}
+              </span>
+            </div>
+            <div className={`admin-live2d-editor__status ${hasBackgroundImageUrl ? 'is-valid' : 'is-warning'}`}>
+              <strong>舞台背景</strong>
+              <span>
+                {hasBackgroundImageUrl
+                  ? '前台舞台会优先加载该背景图，加载失败时自动回退默认渐变背景。'
+                  : '当前未配置背景图，前台会继续使用默认舞台渐变背景。'}
+              </span>
+            </div>
+            <div className={`admin-live2d-editor__status ${form.isActive ? 'is-valid' : 'is-warning'}`}>
+              <strong>前台可见性</strong>
+              <span>
+                {form.isActive
+                  ? '当前模型已启用，满足场景与行业命中条件时会出现在前台切换列表。'
+                  : '当前模型未启用，只会保留在后台管理页，前台不会展示或允许切换。'}
               </span>
             </div>
             <div className={`admin-live2d-editor__status ${configPreview.valid ? 'is-valid' : 'is-error'}`}>
@@ -672,7 +899,7 @@ export function Live2DPage() {
             <textarea
               className="admin-live2d-editor__config"
               value={form.configJson}
-              onChange={(event) => updateLive2DField('configJson', event.target.value)}
+              onChange={(event) => handleConfigJsonChange(event.target.value)}
               placeholder='例如 {"scale":0.4,"offset_y":0.08}'
             />
           </label>
@@ -699,7 +926,7 @@ export function Live2DPage() {
               className="admin-link"
               type="button"
               onClick={startCreatingModel}
-              disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending}
+              disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
             >
               重置为新建
             </button>
@@ -708,7 +935,7 @@ export function Live2DPage() {
                 className="admin-link"
                 type="button"
                 onClick={handleDelete}
-                disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending}
+                disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
               >
                 {deleteMutation.isPending ? '删除中...' : '删除模型'}
               </button>
@@ -716,7 +943,7 @@ export function Live2DPage() {
             <button
               className="admin-link"
               type="submit"
-              disabled={!canSubmit || saveMutation.isPending || deleteMutation.isPending || importMutation.isPending}
+              disabled={!canSubmit || saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
             >
               {saveMutation.isPending ? '保存中...' : selectedModelId ? '保存修改' : '创建模型'}
             </button>

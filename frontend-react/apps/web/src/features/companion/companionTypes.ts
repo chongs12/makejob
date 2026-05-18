@@ -172,6 +172,7 @@ export interface CompanionSelectableLive2DModel {
   scene: 'interview' | 'companion'
   model_url: string
   thumbnail_url: string
+  config_json?: string
   source: string
   match_type: string
   is_generic: boolean

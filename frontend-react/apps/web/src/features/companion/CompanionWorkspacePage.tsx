@@ -1,9 +1,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import type { Application } from 'pixi.js'
-import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubism4'
+import { Link } from '@tanstack/react-router'
 import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
 import {
@@ -16,7 +14,7 @@ import {
 import { readCurrentBrowserPath } from '../../shared/authRedirect'
 import { useFrontendIndustriesQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
-import { loadLive2DRuntime, prewarmLive2DRuntime } from '../../shared/live2dRuntime'
+import { prewarmLive2DRuntime } from '../../shared/live2dRuntime'
 import {
   buildCompanionCurrentPlanQueryKey,
   buildCompanionLive2DModelsQueryKey,
@@ -27,6 +25,7 @@ import {
 import { buildPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
 import { fetchQuestionSetDetail } from '../../shared/practiceCatalog'
 import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
+import { CompanionLive2DStage } from './CompanionLive2DStage'
 import {
   adjustCompanionPlan,
   fetchCompanionPlanProgress,
@@ -58,10 +57,8 @@ import {
   clearCompanionFocusTask,
   persistCompanionFocusTask,
   persistCompanionSessionSummary,
-  persistSelectedCompanionModelKey,
   readCompanionDailyDigest,
   readCompanionFocusTask,
-  readSelectedCompanionModelKey,
 } from './companionStorage'
 import type {
   CompanionDailyDigest,
@@ -69,7 +66,6 @@ import type {
   CompanionHistoryItem,
   CompanionPlanDetail,
   CompanionPlanTask,
-  CompanionSelectableLive2DModel,
   CompanionSessionSummary,
   CompanionTaskFeedbackDraft,
   CompanionTaskStatus,
@@ -146,285 +142,9 @@ function CompanionPlanLoadingSkeleton() {
 }
 
 /**
- * 将 Live2D 模型来源转换成更直观的中文说明，方便前台展示当前命中结果。
- */
-function live2DSourceLabel(source: string): string {
-  if (source === 'database') {
-    return '后台模型'
-  }
-
-  if (source === 'bundled') {
-    return '内置回退'
-  }
-
-  return source || '未知来源'
-}
-
-/**
- * 将模型匹配类型转换为前台可读标签，方便用户理解推荐和切换范围。
- */
-function live2DMatchTypeLabel(matchType: string): string {
-  switch (matchType) {
-    case 'industry':
-      return '行业推荐'
-    case 'generic':
-      return '通用模型'
-    case 'other':
-      return '其他可选'
-    case 'bundled':
-      return '内置回退'
-    default:
-      return '可用模型'
-  }
-}
-
-/**
- * 按舞台容器大小重新计算 Ariu 的站位和缩放，让不同屏幕下都保持 galgame 式构图。
- */
-function layoutAriuModel(model: Cubism4Live2DModel, host: HTMLDivElement, baseWidth: number, baseHeight: number): void {
-  const safeBaseWidth = Math.max(baseWidth, 1)
-  const safeBaseHeight = Math.max(baseHeight, 1)
-  const preferredWidthScale = (host.clientWidth * 0.86) / safeBaseWidth
-  const guardedHeightScale = (host.clientHeight * 1.12) / safeBaseHeight
-  const scale = Math.max(Math.min(preferredWidthScale, guardedHeightScale) * 0.9, 0.1)
-
-  model.scale.set(scale)
-  model.anchor.set(0.5, 1)
-  model.position.set(host.clientWidth * 0.5, host.clientHeight * 0.93)
-}
-
-/**
- * 渲染 Ariu 的 Live2D 舞台，并保持与右侧台词框联动。
- */
-function AriuStage(props: {
-  dialogue: string
-  emotion: string
-  action: string
-  loggedIn: boolean
-  industryCode: string
-}) {
-  const hostRef = useRef<HTMLDivElement | null>(null)
-  const [selectedModelKey, setSelectedModelKey] = useState(() => readSelectedCompanionModelKey(props.industryCode))
-  const [stageLoading, setStageLoading] = useState(false)
-  const [stageError, setStageError] = useState('')
-
-  const modelOptionsQuery = useQuery({
-    queryKey: buildCompanionLive2DModelsQueryKey(props.industryCode),
-    queryFn: () => fetchSelectableCompanionLive2DModels(props.industryCode),
-    staleTime: 60 * 1000,
-  })
-
-  useEffect(() => {
-    setSelectedModelKey(readSelectedCompanionModelKey(props.industryCode))
-  }, [props.industryCode])
-
-  const modelOptions = modelOptionsQuery.data || []
-  const currentModel = useMemo(() => {
-    const explicitModel = modelOptions.find((item) => item.key === selectedModelKey)
-    if (explicitModel) {
-      return explicitModel
-    }
-
-    return modelOptions.find((item) => item.is_recommended) || modelOptions[0] || null
-  }, [modelOptions, selectedModelKey])
-  const currentModelName = currentModel?.name || '陪伴助手'
-  const isLoading = modelOptionsQuery.isLoading || stageLoading
-  const errorMessage = modelOptionsQuery.isError
-    ? extractErrorMessage(modelOptionsQuery.error, '读取陪伴页 Live2D 模型列表失败')
-    : stageError
-  const stageStatusText = currentModel
-    ? `当前已选择 ${currentModelName} · ${live2DSourceLabel(currentModel.source)} / ${live2DMatchTypeLabel(currentModel.match_type)}`
-    : (props.loggedIn ? '已连接学习计划' : '未登录，当前为展示模式')
-
-  useEffect(() => {
-    if (!currentModel?.key) {
-      return
-    }
-
-    persistSelectedCompanionModelKey(props.industryCode, currentModel.key)
-    if (currentModel.key !== selectedModelKey) {
-      setSelectedModelKey(currentModel.key)
-    }
-  }, [currentModel?.key, props.industryCode, selectedModelKey])
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host || !currentModel?.model_url) {
-      return undefined
-    }
-
-    let destroyed = false
-    let app: Application | null = null
-    let model: Cubism4Live2DModel | null = null
-    let baseWidth = 1
-    let baseHeight = 1
-
-    /**
-     * 同步 Pixi 画布和 Ariu 位置，避免窗口缩放后构图跑偏。
-     */
-    function syncStageLayout(): void {
-      if (!host || !app || !model) {
-        return
-      }
-
-      app.renderer.resize(host.clientWidth, host.clientHeight)
-      layoutAriuModel(model, host, baseWidth, baseHeight)
-    }
-
-    /**
-     * 让 Ariu 跟随指针轻微偏头，形成更接近 galgame 的陪伴感。
-     */
-    function handlePointerMove(event: PointerEvent): void {
-      if (!model) {
-        return
-      }
-
-      const rect = host.getBoundingClientRect()
-      model.focus(event.clientX - rect.left, event.clientY - rect.top)
-    }
-
-    /**
-     * 当鼠标离开舞台时，将 Ariu 的视线缓慢拉回中心区域。
-     */
-    function handlePointerLeave(): void {
-      if (!model) {
-        return
-      }
-
-      model.focus(host.clientWidth * 0.5, host.clientHeight * 0.58, true)
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-      syncStageLayout()
-    })
-
-    /**
-     * 初始化 Pixi 舞台并异步加载 Ariu 模型资源。
-     */
-    async function mountStage(): Promise<void> {
-      setStageLoading(true)
-      setStageError('')
-
-      try {
-        const { PIXI, Live2DModel } = await loadLive2DRuntime()
-
-        app = new PIXI.Application({
-          width: Math.max(host.clientWidth, 320),
-          height: Math.max(host.clientHeight, 320),
-          autoStart: true,
-          backgroundAlpha: 0,
-          antialias: true,
-          autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
-        })
-
-        host.replaceChildren(app.view as HTMLCanvasElement)
-        resizeObserver.observe(host)
-        host.addEventListener('pointermove', handlePointerMove)
-        host.addEventListener('pointerleave', handlePointerLeave)
-
-        model = await Live2DModel.from(currentModel.model_url)
-        if (destroyed || !app) {
-          model.destroy()
-          return
-        }
-
-        baseWidth = Math.max(model.width, 1)
-        baseHeight = Math.max(model.height, 1)
-        app.stage.addChild(model)
-        syncStageLayout()
-        model.focus(host.clientWidth * 0.5, host.clientHeight * 0.58, true)
-        setStageLoading(false)
-      } catch (stageError) {
-        if (destroyed) {
-          return
-        }
-
-        setStageError(stageError instanceof Error ? stageError.message : 'Live2D 模型加载失败')
-        setStageLoading(false)
-      }
-    }
-
-    void mountStage()
-
-    return () => {
-      destroyed = true
-      resizeObserver.disconnect()
-      host.removeEventListener('pointermove', handlePointerMove)
-      host.removeEventListener('pointerleave', handlePointerLeave)
-
-      if (model && app) {
-        app.stage.removeChild(model)
-        model.destroy()
-      }
-
-      app?.destroy(true)
-    }
-  }, [currentModel?.model_url])
-
-  return (
-    <section className="companion-stage-panel">
-      <div className="companion-stage-topbar">
-        <div className="companion-stage-badges">
-          <span className="page-tag">当前模型：{currentModelName}</span>
-          <span className="companion-state-pill">情绪：{props.emotion}</span>
-          <span className="companion-state-pill">动作：{props.action}</span>
-        </div>
-        <div className="companion-stage-side">
-          <span className="companion-stage-copy">{stageStatusText}</span>
-          {modelOptions.length > 1 ? (
-            <label className="companion-stage-selector">
-              <span>切换模型</span>
-              <select
-                value={currentModel?.key || ''}
-                onChange={(event) => setSelectedModelKey(event.target.value)}
-              >
-                {modelOptions.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {`${item.name} · ${live2DMatchTypeLabel(item.match_type)}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="companion-stage-canvas-wrap">
-        <div className="companion-stage-canvas" ref={hostRef} />
-
-        {isLoading ? (
-          <div className="companion-stage-overlay">
-            <strong>{modelOptionsQuery.isLoading ? '正在读取可用模型' : `正在加载 ${currentModelName}`}</strong>
-            <span>
-              {modelOptionsQuery.isLoading
-                ? '前台正在读取当前场景下的可切换 Live2D 模型。'
-                : '模型资源加载中，请稍等片刻。'}
-            </span>
-          </div>
-        ) : null}
-
-        {errorMessage ? (
-          <div className="companion-stage-overlay companion-stage-overlay-error">
-            <strong>模型加载失败</strong>
-            <span>{errorMessage}</span>
-          </div>
-        ) : null}
-
-        <div className="companion-stage-dialogue">
-          <span className="section-kicker">{currentModelName}</span>
-          <p>{props.dialogue}</p>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/**
  * 提供学习陪伴核心页面，整合 Ariu 舞台、计划侧栏和聊天输入区。
  */
 export function CompanionWorkspacePage() {
-  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
@@ -1054,7 +774,7 @@ export function CompanionWorkspacePage() {
         >
           <div className="companion-stage-shell">
             {stageEnabled ? (
-              <AriuStage
+              <CompanionLive2DStage
                 dialogue={currentDialogue}
                 emotion={stageFeedback.emotion}
                 action={stageFeedback.action}
