@@ -3,6 +3,8 @@
 // 当前为Mock实现，后续可无缝替换为Eino框架真实集成
 package ai
 
+import "context"
+
 // Message AI对话消息
 type Message struct {
 	Role    string `json:"role"` // system/user/assistant
@@ -28,6 +30,7 @@ type InterviewQuestion struct {
 	StarterCode    string `json:"starter_code,omitempty"`
 	EditorMode     string `json:"editor_mode,omitempty"`
 	EvaluationMode string `json:"evaluation_mode,omitempty"`
+	Live2DDirective *Live2DDirective `json:"live2d_directive,omitempty"`
 }
 
 // AnswerFeedback 答案反馈
@@ -115,9 +118,91 @@ type UserProfile struct {
 
 // CompanionResponse 陪伴响应
 type CompanionResponse struct {
-	Content string `json:"content"`
-	Emotion string `json:"emotion"` // happy/neutral/encouraging/thinking
-	Action  string `json:"action"`  // idle/wave/nod/celebrate
+	Content         string            `json:"content"`
+	Emotion         string            `json:"emotion"` // happy/neutral/encouraging/thinking
+	Action          string            `json:"action"`  // idle/wave/nod/celebrate
+	Live2DDirective *Live2DDirective  `json:"live2d_directive,omitempty"`
+}
+
+// Live2DExpressionLayer 描述一层要叠加到前端模型上的表情指令。
+type Live2DExpressionLayer struct {
+	Key    string  `json:"key"`
+	Weight float64 `json:"weight"`
+}
+
+// Live2DParameterOverride 描述一条需要写入模型参数的覆盖值。
+type Live2DParameterOverride struct {
+	ID    string  `json:"id"`
+	Value float64 `json:"value"`
+}
+
+// Live2DDirective 描述大模型为当前回复生成的结构化 Live2D 控制指令。
+type Live2DDirective struct {
+	Emotion            string                    `json:"emotion,omitempty"`
+	Action             string                    `json:"action,omitempty"`
+	Reply              string                    `json:"reply,omitempty"`
+	ExpressionMix      []Live2DExpressionLayer   `json:"expression_mix,omitempty"`
+	ParameterOverrides []Live2DParameterOverride `json:"parameter_overrides,omitempty"`
+	MotionKey          string                    `json:"motion_key,omitempty"`
+	MotionGroup        string                    `json:"motion_group,omitempty"`
+	MotionPriority     string                    `json:"motion_priority,omitempty"`
+	MotionDurationMS   int                       `json:"motion_duration_ms,omitempty"`
+	Intensity          float64                   `json:"intensity,omitempty"`
+	DurationMS         int                       `json:"duration_ms,omitempty"`
+	MouthOpen          *float64                  `json:"mouth_open,omitempty"`
+	Source             string                    `json:"source,omitempty"`
+}
+
+// Live2DManifestExpression 描述模型可用表达式的稳定清单项。
+type Live2DManifestExpression struct {
+	Key   string `json:"key"`
+	Label string `json:"label,omitempty"`
+}
+
+// Live2DManifestParameter 描述模型可控参数的稳定清单项。
+type Live2DManifestParameter struct {
+	ID    string  `json:"id"`
+	Min   float64 `json:"min,omitempty"`
+	Max   float64 `json:"max,omitempty"`
+	Label string  `json:"label,omitempty"`
+}
+
+// Live2DManifestMotion 描述模型可供大模型选择的一条稳定动作清单项。
+type Live2DManifestMotion struct {
+	Key   string `json:"key"`
+	Group string `json:"group,omitempty"`
+	File  string `json:"file,omitempty"`
+	Label string `json:"label,omitempty"`
+}
+
+// Live2DManifest 描述当前模型可供大模型调用的表达式和参数白名单。
+type Live2DManifest struct {
+	ModelKey    string                    `json:"model_key"`
+	ModelName   string                    `json:"model_name"`
+	Scene       string                    `json:"scene"`
+	ModelURL    string                    `json:"model_url"`
+	Expressions []Live2DManifestExpression `json:"expressions,omitempty"`
+	Parameters  []Live2DManifestParameter  `json:"parameters,omitempty"`
+	Motions     []Live2DManifestMotion     `json:"motions,omitempty"`
+}
+
+// Live2DDirectiveContext 描述一次 Live2D 指令生成需要的文本和业务上下文。
+type Live2DDirectiveContext struct {
+	Scene             string
+	Model             Live2DManifest
+	UserMessage       string
+	AssistantReply    string
+	UserEmotion       string
+	QuestionIndex     int
+	Question          *InterviewQuestion
+	RecentMessages    []Message
+	CurrentDirective  *Live2DDirective
+	AdditionalContext map[string]string
+}
+
+// Live2DDirectiveGenerator 定义基于模型清单生成结构化 Live2D 指令的能力。
+type Live2DDirectiveGenerator interface {
+	GenerateDirective(ctx context.Context, req Live2DDirectiveContext) (*Live2DDirective, error)
 }
 
 // CodeAnalysis 代码分析结果

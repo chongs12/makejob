@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"makejob-backend/internal/common"
+	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
 )
 
@@ -177,6 +180,55 @@ func TestLive2DServiceListSelectableModels(t *testing.T) {
 	}
 	if items[2].Key != "db:103" || items[2].MatchType != "other" {
 		t.Fatalf("expected third item to be other active model, got %#v", items[2])
+	}
+}
+
+// TestLive2DServiceListSelectableModelsIncludesFallbackMotions 验证前台切换列表会携带后端回退发现到的动作清单。
+func TestLive2DServiceListSelectableModelsIncludesFallbackMotions(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(live2dassets.AssetsDirEnv, assetsDir)
+
+	modelDir := filepath.Join(assetsDir, "yumi")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("create model dir: %v", err)
+	}
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "yumi.model3.json"), `{
+  "FileReferences": {
+    "Expressions": []
+  }
+}`)
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "wave.motion3.json"), `{}`)
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "tear.motion3.json"), `{}`)
+
+	svc := NewLive2DService(
+		&mockLive2DModelRepository{
+			models: []model.Live2DModel{
+				{
+					BaseModel: model.BaseModel{ID: 201},
+					Name:      "Yumi",
+					Scene:     model.Live2DSceneCompanion,
+					ModelURL:  "/live2d-assets/yumi/yumi.model3.json",
+					IsActive:  true,
+				},
+			},
+		},
+		nil,
+	)
+
+	items, err := svc.ListSelectableModels(context.Background(), &SelectableLive2DModelsRequest{
+		Scene: model.Live2DSceneCompanion,
+	})
+	if err != nil {
+		t.Fatalf("ListSelectableModels returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 selectable model, got %#v", items)
+	}
+	if len(items[0].Motions) != 2 {
+		t.Fatalf("expected fallback motions to be included, got %#v", items[0].Motions)
+	}
+	if items[0].Motions[0].Group != "auto" {
+		t.Fatalf("expected fallback motion group auto, got %#v", items[0].Motions[0])
 	}
 }
 

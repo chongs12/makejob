@@ -24,6 +24,7 @@ type AIClient struct {
 	PlanAgent      PlanAgent
 	CompanionAgent CompanionAgent
 	QuizAnalyzer   QuizAnalyzer
+	Live2DDirector Live2DDirectiveGenerator
 }
 
 // GetModelName 获取当前使用的模型名称

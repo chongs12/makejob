@@ -177,6 +177,7 @@ func main() {
 }
 
 // initDependencies 初始化仓库、服务和处理器依赖。
+// initDependencies 负责组装服务端运行所需的仓库、服务与处理器依赖。
 func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 	deps := &AppDependencies{}
 	var industryRepo repository.IndustryRepository
@@ -202,6 +203,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 
 		industryRepo = repository.NewIndustryRepository(db)
 		adminConfigRepo := repository.NewAdminConfigRepository(db)
+		aiPresetRepo := repository.NewAIPresetRepository(db)
 		adminUserRepo := repository.NewAdminUserRepository(db)
 		adminQuestionRepo := repository.NewAdminQuestionRepository(db)
 		adminCategoryRepo := repository.NewAdminCategoryRepository(db)
@@ -211,7 +213,9 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		ttsRepo := repository.NewTTSConfigRepository(db)
 		mockInterviewRepo := repository.NewMockInterviewRepository(db)
 		scraperTaskRepo := repository.NewScraperTaskRepository(db)
-		aiClient := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults()).Build(context.Background())
+		runtimeBuilder := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults())
+		aiClient := aiRuntime.NewRuntimeManager(runtimeBuilder).BuildDynamicClient()
+		live2DDirectiveService := service.NewLive2DDirectiveService(live2DRepo, aiClient.Live2DDirector)
 		scraperProvider := scraperMock.NewMockScraperProvider()
 		questionCleaner := scraper.NewMockCleaner()
 		communityRepo := repository.NewCommunityRepository(db)
@@ -226,6 +230,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			aiClient.InterviewAgent,
 			aiClient.QuizAnalyzer,
 			industryRepo,
+			live2DDirectiveService,
 		)
 		deps.QuestionService = service.NewQuestionService(
 			deps.QuestionRepo,
@@ -249,7 +254,10 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			aiClient.QuizAnalyzer,
 			industryRepo,
 		)
-		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent)
+		ttsProvider, err := ttsfactory.NewTTSProviderWithConfig("", cfg)
+		if err != nil {
+			applogger.Warn("live2d scene tts provider not ready", zap.Error(err))
+		}
 		deps.GrowthService = service.NewGrowthService(
 			deps.StudyLogRepo,
 			deps.RecordRepo,
@@ -258,12 +266,9 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanTaskRepo,
 			deps.LearningArchiveRepo,
 		)
+		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent, live2DDirectiveService, ttsProvider)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
-		ttsProvider, err := ttsfactory.NewTTSProviderWithConfig("", cfg)
-		if err != nil {
-			applogger.Warn("interview tts provider not ready", zap.Error(err))
-		}
 		asrProvider, err := asrfactory.NewASRProviderWithConfig("", cfg)
 		if err != nil {
 			applogger.Warn("interview asr provider not ready", zap.Error(err))
@@ -286,6 +291,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			adminCategoryRepo,
 			promptRepo,
 			adminConfigRepo,
+			aiPresetRepo,
 			aiCallLogRepo,
 			live2DRepo,
 			ttsRepo,

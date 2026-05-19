@@ -392,6 +392,7 @@ type wsQuestionPayload struct {
 	StarterCode    string `json:"starter_code,omitempty"`
 	EditorMode     string `json:"editor_mode,omitempty"`
 	EvaluationMode string `json:"evaluation_mode,omitempty"`
+	Live2DDirective *ai.Live2DDirective `json:"live2d_directive,omitempty"`
 }
 
 // wsTTSAudioPayload 描述面试官当前播报文本对应的语音资源。
@@ -406,9 +407,14 @@ type wsTTSAudioPayload struct {
 
 // wsLive2DExpressionPayload 描述前端应切换到的表情状态。
 type wsLive2DExpressionPayload struct {
-	Emotion string `json:"emotion"`
-	Action  string `json:"action"`
-	Source  string `json:"source"`
+	Emotion            string                         `json:"emotion"`
+	Action             string                         `json:"action"`
+	Source             string                         `json:"source"`
+	ExpressionMix      []ai.Live2DExpressionLayer     `json:"expression_mix,omitempty"`
+	ParameterOverrides []ai.Live2DParameterOverride   `json:"parameter_overrides,omitempty"`
+	Intensity          float64                        `json:"intensity,omitempty"`
+	DurationMS         int                            `json:"duration_ms,omitempty"`
+	MouthOpen          *float64                       `json:"mouth_open,omitempty"`
 }
 
 // wsInterviewSession 管理单个面试连接的实时状态与写入串行化。
@@ -530,7 +536,7 @@ func (s *wsInterviewSession) bootstrap() {
 			Message: "当前面试实时链路已就绪。",
 		},
 	})
-	s.sendExpression("neutral", "idle", "bootstrap")
+	s.sendDirective(nil)
 
 	question, questionNo, ok := resolveCurrentInterviewQuestion(detail)
 	if !ok {
@@ -573,7 +579,7 @@ func (s *wsInterviewSession) handleUserAnswer(answer string) {
 
 	if resp.IsFinished {
 		s.sendState("finished", "本场面试已完成，可以生成最终报告。")
-		s.sendExpression("neutral", "idle", "finished")
+		s.sendDirective(nil)
 		s.send(WSMessage{
 			Type:    WSMessageTypeFinished,
 			Content: "面试已完成",
@@ -702,7 +708,7 @@ func (s *wsInterviewSession) consumeASRResults(stream asr.StreamSession) {
 
 // sendQuestion 推送当前题目、面试状态、表情以及对应语音。
 func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questionNo int) {
-	s.sendExpression("serious", "ask", "question")
+	s.sendDirective(question.Live2DDirective)
 	s.send(WSMessage{
 		Type:    WSMessageTypeAIQuestion,
 		Content: question.Question,
@@ -715,6 +721,7 @@ func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questio
 			StarterCode:    question.StarterCode,
 			EditorMode:     question.EditorMode,
 			EvaluationMode: question.EvaluationMode,
+			Live2DDirective: question.Live2DDirective,
 		},
 	})
 	s.sendState("speaking", "面试官正在播报当前题目。")
@@ -782,15 +789,32 @@ func resolveTTSEngine(provider tts.TTSProvider) string {
 	return strings.TrimSpace(supportedEngines[0])
 }
 
-// sendExpression 推送当前应展示的 Live2D 表情和动作状态。
-func (s *wsInterviewSession) sendExpression(emotion string, action string, source string) {
+// sendDirective 推送当前应展示的 Live2D 结构化状态，缺省时回退到中性待机。
+func (s *wsInterviewSession) sendDirective(directive *ai.Live2DDirective) {
+	payload := wsLive2DExpressionPayload{
+		Emotion: "neutral",
+		Action:  "idle",
+		Source:  "fallback",
+	}
+	if directive != nil {
+		if strings.TrimSpace(directive.Emotion) != "" {
+			payload.Emotion = strings.TrimSpace(directive.Emotion)
+		}
+		if strings.TrimSpace(directive.Action) != "" {
+			payload.Action = strings.TrimSpace(directive.Action)
+		}
+		if strings.TrimSpace(directive.Source) != "" {
+			payload.Source = strings.TrimSpace(directive.Source)
+		}
+		payload.ExpressionMix = directive.ExpressionMix
+		payload.ParameterOverrides = directive.ParameterOverrides
+		payload.Intensity = directive.Intensity
+		payload.DurationMS = directive.DurationMS
+		payload.MouthOpen = directive.MouthOpen
+	}
 	s.send(WSMessage{
 		Type: WSMessageTypeLive2DExpression,
-		Data: wsLive2DExpressionPayload{
-			Emotion: emotion,
-			Action:  action,
-			Source:  source,
-		},
+		Data: payload,
 	})
 }
 

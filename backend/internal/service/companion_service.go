@@ -8,21 +8,29 @@ import (
 
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
+	"makejob-backend/internal/model"
+	"makejob-backend/internal/tts"
 )
 
 type CompanionChatRequest struct {
-	Message     string         `json:"message"`
-	Messages    []ai.Message   `json:"messages"`
-	UserEmotion string         `json:"user_emotion"`
-	Context     map[string]any `json:"context"`
+	Message        string         `json:"message"`
+	Messages       []ai.Message   `json:"messages"`
+	UserEmotion    string         `json:"user_emotion"`
+	Context        map[string]any `json:"context"`
+	Live2DModelKey string         `json:"live2d_model_key"`
 }
 
 type CompanionChatResponse struct {
-	Content string `json:"content"`
-	Reply   string `json:"reply"`
-	Emotion string `json:"emotion"`
-	Mood    string `json:"mood"`
-	Action  string `json:"action"`
+	Content         string              `json:"content"`
+	Reply           string              `json:"reply"`
+	Emotion         string              `json:"emotion"`
+	Mood            string              `json:"mood"`
+	Action          string              `json:"action"`
+	AudioURL        string              `json:"audio_url,omitempty"`
+	AudioDuration   float64             `json:"audio_duration,omitempty"`
+	AudioFormat     string              `json:"audio_format,omitempty"`
+	AudioSampleRate int                 `json:"audio_sample_rate,omitempty"`
+	Live2DDirective *ai.Live2DDirective `json:"live2d_directive,omitempty"`
 }
 
 type CompanionService interface {
@@ -30,15 +38,31 @@ type CompanionService interface {
 }
 
 type companionService struct {
-	companionAgent ai.CompanionAgent
+	companionAgent  ai.CompanionAgent
+	live2dDirective Live2DDirectiveService
+	ttsProvider     tts.TTSProvider
 }
 
-func NewCompanionService(companionAgent ai.CompanionAgent) CompanionService {
+// NewCompanionService 创建陪伴服务，并按传入依赖自动接入 Live2D 指令和 TTS 能力。
+func NewCompanionService(companionAgent ai.CompanionAgent, dependencies ...any) CompanionService {
+	var directiveService Live2DDirectiveService
+	var ttsProvider tts.TTSProvider
+	for _, dependency := range dependencies {
+		switch typedDependency := dependency.(type) {
+		case Live2DDirectiveService:
+			directiveService = typedDependency
+		case tts.TTSProvider:
+			ttsProvider = typedDependency
+		}
+	}
 	return &companionService{
-		companionAgent: companionAgent,
+		companionAgent:  companionAgent,
+		live2dDirective: directiveService,
+		ttsProvider:     ttsProvider,
 	}
 }
 
+// Chat 生成陪伴回复，并在有选中模型时追加结构化 Live2D 控制指令。
 func (s *companionService) Chat(ctx context.Context, userID uint, req *CompanionChatRequest) (*CompanionChatResponse, error) {
 	if req == nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "请求不能为空")
@@ -60,13 +84,67 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 	}
 
 	replyContent := sanitizeCompanionReply(reply.Content)
+	var directive *ai.Live2DDirective
+	if s.live2dDirective != nil && strings.TrimSpace(req.Live2DModelKey) != "" {
+		manifest, err := s.live2dDirective.ResolveActiveManifest(ctx, model.Live2DSceneCompanion, req.Live2DModelKey)
+		if err == nil && manifest != nil {
+			directiveCtx, cancel := context.WithTimeout(ctx, live2DDirectiveTimeout)
+			directive, _ = s.live2dDirective.GenerateDirective(directiveCtx, ai.Live2DDirectiveContext{
+				Scene:          model.Live2DSceneCompanion,
+				Model:          *manifest,
+				UserMessage:    latestCompanionUserMessage(messages),
+				AssistantReply: replyContent,
+				UserEmotion:    userEmotion,
+				RecentMessages: messages,
+			})
+			cancel()
+		}
+	}
+	ttsAudio := synthesizeCompanionSpeech(ctx, s.ttsProvider, replyContent)
 	return &CompanionChatResponse{
-		Content: replyContent,
-		Reply:   replyContent,
-		Emotion: reply.Emotion,
-		Mood:    reply.Emotion,
-		Action:  reply.Action,
+		Content:         replyContent,
+		Reply:           replyContent,
+		Emotion:         reply.Emotion,
+		Mood:            reply.Emotion,
+		Action:          reply.Action,
+		AudioURL:        ttsAudio.AudioURL,
+		AudioDuration:   ttsAudio.Duration,
+		AudioFormat:     ttsAudio.Format,
+		AudioSampleRate: ttsAudio.SampleRate,
+		Live2DDirective: directive,
 	}, nil
+}
+
+// synthesizeCompanionSpeech 为陪伴回复生成可选语音资源，失败时静默降级到纯文本。
+func synthesizeCompanionSpeech(ctx context.Context, provider tts.TTSProvider, text string) tts.SynthesizeResult {
+	if provider == nil || strings.TrimSpace(text) == "" {
+		return tts.SynthesizeResult{}
+	}
+
+	result, err := provider.Synthesize(ctx, tts.SynthesizeRequest{
+		Text:   text,
+		Engine: resolveCompanionTTSEngine(provider),
+		Format: "mp3",
+	})
+	if err != nil {
+		return tts.SynthesizeResult{}
+	}
+
+	return result
+}
+
+// resolveCompanionTTSEngine 返回当前 TTS Provider 优先使用的引擎标识。
+func resolveCompanionTTSEngine(provider tts.TTSProvider) string {
+	if provider == nil {
+		return ""
+	}
+
+	supportedEngines := provider.GetSupportedEngines()
+	if len(supportedEngines) == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(supportedEngines[0])
 }
 
 // normalizeCompanionMessages 统一整理陪伴对话历史，并在有上下文时自动注入一条 system 消息。
@@ -208,4 +286,15 @@ func sanitizeCompanionReply(content string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(filtered, "\n"))
+}
+
+// latestCompanionUserMessage 返回最近一条用户消息，供 Live2D 指令提示词使用。
+func latestCompanionUserMessage(messages []ai.Message) string {
+	for index := len(messages) - 1; index >= 0; index-- {
+		item := messages[index]
+		if strings.EqualFold(strings.TrimSpace(item.Role), "user") && strings.TrimSpace(item.Content) != "" {
+			return strings.TrimSpace(item.Content)
+		}
+	}
+	return ""
 }

@@ -87,6 +87,7 @@ func buildWorkerAdminService(db *gorm.DB, cfg *config.Config) service.AdminServi
 	industryRepo := repository.NewIndustryRepository(db)
 	adminCategoryRepo := repository.NewAdminCategoryRepository(db)
 	adminConfigRepo := repository.NewAdminConfigRepository(db)
+	aiPresetRepo := repository.NewAIPresetRepository(db)
 	promptRepo := repository.NewPromptTemplateRepository(db)
 	aiCallLogRepo := repository.NewAICallLogRepository(db)
 	scraperTaskRepo := repository.NewScraperTaskRepository(db)
@@ -100,6 +101,7 @@ func buildWorkerAdminService(db *gorm.DB, cfg *config.Config) service.AdminServi
 		adminCategoryRepo,
 		promptRepo,
 		adminConfigRepo,
+		aiPresetRepo,
 		aiCallLogRepo,
 		nil,
 		nil,

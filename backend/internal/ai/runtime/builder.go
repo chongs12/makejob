@@ -48,6 +48,11 @@ func NewBuilder(
 // Build 根据默认配置和后台配置组装 AI 客户端。
 func (b *Builder) Build(ctx context.Context) *ai.AIClient {
 	runtimeConfig := b.loadRuntimeConfig(ctx)
+	return b.buildClient(ctx, runtimeConfig)
+}
+
+// buildClient 基于已经归一化的 runtime 配置构建一套 AI 客户端。
+func (b *Builder) buildClient(ctx context.Context, runtimeConfig map[string]string) *ai.AIClient {
 	prompts := &promptResolver{
 		promptRepo:   b.promptRepo,
 		industryRepo: b.industryRepo,
@@ -83,6 +88,11 @@ func (b *Builder) Build(ctx context.Context) *ai.AIClient {
 			quizProvider,
 			prompts,
 			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceQuizRuntime, model.PromptSceneQuiz, runtimeConfig, quizSceneConfig),
+		),
+		Live2DDirector: newLive2DDirector(
+			companionProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceCompanionRuntime, model.PromptSceneCompanion, runtimeConfig, companionSceneConfig),
 		),
 	}
 }

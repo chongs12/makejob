@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
@@ -37,16 +38,17 @@ type SelectableLive2DModelsRequest struct {
 
 // SelectableLive2DModelResponse 描述前台可用于切换的 Live2D 模型条目。
 type SelectableLive2DModelResponse struct {
-	Key           string `json:"key"`
-	Name          string `json:"name"`
-	Scene         string `json:"scene"`
-	ModelURL      string `json:"model_url"`
-	ThumbnailURL  string `json:"thumbnail_url"`
-	ConfigJSON    string `json:"config_json,omitempty"`
-	Source        string `json:"source"`
-	MatchType     string `json:"match_type"`
-	IsGeneric     bool   `json:"is_generic"`
-	IsRecommended bool   `json:"is_recommended"`
+	Key           string                    `json:"key"`
+	Name          string                    `json:"name"`
+	Scene         string                    `json:"scene"`
+	ModelURL      string                    `json:"model_url"`
+	ThumbnailURL  string                    `json:"thumbnail_url"`
+	ConfigJSON    string                    `json:"config_json,omitempty"`
+	Source        string                    `json:"source"`
+	MatchType     string                    `json:"match_type"`
+	IsGeneric     bool                      `json:"is_generic"`
+	IsRecommended bool                      `json:"is_recommended"`
+	Motions       []ai.Live2DManifestMotion `json:"motions,omitempty"`
 }
 
 // Live2DService 定义前台 Live2D 模型查询能力。
@@ -235,6 +237,7 @@ func buildSelectableDatabaseLive2DModels(
 			MatchType:     matchType,
 			IsGeneric:     item.IsGeneric(),
 			IsRecommended: recommended != nil && item.ID == recommended.ID,
+			Motions:       resolveSelectableLive2DModelMotions(item),
 		}
 
 		switch matchType {
@@ -252,6 +255,27 @@ func buildSelectableDatabaseLive2DModels(
 	items = append(items, genericMatches...)
 	items = append(items, otherMatches...)
 	return items
+}
+
+// resolveSelectableLive2DModelMotions 为前台切换列表补充当前模型可用动作清单，便于前端在原始 model3.json 缺少声明时补全运行时设置。
+func resolveSelectableLive2DModelMotions(item *model.Live2DModel) []ai.Live2DManifestMotion {
+	if item == nil || strings.TrimSpace(item.ModelURL) == "" {
+		return nil
+	}
+
+	manifest, err := buildLive2DManifestFromModel(*item)
+	if err != nil || manifest == nil || len(manifest.Motions) == 0 {
+		return nil
+	}
+
+	motions := make([]ai.Live2DManifestMotion, 0, len(manifest.Motions))
+	for _, motion := range manifest.Motions {
+		if strings.TrimSpace(motion.Key) == "" || strings.TrimSpace(motion.File) == "" {
+			continue
+		}
+		motions = append(motions, motion)
+	}
+	return motions
 }
 
 // buildDatabaseLive2DModelKey 为数据库模型生成稳定的前台选择键。

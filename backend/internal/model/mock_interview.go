@@ -20,6 +20,7 @@ type MockInterview struct {
 	Status         string     `json:"status" gorm:"size:20;not null;default:'ongoing';comment:状态(ongoing/completed/cancelled)"`
 	Score          float64    `json:"score" gorm:"type:decimal(5,2);comment:面试得分"`
 	AISessionID    string     `json:"ai_session_id" gorm:"type:text;comment:AI面试会话ID"`
+	Live2DModelKey string     `json:"live2d_model_key" gorm:"size:128;comment:面试会话绑定的Live2D模型键"`
 	AIFeedback     string     `json:"ai_feedback" gorm:"type:text;comment:AI反馈评价"`
 	ReportJSON     string     `json:"report_json" gorm:"type:text;comment:完整面试报告JSON"`
 	TotalQuestions int        `json:"total_questions" gorm:"comment:总题目数"`

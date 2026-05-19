@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"makejob-backend/internal/ai"
-	aiRuntime "makejob-backend/internal/ai/runtime"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
@@ -266,6 +265,11 @@ type AdminService interface {
 
 	GetAIConfigs(ctx context.Context) (*AIConfigResponse, error)
 	UpdateAIConfigs(ctx context.Context, configs map[string]string) error
+	ListAIPresets(ctx context.Context) ([]AIPresetSummary, error)
+	CreateAIPreset(ctx context.Context, req *CreateAIPresetRequest) (*AIPresetSummary, error)
+	UpdateAIPreset(ctx context.Context, id uint, req *UpdateAIPresetRequest) (*AIPresetSummary, error)
+	DeleteAIPreset(ctx context.Context, id uint) error
+	ApplyAIPreset(ctx context.Context, id uint) (*AIConfigResponse, error)
 	DebugAIRuntime(ctx context.Context, req *AIDebugRequest) (*AIDebugResponse, error)
 	ListAICallLogs(ctx context.Context, req *ListAICallLogsRequest) (*common.PageResult, error)
 	GetAICallLog(ctx context.Context, id uint) (*model.AICallLog, error)
@@ -290,6 +294,7 @@ type adminService struct {
 	adminCategoryRepo repository.AdminCategoryRepository
 	promptRepo        repository.PromptTemplateRepository
 	adminConfigRepo   repository.AdminConfigRepository
+	aiPresetRepo      repository.AIPresetRepository
 	aiCallLogRepo     repository.AICallLogRepository
 	live2DRepo        repository.Live2DModelRepository
 	ttsRepo           repository.TTSConfigRepository
@@ -308,6 +313,7 @@ func NewAdminService(
 	adminCategoryRepo repository.AdminCategoryRepository,
 	promptRepo repository.PromptTemplateRepository,
 	adminConfigRepo repository.AdminConfigRepository,
+	aiPresetRepo repository.AIPresetRepository,
 	aiCallLogRepo repository.AICallLogRepository,
 	live2DRepo repository.Live2DModelRepository,
 	ttsRepo repository.TTSConfigRepository,
@@ -324,6 +330,7 @@ func NewAdminService(
 		adminCategoryRepo: adminCategoryRepo,
 		promptRepo:        promptRepo,
 		adminConfigRepo:   adminConfigRepo,
+		aiPresetRepo:      aiPresetRepo,
 		aiCallLogRepo:     aiCallLogRepo,
 		live2DRepo:        live2DRepo,
 		ttsRepo:           ttsRepo,
@@ -878,25 +885,43 @@ func (s *adminService) GetAIConfigs(ctx context.Context) (*AIConfigResponse, err
 		return nil, err
 	}
 
-	return buildAIConfigResponse(items, s.baseAIConfig), nil
+	response := buildAIConfigResponse(items, s.baseAIConfig)
+	if s.aiPresetRepo == nil {
+		return response, nil
+	}
+
+	presets, err := s.aiPresetRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	summaries, activePresetID, err := buildAIPresetSummaries(presets)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "parse ai presets failed: "+err.Error())
+	}
+
+	response.Presets = summaries
+	response.ActivePresetID = activePresetID
+	return response, nil
 }
 
 // UpdateAIConfigs 校验并持久化后台提交的 AI 运行配置。
 func (s *adminService) UpdateAIConfigs(ctx context.Context, configs map[string]string) error {
-	if len(configs) == 0 {
-		return common.NewBusinessError(common.CodeBadRequest, "configs cannot be empty")
-	}
-
-	if err := aiRuntime.ValidateRuntimeConfig(configs); err != nil {
+	normalizedConfigs, err := normalizeStoredAIConfigs(configs)
+	if err != nil {
 		return common.NewBusinessError(common.CodeBadRequest, err.Error())
 	}
 
-	adminConfigs := buildAIConfigItems(ai.NormalizeRuntimeConfig(configs))
+	adminConfigs := buildAIConfigItems(normalizedConfigs)
 	if len(adminConfigs) == 0 {
 		return common.NewBusinessError(common.CodeBadRequest, "no valid ai configs provided")
 	}
 
-	return s.adminConfigRepo.BatchUpsert(ctx, adminConfigs)
+	if err := s.adminConfigRepo.BatchUpsert(ctx, adminConfigs); err != nil {
+		return err
+	}
+
+	return s.syncActiveAIPresetSnapshot(ctx, normalizedConfigs)
 }
 
 // ListLive2DModels 返回后台可维护的 Live2D 模型列表。
@@ -1354,4 +1379,197 @@ func normalizedParentID(parentID *uint) *uint {
 		return nil
 	}
 	return parentID
+}
+
+// ListAIPresets 返回后台 AI 预设列表。
+func (s *adminService) ListAIPresets(ctx context.Context) ([]AIPresetSummary, error) {
+	if s.aiPresetRepo == nil {
+		return []AIPresetSummary{}, nil
+	}
+
+	presets, err := s.aiPresetRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	summaries, _, err := buildAIPresetSummaries(presets)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "parse ai presets failed: "+err.Error())
+	}
+	return summaries, nil
+}
+
+// CreateAIPreset 基于一份完整 AI 配置快照创建新预设。
+func (s *adminService) CreateAIPreset(ctx context.Context, req *CreateAIPresetRequest) (*AIPresetSummary, error) {
+	if s.aiPresetRepo == nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "ai preset repository not configured")
+	}
+
+	presetName := normalizeAIPresetName(req.Name)
+	if presetName == "" {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "preset name is required")
+	}
+	if err := s.ensureAIPresetNameAvailable(ctx, presetName, 0); err != nil {
+		return nil, err
+	}
+
+	configJSON, err := serializeAIPresetConfigs(req.Configs)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
+
+	preset := &model.AIPreset{
+		Name:       presetName,
+		ConfigJSON: configJSON,
+		IsActive:   false,
+	}
+	if err := s.aiPresetRepo.Create(ctx, preset); err != nil {
+		return nil, err
+	}
+
+	summary, err := buildAIPresetSummary(*preset)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "parse ai preset failed: "+err.Error())
+	}
+	return &summary, nil
+}
+
+// UpdateAIPreset 更新指定 AI 预设的名称或配置快照。
+func (s *adminService) UpdateAIPreset(ctx context.Context, id uint, req *UpdateAIPresetRequest) (*AIPresetSummary, error) {
+	preset, err := s.getAIPresetOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	hasChanges := false
+	if req.Name != nil {
+		presetName := normalizeAIPresetName(*req.Name)
+		if presetName == "" {
+			return nil, common.NewBusinessError(common.CodeBadRequest, "preset name is required")
+		}
+		if err := s.ensureAIPresetNameAvailable(ctx, presetName, preset.ID); err != nil {
+			return nil, err
+		}
+		preset.Name = presetName
+		hasChanges = true
+	}
+
+	if req.Configs != nil {
+		configJSON, err := serializeAIPresetConfigs(req.Configs)
+		if err != nil {
+			return nil, common.NewBusinessError(common.CodeBadRequest, err.Error())
+		}
+		preset.ConfigJSON = configJSON
+		hasChanges = true
+	}
+
+	if !hasChanges {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "no preset changes provided")
+	}
+	if err := s.aiPresetRepo.Update(ctx, preset); err != nil {
+		return nil, err
+	}
+
+	if preset.IsActive && req.Configs != nil {
+		configs, err := parseAIPresetConfigs(preset.ConfigJSON)
+		if err != nil {
+			return nil, common.NewBusinessError(common.CodeInternalError, "parse ai preset failed: "+err.Error())
+		}
+		if err := s.adminConfigRepo.BatchUpsert(ctx, buildAIConfigItems(configs)); err != nil {
+			return nil, err
+		}
+	}
+
+	summary, err := buildAIPresetSummary(*preset)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "parse ai preset failed: "+err.Error())
+	}
+	return &summary, nil
+}
+
+// DeleteAIPreset 删除指定 AI 预设，当前生效预设不允许直接删除。
+func (s *adminService) DeleteAIPreset(ctx context.Context, id uint) error {
+	preset, err := s.getAIPresetOrNotFound(ctx, id)
+	if err != nil {
+		return err
+	}
+	if preset.IsActive {
+		return common.NewBusinessError(common.CodeBadRequest, "active preset cannot be deleted")
+	}
+	return s.aiPresetRepo.Delete(ctx, id)
+}
+
+// ApplyAIPreset 将指定预设覆盖到当前全局运行配置并标记为生效预设。
+func (s *adminService) ApplyAIPreset(ctx context.Context, id uint) (*AIConfigResponse, error) {
+	preset, err := s.getAIPresetOrNotFound(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	configs, err := parseAIPresetConfigs(preset.ConfigJSON)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "parse ai preset failed: "+err.Error())
+	}
+	if err := s.adminConfigRepo.BatchUpsert(ctx, buildAIConfigItems(configs)); err != nil {
+		return nil, err
+	}
+	if err := s.aiPresetRepo.SetActive(ctx, preset.ID); err != nil {
+		return nil, err
+	}
+
+	return s.GetAIConfigs(ctx)
+}
+
+// syncActiveAIPresetSnapshot 在直接保存运行配置后同步更新当前生效预设快照。
+func (s *adminService) syncActiveAIPresetSnapshot(ctx context.Context, configs map[string]string) error {
+	if s.aiPresetRepo == nil {
+		return nil
+	}
+
+	activePreset, err := s.aiPresetRepo.GetActive(ctx)
+	if err != nil {
+		return err
+	}
+	if activePreset == nil {
+		return nil
+	}
+
+	configJSON, err := serializeAIPresetConfigs(configs)
+	if err != nil {
+		return common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
+	activePreset.ConfigJSON = configJSON
+	return s.aiPresetRepo.Update(ctx, activePreset)
+}
+
+// ensureAIPresetNameAvailable 校验预设名称是否可用，并支持排除当前编辑中的记录。
+func (s *adminService) ensureAIPresetNameAvailable(ctx context.Context, name string, excludeID uint) error {
+	if s.aiPresetRepo == nil {
+		return common.NewBusinessError(common.CodeInternalError, "ai preset repository not configured")
+	}
+
+	existingPreset, err := s.aiPresetRepo.GetByName(ctx, name)
+	if err != nil {
+		return err
+	}
+	if existingPreset != nil && existingPreset.ID != excludeID {
+		return common.NewBusinessError(common.CodeBadRequest, "preset name already exists")
+	}
+	return nil
+}
+
+// getAIPresetOrNotFound 获取指定预设，不存在时返回标准业务错误。
+func (s *adminService) getAIPresetOrNotFound(ctx context.Context, id uint) (*model.AIPreset, error) {
+	if s.aiPresetRepo == nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "ai preset repository not configured")
+	}
+
+	preset, err := s.aiPresetRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if preset == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "ai preset not found")
+	}
+	return preset, nil
 }

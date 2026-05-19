@@ -5,6 +5,7 @@ const (
 	AICallSourceAdminDebug       = "admin_debug"       // 管理端调试调用来源。
 	AICallSourceInterviewRuntime = "interview_runtime" // 面试链路运行时调用来源。
 	AICallSourcePlanRuntime      = "plan_runtime"      // 学习计划链路运行时调用来源。
+	AICallSourceCompanionRuntime = "companion_runtime" // 陪伴与 Live2D 链路运行时调用来源。
 	AICallSourceQuizRuntime      = "quiz_runtime"      // 题目分析链路运行时调用来源。
 )
 

@@ -27,10 +27,11 @@ type InterviewService interface {
 
 // CreateInterviewRequest 创建面试请求DTO
 type CreateInterviewRequest struct {
-	IndustryCode  string   `json:"industry_code" binding:"required"`
-	Difficulty    string   `json:"difficulty" binding:"required,oneof=easy medium hard mixed"`
-	Topics        []string `json:"topics"`
-	QuestionCount int      `json:"question_count" binding:"required,min=3,max=20"`
+	IndustryCode   string   `json:"industry_code" binding:"required"`
+	Difficulty     string   `json:"difficulty" binding:"required,oneof=easy medium hard mixed"`
+	Topics         []string `json:"topics"`
+	QuestionCount  int      `json:"question_count" binding:"required,min=3,max=20"`
+	Live2DModelKey string   `json:"live2d_model_key"`
 }
 
 // InterviewResponse 创建面试响应DTO
@@ -103,6 +104,7 @@ type interviewService struct {
 	interviewAgent       ai.InterviewAgent
 	quizAnalyzer         ai.QuizAnalyzer
 	industryRepo         repository.IndustryRepository
+	live2dDirective      Live2DDirectiveService
 }
 
 // NewInterviewService 创建面试服务实例
@@ -113,7 +115,7 @@ func NewInterviewService(
 	learningArchiveRepo repository.LearningArchiveRepository,
 	interviewAgent ai.InterviewAgent,
 	quizAnalyzer ai.QuizAnalyzer,
-	industryRepo ...repository.IndustryRepository,
+	deps ...interface{},
 ) InterviewService {
 	s := &interviewService{
 		interviewRepo:        interviewRepo,
@@ -123,8 +125,13 @@ func NewInterviewService(
 		interviewAgent:       interviewAgent,
 		quizAnalyzer:         quizAnalyzer,
 	}
-	if len(industryRepo) > 0 {
-		s.industryRepo = industryRepo[0]
+	for _, dep := range deps {
+		switch value := dep.(type) {
+		case repository.IndustryRepository:
+			s.industryRepo = value
+		case Live2DDirectiveService:
+			s.live2dDirective = value
+		}
 	}
 	return s
 }
@@ -152,6 +159,7 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 		UserID:         userID,
 		IndustryID:     industryID,
 		Status:         model.InterviewStatusOngoing,
+		Live2DModelKey: strings.TrimSpace(req.Live2DModelKey),
 		TotalQuestions: req.QuestionCount,
 		StartedAt:      &now,
 	}
@@ -172,6 +180,7 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 	if err != nil {
 		return nil, fmt.Errorf("启动AI面试失败: %w", err)
 	}
+	s.decorateInterviewQuestionWithLive2D(ctx, interview, &firstQuestion, nil)
 
 	// 保存sessionID到独立字段，避免后续被报告摘要覆盖。
 	interview.AISessionID = sessionID
@@ -345,6 +354,7 @@ func (s *interviewService) SubmitAnswer(ctx context.Context, userID, interviewID
 			return nil, fmt.Errorf("获取下一题失败: %w", err)
 		}
 		if hasNext {
+			s.decorateInterviewQuestionWithLive2D(ctx, interview, &nextQ, currentQuestion)
 			nextQuestion = &nextQ
 			// 保存下一题
 			questionMsg, err := buildInterviewQuestionMessage(interviewID, nextQ)
@@ -416,6 +426,7 @@ func (s *interviewService) GetNextQuestion(ctx context.Context, userID, intervie
 			IsLast:     true,
 		}, nil
 	}
+	s.decorateInterviewQuestionWithLive2D(ctx, interview, &question, resolveCurrentQuestionFromStoredMessages(messages))
 
 	// 保存问题到消息
 	questionMsg, err := buildInterviewQuestionMessage(interviewID, question)
@@ -840,6 +851,47 @@ func mergeInterviewReportSuggestions(existing []string, diagnostics []ai.CodingQ
 		result = appendUniqueStrings(result, diagnosis.Suggestions...)
 	}
 	return result
+}
+
+// decorateInterviewQuestionWithLive2D 为当前题目补齐结构化 Live2D 指令，失败时静默回退主链路。
+func (s *interviewService) decorateInterviewQuestionWithLive2D(
+	ctx context.Context,
+	interview *model.MockInterview,
+	question *ai.InterviewQuestion,
+	previousQuestion *ai.InterviewQuestion,
+) {
+	if s.live2dDirective == nil || interview == nil || question == nil {
+		return
+	}
+	if strings.TrimSpace(interview.Live2DModelKey) == "" || strings.TrimSpace(question.Question) == "" {
+		return
+	}
+
+	manifest, err := s.live2dDirective.ResolveActiveManifest(ctx, model.Live2DSceneInterview, interview.Live2DModelKey)
+	if err != nil || manifest == nil {
+		return
+	}
+
+	directiveCtx, cancel := context.WithTimeout(ctx, live2DDirectiveTimeout)
+	defer cancel()
+
+	directive, err := s.live2dDirective.GenerateDirective(directiveCtx, ai.Live2DDirectiveContext{
+		Scene:          model.Live2DSceneInterview,
+		Model:          *manifest,
+		AssistantReply: strings.TrimSpace(question.Question),
+		Question:       question,
+		QuestionIndex:  0,
+		CurrentDirective: func() *ai.Live2DDirective {
+			if previousQuestion == nil {
+				return nil
+			}
+			return previousQuestion.Live2DDirective
+		}(),
+	})
+	if err != nil {
+		return
+	}
+	question.Live2DDirective = directive
 }
 
 // parseIndustryCode 解析行业代码为行业ID（简化实现）

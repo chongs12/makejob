@@ -82,6 +82,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&CommunityPostLike{},
 		&MembershipOrder{},
 		&AdminConfig{},
+		&AIPreset{},
 		&AICallLog{},
 		&PromptTemplate{},
 		&Live2DModel{},

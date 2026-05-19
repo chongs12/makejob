@@ -67,6 +67,11 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// AI配置管理
 	r.GET("/ai-configs", h.GetAIConfigs)
 	r.PUT("/ai-configs", h.UpdateAIConfigs)
+	r.GET("/ai-config-presets", h.ListAIPresets)
+	r.POST("/ai-config-presets", h.CreateAIPreset)
+	r.PUT("/ai-config-presets/:id", h.UpdateAIPreset)
+	r.DELETE("/ai-config-presets/:id", h.DeleteAIPreset)
+	r.POST("/ai-config-presets/:id/apply", h.ApplyAIPreset)
 	r.POST("/prompts/test-render", h.TestRenderPrompt)
 	r.GET("/ai-call-logs", h.ListAICallLogs)
 	r.GET("/ai-call-logs/:id", h.GetAICallLog)

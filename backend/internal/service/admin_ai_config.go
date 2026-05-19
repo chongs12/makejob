@@ -1,22 +1,52 @@
 package service
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
 	"makejob-backend/internal/ai"
 	aiRuntime "makejob-backend/internal/ai/runtime"
 	"makejob-backend/internal/model"
 )
 
+// AIConfigSupport 描述后台 AI 配置页的当前运行时支持范围。
 type AIConfigSupport struct {
 	PrimaryProviders  []string `json:"primary_providers"`
 	FallbackProviders []string `json:"fallback_providers"`
 	Notes             []string `json:"notes"`
 }
 
+// AIPresetSummary 描述单个 AI 预设的展示信息与完整配置快照。
+type AIPresetSummary struct {
+	ID        uint              `json:"id"`
+	Name      string            `json:"name"`
+	IsActive  bool              `json:"is_active"`
+	UpdatedAt time.Time         `json:"updated_at"`
+	Configs   map[string]string `json:"configs"`
+}
+
+// CreateAIPresetRequest 描述创建 AI 预设时需要提交的完整配置快照。
+type CreateAIPresetRequest struct {
+	Name    string            `json:"name"`
+	Configs map[string]string `json:"configs"`
+}
+
+// UpdateAIPresetRequest 描述更新 AI 预设时允许修改的字段。
+type UpdateAIPresetRequest struct {
+	Name    *string           `json:"name,omitempty"`
+	Configs map[string]string `json:"configs,omitempty"`
+}
+
+// AIConfigResponse 描述后台 AI 配置页需要的完整数据。
 type AIConfigResponse struct {
-	Configs  map[string]string   `json:"configs"`
-	Items    []model.AdminConfig `json:"items"`
-	Support  AIConfigSupport     `json:"support"`
-	Warnings []string            `json:"warnings"`
+	Configs        map[string]string   `json:"configs"`
+	Items          []model.AdminConfig `json:"items"`
+	Support        AIConfigSupport     `json:"support"`
+	Warnings       []string            `json:"warnings"`
+	Presets        []AIPresetSummary   `json:"presets"`
+	ActivePresetID *uint               `json:"active_preset_id,omitempty"`
 }
 
 // buildAIConfigResponse 构建 AI 配置响应，并把配置文件默认值合并进返回结果。
@@ -39,6 +69,7 @@ func buildAIConfigResponse(items []model.AdminConfig, baseConfig map[string]stri
 		Items:    filtered,
 		Support:  buildAIConfigSupport(),
 		Warnings: aiRuntime.RuntimeConfigIssues(normalized),
+		Presets:  []AIPresetSummary{},
 	}
 }
 
@@ -69,6 +100,87 @@ func buildAIConfigSupport() AIConfigSupport {
 		FallbackProviders: summary.FallbackProviders,
 		Notes:             summary.Notes,
 	}
+}
+
+// buildAIPresetSummaries 将数据库预设记录整理为前端可直接消费的结构。
+func buildAIPresetSummaries(presets []model.AIPreset) ([]AIPresetSummary, *uint, error) {
+	summaries := make([]AIPresetSummary, 0, len(presets))
+	var activePresetID *uint
+
+	for _, preset := range presets {
+		summary, err := buildAIPresetSummary(preset)
+		if err != nil {
+			return nil, nil, err
+		}
+		if summary.IsActive {
+			presetID := summary.ID
+			activePresetID = &presetID
+		}
+		summaries = append(summaries, summary)
+	}
+
+	return summaries, activePresetID, nil
+}
+
+// buildAIPresetSummary 将单条预设记录转换为响应摘要。
+func buildAIPresetSummary(preset model.AIPreset) (AIPresetSummary, error) {
+	configs, err := parseAIPresetConfigs(preset.ConfigJSON)
+	if err != nil {
+		return AIPresetSummary{}, err
+	}
+
+	return AIPresetSummary{
+		ID:        preset.ID,
+		Name:      preset.Name,
+		IsActive:  preset.IsActive,
+		UpdatedAt: preset.UpdatedAt,
+		Configs:   configs,
+	}, nil
+}
+
+// normalizeAIPresetName 统一清洗 AI 预设名称，避免首尾空白导致重复名称。
+func normalizeAIPresetName(name string) string {
+	return strings.TrimSpace(name)
+}
+
+// normalizeStoredAIConfigs 统一清洗并校验一份完整 AI 配置快照。
+func normalizeStoredAIConfigs(configs map[string]string) (map[string]string, error) {
+	if len(configs) == 0 {
+		return nil, fmt.Errorf("configs cannot be empty")
+	}
+
+	normalized := ai.NormalizeRuntimeConfig(configs)
+	if err := aiRuntime.ValidateRuntimeConfig(normalized); err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
+// parseAIPresetConfigs 从预设 JSON 中恢复完整 AI 配置快照。
+func parseAIPresetConfigs(configJSON string) (map[string]string, error) {
+	if strings.TrimSpace(configJSON) == "" {
+		return nil, fmt.Errorf("preset config snapshot is empty")
+	}
+
+	var configs map[string]string
+	if err := json.Unmarshal([]byte(configJSON), &configs); err != nil {
+		return nil, fmt.Errorf("parse ai preset configs: %w", err)
+	}
+	return normalizeStoredAIConfigs(configs)
+}
+
+// serializeAIPresetConfigs 将完整 AI 配置快照序列化为稳定 JSON。
+func serializeAIPresetConfigs(configs map[string]string) (string, error) {
+	normalized, err := normalizeStoredAIConfigs(configs)
+	if err != nil {
+		return "", err
+	}
+
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("marshal ai preset configs: %w", err)
+	}
+	return string(payload), nil
 }
 
 // inferAIConfigType 根据配置键推导后台表单应使用的字段类型。
