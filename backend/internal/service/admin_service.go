@@ -180,6 +180,7 @@ type CreateLive2DModelRequest struct {
 	ModelURL     string `json:"model_url" binding:"required,max=500"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	ConfigJSON   string `json:"config_json,omitempty"`
+	TTSConfigID  *uint  `json:"tts_config_id,omitempty"`
 	IsActive     bool   `json:"is_active"`
 }
 
@@ -190,6 +191,7 @@ type UpdateLive2DModelRequest struct {
 	ModelURL     string `json:"model_url,omitempty" binding:"omitempty,max=500"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	ConfigJSON   string `json:"config_json,omitempty"`
+	TTSConfigID  *uint  `json:"tts_config_id,omitempty"`
 	IsActive     *bool  `json:"is_active,omitempty"`
 }
 
@@ -211,23 +213,23 @@ type ImportLive2DBackgroundResponse struct {
 }
 
 type CreateTTSConfigRequest struct {
-	Name       string `json:"name" binding:"required,max=100"`
-	Engine     string `json:"engine" binding:"required,oneof=elevenlabs minimax aliyun xunfei"`
-	VoiceID    string `json:"voice_id" binding:"required,max=100"`
-	Scene      string `json:"scene" binding:"required,oneof=interview companion"`
-	ParamsJSON string `json:"params_json,omitempty"`
-	IsActive   bool   `json:"is_active"`
-	SortOrder  int    `json:"sort_order"`
+	Name           string `json:"name" binding:"required,max=100"`
+	Engine         string `json:"engine" binding:"required,max=32"`
+	VoiceID        string `json:"voice_id" binding:"required,max=100"`
+	AuthConfigJSON string `json:"auth_config_json,omitempty"`
+	ParamsJSON     string `json:"params_json,omitempty"`
+	IsActive       bool   `json:"is_active"`
+	SortOrder      int    `json:"sort_order"`
 }
 
 type UpdateTTSConfigRequest struct {
-	Name       string `json:"name,omitempty" binding:"omitempty,max=100"`
-	Engine     string `json:"engine,omitempty" binding:"omitempty,oneof=elevenlabs minimax aliyun xunfei"`
-	VoiceID    string `json:"voice_id,omitempty" binding:"omitempty,max=100"`
-	Scene      string `json:"scene,omitempty" binding:"omitempty,oneof=interview companion"`
-	ParamsJSON string `json:"params_json,omitempty"`
-	IsActive   *bool  `json:"is_active,omitempty"`
-	SortOrder  *int   `json:"sort_order,omitempty"`
+	Name           string `json:"name,omitempty" binding:"omitempty,max=100"`
+	Engine         string `json:"engine,omitempty" binding:"omitempty,max=32"`
+	VoiceID        string `json:"voice_id,omitempty" binding:"omitempty,max=100"`
+	AuthConfigJSON string `json:"auth_config_json,omitempty"`
+	ParamsJSON     string `json:"params_json,omitempty"`
+	IsActive       *bool  `json:"is_active,omitempty"`
+	SortOrder      *int   `json:"sort_order,omitempty"`
 }
 
 type AdminService interface {
@@ -281,10 +283,11 @@ type AdminService interface {
 	ImportLive2DPackage(ctx context.Context, filename string, content []byte) (*ImportLive2DPackageResponse, error)
 	ImportLive2DBackground(ctx context.Context, filename string, content []byte) (*ImportLive2DBackgroundResponse, error)
 
-	ListTTSConfigs(ctx context.Context) ([]model.TTSConfig, error)
+	ListTTSConfigs(ctx context.Context) (*TTSConfigListResponse, error)
 	CreateTTSConfig(ctx context.Context, req *CreateTTSConfigRequest) (*model.TTSConfig, error)
 	UpdateTTSConfig(ctx context.Context, id uint, req *UpdateTTSConfigRequest) error
 	DeleteTTSConfig(ctx context.Context, id uint) error
+	UpdateTTSSceneDefaults(ctx context.Context, req *UpdateTTSSceneDefaultsRequest) error
 }
 
 type adminService struct {
@@ -938,6 +941,10 @@ func (s *adminService) CreateLive2DModel(ctx context.Context, req *CreateLive2DM
 	if err != nil {
 		return nil, err
 	}
+	ttsConfigID, err := s.normalizeOptionalTTSConfigID(ctx, req.TTSConfigID)
+	if err != nil {
+		return nil, err
+	}
 
 	live2d := &model.Live2DModel{
 		Name:         req.Name,
@@ -946,6 +953,7 @@ func (s *adminService) CreateLive2DModel(ctx context.Context, req *CreateLive2DM
 		ModelURL:     req.ModelURL,
 		ThumbnailURL: req.ThumbnailURL,
 		ConfigJSON:   req.ConfigJSON,
+		TTSConfigID:  ttsConfigID,
 		IsActive:     req.IsActive,
 	}
 
@@ -987,6 +995,13 @@ func (s *adminService) UpdateLive2DModel(ctx context.Context, id uint, req *Upda
 	}
 	if req.ConfigJSON != "" {
 		live2d.ConfigJSON = req.ConfigJSON
+	}
+	if req.TTSConfigID != nil {
+		ttsConfigID, err := s.normalizeOptionalTTSConfigID(ctx, req.TTSConfigID)
+		if err != nil {
+			return err
+		}
+		live2d.TTSConfigID = ttsConfigID
 	}
 	if req.IsActive != nil {
 		live2d.IsActive = *req.IsActive
@@ -1054,19 +1069,30 @@ func (s *adminService) ImportLive2DBackground(ctx context.Context, filename stri
 	}, nil
 }
 
-func (s *adminService) ListTTSConfigs(ctx context.Context) ([]model.TTSConfig, error) {
-	return s.ttsRepo.List(ctx)
+// ListTTSConfigs 返回后台页维护 TTS 所需的完整配置视图。
+func (s *adminService) ListTTSConfigs(ctx context.Context) (*TTSConfigListResponse, error) {
+	configs, err := s.ttsRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return BuildTTSConfigListResponse(ctx, configs, s.adminConfigRepo)
 }
 
+// CreateTTSConfig 创建一条新的可运行 TTS 配置记录。
 func (s *adminService) CreateTTSConfig(ctx context.Context, req *CreateTTSConfigRequest) (*model.TTSConfig, error) {
+	normalizedAuthConfig, normalizedParamsConfig, err := ValidateTTSConfigInput(req.Engine, req.VoiceID, req.AuthConfigJSON, req.ParamsJSON)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
+
 	cfg := &model.TTSConfig{
-		Name:       req.Name,
-		Engine:     req.Engine,
-		VoiceID:    req.VoiceID,
-		Scene:      req.Scene,
-		ParamsJSON: req.ParamsJSON,
-		IsActive:   req.IsActive,
-		SortOrder:  req.SortOrder,
+		Name:           req.Name,
+		Engine:         strings.TrimSpace(req.Engine),
+		VoiceID:        strings.TrimSpace(req.VoiceID),
+		AuthConfigJSON: normalizedAuthConfig,
+		ParamsJSON:     normalizedParamsConfig,
+		IsActive:       req.IsActive,
+		SortOrder:      req.SortOrder,
 	}
 
 	if err := s.ttsRepo.Create(ctx, cfg); err != nil {
@@ -1076,6 +1102,7 @@ func (s *adminService) CreateTTSConfig(ctx context.Context, req *CreateTTSConfig
 	return cfg, nil
 }
 
+// UpdateTTSConfig 更新后台已有的 TTS 配置记录。
 func (s *adminService) UpdateTTSConfig(ctx context.Context, id uint, req *UpdateTTSConfigRequest) error {
 	cfg, err := s.ttsRepo.GetByID(ctx, id)
 	if err != nil {
@@ -1089,13 +1116,13 @@ func (s *adminService) UpdateTTSConfig(ctx context.Context, id uint, req *Update
 		cfg.Name = req.Name
 	}
 	if req.Engine != "" {
-		cfg.Engine = req.Engine
+		cfg.Engine = strings.TrimSpace(req.Engine)
 	}
 	if req.VoiceID != "" {
-		cfg.VoiceID = req.VoiceID
+		cfg.VoiceID = strings.TrimSpace(req.VoiceID)
 	}
-	if req.Scene != "" {
-		cfg.Scene = req.Scene
+	if req.AuthConfigJSON != "" {
+		cfg.AuthConfigJSON = req.AuthConfigJSON
 	}
 	if req.ParamsJSON != "" {
 		cfg.ParamsJSON = req.ParamsJSON
@@ -1107,11 +1134,44 @@ func (s *adminService) UpdateTTSConfig(ctx context.Context, id uint, req *Update
 		cfg.SortOrder = *req.SortOrder
 	}
 
+	normalizedAuthConfig, normalizedParamsConfig, validateErr := ValidateTTSConfigInput(cfg.Engine, cfg.VoiceID, cfg.AuthConfigJSON, cfg.ParamsJSON)
+	if validateErr != nil {
+		return common.NewBusinessError(common.CodeBadRequest, validateErr.Error())
+	}
+	cfg.AuthConfigJSON = normalizedAuthConfig
+	cfg.ParamsJSON = normalizedParamsConfig
+
 	return s.ttsRepo.Update(ctx, cfg)
 }
 
+// DeleteTTSConfig 删除指定 TTS 配置。
 func (s *adminService) DeleteTTSConfig(ctx context.Context, id uint) error {
 	return s.ttsRepo.Delete(ctx, id)
+}
+
+// UpdateTTSSceneDefaults 更新后台按场景维度配置的默认 TTS 绑定。
+func (s *adminService) UpdateTTSSceneDefaults(ctx context.Context, req *UpdateTTSSceneDefaultsRequest) error {
+	if req == nil {
+		return common.NewBusinessError(common.CodeBadRequest, "tts default bindings are required")
+	}
+
+	for scene, configID := range req.DefaultBindings {
+		if _, err := normalizeLive2DScene(scene); err != nil {
+			return common.NewBusinessError(common.CodeBadRequest, "invalid tts default scene")
+		}
+		if configID == 0 {
+			continue
+		}
+		if _, err := s.loadActiveTTSConfig(ctx, configID); err != nil {
+			return err
+		}
+	}
+
+	adminConfigs, err := BuildTTSDefaultSceneConfigs(req.DefaultBindings)
+	if err != nil {
+		return common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
+	return s.adminConfigRepo.BatchUpsert(ctx, adminConfigs)
 }
 
 func parseQuestionOptions(raw string) []string {
@@ -1231,6 +1291,37 @@ func (s *adminService) normalizeOptionalIndustryID(ctx context.Context, industry
 	}
 
 	return industryID, nil
+}
+
+// normalizeOptionalTTSConfigID 校验可选的 TTS 配置绑定并统一空值语义。
+func (s *adminService) normalizeOptionalTTSConfigID(ctx context.Context, ttsConfigID *uint) (*uint, error) {
+	if ttsConfigID == nil || *ttsConfigID == 0 {
+		return nil, nil
+	}
+
+	if _, err := s.loadActiveTTSConfig(ctx, *ttsConfigID); err != nil {
+		return nil, err
+	}
+	return ttsConfigID, nil
+}
+
+// loadActiveTTSConfig 加载一条存在且已启用的 TTS 配置，供绑定校验复用。
+func (s *adminService) loadActiveTTSConfig(ctx context.Context, configID uint) (*model.TTSConfig, error) {
+	if s.ttsRepo == nil {
+		return nil, common.NewBusinessError(common.CodeInternalError, "tts repository not configured")
+	}
+
+	record, err := s.ttsRepo.GetByID(ctx, configID)
+	if err != nil {
+		return nil, err
+	}
+	if record == nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "tts config not found")
+	}
+	if !record.IsActive {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "tts config is inactive")
+	}
+	return record, nil
 }
 
 // deleteManagedLive2DAssetsIfUnused 在没有其他模型复用同一资源目录时，删除对应的本地模型目录。

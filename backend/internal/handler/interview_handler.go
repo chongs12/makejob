@@ -29,14 +29,16 @@ import (
 // InterviewHandler 面试处理器
 type InterviewHandler struct {
 	interviewService service.InterviewService
+	ttsSceneService  service.SceneTTSService
 	ttsProvider      tts.TTSProvider
 	asrProvider      asr.ASRProvider
 }
 
 // NewInterviewHandler 创建面试处理器实例
-func NewInterviewHandler(svc service.InterviewService, ttsProvider tts.TTSProvider, asrProvider asr.ASRProvider) *InterviewHandler {
+func NewInterviewHandler(svc service.InterviewService, ttsSceneService service.SceneTTSService, ttsProvider tts.TTSProvider, asrProvider asr.ASRProvider) *InterviewHandler {
 	return &InterviewHandler{
 		interviewService: svc,
+		ttsSceneService:  ttsSceneService,
 		ttsProvider:      ttsProvider,
 		asrProvider:      asrProvider,
 	}
@@ -384,14 +386,14 @@ type wsASRPayload struct {
 
 // wsQuestionPayload 描述当前题目和题号。
 type wsQuestionPayload struct {
-	Question       string `json:"question"`
-	QuestionNo     int    `json:"question_no"`
-	Type           string `json:"type"`
-	Hints          string `json:"hints,omitempty"`
-	Language       string `json:"language,omitempty"`
-	StarterCode    string `json:"starter_code,omitempty"`
-	EditorMode     string `json:"editor_mode,omitempty"`
-	EvaluationMode string `json:"evaluation_mode,omitempty"`
+	Question        string              `json:"question"`
+	QuestionNo      int                 `json:"question_no"`
+	Type            string              `json:"type"`
+	Hints           string              `json:"hints,omitempty"`
+	Language        string              `json:"language,omitempty"`
+	StarterCode     string              `json:"starter_code,omitempty"`
+	EditorMode      string              `json:"editor_mode,omitempty"`
+	EvaluationMode  string              `json:"evaluation_mode,omitempty"`
 	Live2DDirective *ai.Live2DDirective `json:"live2d_directive,omitempty"`
 }
 
@@ -407,14 +409,14 @@ type wsTTSAudioPayload struct {
 
 // wsLive2DExpressionPayload 描述前端应切换到的表情状态。
 type wsLive2DExpressionPayload struct {
-	Emotion            string                         `json:"emotion"`
-	Action             string                         `json:"action"`
-	Source             string                         `json:"source"`
-	ExpressionMix      []ai.Live2DExpressionLayer     `json:"expression_mix,omitempty"`
-	ParameterOverrides []ai.Live2DParameterOverride   `json:"parameter_overrides,omitempty"`
-	Intensity          float64                        `json:"intensity,omitempty"`
-	DurationMS         int                            `json:"duration_ms,omitempty"`
-	MouthOpen          *float64                       `json:"mouth_open,omitempty"`
+	Emotion            string                       `json:"emotion"`
+	Action             string                       `json:"action"`
+	Source             string                       `json:"source"`
+	ExpressionMix      []ai.Live2DExpressionLayer   `json:"expression_mix,omitempty"`
+	ParameterOverrides []ai.Live2DParameterOverride `json:"parameter_overrides,omitempty"`
+	Intensity          float64                      `json:"intensity,omitempty"`
+	DurationMS         int                          `json:"duration_ms,omitempty"`
+	MouthOpen          *float64                     `json:"mouth_open,omitempty"`
 }
 
 // wsInterviewSession 管理单个面试连接的实时状态与写入串行化。
@@ -423,6 +425,7 @@ type wsInterviewSession struct {
 	conn             *websocket.Conn
 	userID           uint
 	interviewID      uint
+	live2DModelKey   string
 	traceID          string
 	writeMu          sync.Mutex
 	asrMu            sync.Mutex
@@ -536,6 +539,7 @@ func (s *wsInterviewSession) bootstrap() {
 			Message: "当前面试实时链路已就绪。",
 		},
 	})
+	s.live2DModelKey = strings.TrimSpace(detail.Live2DModelKey)
 	s.sendDirective(nil)
 
 	question, questionNo, ok := resolveCurrentInterviewQuestion(detail)
@@ -713,14 +717,14 @@ func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questio
 		Type:    WSMessageTypeAIQuestion,
 		Content: question.Question,
 		Data: wsQuestionPayload{
-			Question:       question.Question,
-			QuestionNo:     questionNo,
-			Type:           firstNonEmpty(question.Type, "technical"),
-			Hints:          question.Hints,
-			Language:       question.Language,
-			StarterCode:    question.StarterCode,
-			EditorMode:     question.EditorMode,
-			EvaluationMode: question.EvaluationMode,
+			Question:        question.Question,
+			QuestionNo:      questionNo,
+			Type:            firstNonEmpty(question.Type, "technical"),
+			Hints:           question.Hints,
+			Language:        question.Language,
+			StarterCode:     question.StarterCode,
+			EditorMode:      question.EditorMode,
+			EvaluationMode:  question.EvaluationMode,
 			Live2DDirective: question.Live2DDirective,
 		},
 	})
@@ -730,7 +734,39 @@ func (s *wsInterviewSession) sendQuestion(question ai.InterviewQuestion, questio
 
 // synthesizeSpeech 为当前文本生成语音资源，并在成功后推送给前端播放。
 func (s *wsInterviewSession) synthesizeSpeech(text string, kind string) {
-	if s.handler.ttsProvider == nil || strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+
+	if s.handler.ttsSceneService != nil {
+		result, err := s.handler.ttsSceneService.SynthesizeForScene(context.Background(), service.SceneTTSRequest{
+			Scene:          "interview",
+			Live2DModelKey: s.live2DModelKey,
+			Text:           text,
+		})
+		if err == nil {
+			s.send(WSMessage{
+				Type: WSMessageTypeTTSAudio,
+				Data: wsTTSAudioPayload{
+					Kind:       kind,
+					Text:       text,
+					AudioURL:   result.AudioURL,
+					Duration:   result.Duration,
+					Format:     result.Format,
+					SampleRate: result.SampleRate,
+				},
+			})
+			return
+		}
+		applogger.Warn("interview scene tts failed and will fallback",
+			zap.String("trace_id", s.traceID),
+			zap.String("live2d_model_key", s.live2DModelKey),
+			zap.String("kind", kind),
+			zap.Error(err),
+		)
+	}
+
+	if s.handler.ttsProvider == nil {
 		if s.handler.ttsProvider == nil {
 			applogger.Warn("interview tts skipped because provider is nil",
 				zap.String("trace_id", s.traceID),
@@ -750,7 +786,6 @@ func (s *wsInterviewSession) synthesizeSpeech(text string, kind string) {
 	result, err := s.handler.ttsProvider.Synthesize(context.Background(), tts.SynthesizeRequest{
 		Text:   text,
 		Engine: engine,
-		Format: "mp3",
 	})
 	if err != nil {
 		s.sendState("ready", "TTS 当前不可用，已自动回退到文本模式。")

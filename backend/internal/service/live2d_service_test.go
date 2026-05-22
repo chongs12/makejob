@@ -14,6 +14,7 @@ import (
 // TestLive2DServiceGetCurrentModelPreferIndustryModel 验证行业专属模型优先于通用模型。
 func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
 	industryID := uint(2)
+	ttsConfigID := uint(18)
 	svc := NewLive2DService(
 		&mockLive2DModelRepository{
 			models: []model.Live2DModel{
@@ -30,6 +31,7 @@ func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
 					ModelURL:     "/live2d-assets/go/model.json",
 					ThumbnailURL: "/live2d-assets/go/cover.png",
 					ConfigJSON:   `{"scale":0.52,"tap_motion":"focus"}`,
+					TTSConfigID:  &ttsConfigID,
 					IsActive:     true,
 				},
 			},
@@ -64,8 +66,8 @@ func TestLive2DServiceGetCurrentModelPreferIndustryModel(t *testing.T) {
 	if scale, ok := resp.Config["scale"].(float64); !ok || scale != 0.52 {
 		t.Fatalf("expected overridden scale 0.52, got %#v", resp.Config["scale"])
 	}
-	if voiceSource, ok := resp.Config["voice_source"].(string); !ok || voiceSource != "volcengine" {
-		t.Fatalf("expected default voice source, got %#v", resp.Config["voice_source"])
+	if resolvedTTSConfigID, ok := resp.Config["tts_config_id"].(uint); !ok || resolvedTTSConfigID != ttsConfigID {
+		t.Fatalf("expected propagated tts_config_id %d, got %#v", ttsConfigID, resp.Config["tts_config_id"])
 	}
 }
 

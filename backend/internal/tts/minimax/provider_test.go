@@ -101,9 +101,25 @@ func TestProviderSynthesizeCallsMiniMax(t *testing.T) {
 func TestResolveBaseURLAppendsTTSPath(t *testing.T) {
 	got := resolveBaseURL(appconfig.MiniMaxConfig{
 		GroupID: "group-123",
-		BaseURL: "https://api.minimaxi.com/v1",
+		BaseURL: "https://api.minimax.io/v1",
 	})
-	if got != "https://api.minimaxi.com/v1/t2a_v2?GroupId=group-123" {
+	if got != "https://api.minimax.io/v1/t2a_v2?GroupId=group-123" {
 		t.Fatalf("expected minimax tts url, got %q", got)
+	}
+}
+
+// TestNewProviderDoesNotRequireGroupID 验证 MiniMax 当前实现不再强制要求 GroupId。
+func TestNewProviderDoesNotRequireGroupID(t *testing.T) {
+	provider, err := NewProvider(appconfig.MiniMaxConfig{
+		APIKey: "minimax-key",
+		TTS: appconfig.MiniMaxTTSConfig{
+			Enabled: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+	if provider == nil {
+		t.Fatalf("expected provider, got nil")
 	}
 }

@@ -16,10 +16,12 @@ type Live2DModel struct {
 	ModelURL     string `json:"model_url" gorm:"size:500;not null;comment:模型文件URL"`
 	ThumbnailURL string `json:"thumbnail_url" gorm:"size:500;comment:缩略图URL"`
 	ConfigJSON   string `json:"config_json" gorm:"type:text;comment:模型配置JSON"`
+	TTSConfigID  *uint  `json:"tts_config_id" gorm:"index;comment:绑定的TTS配置ID"`
 	IsActive     bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`
 
 	// 关联关系
-	Industry Industry `json:"industry,omitempty" gorm:"foreignKey:IndustryID"`
+	Industry  Industry   `json:"industry,omitempty" gorm:"foreignKey:IndustryID"`
+	TTSConfig *TTSConfig `json:"tts_config,omitempty" gorm:"foreignKey:TTSConfigID"`
 }
 
 // TableName 指定表名

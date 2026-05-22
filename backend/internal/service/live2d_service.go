@@ -185,6 +185,9 @@ func buildDatabaseLive2DResponse(m *model.Live2DModel, scene, industryCode strin
 	if err != nil {
 		return nil, err
 	}
+	if m.TTSConfigID != nil && *m.TTSConfigID > 0 {
+		config["tts_config_id"] = *m.TTSConfigID
+	}
 	if m.IsGeneric() {
 		industryCode = ""
 	}
@@ -306,23 +309,21 @@ func defaultLive2DConfig(scene string) map[string]interface{} {
 	switch scene {
 	case model.Live2DSceneInterview:
 		return map[string]interface{}{
-			"scale":        0.34,
-			"offset_x":     0.0,
-			"offset_y":     0.02,
-			"idle_motion":  "interview_idle",
-			"tap_motion":   "greeting",
-			"background":   "transparent",
-			"voice_source": "volcengine",
+			"scale":       0.34,
+			"offset_x":    0.0,
+			"offset_y":    0.02,
+			"idle_motion": "interview_idle",
+			"tap_motion":  "greeting",
+			"background":  "transparent",
 		}
 	default:
 		return map[string]interface{}{
-			"scale":        0.4,
-			"offset_x":     0.0,
-			"offset_y":     0.08,
-			"idle_motion":  "companion_idle",
-			"tap_motion":   "wave",
-			"background":   "transparent",
-			"voice_source": "volcengine",
+			"scale":       0.4,
+			"offset_x":    0.0,
+			"offset_y":    0.08,
+			"idle_motion": "companion_idle",
+			"tap_motion":  "wave",
+			"background":  "transparent",
 		}
 	}
 }

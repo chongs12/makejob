@@ -42,14 +42,14 @@ ai:
   quiz_model: ""
 
 minimax:
-  group_id: "2045005272065249730"               # 必填，按 MiniMax 控制台中的 GroupId 配置
+  group_id: "2045005272065249730"               # 旧版兼容参数；当前官方 TTS 可不依赖该字段
   api_key: "sk-cp-2lV8WHkir8LNFEzkVEZIOfhdjr90rngNZu_nioVJk2Dr0SlfngE_r0SXuPxsDl31C5O--OpHYqfLdQnCU4OBaprWRofhtTxDxqHNtk0ZrCdEQke6412mUuU"                # 可复用与你当前大模型一致的 MiniMax API Key
-  base_url: "https://api.minimaxi.com/v1"               # 当前可留空，TTS 会默认走官方接口
+  base_url: "https://api.minimax.io/v1"               # 当前可留空，TTS 会默认走官方接口
   tts:
     enabled: false
-    base_url: "https://api.minimaxi.com/v1/t2a_v2"
-    model: "speech-02-hd"
-    voice_id: "female-tianmei-jingpin"
+    base_url: "https://api.minimax.io/v1/t2a_v2"
+    model: "speech-2.8-turbo"
+    voice_id: "male-qn-jingying"
     emotion: "neutral"
     format: "mp3"
     sample_rate: 32000

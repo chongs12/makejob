@@ -258,6 +258,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		if err != nil {
 			applogger.Warn("live2d scene tts provider not ready", zap.Error(err))
 		}
+		ttsSceneService := service.NewSceneTTSService(ttsRepo, adminConfigRepo, live2DRepo, ttsProvider)
 		deps.GrowthService = service.NewGrowthService(
 			deps.StudyLogRepo,
 			deps.RecordRepo,
@@ -266,7 +267,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanTaskRepo,
 			deps.LearningArchiveRepo,
 		)
-		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent, live2DDirectiveService, ttsProvider)
+		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent, live2DDirectiveService, ttsSceneService, ttsProvider)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
 		asrProvider, err := asrfactory.NewASRProviderWithConfig("", cfg)
@@ -276,7 +277,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
 		deps.MembershipHandler = handler.NewMembershipHandler(deps.MembershipService)
-		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsProvider, asrProvider)
+		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsSceneService, ttsProvider, asrProvider)
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)

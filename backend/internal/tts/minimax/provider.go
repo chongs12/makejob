@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	defaultTTSBaseURL        = "https://api.minimaxi.com/v1/t2a_v2"
+	defaultTTSBaseURL        = "https://api.minimax.io/v1/t2a_v2"
 	defaultTTSModel          = "speech-2.8-turbo"
 	defaultTTSVoiceID        = "male-qn-jingying"
 	defaultTTSEmotion        = "neutral"
@@ -105,10 +105,6 @@ type responsePayload struct {
 
 // NewProvider 根据 MiniMax 配置创建官方 TTS Provider。
 func NewProvider(cfg appconfig.MiniMaxConfig) (*Provider, error) {
-	groupID := strings.TrimSpace(cfg.GroupID)
-	if groupID == "" {
-		return nil, fmt.Errorf("minimax tts config missing group_id")
-	}
 	apiKey := strings.TrimSpace(cfg.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("minimax tts config missing api_key")
@@ -124,7 +120,7 @@ func NewProvider(cfg appconfig.MiniMaxConfig) (*Provider, error) {
 
 	return &Provider{
 		baseURL:        resolveBaseURL(cfg),
-		groupID:        groupID,
+		groupID:        strings.TrimSpace(cfg.GroupID),
 		apiKey:         apiKey,
 		model:          model,
 		voiceID:        voiceID,
@@ -335,7 +331,7 @@ func (p *Provider) defaultVoice() tts.Voice {
 	}
 }
 
-// resolveBaseURL 解析 MiniMax TTS 的最终请求地址。
+// resolveBaseURL 解析 MiniMax TTS 的最终请求地址，并兼容旧版 GroupId 查询参数。
 func resolveBaseURL(cfg appconfig.MiniMaxConfig) string {
 	groupID := strings.TrimSpace(cfg.GroupID)
 	if baseURL := strings.TrimSpace(cfg.TTS.BaseURL); baseURL != "" {
@@ -351,7 +347,7 @@ func resolveBaseURL(cfg appconfig.MiniMaxConfig) string {
 	return appendGroupID(defaultTTSBaseURL, groupID)
 }
 
-// appendGroupID 为 MiniMax TTS 地址补齐必需的 GroupId 查询参数。
+// appendGroupID 为旧版 MiniMax TTS 地址兼容追加 GroupId 查询参数。
 func appendGroupID(rawURL string, groupID string) string {
 	trimmedURL := strings.TrimSpace(rawURL)
 	if trimmedURL == "" {

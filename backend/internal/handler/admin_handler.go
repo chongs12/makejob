@@ -87,6 +87,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// TTS配置管理
 	r.GET("/tts-configs", h.ListTTSConfigs)
 	r.POST("/tts-configs", h.CreateTTSConfig)
+	r.PUT("/tts-configs/defaults", h.UpdateTTSSceneDefaults)
 	r.PUT("/tts-configs/:id", h.UpdateTTSConfig)
 	r.DELETE("/tts-configs/:id", h.DeleteTTSConfig)
 }
@@ -1038,7 +1039,7 @@ func (h *AdminHandler) DeleteLive2DModel(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security Bearer
-// @Success 200 {object} common.Response{data=[]model.TTSConfig}
+// @Success 200 {object} common.Response{data=service.TTSConfigListResponse}
 // @Router /api/admin/tts-configs [get]
 func (h *AdminHandler) ListTTSConfigs(c *gin.Context) {
 	configs, err := h.adminService.ListTTSConfigs(c.Request.Context())
@@ -1052,6 +1053,35 @@ func (h *AdminHandler) ListTTSConfigs(c *gin.Context) {
 	}
 
 	common.Success(c, configs)
+}
+
+// UpdateTTSSceneDefaults 更新不同 Live2D 场景的默认 TTS 配置绑定。
+// @Summary 更新场景默认TTS绑定
+// @Description 更新面试与陪伴场景的默认 TTS 配置
+// @Tags 管理后台-TTS管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body service.UpdateTTSSceneDefaultsRequest true "场景默认TTS绑定"
+// @Success 200 {object} common.Response
+// @Router /api/admin/tts-configs/defaults [put]
+func (h *AdminHandler) UpdateTTSSceneDefaults(c *gin.Context) {
+	var req service.UpdateTTSSceneDefaultsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.BadRequest(c, "请求参数错误: "+err.Error())
+		return
+	}
+
+	if err := h.adminService.UpdateTTSSceneDefaults(c.Request.Context(), &req); err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "更新场景默认TTS绑定失败: "+err.Error())
+		}
+		return
+	}
+
+	common.SuccessWithMessage(c, "更新成功", nil)
 }
 
 // CreateTTSConfig 创建TTS配置

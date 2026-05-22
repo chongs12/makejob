@@ -10,6 +10,9 @@ import (
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/tts"
+	applogger "makejob-backend/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 type CompanionChatRequest struct {
@@ -40,17 +43,21 @@ type CompanionService interface {
 type companionService struct {
 	companionAgent  ai.CompanionAgent
 	live2dDirective Live2DDirectiveService
+	ttsSceneService SceneTTSService
 	ttsProvider     tts.TTSProvider
 }
 
 // NewCompanionService 创建陪伴服务，并按传入依赖自动接入 Live2D 指令和 TTS 能力。
 func NewCompanionService(companionAgent ai.CompanionAgent, dependencies ...any) CompanionService {
 	var directiveService Live2DDirectiveService
+	var ttsSceneService SceneTTSService
 	var ttsProvider tts.TTSProvider
 	for _, dependency := range dependencies {
 		switch typedDependency := dependency.(type) {
 		case Live2DDirectiveService:
 			directiveService = typedDependency
+		case SceneTTSService:
+			ttsSceneService = typedDependency
 		case tts.TTSProvider:
 			ttsProvider = typedDependency
 		}
@@ -58,6 +65,7 @@ func NewCompanionService(companionAgent ai.CompanionAgent, dependencies ...any) 
 	return &companionService{
 		companionAgent:  companionAgent,
 		live2dDirective: directiveService,
+		ttsSceneService: ttsSceneService,
 		ttsProvider:     ttsProvider,
 	}
 }
@@ -100,7 +108,7 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 			cancel()
 		}
 	}
-	ttsAudio := synthesizeCompanionSpeech(ctx, s.ttsProvider, replyContent)
+	ttsAudio := synthesizeCompanionSpeech(ctx, s.ttsSceneService, s.ttsProvider, replyContent, req.Live2DModelKey)
 	return &CompanionChatResponse{
 		Content:         replyContent,
 		Reply:           replyContent,
@@ -116,15 +124,34 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 }
 
 // synthesizeCompanionSpeech 为陪伴回复生成可选语音资源，失败时静默降级到纯文本。
-func synthesizeCompanionSpeech(ctx context.Context, provider tts.TTSProvider, text string) tts.SynthesizeResult {
-	if provider == nil || strings.TrimSpace(text) == "" {
+func synthesizeCompanionSpeech(ctx context.Context, sceneService SceneTTSService, provider tts.TTSProvider, text string, live2DModelKey string) tts.SynthesizeResult {
+	if strings.TrimSpace(text) == "" {
+		return tts.SynthesizeResult{}
+	}
+
+	if sceneService != nil {
+		result, err := sceneService.SynthesizeForScene(ctx, SceneTTSRequest{
+			Scene:          model.Live2DSceneCompanion,
+			Live2DModelKey: strings.TrimSpace(live2DModelKey),
+			Text:           text,
+		})
+		if err == nil {
+			return result
+		}
+		applogger.Warn("companion scene tts failed and will fallback",
+			zap.String("scene", model.Live2DSceneCompanion),
+			zap.String("live2d_model_key", strings.TrimSpace(live2DModelKey)),
+			zap.Error(err),
+		)
+	}
+
+	if provider == nil {
 		return tts.SynthesizeResult{}
 	}
 
 	result, err := provider.Synthesize(ctx, tts.SynthesizeRequest{
 		Text:   text,
 		Engine: resolveCompanionTTSEngine(provider),
-		Format: "mp3",
 	})
 	if err != nil {
 		return tts.SynthesizeResult{}

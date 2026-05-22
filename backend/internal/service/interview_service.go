@@ -46,6 +46,7 @@ type InterviewResponse struct {
 type InterviewDetailResponse struct {
 	ID              uint                       `json:"id"`
 	IndustryCode    string                     `json:"industry_code"`
+	Live2DModelKey  string                     `json:"live2d_model_key"`
 	Status          string                     `json:"status"`
 	Score           float64                    `json:"score"`
 	TotalQuestions  int                        `json:"total_questions"`
@@ -244,6 +245,7 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 	return &InterviewDetailResponse{
 		ID:              interview.ID,
 		IndustryCode:    industryCode,
+		Live2DModelKey:  strings.TrimSpace(interview.Live2DModelKey),
 		Status:          interview.Status,
 		Score:           interview.Score,
 		TotalQuestions:  interview.TotalQuestions,
