@@ -6,6 +6,8 @@ import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
 import { AsyncInlineState } from '../../shared/asyncState'
 import { readCurrentBrowserPath } from '../../shared/authRedirect'
+import { readSelectedLive2DModelKey } from '../../shared/live2dModelCatalog'
+import { useLive2DDialoguePlayback } from '../../shared/useLive2DDialoguePlayback'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
   persistSelectedFrontendIndustryCode,
@@ -26,13 +28,11 @@ import {
   buildInterviewWebSocketUrl,
   buildRealtimeInterviewMessage,
   encodePCM16Base64,
-  estimateInterviewDialogueDurationMs,
   formatInterviewDateTime,
   INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD,
   INTERVIEW_AUTO_STOP_SILENCE_MS,
   resolveCurrentInterviewQuestion,
   resolveCurrentInterviewQuestionFromMessages,
-  splitInterviewDialogueUnits,
 } from './interviewHelpers'
 import type {
   InterviewCodingProcessEvent,
@@ -64,9 +64,7 @@ export function InterviewSessionPage() {
     message: '正在准备实时面试链路。',
   })
   const [stageEmotion, setStageEmotion] = useState('neutral')
-  const [liveDialogue, setLiveDialogue] = useState('连接成功后，AI 面试官会在这里播报当前题目。')
-  const [isDialogueTyping, setIsDialogueTyping] = useState(false)
-  const [mouthOpen, setMouthOpen] = useState(0)
+  const [stageDirective, setStageDirective] = useState<InterviewQuestion['live2d_directive'] | null>(null)
   const [recognitionPartial, setRecognitionPartial] = useState('')
   const [recognitionFinal, setRecognitionFinal] = useState('')
   const [codingLanguage, setCodingLanguage] = useState('go')
@@ -76,13 +74,25 @@ export function InterviewSessionPage() {
   const [wsTraceId, setWsTraceId] = useState('')
   const [wsConnected, setWsConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [selectedLive2DModelKey, setSelectedLive2DModelKey] = useState(() => readSelectedLive2DModelKey('interview', readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE))
+  const {
+    liveDialogue,
+    isDialogueTyping,
+    mouthOpen,
+    stopDialogueTyping,
+    startDialogueTyping,
+    stopCurrentPlayback,
+    playTTSAudio,
+  } = useLive2DDialoguePlayback({
+    initialDialogue: '连接成功后，AI 面试官会在这里播报当前题目。',
+    onPlaybackFinished: () => {
+      setSessionState((current) => (current.status === 'speaking' ? { status: 'ready', message: '语音播报完成，可继续作答。' } : current))
+    },
+    onPlaybackError: (error) => {
+      setMessage(extractErrorMessage(error, '自动播放语音失败，已回退到文本模式。'))
+    },
+  })
   const wsRef = useRef<WebSocket | null>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const analyserFrameRef = useRef<number | null>(null)
-  const audioElementRef = useRef<HTMLAudioElement | null>(null)
-  const dialogueFrameRef = useRef<number | null>(null)
-  const dialoguePlaybackTokenRef = useRef(0)
   const recordStreamRef = useRef<MediaStream | null>(null)
   const recordAudioContextRef = useRef<AudioContext | null>(null)
   const recordSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
@@ -172,6 +182,7 @@ export function InterviewSessionPage() {
     }
 
     persistSelectedFrontendIndustryCode(detailQuery.data.industry_code)
+    setSelectedLive2DModelKey(readSelectedLive2DModelKey('interview', detailQuery.data.industry_code))
   }, [detailQuery.data?.industry_code])
 
   /**
@@ -185,6 +196,8 @@ export function InterviewSessionPage() {
     setRuntimeMessages(detailQuery.data.messages)
     const restoredQuestion = resolveCurrentInterviewQuestion(detailQuery.data)
     if (restoredQuestion?.question) {
+      setStageDirective(restoredQuestion.live2d_directive || null)
+      setStageEmotion(restoredQuestion.live2d_directive?.emotion || 'neutral')
       stopDialogueTyping(restoredQuestion.question)
     }
   }, [detailQuery.data])
@@ -434,174 +447,6 @@ export function InterviewSessionPage() {
   }
 
   /**
-   * 停止当前字幕动画，并按需将字幕直接收敛到目标文本。
-   */
-  function stopDialogueTyping(finalText?: string): void {
-    dialoguePlaybackTokenRef.current += 1
-    if (dialogueFrameRef.current) {
-      window.cancelAnimationFrame(dialogueFrameRef.current)
-      dialogueFrameRef.current = null
-    }
-    setIsDialogueTyping(false)
-    if (typeof finalText === 'string') {
-      setLiveDialogue(finalText)
-    }
-  }
-
-  /**
-   * 按兜底时长或音频实际播放进度推进字幕显示，营造近似跟读的打字机效果。
-   */
-  function startDialogueTyping(text: string, audio?: HTMLAudioElement | null): void {
-    const normalizedText = text.trim()
-    stopDialogueTyping()
-
-    if (!normalizedText) {
-      setLiveDialogue('')
-      return
-    }
-
-    const units = splitInterviewDialogueUnits(normalizedText)
-    const fallbackDurationMs = estimateInterviewDialogueDurationMs(normalizedText)
-    const playbackToken = dialoguePlaybackTokenRef.current + 1
-    const startedAt = window.performance.now()
-    let lastVisibleCount = -1
-
-    dialoguePlaybackTokenRef.current = playbackToken
-    setIsDialogueTyping(true)
-    setLiveDialogue('')
-
-    /**
-     * 逐帧根据音频进度或兜底时长计算当前应显示的字幕长度。
-     */
-    function syncDialogueFrame(): void {
-      if (dialoguePlaybackTokenRef.current !== playbackToken) {
-        return
-      }
-
-      const audioDurationMs = audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : 0
-      const totalDurationMs = audioDurationMs || fallbackDurationMs
-      const elapsedMs = audio
-        ? Math.max(audio.currentTime * 1000, window.performance.now() - startedAt)
-        : window.performance.now() - startedAt
-      const progress = totalDurationMs > 0 ? Math.min(elapsedMs / totalDurationMs, 1) : 1
-      const visibleCount = progress >= 1 ? units.length : Math.max(1, Math.ceil(units.length * progress))
-
-      if (visibleCount !== lastVisibleCount) {
-        lastVisibleCount = visibleCount
-        setLiveDialogue(units.slice(0, visibleCount).join(''))
-      }
-
-      if (visibleCount >= units.length || audio?.ended) {
-        dialogueFrameRef.current = null
-        setIsDialogueTyping(false)
-        setLiveDialogue(normalizedText)
-        return
-      }
-
-      dialogueFrameRef.current = window.requestAnimationFrame(syncDialogueFrame)
-    }
-
-    dialogueFrameRef.current = window.requestAnimationFrame(syncDialogueFrame)
-  }
-
-  /**
-   * 停止上一段音频并释放分析器资源，避免多个音频上下文叠加。
-   */
-  function stopCurrentPlayback(finalDialogue?: string): void {
-    if (analyserFrameRef.current) {
-      window.cancelAnimationFrame(analyserFrameRef.current)
-      analyserFrameRef.current = null
-    }
-    analyserRef.current = null
-    if (audioElementRef.current) {
-      audioElementRef.current.pause()
-      audioElementRef.current.src = ''
-      audioElementRef.current = null
-    }
-    if (audioContextRef.current) {
-      void audioContextRef.current.close()
-      audioContextRef.current = null
-    }
-    stopDialogueTyping(finalDialogue)
-    setMouthOpen(0)
-  }
-
-  /**
-   * 播放新的 TTS 音频时，用音频分析器驱动 Live2D 嘴型开合。
-   */
-  async function playTTSAudio(audioUrl: string, text: string): Promise<void> {
-    const dialogueText = text.trim()
-
-    stopCurrentPlayback(dialogueText)
-
-    if (!audioUrl) {
-      return
-    }
-
-    try {
-      const AudioContextCtor = window.AudioContext
-      if (!AudioContextCtor) {
-        setMessage('当前浏览器不支持音频上下文，已退回文本模式。')
-        return
-      }
-
-      const audio = new Audio(audioUrl)
-      audio.preload = 'auto'
-      audioElementRef.current = audio
-
-      const audioContext = new AudioContextCtor()
-      const analyser = audioContext.createAnalyser()
-      analyser.fftSize = 2048
-      const source = audioContext.createMediaElementSource(audio)
-      source.connect(analyser)
-      analyser.connect(audioContext.destination)
-      audioContextRef.current = audioContext
-      analyserRef.current = analyser
-
-      /**
-       * 读取当前音频振幅，并持续同步到嘴型开合值。
-       */
-      function syncMouthFromAudio(): void {
-        if (!analyserRef.current) {
-          setMouthOpen(0)
-          return
-        }
-
-        const analyserNode = analyserRef.current
-        const buffer = new Uint8Array(analyserNode.fftSize)
-        analyserNode.getByteTimeDomainData(buffer)
-        let sum = 0
-        for (const value of buffer) {
-          sum += Math.abs(value - 128)
-        }
-        const normalized = Math.min(sum / buffer.length / 26, 1)
-        setMouthOpen(normalized)
-        analyserFrameRef.current = window.requestAnimationFrame(syncMouthFromAudio)
-      }
-
-      audio.onended = () => {
-        stopCurrentPlayback(dialogueText)
-        setSessionState((current) => (current.status === 'speaking' ? { status: 'ready', message: '语音播报完成，可继续作答。' } : current))
-      }
-      audio.onerror = () => {
-        stopCurrentPlayback(dialogueText)
-      }
-
-      await audioContext.resume()
-      analyserFrameRef.current = window.requestAnimationFrame(syncMouthFromAudio)
-      await audio.play()
-      startDialogueTyping(dialogueText, audio)
-    } catch (error) {
-      stopCurrentPlayback(dialogueText)
-      if (!useAuthStore.getState().accessToken) {
-        requestLoginPrompt(readCurrentBrowserPath(), 'expired')
-        return
-      }
-      setMessage(extractErrorMessage(error, '自动播放语音失败，请检查浏览器音频权限'))
-    }
-  }
-
-  /**
    * 清理当前自动判停定时器，避免旧的静音任务误触发下一轮录音。
    */
   function clearRecordSilenceTimer(): void {
@@ -820,8 +665,11 @@ export function InterviewSessionPage() {
                 starter_code: questionPayload.starter_code,
                 editor_mode: questionPayload.editor_mode,
                 evaluation_mode: questionPayload.evaluation_mode,
+                live2d_directive: questionPayload.live2d_directive || null,
               } : null)),
             )
+            setStageDirective(questionPayload?.live2d_directive || null)
+            setStageEmotion(questionPayload?.live2d_directive?.emotion || 'neutral')
             break
           }
           case 'asr_partial': {
@@ -849,6 +697,16 @@ export function InterviewSessionPage() {
           case 'live2d_expression': {
             const expressionPayload = payload.data as InterviewSocketExpressionPayload | undefined
             setStageEmotion(expressionPayload?.emotion || 'neutral')
+            setStageDirective(expressionPayload ? {
+              emotion: expressionPayload.emotion,
+              action: expressionPayload.action,
+              source: expressionPayload.source,
+              expression_mix: expressionPayload.expression_mix,
+              parameter_overrides: expressionPayload.parameter_overrides,
+              intensity: expressionPayload.intensity,
+              duration_ms: expressionPayload.duration_ms,
+              mouth_open: expressionPayload.mouth_open,
+            } : null)
             break
           }
           case 'finished':
@@ -974,6 +832,9 @@ export function InterviewSessionPage() {
             isTyping={isDialogueTyping}
             emotion={stageEmotion}
             mouthOpen={mouthOpen}
+            directive={stageDirective || currentQuestion?.live2d_directive || null}
+            selectedModelKey={selectedLive2DModelKey}
+            onChangeModelKey={setSelectedLive2DModelKey}
           />
         </div>
 

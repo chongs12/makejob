@@ -40,6 +40,7 @@ export function Live2DSceneStage(props: {
   defaultTransform: Live2DStageTransform
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const dialogueBodyRef = useRef<HTMLParagraphElement | null>(null)
   const runtimeRef = useRef<Live2DStageRuntime | null>(null)
   const dragStateRef = useRef<{
     pointerId: number
@@ -97,7 +98,12 @@ export function Live2DSceneStage(props: {
       setStageStatus(`正在加载 ${props.currentModel?.name || '模型'}`)
 
       try {
-        const runtime = await createLive2DStageRuntime(host, props.currentModel?.model_url || '', props.defaultTransform)
+        const runtime = await createLive2DStageRuntime(
+          host,
+          props.currentModel?.model_url || '',
+          props.defaultTransform,
+          props.currentModel?.motions || [],
+        )
         if (disposed) {
           destroyLive2DStageRuntime(runtime)
           return
@@ -166,6 +172,17 @@ export function Live2DSceneStage(props: {
 
     void syncVisualState()
   }, [resolvedPreset])
+
+  /**
+   * 当字幕持续流式增长时，自动把对话框内部滚动条推到末尾，避免新内容被遮住。
+   */
+  useEffect(() => {
+    if (!dialogueBodyRef.current) {
+      return
+    }
+
+    dialogueBodyRef.current.scrollTop = dialogueBodyRef.current.scrollHeight
+  }, [props.dialogue, props.isTyping])
 
   /**
    * 开始一轮拖拽交互，并根据是否按下 Shift 决定是移动还是缩放舞台。
@@ -326,7 +343,12 @@ export function Live2DSceneStage(props: {
 
         <div className="live2d-stage-dialogue">
           <span className="section-kicker">{props.currentModel?.name || props.stageTitle}</span>
-          <p className={props.isTyping ? 'live2d-stage-dialogue-text is-typing' : 'live2d-stage-dialogue-text'}>{props.dialogue}</p>
+          <p
+            className={props.isTyping ? 'live2d-stage-dialogue-text is-typing' : 'live2d-stage-dialogue-text'}
+            ref={dialogueBodyRef}
+          >
+            {props.dialogue}
+          </p>
         </div>
       </div>
 
@@ -338,6 +360,7 @@ export function Live2DSceneStage(props: {
         >
           <span>模型控制概览</span>
           <span>{metadata?.expressions.length || 0} 个表达式 · {metadata?.parameterIds.length || 0} 个参数</span>
+          <span>{metadata?.motions.length || 0} 个动作</span>
         </button>
         {controlDrawerOpen ? (
           <div className="live2d-stage-control-body">
@@ -350,6 +373,16 @@ export function Live2DSceneStage(props: {
                   ))
                 ) : (
                   <span className="live2d-stage-chip">当前主要依赖参数混控</span>
+                )}
+              </div>
+            </div>
+            <div className="live2d-stage-control-section">
+              <strong>当前动作</strong>
+              <div className="live2d-stage-chip-row">
+                {resolvedPreset.activeMotionLabel ? (
+                  <span className="live2d-stage-chip live2d-stage-chip-active">{resolvedPreset.activeMotionLabel}</span>
+                ) : (
+                  <span className="live2d-stage-chip">当前回复未触发额外动作</span>
                 )}
               </div>
             </div>

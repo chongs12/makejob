@@ -1,3 +1,5 @@
+import type { Live2DDirective } from '../../shared/live2dDirective'
+
 export type CompanionMessageRole = 'assistant' | 'user'
 export type CompanionTaskActionSource = 'hub' | 'room'
 export type CompanionTaskStatus = 'pending' | 'in_progress' | 'completed' | 'skipped'
@@ -78,6 +80,7 @@ export interface CompanionHistoryItem {
   content: string
   emotion?: string
   action?: string
+  live2dDirective?: Live2DDirective | null
   createdAt: number
 }
 
@@ -87,6 +90,11 @@ export interface CompanionChatReply {
   emotion?: string
   mood?: string
   action?: string
+  audio_url?: string
+  audio_duration?: number
+  audio_format?: string
+  audio_sample_rate?: number
+  live2d_directive?: Live2DDirective | null
 }
 
 export interface CompanionSessionSummary {
@@ -177,4 +185,10 @@ export interface CompanionSelectableLive2DModel {
   match_type: string
   is_generic: boolean
   is_recommended: boolean
+  motions?: Array<{
+    key: string
+    group: string
+    file: string
+    label: string
+  }>
 }

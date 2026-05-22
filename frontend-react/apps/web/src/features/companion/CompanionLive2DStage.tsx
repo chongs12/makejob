@@ -1,3 +1,4 @@
+import type { Live2DDirective } from '../../shared/live2dDirective'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { extractErrorMessage } from '@makejob/api-client'
@@ -76,12 +77,17 @@ function buildCompanionStageNote(loggedIn: boolean, currentModelName: string, so
  */
 export function CompanionLive2DStage(props: {
   dialogue: string
+  isTyping: boolean
   emotion: string
   action: string
+  mouthOpen: number
+  directive?: Live2DDirective | null
   loggedIn: boolean
   industryCode: string
+  selectedModelKey: string
+  onChangeModelKey: (modelKey: string) => void
 }) {
-  const [selectedModelKey, setSelectedModelKey] = useState(() => readSelectedLive2DModelKey('companion', props.industryCode))
+  const [selectedModelKey, setSelectedModelKey] = useState(() => props.selectedModelKey || readSelectedLive2DModelKey('companion', props.industryCode))
 
   const modelOptionsQuery = useQuery({
     queryKey: buildCompanionLive2DModelsQueryKey(props.industryCode),
@@ -90,8 +96,8 @@ export function CompanionLive2DStage(props: {
   })
 
   useEffect(() => {
-    setSelectedModelKey(readSelectedLive2DModelKey('companion', props.industryCode))
-  }, [props.industryCode])
+    setSelectedModelKey(props.selectedModelKey || readSelectedLive2DModelKey('companion', props.industryCode))
+  }, [props.industryCode, props.selectedModelKey])
 
   const modelOptions = modelOptionsQuery.data || []
   const currentModel = useMemo(() => {
@@ -109,10 +115,11 @@ export function CompanionLive2DStage(props: {
     }
 
     persistSelectedLive2DModelKey('companion', props.industryCode, currentModel.key)
+    props.onChangeModelKey(currentModel.key)
     if (currentModel.key !== selectedModelKey) {
       setSelectedModelKey(currentModel.key)
     }
-  }, [currentModel?.key, props.industryCode, selectedModelKey])
+  }, [currentModel?.key, props.industryCode, props.onChangeModelKey, selectedModelKey])
 
   const currentModelName = currentModel?.name || ''
   const stageNote = buildCompanionStageNote(
@@ -137,6 +144,7 @@ export function CompanionLive2DStage(props: {
       stageNote={stageNote}
       backgroundImageUrl={resolveSelectableLive2DBackgroundImageUrl(currentModel)}
       dialogue={props.dialogue}
+      isTyping={props.isTyping}
       modelOptions={modelOptions}
       currentModel={currentModel}
       onSelectModelKey={setSelectedModelKey}
@@ -144,6 +152,8 @@ export function CompanionLive2DStage(props: {
         scene: 'companion',
         emotion: props.emotion,
         action: props.action,
+        mouthOpen: props.mouthOpen,
+        directive: props.directive,
       }}
       statusPills={statusPills}
       loading={modelOptionsQuery.isLoading}

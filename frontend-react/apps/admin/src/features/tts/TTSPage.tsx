@@ -5,55 +5,78 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
 
-type TTSEngine = 'elevenlabs' | 'minimax' | 'aliyun' | 'xunfei'
+type TTSEngine = string
 type TTSScene = 'interview' | 'companion'
+
+interface TTSProviderFieldDefinition {
+  key: string
+  label: string
+  description: string
+  required: boolean
+  secret?: boolean
+}
+
+interface TTSProviderDescriptor {
+  key: TTSEngine
+  label: string
+  description: string
+  support_status: string
+  support_message: string
+  auth_template: string
+  params_template: string
+  auth_fields: TTSProviderFieldDefinition[]
+  param_fields: TTSProviderFieldDefinition[]
+}
 
 interface TTSConfig {
   id: number
   name: string
   engine: TTSEngine
   voice_id: string
-  scene: TTSScene
+  scene?: string
+  auth_config_json: string
   params_json: string
   is_active: boolean
   sort_order: number
+  support_status: string
+  support_message: string
   created_at?: string
   updated_at?: string
+}
+
+interface TTSConfigListResponse {
+  configs: TTSConfig[]
+  providers: TTSProviderDescriptor[]
+  default_bindings: Partial<Record<TTSScene, number>>
 }
 
 interface TTSFormState {
   name: string
   engine: TTSEngine
   voiceId: string
-  scene: TTSScene
+  authConfigJson: string
   paramsJson: string
   isActive: boolean
   sortOrder: string
 }
 
-interface TTSParamsPreview {
+interface JSONPreview {
   valid: boolean
   error: string
   formattedJson: string
+  parsedObject: Record<string, unknown>
 }
 
-const TTS_ENGINE_OPTIONS: Array<{ value: TTSEngine; label: string }> = [
-  { value: 'elevenlabs', label: 'ElevenLabs' },
-  { value: 'minimax', label: 'MiniMax' },
-  { value: 'aliyun', label: '阿里云' },
-  { value: 'xunfei', label: '讯飞' },
-]
-
-const TTS_SCENE_OPTIONS: Array<{ value: TTSScene; label: string }> = [
-  { value: 'companion', label: '学习陪伴' },
-  { value: 'interview', label: '面试' },
-]
+interface SceneDefaultFormState {
+  interview: string
+  companion: string
+}
 
 /**
- * 获取后台当前维护的 TTS 配置列表。
+ * 获取后台当前维护的 TTS 配置、供应商目录与默认场景绑定。
  */
-async function fetchTTSConfigs(token: string | null): Promise<TTSConfig[]> {
-  const response = await requestJson<ApiEnvelope<TTSConfig[]>>('/admin/tts-configs', {
+async function fetchTTSConfigs(token: string | null): Promise<TTSConfigListResponse> {
+  const response = await requestJson<ApiEnvelope<TTSConfigListResponse>>('/admin/tts-configs', {
     method: 'GET',
     token,
   })
@@ -112,15 +135,38 @@ async function deleteTTSConfig(token: string | null, id: number): Promise<void> 
 }
 
 /**
- * 构造 TTS 表单初始值，便于新建态直接使用。
+ * 更新不同场景的默认 TTS 绑定。
  */
-function buildInitialTTSForm(): TTSFormState {
+async function updateTTSSceneDefaults(token: string | null, payload: Record<string, unknown>): Promise<void> {
+  const response = await requestJson<ApiEnvelope<null>>('/admin/tts-configs/defaults', {
+    method: 'PUT',
+    token,
+    body: payload,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '更新场景默认 TTS 绑定失败')
+  }
+}
+
+/**
+ * 返回适合新建配置时使用的默认供应商。
+ */
+function resolveDefaultProvider(providers: TTSProviderDescriptor[]): TTSProviderDescriptor | undefined {
+  return providers.find((provider) => provider.support_status === 'ready') || providers[0]
+}
+
+/**
+ * 构造新建 TTS 表单的默认值。
+ */
+function buildInitialTTSForm(providers: TTSProviderDescriptor[]): TTSFormState {
+  const provider = resolveDefaultProvider(providers)
   return {
     name: '',
-    engine: 'minimax',
+    engine: provider?.key || 'volcengine',
     voiceId: '',
-    scene: 'companion',
-    paramsJson: '{\n  "speed": 1,\n  "volume": 1\n}',
+    authConfigJson: provider?.auth_template || '{}',
+    paramsJson: provider?.params_template || '{}',
     isActive: true,
     sortOrder: '0',
   }
@@ -129,31 +175,28 @@ function buildInitialTTSForm(): TTSFormState {
 /**
  * 将数据库中的 TTS 记录转换成前端可编辑表单。
  */
-function buildTTSForm(config?: TTSConfig | null): TTSFormState {
-  if (!config) {
-    return buildInitialTTSForm()
-  }
-
+function buildTTSForm(config: TTSConfig, providers: TTSProviderDescriptor[]): TTSFormState {
+  const provider = providers.find((item) => item.key === config.engine)
   return {
     name: config.name,
     engine: config.engine,
     voiceId: config.voice_id,
-    scene: config.scene,
-    paramsJson: config.params_json || '',
+    authConfigJson: config.auth_config_json || provider?.auth_template || '{}',
+    paramsJson: config.params_json || provider?.params_template || '{}',
     isActive: config.is_active,
     sortOrder: String(config.sort_order),
   }
 }
 
 /**
- * 将表单状态转换为后端 TTS 请求体。
+ * 将表单状态转换为后端请求体。
  */
 function buildTTSPayload(form: TTSFormState): Record<string, unknown> {
   return {
     name: form.name.trim(),
     engine: form.engine,
     voice_id: form.voiceId.trim(),
-    scene: form.scene,
+    auth_config_json: form.authConfigJson.trim(),
     params_json: form.paramsJson.trim(),
     is_active: form.isActive,
     sort_order: Number(form.sortOrder) || 0,
@@ -161,29 +204,38 @@ function buildTTSPayload(form: TTSFormState): Record<string, unknown> {
 }
 
 /**
- * 将 TTS 引擎值转换为更可读的中文标签。
+ * 把后台默认绑定转换为前端编辑态。
  */
-function ttsEngineLabel(engine: string): string {
-  return TTS_ENGINE_OPTIONS.find((option) => option.value === engine)?.label || engine
+function buildDefaultBindingsForm(defaultBindings?: Partial<Record<TTSScene, number>>): SceneDefaultFormState {
+  return {
+    interview: String(defaultBindings?.interview || 0),
+    companion: String(defaultBindings?.companion || 0),
+  }
 }
 
 /**
- * 将 TTS 场景值转换为后台页可读标签。
+ * 把默认绑定编辑态转换为后端请求体。
  */
-function ttsSceneLabel(scene: string): string {
-  return TTS_SCENE_OPTIONS.find((option) => option.value === scene)?.label || scene
+function buildDefaultBindingsPayload(form: SceneDefaultFormState): Record<string, unknown> {
+  return {
+    default_bindings: {
+      interview: Number(form.interview) || 0,
+      companion: Number(form.companion) || 0,
+    },
+  }
 }
 
 /**
- * 解析 TTS 额外参数 JSON，并给出格式化预览或错误提示。
+ * 解析 JSON 对象文本并给出格式化预览。
  */
-function buildTTSParamsPreview(rawJson: string): TTSParamsPreview {
+function buildJSONPreview(rawJson: string): JSONPreview {
   const trimmed = rawJson.trim()
   if (!trimmed) {
     return {
       valid: true,
       error: '',
       formattedJson: '{}',
+      parsedObject: {},
     }
   }
 
@@ -192,8 +244,9 @@ function buildTTSParamsPreview(rawJson: string): TTSParamsPreview {
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
       return {
         valid: false,
-        error: '额外参数必须是 JSON 对象，例如 {"speed":1}',
+        error: '配置必须是 JSON 对象，例如 {"api_key":"xxx"}',
         formattedJson: '{}',
+        parsedObject: {},
       }
     }
 
@@ -201,13 +254,81 @@ function buildTTSParamsPreview(rawJson: string): TTSParamsPreview {
       valid: true,
       error: '',
       formattedJson: JSON.stringify(parsed, null, 2),
+      parsedObject: parsed as Record<string, unknown>,
     }
   } catch (error) {
     return {
       valid: false,
-      error: extractErrorMessage(error, '额外参数 JSON 解析失败'),
+      error: extractErrorMessage(error, 'JSON 解析失败'),
       formattedJson: '{}',
+      parsedObject: {},
     }
+  }
+}
+
+/**
+ * 构造更贴近运行时实际效果的参数预览，并把上方 Voice ID 合并到供应商最终会消费的字段里。
+ */
+function buildEffectiveParamsPreview(form: TTSFormState, rawPreview: JSONPreview): JSONPreview {
+  if (!rawPreview.valid) {
+    return rawPreview
+  }
+
+  const payload: Record<string, unknown> = {
+    ...rawPreview.parsedObject,
+  }
+  const voiceId = form.voiceId.trim()
+  if (voiceId) {
+    switch (form.engine) {
+      case 'xiaomi_mimo':
+        payload.voice = voiceId
+        break
+      case 'volcengine':
+        payload.voice_type = voiceId
+        break
+      default:
+        payload.voice_id = voiceId
+        break
+    }
+  }
+
+  return {
+    valid: true,
+    error: '',
+    formattedJson: JSON.stringify(payload, null, 2),
+    parsedObject: payload,
+  }
+}
+
+/**
+ * 返回更适合后台列表展示的供应商标签。
+ */
+function ttsEngineLabel(engine: string, providerMap: Map<string, TTSProviderDescriptor>): string {
+  return providerMap.get(engine)?.label || engine
+}
+
+/**
+ * 返回更适合后台展示的场景标签。
+ */
+function ttsSceneLabel(scene: TTSScene): string {
+  return scene === 'interview' ? '面试' : '学习陪伴'
+}
+
+/**
+ * 把状态值格式化为更容易理解的中文标签。
+ */
+function supportStatusLabel(status: string): string {
+  switch (status) {
+    case 'ready':
+      return '可运行'
+    case 'planned':
+      return '预留中'
+    case 'invalid':
+      return '参数有误'
+    case 'legacy_unsupported':
+      return '遗留不可运行'
+    default:
+      return status || '未知状态'
   }
 }
 
@@ -224,14 +345,30 @@ function shortenVoiceId(value: string): string {
 }
 
 /**
+ * 把字段定义列表拼成简洁的说明文本。
+ */
+function formatFieldDefinitions(fields: TTSProviderFieldDefinition[]): string {
+  if (fields.length === 0) {
+    return '当前没有额外字段说明。'
+  }
+
+  return fields
+    .map((field) => `${field.required ? '必填' : '可选'} ${field.label} (${field.key})：${field.description}`)
+    .join('\n')
+}
+
+/**
  * 校验当前 TTS 表单，提前发现必填项和 JSON 格式问题。
  */
-function validateTTSForm(form: TTSFormState, paramsPreview: TTSParamsPreview): string {
+function validateTTSForm(form: TTSFormState, authPreview: JSONPreview, paramsPreview: JSONPreview): string {
   if (!form.name.trim()) {
     return '音色名称不能为空'
   }
   if (!form.voiceId.trim()) {
     return 'Voice ID 不能为空'
+  }
+  if (!authPreview.valid) {
+    return authPreview.error
   }
   if (!paramsPreview.valid) {
     return paramsPreview.error
@@ -241,13 +378,17 @@ function validateTTSForm(form: TTSFormState, paramsPreview: TTSParamsPreview): s
 }
 
 /**
- * 提供后台 TTS 配置管理页，支持创建、编辑、删除和 JSON 预校验。
+ * 提供后台 TTS 配置管理页，支持供应商目录、默认绑定和 Live2D 复用场景。
  */
 export function TTSPage() {
   const accessToken = useAdminAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null)
-  const [form, setForm] = useState<TTSFormState>(buildInitialTTSForm())
+  const [form, setForm] = useState<TTSFormState>(buildInitialTTSForm([]))
+  const [defaultBindings, setDefaultBindings] = useState<SceneDefaultFormState>({
+    interview: '0',
+    companion: '0',
+  })
   const [message, setMessage] = useState('读取 TTS 配置中')
 
   const configsQuery = useQuery({
@@ -256,22 +397,39 @@ export function TTSPage() {
     enabled: Boolean(accessToken),
   })
 
-  const paramsPreview = useMemo(() => buildTTSParamsPreview(form.paramsJson), [form.paramsJson])
-  const formError = useMemo(() => validateTTSForm(form, paramsPreview), [form, paramsPreview])
+  const providerMap = useMemo(() => {
+    return new Map((configsQuery.data?.providers || []).map((provider) => [provider.key, provider]))
+  }, [configsQuery.data?.providers])
+  const currentProvider = useMemo(() => providerMap.get(form.engine), [form.engine, providerMap])
+  const authPreview = useMemo(() => buildJSONPreview(form.authConfigJson), [form.authConfigJson])
+  const paramsPreview = useMemo(() => buildJSONPreview(form.paramsJson), [form.paramsJson])
+  const effectiveParamsPreview = useMemo(() => buildEffectiveParamsPreview(form, paramsPreview), [form, paramsPreview])
+  const formError = useMemo(() => validateTTSForm(form, authPreview, paramsPreview), [authPreview, form, paramsPreview])
+  const readyConfigOptions = useMemo(() => {
+    return (configsQuery.data?.configs || []).filter((config) => config.support_status === 'ready')
+  }, [configsQuery.data?.configs])
 
   useEffect(() => {
     if (!configsQuery.data) {
       return
     }
 
+    setDefaultBindings(buildDefaultBindingsForm(configsQuery.data.default_bindings))
+
     if (selectedConfigId === null) {
+      setForm((current) => {
+        if (current.engine || configsQuery.data.providers.length === 0) {
+          return current
+        }
+        return buildInitialTTSForm(configsQuery.data.providers)
+      })
       setMessage((current) => (current === '读取 TTS 配置中' ? '已同步 TTS 配置列表。' : current))
       return
     }
 
-    const nextConfig = configsQuery.data.find((item) => item.id === selectedConfigId)
+    const nextConfig = configsQuery.data.configs.find((item) => item.id === selectedConfigId)
     if (nextConfig) {
-      setForm(buildTTSForm(nextConfig))
+      setForm(buildTTSForm(nextConfig, configsQuery.data.providers))
     }
   }, [configsQuery.data, selectedConfigId])
 
@@ -299,13 +457,28 @@ export function TTSPage() {
     },
   })
 
+  const saveDefaultsMutation = useMutation({
+    mutationFn: async () => {
+      await updateTTSSceneDefaults(accessToken, buildDefaultBindingsPayload(defaultBindings))
+    },
+    onSuccess: async () => {
+      setMessage('场景默认 TTS 绑定已更新。')
+      await queryClient.invalidateQueries({
+        queryKey: ['admin', 'tts-configs'],
+      })
+    },
+    onError: (error) => {
+      setMessage(extractErrorMessage(error, '更新场景默认 TTS 绑定失败，请稍后重试'))
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       await deleteTTSConfig(accessToken, id)
     },
     onSuccess: async () => {
       setSelectedConfigId(null)
-      setForm(buildInitialTTSForm())
+      setForm(buildInitialTTSForm(configsQuery.data?.providers || []))
       setMessage('TTS 配置已删除。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'tts-configs'],
@@ -321,7 +494,7 @@ export function TTSPage() {
    */
   function startCreatingTTSConfig(): void {
     setSelectedConfigId(null)
-    setForm(buildInitialTTSForm())
+    setForm(buildInitialTTSForm(configsQuery.data?.providers || []))
     setMessage('已切换到新建 TTS 配置模式。')
   }
 
@@ -330,7 +503,7 @@ export function TTSPage() {
    */
   function startEditingTTSConfig(config: TTSConfig): void {
     setSelectedConfigId(config.id)
-    setForm(buildTTSForm(config))
+    setForm(buildTTSForm(config, configsQuery.data?.providers || []))
     setMessage(`正在编辑音色：${config.name}`)
   }
 
@@ -341,6 +514,21 @@ export function TTSPage() {
     setForm((current) => ({
       ...current,
       [key]: value,
+    }))
+  }
+
+  /**
+   * 切换供应商，并在新建态优先回填该供应商的模板配置。
+   */
+  function handleEngineChange(nextEngine: string): void {
+    const provider = providerMap.get(nextEngine)
+    setForm((current) => ({
+      ...current,
+      engine: nextEngine,
+      authConfigJson:
+        selectedConfigId && current.engine === nextEngine ? current.authConfigJson : provider?.auth_template || '{}',
+      paramsJson:
+        selectedConfigId && current.engine === nextEngine ? current.paramsJson : provider?.params_template || '{}',
     }))
   }
 
@@ -375,6 +563,14 @@ export function TTSPage() {
     deleteMutation.mutate(selectedConfigId)
   }
 
+  /**
+   * 保存场景默认 TTS 绑定。
+   */
+  function handleSaveDefaults(): void {
+    setMessage('正在更新场景默认 TTS 绑定。')
+    saveDefaultsMutation.mutate()
+  }
+
   if (configsQuery.isLoading) {
     return (
       <section className="admin-panel">
@@ -385,7 +581,7 @@ export function TTSPage() {
     )
   }
 
-  if (configsQuery.isError) {
+  if (configsQuery.isError || !configsQuery.data) {
     return (
       <section className="admin-panel">
         <span className="admin-tag">语音中心</span>
@@ -402,16 +598,53 @@ export function TTSPage() {
           <span className="admin-tag">语音中心</span>
           <h2>TTS 配置</h2>
           <p className="admin-copy">
-            当前页用于维护面试和陪伴场景使用的音色配置。支持不同引擎、音色 ID、排序优先级和额外参数 JSON 的编辑。
+            这里维护真实可运行的 TTS 供应商配置。TTS 记录本身只负责保存供应商、鉴权和官方参数，实际使用场景改由
+            Live2D 模型绑定与场景默认策略决定。
           </p>
         </div>
         <div className="admin-tts-page__summary">
-          <strong>{configsQuery.data?.length || 0}</strong>
+          <strong>{configsQuery.data.configs.length}</strong>
           <span>条配置</span>
         </div>
       </div>
 
       <div className="admin-tts-page__toolbar">
+        <div className="admin-tts-editor__grid">
+          <label className="admin-field">
+            <span>{ttsSceneLabel('interview')}默认 TTS</span>
+            <select
+              value={defaultBindings.interview}
+              onChange={(event) => setDefaultBindings((current) => ({ ...current, interview: event.target.value }))}
+            >
+              <option value="0">未设置，回退到 config.yaml</option>
+              {readyConfigOptions.map((config) => (
+                <option key={config.id} value={config.id}>
+                  {config.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="admin-field">
+            <span>{ttsSceneLabel('companion')}默认 TTS</span>
+            <select
+              value={defaultBindings.companion}
+              onChange={(event) => setDefaultBindings((current) => ({ ...current, companion: event.target.value }))}
+            >
+              <option value="0">未设置，回退到 config.yaml</option>
+              {readyConfigOptions.map((config) => (
+                <option key={config.id} value={config.id}>
+                  {config.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <button className="admin-link" type="button" onClick={handleSaveDefaults} disabled={saveDefaultsMutation.isPending}>
+          {saveDefaultsMutation.isPending ? '保存默认绑定中...' : '保存场景默认绑定'}
+        </button>
+
         <button className="admin-link" type="button" onClick={startCreatingTTSConfig}>
           新建 TTS 配置
         </button>
@@ -419,13 +652,13 @@ export function TTSPage() {
 
       <div className="admin-tts-page__layout">
         <div className="admin-tts-list">
-          {(configsQuery.data || []).length === 0 ? (
+          {configsQuery.data.configs.length === 0 ? (
             <div className="admin-tts-card admin-tts-card--empty">
               <strong>当前还没有 TTS 配置记录</strong>
-              <p>可以先创建一条陪伴或面试场景的音色配置。</p>
+              <p>可以先新建一条可运行的供应商配置，再到 Live2D 页面绑定使用。</p>
             </div>
           ) : (
-            (configsQuery.data || []).map((config) => (
+            configsQuery.data.configs.map((config) => (
               <button
                 key={config.id}
                 type="button"
@@ -437,8 +670,8 @@ export function TTSPage() {
                   <span>{config.is_active ? '启用中' : '已停用'}</span>
                 </div>
                 <div className="admin-tts-card__meta">
-                  <span>{ttsEngineLabel(config.engine)}</span>
-                  <span>{ttsSceneLabel(config.scene)}</span>
+                  <span>{ttsEngineLabel(config.engine, providerMap)}</span>
+                  <span>{supportStatusLabel(config.support_status)}</span>
                   <span>排序 {config.sort_order}</span>
                 </div>
                 <p>{shortenVoiceId(config.voice_id)}</p>
@@ -457,35 +690,21 @@ export function TTSPage() {
           </div>
 
           <label className="admin-field">
-            <span>音色名称</span>
+            <span>配置名称</span>
             <input
               value={form.name}
               onChange={(event) => updateTTSField('name', event.target.value)}
-              placeholder="例如 Ariu 陪伴女声"
+              placeholder="例如 豆包陪伴女声"
             />
           </label>
 
           <div className="admin-tts-editor__grid">
             <label className="admin-field">
-              <span>引擎</span>
-              <select
-                value={form.engine}
-                onChange={(event) => updateTTSField('engine', event.target.value as TTSEngine)}
-              >
-                {TTS_ENGINE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>使用场景</span>
-              <select value={form.scene} onChange={(event) => updateTTSField('scene', event.target.value as TTSScene)}>
-                {TTS_SCENE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+              <span>供应商</span>
+              <select value={form.engine} onChange={(event) => handleEngineChange(event.target.value)}>
+                {configsQuery.data.providers.map((provider) => (
+                  <option key={provider.key} value={provider.key}>
+                    {provider.label}
                   </option>
                 ))}
               </select>
@@ -503,21 +722,36 @@ export function TTSPage() {
           </div>
 
           <label className="admin-field">
-            <span>Voice ID</span>
+            <span>Voice ID / Speaker</span>
             <input
               value={form.voiceId}
               onChange={(event) => updateTTSField('voiceId', event.target.value)}
-              placeholder="请输入引擎中的音色 ID"
+              placeholder="请输入当前供应商的音色或说话人 ID"
+            />
+          </label>
+
+          <div className={`admin-tts-editor__status ${currentProvider?.support_status === 'ready' ? 'is-valid' : 'is-error'}`}>
+            <strong>供应商状态</strong>
+            <span>{currentProvider?.support_message || '当前供应商元数据缺失。'}</span>
+          </div>
+
+          <label className="admin-field">
+            <span>鉴权配置 JSON</span>
+            <textarea
+              className="admin-tts-editor__params"
+              value={form.authConfigJson}
+              onChange={(event) => updateTTSField('authConfigJson', event.target.value)}
+              placeholder='例如 {"api_key":"xxx"}'
             />
           </label>
 
           <label className="admin-field">
-            <span>额外参数 JSON</span>
+            <span>供应商参数 JSON</span>
             <textarea
               className="admin-tts-editor__params"
               value={form.paramsJson}
               onChange={(event) => updateTTSField('paramsJson', event.target.value)}
-              placeholder='例如 {"speed":1,"volume":1}'
+              placeholder='例如 {"resource_id":"seed-tts-2.0"}'
             />
           </label>
 
@@ -528,10 +762,26 @@ export function TTSPage() {
 
           <div className="admin-tts-editor__effective-json">
             <div className="admin-tts-editor__effective-head">
-              <strong>参数预览</strong>
-              <span>{paramsPreview.valid ? '已通过 JSON 校验' : '当前展示回退空对象'}</span>
+              <strong>鉴权配置预览</strong>
+              <span>{authPreview.valid ? '已通过 JSON 校验' : '当前展示回退空对象'}</span>
             </div>
-            <pre>{paramsPreview.formattedJson}</pre>
+            <pre>{authPreview.formattedJson}</pre>
+          </div>
+
+          <div className="admin-tts-editor__effective-json">
+            <div className="admin-tts-editor__effective-head">
+              <strong>参数配置预览</strong>
+              <span>{paramsPreview.valid ? '已合并上方 Voice ID 后的最终预览' : '当前展示回退空对象'}</span>
+            </div>
+            <pre>{effectiveParamsPreview.formattedJson}</pre>
+          </div>
+
+          <div className="admin-tts-editor__effective-json">
+            <div className="admin-tts-editor__effective-head">
+              <strong>官方字段提示</strong>
+              <span>{currentProvider?.label || '未知供应商'}</span>
+            </div>
+            <pre>{`鉴权字段：\n${formatFieldDefinitions(currentProvider?.auth_fields || [])}\n\n参数字段：\n${formatFieldDefinitions(currentProvider?.param_fields || [])}`}</pre>
           </div>
 
           <label className="admin-tts-editor__switch">
@@ -548,7 +798,7 @@ export function TTSPage() {
               className="admin-link"
               type="button"
               onClick={startCreatingTTSConfig}
-              disabled={saveMutation.isPending || deleteMutation.isPending}
+              disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
             >
               重置为新建
             </button>
@@ -557,7 +807,7 @@ export function TTSPage() {
                 className="admin-link"
                 type="button"
                 onClick={handleDelete}
-                disabled={saveMutation.isPending || deleteMutation.isPending}
+                disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
               >
                 {deleteMutation.isPending ? '删除中...' : '删除配置'}
               </button>
@@ -565,7 +815,7 @@ export function TTSPage() {
             <button
               className="admin-link"
               type="submit"
-              disabled={Boolean(formError) || saveMutation.isPending || deleteMutation.isPending}
+              disabled={Boolean(formError) || saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
             >
               {saveMutation.isPending ? '保存中...' : selectedConfigId ? '保存修改' : '创建配置'}
             </button>

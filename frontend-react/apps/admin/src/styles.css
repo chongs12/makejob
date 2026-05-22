@@ -212,6 +212,110 @@ body {
   gap: 22px;
 }
 
+.admin-ai-config__preset-panel {
+  margin-top: 24px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(15, 29, 49, 0.1);
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+}
+
+.admin-ai-config__preset-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.admin-ai-config__preset-head h3 {
+  margin: 0 0 8px;
+}
+
+.admin-ai-config__preset-head p {
+  margin: 6px 0 0;
+  color: #4f637d;
+  line-height: 1.6;
+}
+
+.admin-ai-config__preset-head strong {
+  margin-left: 8px;
+  color: #17304d;
+}
+
+.admin-ai-config__preset-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-ai-config__preset-list {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-ai-config__preset-card {
+  width: 100%;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 29, 49, 0.1);
+  background: #fff;
+  color: #0f1d31;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+}
+
+.admin-ai-config__preset-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(24, 46, 77, 0.08);
+}
+
+.admin-ai-config__preset-card--selected {
+  border-color: #1d5ea9;
+  box-shadow: 0 14px 30px rgba(29, 94, 169, 0.12);
+}
+
+.admin-ai-config__preset-card--active {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f8ff 100%);
+}
+
+.admin-ai-config__preset-card--empty {
+  cursor: default;
+}
+
+.admin-ai-config__preset-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-ai-config__preset-card-head span {
+  color: #456a98;
+  font-size: 13px;
+}
+
+.admin-ai-config__preset-card-meta {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #456a98;
+  font-size: 13px;
+}
+
+.admin-ai-config__preset-card p {
+  margin: 12px 0 0;
+  color: #55667c;
+  line-height: 1.6;
+}
+
 .admin-ai-config__section {
   padding: 22px;
   border-radius: 20px;
@@ -2178,7 +2282,8 @@ body {
   }
 
   .admin-ai-config__hero,
-  .admin-ai-config__footer {
+  .admin-ai-config__footer,
+  .admin-ai-config__preset-head {
     flex-direction: column;
   }
 
@@ -2186,7 +2291,8 @@ body {
     width: 100%;
   }
 
-  .admin-ai-config__grid {
+  .admin-ai-config__grid,
+  .admin-ai-config__preset-list {
     grid-template-columns: 1fr;
   }
 

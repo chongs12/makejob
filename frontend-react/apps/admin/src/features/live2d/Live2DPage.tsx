@@ -22,9 +22,20 @@ interface Live2DModel {
   model_url: string
   thumbnail_url: string
   config_json: string
+  tts_config_id: number | null
   is_active: boolean
   created_at?: string
   updated_at?: string
+}
+
+interface TTSConfigOption {
+  id: number
+  name: string
+  support_status: string
+}
+
+interface TTSConfigListResponse {
+  configs: TTSConfigOption[]
 }
 
 interface ImportedLive2DPackage {
@@ -50,6 +61,7 @@ interface Live2DFormState {
   thumbnailUrl: string
   backgroundImageUrl: string
   configJson: string
+  ttsConfigId: string
   isActive: boolean
 }
 
@@ -95,6 +107,22 @@ async function fetchLive2DModels(token: string | null): Promise<Live2DModel[]> {
   }
 
   return response.data
+}
+
+/**
+ * 获取后台可绑定到 Live2D 的 TTS 配置列表。
+ */
+async function fetchTTSConfigs(token: string | null): Promise<TTSConfigOption[]> {
+  const response = await requestJson<ApiEnvelope<TTSConfigListResponse>>('/admin/tts-configs', {
+    method: 'GET',
+    token,
+  })
+
+  if (!isSuccessCode(response.code)) {
+    throw new Error(response.message || '获取 TTS 配置列表失败')
+  }
+
+  return (response.data?.configs || []).filter((item) => item.support_status === 'ready')
 }
 
 /**
@@ -195,6 +223,7 @@ function buildInitialLive2DForm(): Live2DFormState {
     thumbnailUrl: '',
     backgroundImageUrl: '',
     configJson: '{\n  "scale": 0.4,\n  "offset_x": 0,\n  "offset_y": 0.08\n}',
+    ttsConfigId: '0',
     isActive: true,
   }
 }
@@ -204,15 +233,14 @@ function buildInitialLive2DForm(): Live2DFormState {
  */
 function buildDefaultLive2DConfig(scene: Live2DScene): Record<string, unknown> {
   if (scene === 'interview') {
-    return {
-      scale: 0.34,
-      offset_x: 0,
-      offset_y: 0.02,
-      idle_motion: 'interview_idle',
-      tap_motion: 'greeting',
-      background: 'transparent',
-      voice_source: 'volcengine',
-    }
+      return {
+        scale: 0.34,
+        offset_x: 0,
+        offset_y: 0.02,
+        idle_motion: 'interview_idle',
+        tap_motion: 'greeting',
+        background: 'transparent',
+      }
   }
 
   return {
@@ -222,7 +250,6 @@ function buildDefaultLive2DConfig(scene: Live2DScene): Record<string, unknown> {
     idle_motion: 'companion_idle',
     tap_motion: 'wave',
     background: 'transparent',
-    voice_source: 'volcengine',
   }
 }
 
@@ -271,6 +298,7 @@ function buildLive2DForm(model?: Live2DModel | null): Live2DFormState {
     thumbnailUrl: model.thumbnail_url || '',
     backgroundImageUrl: resolveLive2DBackgroundImageUrl(model.config_json || ''),
     configJson: model.config_json || '',
+    ttsConfigId: String(model.tts_config_id ?? 0),
     isActive: model.is_active,
   }
 }
@@ -296,6 +324,7 @@ function buildLive2DPayload(form: Live2DFormState): Record<string, unknown> {
     model_url: form.modelUrl.trim(),
     thumbnail_url: form.thumbnailUrl.trim(),
     config_json: JSON.stringify(configObject),
+    tts_config_id: Number(form.ttsConfigId) > 0 ? Number(form.ttsConfigId) : null,
     is_active: form.isActive,
   }
 }
@@ -421,6 +450,11 @@ export function Live2DPage() {
   const modelsQuery = useQuery({
     queryKey: ['admin', 'live2d-models', accessToken],
     queryFn: () => fetchLive2DModels(accessToken),
+    enabled: Boolean(accessToken),
+  })
+  const ttsConfigsQuery = useQuery({
+    queryKey: ['admin', 'tts-configs-for-live2d', accessToken],
+    queryFn: () => fetchTTSConfigs(accessToken),
     enabled: Boolean(accessToken),
   })
 
@@ -656,7 +690,7 @@ export function Live2DPage() {
     deleteMutation.mutate(selectedModelId)
   }
 
-  if (modelsQuery.isLoading || industriesQuery.isLoading) {
+  if (modelsQuery.isLoading || industriesQuery.isLoading || ttsConfigsQuery.isLoading) {
     return (
       <section className="admin-panel">
         <span className="admin-tag">Live2D 中心</span>
@@ -666,13 +700,13 @@ export function Live2DPage() {
     )
   }
 
-  if (modelsQuery.isError || industriesQuery.isError) {
+  if (modelsQuery.isError || industriesQuery.isError || ttsConfigsQuery.isError) {
     return (
       <section className="admin-panel">
         <span className="admin-tag">Live2D 中心</span>
         <h2>Live2D 管理</h2>
         <p className="admin-copy">
-          {extractErrorMessage(modelsQuery.error || industriesQuery.error, '读取 Live2D 管理数据失败')}
+          {extractErrorMessage(modelsQuery.error || industriesQuery.error || ttsConfigsQuery.error, '读取 Live2D 管理数据失败')}
         </p>
       </section>
     )
@@ -817,6 +851,18 @@ export function Live2DPage() {
               </select>
             </label>
           </div>
+
+          <label className="admin-field">
+            <span>绑定 TTS 配置</span>
+            <select value={form.ttsConfigId} onChange={(event) => updateLive2DField('ttsConfigId', event.target.value)}>
+              <option value="0">不绑定，回退到场景默认 / config.yaml</option>
+              {(ttsConfigsQuery.data || []).map((config) => (
+                <option key={config.id} value={config.id}>
+                  {config.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="admin-field">
             <span>模型地址</span>

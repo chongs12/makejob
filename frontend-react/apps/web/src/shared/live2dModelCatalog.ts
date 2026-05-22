@@ -3,6 +3,13 @@ import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 
 export type Live2DStageScene = 'companion' | 'interview'
 
+export interface SelectableLive2DModelMotion {
+  key: string
+  group: string
+  file: string
+  label: string
+}
+
 export interface SelectableLive2DModel {
   key: string
   name: string
@@ -14,6 +21,7 @@ export interface SelectableLive2DModel {
   match_type: string
   is_generic: boolean
   is_recommended: boolean
+  motions?: SelectableLive2DModelMotion[]
 }
 
 const COMPANION_SELECTED_MODEL_KEY_PREFIX = 'makejob.companion.selected-live2d:'

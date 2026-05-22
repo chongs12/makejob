@@ -6,6 +6,7 @@ import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
 import { AsyncEmptyState, AsyncInlineState } from '../../shared/asyncState'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
+import { readSelectedLive2DModelKey } from '../../shared/live2dModelCatalog'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
   formatFrontendIndustryLabel,
@@ -131,6 +132,7 @@ export function InterviewHubPage() {
         difficulty: form.difficulty,
         topics,
         question_count: Number(form.questionCount) || 5,
+        live2d_model_key: readSelectedLive2DModelKey('interview', effectiveIndustryCode),
       })
     } catch {
       if (!useAuthStore.getState().accessToken) {

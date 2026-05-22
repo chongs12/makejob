@@ -1,22 +1,32 @@
 import type {
   Live2DDiscoveredExpression,
+  Live2DDiscoveredMotion,
   Live2DStageExpressionLayer,
   Live2DStageModelMetadata,
   Live2DStageParameterOverride,
 } from './live2dStageRuntime'
 import type { Live2DStageScene } from './live2dModelCatalog'
+import type { Live2DDirective } from './live2dDirective'
 
 export interface Live2DStagePresetInput {
   scene: Live2DStageScene
   emotion: string
   action?: string
   mouthOpen?: number
+  directive?: Live2DDirective | null
 }
 
 export interface ResolvedLive2DStagePreset {
   expressionMix: Live2DStageExpressionLayer[]
   parameterOverrides: Live2DStageParameterOverride[]
   activeExpressionLabels: string[]
+  activeMotionLabel: string
+  motion: {
+    key: string
+    group: string
+    priority: 'normal' | 'force'
+    durationMS: number
+  } | null
 }
 
 /**
@@ -26,6 +36,11 @@ export function resolveLive2DStagePreset(
   metadata: Live2DStageModelMetadata | null,
   preset: Live2DStagePresetInput,
 ): ResolvedLive2DStagePreset {
+  const directivePreset = resolveDirectivePreset(metadata, preset)
+  if (directivePreset) {
+    return directivePreset
+  }
+
   const expressions = metadata?.expressions || []
   const usedExpressionIds = new Set<string>()
   const expressionMix: Live2DStageExpressionLayer[] = []
@@ -54,6 +69,71 @@ export function resolveLive2DStagePreset(
     expressionMix,
     parameterOverrides,
     activeExpressionLabels,
+    activeMotionLabel: '',
+    motion: null,
+  }
+}
+
+/**
+ * 当后端已直接返回结构化指令时，优先使用后端结果，旧的情绪动作映射只作为回退。
+ */
+function resolveDirectivePreset(
+  metadata: Live2DStageModelMetadata | null,
+  preset: Live2DStagePresetInput,
+): ResolvedLive2DStagePreset | null {
+  const directive = preset.directive
+  if (!directive) {
+    return null
+  }
+
+  const expressionMap = new Map((metadata?.expressions || []).map((item) => [item.id, item]))
+  const motionMap = new Map((metadata?.motions || []).map((item) => [item.key, item]))
+  const expressionMix = (directive.expression_mix || [])
+    .filter((item) => item && typeof item.key === 'string' && expressionMap.has(item.key))
+    .slice(0, 3)
+    .map((item) => ({
+      key: item.key,
+      weight: clampStageParameter(item.weight, 0, 1),
+    }))
+  const activeExpressionLabels = expressionMix.map((item) => expressionMap.get(item.key)?.label || item.key)
+
+  const parameterOverrides = [...(directive.parameter_overrides || [])]
+  if (typeof directive.mouth_open === 'number') {
+    parameterOverrides.push({
+      id: 'ParamMouthOpenY',
+      value: clampStageParameter(directive.mouth_open, 0, 1),
+    })
+  } else if (typeof preset.mouthOpen === 'number') {
+    parameterOverrides.push({
+      id: 'ParamMouthOpenY',
+      value: clampStageParameter(preset.mouthOpen, 0, 1),
+    })
+  }
+
+  let motion: ResolvedLive2DStagePreset['motion'] = null
+  let activeMotionLabel = ''
+  if (typeof directive.motion_key === 'string' && motionMap.has(directive.motion_key)) {
+    const discoveredMotion = motionMap.get(directive.motion_key) as Live2DDiscoveredMotion
+    motion = {
+      key: discoveredMotion.key,
+      group: discoveredMotion.group,
+      priority: directive.motion_priority === 'force' ? 'force' : 'normal',
+      durationMS: typeof directive.motion_duration_ms === 'number'
+        ? Math.max(0, Math.min(directive.motion_duration_ms, 12000))
+        : 0,
+    }
+    activeMotionLabel = discoveredMotion.label
+  }
+
+  return {
+    expressionMix,
+    parameterOverrides: parameterOverrides.map((item) => ({
+      id: item.id,
+      value: item.value,
+    })),
+    activeExpressionLabels,
+    activeMotionLabel,
+    motion,
   }
 }
 

@@ -15,6 +15,8 @@ import { readCurrentBrowserPath } from '../../shared/authRedirect'
 import { useFrontendIndustriesQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { prewarmLive2DRuntime } from '../../shared/live2dRuntime'
+import { readSelectedLive2DModelKey } from '../../shared/live2dModelCatalog'
+import { useLive2DDialoguePlayback } from '../../shared/useLive2DDialoguePlayback'
 import {
   buildCompanionCurrentPlanQueryKey,
   buildCompanionLive2DModelsQueryKey,
@@ -72,26 +74,20 @@ import type {
 } from './companionTypes'
 import { useCompanionStudyLogSync } from './useCompanionStudyLogSync'
 
+const COMPANION_INITIAL_DIALOGUE = '我是你的学习陪伴助手。先把今天要推进的学习目标摆清楚，我们再一项一项完成。'
+
 /**
  * 创建陪伴页首屏默认消息，保证页面在未登录时也能展示完整骨架。
  */
 function buildInitialHistory(): CompanionHistoryItem[] {
   return [
-    {
-      id: 'assistant-welcome',
-      role: 'assistant',
-      content: '我是你的学习陪伴助手。先把今天要推进的学习目标摆清楚，我们再一项一项完成。',
-      createdAt: Date.now(),
-    },
+      {
+        id: 'assistant-welcome',
+        role: 'assistant',
+        content: COMPANION_INITIAL_DIALOGUE,
+        createdAt: Date.now(),
+      },
   ]
-}
-
-/**
- * 选取右侧舞台当前应该展示的台词，优先使用最近一条 Ariu 的回复。
- */
-function resolveCurrentDialogue(history: CompanionHistoryItem[]): string {
-  const latestAssistantMessage = [...history].reverse().find((item) => item.role === 'assistant')
-  return latestAssistantMessage?.content || '我们开始吧。'
 }
 
 /**
@@ -161,6 +157,21 @@ export function CompanionWorkspacePage() {
   const [dailyDigest, setDailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
   const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
   const [stageEnabled, setStageEnabled] = useState(false)
+  const [selectedLive2DModelKey, setSelectedLive2DModelKey] = useState(() => readSelectedLive2DModelKey('companion', readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE))
+  const {
+    liveDialogue: stageDialogue,
+    isDialogueTyping: isStageDialogueTyping,
+    mouthOpen: stageMouthOpen,
+    startDialogueTyping,
+    stopCurrentPlayback,
+    syncDialogueImmediately,
+    playTTSAudio,
+  } = useLive2DDialoguePlayback({
+    initialDialogue: COMPANION_INITIAL_DIALOGUE,
+    onPlaybackError: (error) => {
+      setComposerMessage(extractErrorMessage(error, '陪伴语音播放失败，已回退到文本模式。'))
+    },
+  })
   const industriesQuery = useFrontendIndustriesQuery()
 
   const currentPlanQuery = useQuery({
@@ -195,8 +206,8 @@ export function CompanionWorkspacePage() {
   )
   useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
   const quickPrompts = useMemo(() => buildCompanionQuickPrompts(currentPlanQuery.data || null, focusedTask), [currentPlanQuery.data, focusedTask])
-  const currentDialogue = useMemo(() => resolveCurrentDialogue(history), [history])
   const stageFeedback = useMemo(() => resolveStageFeedback(history), [history])
+  const latestAssistantMessage = useMemo(() => [...history].reverse().find((item) => item.role === 'assistant') || null, [history])
   const planProgressHint = useMemo(() => buildPlanProgressHint(planProgressQuery.data), [planProgressQuery.data])
   const phaseAdjustmentHint = useMemo(() => buildCompanionPhaseAdjustmentHint(currentPlanQuery.data || null), [currentPlanQuery.data])
   const workspaceIndustryCode = currentPlanQuery.data?.industry_code?.trim() || preferredIndustryCode.trim() || DEFAULT_COMPANION_INDUSTRY_CODE
@@ -206,6 +217,29 @@ export function CompanionWorkspacePage() {
   )
   const workspaceIndustryLabel = formatCompanionIndustryLabel(workspaceIndustry, workspaceIndustryCode)
   const isPlanPanelLoading = currentPlanQuery.isLoading || (Boolean(accessToken && currentPlanQuery.data?.id) && planProgressQuery.isLoading)
+
+  /**
+   * 统一追加陪伴助手消息，并按场景决定是立即更新舞台，还是触发字幕/TTS 播放。
+   */
+  function appendAssistantMessage(
+    message: CompanionHistoryItem,
+    playback: 'immediate' | 'typing' = 'immediate',
+    audioUrl?: string,
+  ): void {
+    setHistory((current) => [...current, message])
+
+    if (playback === 'typing') {
+      if (audioUrl) {
+        void playTTSAudio(audioUrl, message.content)
+        return
+      }
+
+      startDialogueTyping(message.content)
+      return
+    }
+
+    syncDialogueImmediately(message.content)
+  }
 
   const updateTaskMutation = useMutation({
     mutationFn: async (payload: { task: CompanionPlanTask; status: CompanionTaskStatus; feedback?: CompanionTaskFeedbackDraft }) => {
@@ -236,17 +270,15 @@ export function CompanionWorkspacePage() {
       setDailyDigest(nextDigest)
       setFocusTaskDraft(nextFocusTask)
       setPlanActionMessage(variables.feedback ? '已记录训练反馈，并把任务标记为已完成。' : `任务状态已更新为「${taskStatusLabel(variables.status)}」。`)
-      setHistory((current) => [
-        ...current,
-        {
-          id: `assistant-task-${Date.now()}`,
-          role: 'assistant',
-          content: buildCompanionTaskActionFeedback(variables.task, variables.status, projectedPlan, nextDigest),
-          emotion: variables.status === 'completed' ? 'encouraging' : 'steady',
-          action: variables.status === 'completed' ? 'celebrate' : 'nod',
-          createdAt: Date.now(),
-        },
-      ])
+      appendAssistantMessage({
+        id: `assistant-task-${Date.now()}`,
+        role: 'assistant',
+        content: buildCompanionTaskActionFeedback(variables.task, variables.status, projectedPlan, nextDigest),
+        emotion: variables.status === 'completed' ? 'encouraging' : 'steady',
+        action: variables.status === 'completed' ? 'celebrate' : 'nod',
+        live2dDirective: null,
+        createdAt: Date.now(),
+      })
       await invalidateCompanionPlanQueries(queryClient)
     },
     onError: (error) => {
@@ -287,17 +319,15 @@ export function CompanionWorkspacePage() {
     }
 
     hasInjectedResumeMessageRef.current = true
-    setHistory((current) => [
-      ...current,
-      {
-        id: `assistant-resume-${currentPlanQuery.data.id}`,
-        role: 'assistant',
-        content: buildCompanionWorkspaceResumeMessage(currentPlanQuery.data, focusedTask, dailyDigest),
-        emotion: 'steady',
-        action: 'nod',
-        createdAt: Date.now(),
-      },
-    ])
+    appendAssistantMessage({
+      id: `assistant-resume-${currentPlanQuery.data.id}`,
+      role: 'assistant',
+      content: buildCompanionWorkspaceResumeMessage(currentPlanQuery.data, focusedTask, dailyDigest),
+      emotion: 'steady',
+      action: 'nod',
+      live2dDirective: null,
+      createdAt: Date.now(),
+    })
   }, [accessToken, currentPlanQuery.data, dailyDigest, focusedTask])
 
   /**
@@ -309,6 +339,7 @@ export function CompanionWorkspacePage() {
     }
 
     persistSelectedCompanionIndustryCode(workspaceIndustryCode)
+    setSelectedLive2DModelKey(readSelectedLive2DModelKey('companion', workspaceIndustryCode))
     if (workspaceIndustryCode !== preferredIndustryCode) {
       setPreferredIndustryCode(workspaceIndustryCode)
     }
@@ -486,6 +517,7 @@ export function CompanionWorkspacePage() {
 
     setComposer('')
     setComposerMessage('')
+    stopCurrentPlayback()
     setHistory((current) => [...current, userMessage])
 
     setSending(true)
@@ -497,24 +529,26 @@ export function CompanionWorkspacePage() {
         currentPlanQuery.data || null,
         focusedTask,
         dailyDigest,
+        selectedLive2DModelKey,
         {
           deriveTodayGoals,
           deriveActiveGoals,
         },
       )
       const replyContent = reply.reply || reply.content || '我在，你继续说。'
-
-      setHistory((current) => [
-        ...current,
+      appendAssistantMessage(
         {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: replyContent,
           emotion: reply.emotion || reply.mood || '',
           action: reply.action || '',
+          live2dDirective: reply.live2d_directive || null,
           createdAt: Date.now(),
         },
-        ])
+        'typing',
+        reply.audio_url,
+      )
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -770,16 +804,21 @@ export function CompanionWorkspacePage() {
           description="角色舞台或输入区在渲染时出现异常。你可以重试当前区域，左侧计划与历史记录仍然可继续使用。"
           retryLabel="重新挂载舞台区域"
           onRetry={() => setStageEnabled(false)}
-          resetKeys={[stageEnabled, workspaceIndustryCode, currentDialogue, history.length]}
+          resetKeys={[stageEnabled, workspaceIndustryCode, history.length]}
         >
           <div className="companion-stage-shell">
             {stageEnabled ? (
               <CompanionLive2DStage
-                dialogue={currentDialogue}
+                dialogue={stageDialogue}
+                isTyping={isStageDialogueTyping}
                 emotion={stageFeedback.emotion}
                 action={stageFeedback.action}
+                mouthOpen={stageMouthOpen}
+                directive={latestAssistantMessage?.live2dDirective || null}
                 loggedIn={Boolean(accessToken)}
                 industryCode={workspaceIndustryCode}
+                selectedModelKey={selectedLive2DModelKey}
+                onChangeModelKey={setSelectedLive2DModelKey}
               />
             ) : (
               <section className="companion-stage-panel">

@@ -200,6 +200,7 @@ export async function sendCompanionChatRequest(
   plan: CompanionPlanDetail | null,
   focusedTask: CompanionPlanTask | null,
   dailyDigest: CompanionDailyDigest | null,
+  live2DModelKey: string,
   context: {
     deriveTodayGoals: (plan: CompanionPlanDetail | null) => CompanionPlanTask[]
     deriveActiveGoals: (plan: CompanionPlanDetail | null) => CompanionPlanTask[]
@@ -210,6 +211,7 @@ export async function sendCompanionChatRequest(
     token,
     body: {
       messages: buildChatPayload(history),
+      live2d_model_key: live2DModelKey,
       context: {
         current_plan_title: plan?.title || '',
         current_plan_progress: plan?.progress || 0,

@@ -91,6 +91,7 @@ async function loadCubismModule(): Promise<typeof import('pixi-live2d-display/cu
 export async function loadLive2DRuntime(): Promise<{
   PIXI: typeof import('pixi.js')
   Live2DModel: typeof import('pixi-live2d-display/cubism4').Live2DModel
+  MotionPriority: typeof import('pixi-live2d-display/cubism4').MotionPriority
 }> {
   const [PIXI, cubismModule] = await Promise.all([
     loadPixiRuntime(),
@@ -100,6 +101,7 @@ export async function loadLive2DRuntime(): Promise<{
   return {
     PIXI,
     Live2DModel: cubismModule.Live2DModel,
+    MotionPriority: cubismModule.MotionPriority,
   }
 }
 

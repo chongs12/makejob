@@ -32,6 +32,7 @@ export function buildInitialInterviewForm(): InterviewConfigForm {
     difficulty: 'medium',
     questionCount: '5',
     topicsText: buildDefaultInterviewTopics(INTERVIEW_DEFAULT_INDUSTRY_CODE),
+    live2dModelKey: '',
   }
 }
 

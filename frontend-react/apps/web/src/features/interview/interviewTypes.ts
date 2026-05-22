@@ -1,7 +1,10 @@
+import type { Live2DDirective } from '../../shared/live2dDirective'
+
 export interface InterviewConfigForm {
   difficulty: string
   questionCount: string
   topicsText: string
+  live2dModelKey: string
 }
 
 export interface InterviewQuestion {
@@ -14,6 +17,7 @@ export interface InterviewQuestion {
   starter_code?: string
   editor_mode?: string
   evaluation_mode?: string
+  live2d_directive?: Live2DDirective | null
 }
 
 export interface InterviewFeedback {
@@ -53,6 +57,7 @@ export interface InterviewCreatePayload {
   difficulty: string
   topics: string[]
   question_count: number
+  live2d_model_key?: string
 }
 
 export interface InterviewCreateResponse {
@@ -163,6 +168,7 @@ export interface InterviewSocketQuestionPayload {
   starter_code?: string
   editor_mode?: string
   evaluation_mode?: string
+  live2d_directive?: Live2DDirective | null
 }
 
 export interface InterviewSocketASRPayload {
@@ -184,4 +190,9 @@ export interface InterviewSocketExpressionPayload {
   emotion: string
   action: string
   source: string
+  expression_mix?: Live2DDirective['expression_mix']
+  parameter_overrides?: Live2DDirective['parameter_overrides']
+  intensity?: number
+  duration_ms?: number
+  mouth_open?: number
 }

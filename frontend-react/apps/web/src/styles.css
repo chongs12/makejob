@@ -2439,10 +2439,23 @@ button {
 .live2d-stage-dialogue-text {
   margin: 0;
   min-height: calc(1.85em * 2);
+  max-height: calc(1.85em * 4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
   color: rgba(248, 250, 255, 0.94);
   font-size: clamp(15px, 1.7vw, 18px);
   line-height: 1.85;
   white-space: pre-wrap;
+}
+
+.live2d-stage-dialogue-text::-webkit-scrollbar {
+  width: 6px;
+}
+
+.live2d-stage-dialogue-text::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 213, 134, 0.48);
 }
 
 .live2d-stage-dialogue-text.is-typing::after {

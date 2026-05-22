@@ -1,5 +1,6 @@
 import type { Application } from 'pixi.js'
 import type { Live2DModel as Cubism4Live2DModel } from 'pixi-live2d-display/cubism4'
+import type { SelectableLive2DModelMotion } from './live2dModelCatalog'
 import { loadLive2DRuntime } from './live2dRuntime'
 
 export interface Live2DStageTransform {
@@ -24,19 +25,36 @@ export interface Live2DDiscoveredExpression {
   file: string
 }
 
+export interface Live2DDiscoveredMotion {
+  key: string
+  group: string
+  runtimeGroup: string
+  index: number
+  label: string
+  file: string
+}
+
 export interface Live2DStageModelMetadata {
   expressions: Live2DDiscoveredExpression[]
+  motions: Live2DDiscoveredMotion[]
   parameterIds: string[]
 }
 
 export interface Live2DStageVisualState {
   expressionMix: Live2DStageExpressionLayer[]
   parameterOverrides: Live2DStageParameterOverride[]
+  motion: {
+    key: string
+    group: string
+    priority: 'normal' | 'force'
+    durationMS: number
+  } | null
 }
 
 export interface Live2DStageRuntime {
   app: Application
   model: Cubism4Live2DModel
+  motionPriority: typeof import('pixi-live2d-display/cubism4').MotionPriority
   metadata: Live2DStageModelMetadata
   baseWidth: number
   baseHeight: number
@@ -47,15 +65,21 @@ export interface Live2DStageRuntime {
   overlayTargetParams: Map<string, number>
   trackedParamIds: Set<string>
   expressionFileCache: Map<string, Live2DExpressionFilePayload>
+  currentMotionKey: string
+  lastMotionStartedAt: number
 }
 
 interface Live2DModelSettingsPayload {
+  url?: string
   FileReferences?: {
     DisplayInfo?: string
     Expressions?: Array<{
       Name?: string
       File?: string
     }>
+    Motions?: Record<string, Array<{
+      File?: string
+    }>>
   }
 }
 
@@ -91,12 +115,12 @@ export async function createLive2DStageRuntime(
   host: HTMLDivElement,
   modelUrl: string,
   defaultTransform: Live2DStageTransform,
+  serverMotions: SelectableLive2DModelMotion[] = [],
 ): Promise<Live2DStageRuntime> {
-  const { PIXI, Live2DModel } = await loadLive2DRuntime()
-  const [modelSettings, metadata] = await Promise.all([
-    fetchJson<Live2DModelSettingsPayload>(modelUrl),
-    discoverLive2DModelMetadata(modelUrl),
-  ])
+  const { PIXI, Live2DModel, MotionPriority } = await loadLive2DRuntime()
+  const modelSettings = await fetchJson<Live2DModelSettingsPayload>(modelUrl)
+  const hydratedModelSettings = hydrateLive2DModelSettings(modelUrl, modelSettings, serverMotions)
+  const metadata = await discoverLive2DModelMetadata(modelUrl, hydratedModelSettings)
 
   const app = new PIXI.Application({
     width: Math.max(host.clientWidth, 320),
@@ -114,14 +138,16 @@ export async function createLive2DStageRuntime(
   canvas.style.display = 'block'
   host.replaceChildren(canvas)
 
-  const model = await Live2DModel.from(modelUrl)
+  const model = await Live2DModel.from(hydratedModelSettings)
   app.stage.addChild(model)
 
   const runtime: Live2DStageRuntime = {
     app,
     model,
+    motionPriority: MotionPriority,
     metadata: {
-      expressions: mergeModelExpressions(modelUrl, modelSettings, metadata.expressions),
+      expressions: mergeModelExpressions(modelUrl, hydratedModelSettings, metadata.expressions),
+      motions: mergeModelMotions(modelUrl, hydratedModelSettings, metadata.motions),
       parameterIds: metadata.parameterIds,
     },
     baseWidth: Math.max(model.width, 1),
@@ -133,6 +159,8 @@ export async function createLive2DStageRuntime(
     overlayTargetParams: new Map<string, number>(),
     trackedParamIds: new Set<string>(),
     expressionFileCache: new Map<string, Live2DExpressionFilePayload>(),
+    currentMotionKey: '',
+    lastMotionStartedAt: 0,
   }
 
   app.ticker.add(() => {
@@ -200,6 +228,7 @@ export async function applyLive2DStageVisualState(
   }
 
   runtime.overlayTargetParams = nextTargets
+  await playLive2DStageMotion(runtime, visualState.motion)
 }
 
 /**
@@ -224,9 +253,12 @@ export function resetLive2DStageFocus(runtime: Live2DStageRuntime, host: HTMLDiv
 /**
  * 拉取当前模型的表达式和参数元数据，为后续匹配和控制抽屉提供真实依据。
  */
-async function discoverLive2DModelMetadata(modelUrl: string): Promise<Live2DStageModelMetadata> {
-  const modelSettings = await fetchJson<Live2DModelSettingsPayload>(modelUrl)
+async function discoverLive2DModelMetadata(
+  modelUrl: string,
+  modelSettings: Live2DModelSettingsPayload,
+): Promise<Live2DStageModelMetadata> {
   const expressions = extractModelExpressions(modelUrl, modelSettings)
+  const motions = extractModelMotions(modelUrl, modelSettings)
   const [displayInfo, vtubeInfo] = await Promise.all([
     resolveDisplayInfoPayload(modelUrl, modelSettings),
     resolveVtubePayload(modelUrl),
@@ -246,6 +278,7 @@ async function discoverLive2DModelMetadata(modelUrl: string): Promise<Live2DStag
 
   return {
     expressions,
+    motions,
     parameterIds: [...parameterIds],
   }
 }
@@ -306,6 +339,197 @@ function mergeModelExpressions(
   }
 
   return merged
+}
+
+/**
+ * 从模型 settings 里提取可播放动作列表，并为后续指令执行建立稳定 key 到 group/index 的映射。
+ */
+function extractModelMotions(
+  modelUrl: string,
+  modelSettings: Live2DModelSettingsPayload,
+): Live2DDiscoveredMotion[] {
+  const motions: Live2DDiscoveredMotion[] = []
+  const seenKeys = new Set<string>()
+  const groups = modelSettings.FileReferences?.Motions || {}
+
+  for (const group of Object.keys(groups).sort()) {
+    const definitions = groups[group] || []
+    definitions.forEach((motion, index) => {
+      if (!motion.File?.trim()) {
+        return
+      }
+
+      const rawName = motion.File.split('/').pop() || `motion_${index + 1}`
+      const key = normalizeLive2DMotionKey(group, rawName, index)
+      if (!key || seenKeys.has(key)) {
+        return
+      }
+
+      seenKeys.add(key)
+      motions.push({
+        key,
+        group: normalizeLive2DMotionToken(group) || 'auto',
+        runtimeGroup: group,
+        index,
+        label: formatLive2DMotionLabel(rawName),
+        file: resolveRelativeLive2DAssetUrl(modelUrl, motion.File),
+      })
+    })
+  }
+
+  return motions
+}
+
+/**
+ * 合并模型原始 settings 与运行前发现到的动作数据，优先保留 settings 中的稳定顺序。
+ */
+function mergeModelMotions(
+  modelUrl: string,
+  modelSettings: Live2DModelSettingsPayload,
+  discoveredMotions: Live2DDiscoveredMotion[],
+): Live2DDiscoveredMotion[] {
+  const baseMotions = extractModelMotions(modelUrl, modelSettings)
+  if (baseMotions.length === 0) {
+    return discoveredMotions
+  }
+
+  const merged = [...baseMotions]
+  const seen = new Set(merged.map((item) => item.key))
+  for (const motion of discoveredMotions) {
+    if (seen.has(motion.key)) {
+      continue
+    }
+    seen.add(motion.key)
+    merged.push(motion)
+  }
+  return merged
+}
+
+/**
+ * 按指令触发一条动作播放，重复动作会在短时间内节流，避免回复频繁到来时出现抖动重播。
+ */
+async function playLive2DStageMotion(
+  runtime: Live2DStageRuntime,
+  motion: Live2DStageVisualState['motion'],
+): Promise<void> {
+  if (!motion) {
+    return
+  }
+
+  const discoveredMotion = runtime.metadata.motions.find((item) => item.key === motion.key)
+  if (!discoveredMotion) {
+    return
+  }
+
+  const now = Date.now()
+  const throttleWindow = Math.max(motion.durationMS || 0, 900)
+  if (runtime.currentMotionKey === motion.key && now-runtime.lastMotionStartedAt < throttleWindow) {
+    return
+  }
+
+  const priority = motion.priority === 'force' ? runtime.motionPriority.FORCE : runtime.motionPriority.NORMAL
+  const started = await runtime.model.motion(discoveredMotion.runtimeGroup, discoveredMotion.index, priority)
+  if (started) {
+    runtime.currentMotionKey = motion.key
+    runtime.lastMotionStartedAt = now
+  }
+}
+
+/**
+ * 用后端已回退发现的动作清单补齐前端模型 settings，避免原始 model3.json 未声明 Motions 时舞台无法识别和播放动作。
+ */
+function hydrateLive2DModelSettings(
+  modelUrl: string,
+  modelSettings: Live2DModelSettingsPayload,
+  serverMotions: SelectableLive2DModelMotion[],
+): Live2DModelSettingsPayload {
+  const nextSettings: Live2DModelSettingsPayload = {
+    ...modelSettings,
+    url: modelUrl,
+    FileReferences: {
+      ...(modelSettings.FileReferences || {}),
+    },
+  }
+
+  const currentMotions = nextSettings.FileReferences?.Motions || {}
+  const mergedMotions = mergeLive2DModelSettingMotions(modelUrl, currentMotions, serverMotions)
+  if (Object.keys(mergedMotions).length > 0 && nextSettings.FileReferences) {
+    nextSettings.FileReferences.Motions = mergedMotions
+  }
+  return nextSettings
+}
+
+/**
+ * 合并 settings 原始动作定义与后端补录动作，优先保留模型自带顺序，并补齐缺失的目录扫描结果。
+ */
+function mergeLive2DModelSettingMotions(
+  modelUrl: string,
+  currentMotions: Record<string, Array<{ File?: string }>>,
+  serverMotions: SelectableLive2DModelMotion[],
+): Record<string, Array<{ File?: string }>> {
+  const merged: Record<string, Array<{ File?: string }>> = {}
+  const seenFiles = new Set<string>()
+
+  for (const [group, definitions] of Object.entries(currentMotions)) {
+    const safeGroup = group.trim()
+    if (!safeGroup) {
+      continue
+    }
+
+    merged[safeGroup] = []
+    for (const definition of definitions || []) {
+      if (!definition?.File?.trim()) {
+        continue
+      }
+      const normalizedFile = definition.File.trim()
+      seenFiles.add(`${safeGroup}::${normalizedFile}`)
+      merged[safeGroup].push({ File: normalizedFile })
+    }
+  }
+
+  for (const motion of serverMotions) {
+    const runtimeGroup = (motion.group || 'auto').trim() || 'auto'
+    const motionFile = resolveLive2DSettingMotionFile(modelUrl, motion.file)
+    if (!motionFile) {
+      continue
+    }
+
+    const dedupeKey = `${runtimeGroup}::${motionFile}`
+    if (seenFiles.has(dedupeKey)) {
+      continue
+    }
+
+    seenFiles.add(dedupeKey)
+    if (!merged[runtimeGroup]) {
+      merged[runtimeGroup] = []
+    }
+    merged[runtimeGroup].push({ File: motionFile })
+  }
+
+  return merged
+}
+
+/**
+ * 将后端返回的动作资源地址转换成相对当前模型 settings 可解析的路径，避免绝对地址与相对地址混用带来的重复项。
+ */
+function resolveLive2DSettingMotionFile(modelUrl: string, motionFile: string): string {
+  const trimmedFile = motionFile.trim()
+  if (!trimmedFile) {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(trimmedFile)) {
+    return trimmedFile
+  }
+
+  const normalizedModelUrl = modelUrl.replace(/\\/g, '/')
+  const normalizedMotionFile = trimmedFile.replace(/\\/g, '/')
+  const baseDirectory = normalizedModelUrl.slice(0, normalizedModelUrl.lastIndexOf('/') + 1)
+  if (normalizedMotionFile.startsWith(baseDirectory)) {
+    return normalizedMotionFile.slice(baseDirectory.length)
+  }
+
+  return normalizedMotionFile
 }
 
 /**
@@ -533,6 +757,44 @@ function normalizeLive2DExpressionId(rawExpressionName: string): string {
  */
 function formatLive2DExpressionLabel(rawExpressionName: string): string {
   const cleaned = rawExpressionName.replace(/\.exp3\.json$/i, '').trim()
+  if (/[\u4e00-\u9fff]/u.test(cleaned)) {
+    return cleaned
+  }
+
+  return cleaned
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+/**
+ * 将动作组名和文件名转换成前端内部稳定动作键，保证与后端 manifest 生成规则一致。
+ */
+function normalizeLive2DMotionKey(group: string, rawMotionName: string, index: number): string {
+  const groupToken = normalizeLive2DMotionToken(group)
+  const nameToken = normalizeLive2DMotionToken(rawMotionName.replace(/\.motion3\.json$/i, ''))
+  const merged = [groupToken && groupToken !== 'auto' ? groupToken : '', nameToken].filter(Boolean).join('_')
+  return merged || `motion_${index}`
+}
+
+/**
+ * 规整动作名或分组名，便于跨端统一匹配。
+ */
+function normalizeLive2DMotionToken(rawMotionName: string): string {
+  return rawMotionName
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.-]+/g, '_')
+    .replace(/[^a-z0-9_\u4e00-\u9fff]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+/**
+ * 把动作文件名整理成更适合控制面板展示的标签。
+ */
+function formatLive2DMotionLabel(rawMotionName: string): string {
+  const cleaned = rawMotionName.replace(/\.motion3\.json$/i, '').trim()
   if (/[\u4e00-\u9fff]/u.test(cleaned)) {
     return cleaned
   }

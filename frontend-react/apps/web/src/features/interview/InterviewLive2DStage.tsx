@@ -1,3 +1,4 @@
+import type { Live2DDirective } from '../../shared/live2dDirective'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { extractErrorMessage } from '@makejob/api-client'
@@ -58,8 +59,11 @@ export function InterviewLive2DStage(props: {
   isTyping: boolean
   emotion: string
   mouthOpen: number
+  directive?: Live2DDirective | null
+  selectedModelKey: string
+  onChangeModelKey: (modelKey: string) => void
 }) {
-  const [selectedModelKey, setSelectedModelKey] = useState(() => readSelectedLive2DModelKey('interview', props.industryCode))
+  const [selectedModelKey, setSelectedModelKey] = useState(() => props.selectedModelKey || readSelectedLive2DModelKey('interview', props.industryCode))
 
   const modelOptionsQuery = useQuery({
     queryKey: ['interview-live2d-models', props.industryCode],
@@ -68,8 +72,8 @@ export function InterviewLive2DStage(props: {
   })
 
   useEffect(() => {
-    setSelectedModelKey(readSelectedLive2DModelKey('interview', props.industryCode))
-  }, [props.industryCode])
+    setSelectedModelKey(props.selectedModelKey || readSelectedLive2DModelKey('interview', props.industryCode))
+  }, [props.industryCode, props.selectedModelKey])
 
   const modelOptions = modelOptionsQuery.data || []
   const currentModel = useMemo(() => {
@@ -87,10 +91,11 @@ export function InterviewLive2DStage(props: {
     }
 
     persistSelectedLive2DModelKey('interview', props.industryCode, currentModel.key)
+    props.onChangeModelKey(currentModel.key)
     if (currentModel.key !== selectedModelKey) {
       setSelectedModelKey(currentModel.key)
     }
-  }, [currentModel?.key, props.industryCode, selectedModelKey])
+  }, [currentModel?.key, props.industryCode, props.onChangeModelKey, selectedModelKey])
 
   const statusPills = useMemo(() => ([
     { label: '状态', value: formatInterviewEmotionLabel(props.emotion) },
@@ -116,6 +121,7 @@ export function InterviewLive2DStage(props: {
         scene: 'interview',
         emotion: props.emotion,
         mouthOpen: props.mouthOpen,
+        directive: props.directive,
       }}
       statusPills={statusPills}
       loading={modelOptionsQuery.isLoading}
