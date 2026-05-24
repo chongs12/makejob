@@ -8,8 +8,9 @@ import type {
   InterviewReport,
 } from './interviewTypes'
 
-export const INTERVIEW_AUTO_STOP_SILENCE_MS = 1400
-export const INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD = 0.018
+export const INTERVIEW_AUTO_STOP_SILENCE_MS = 1800
+export const INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD = 0.008
+export const INTERVIEW_MAX_RECORDING_MS = 60000
 
 /**
  * 根据当前行业生成更贴近方向语境的默认面试主题，减少用户首次填写成本。
@@ -391,13 +392,11 @@ export function appendInterviewMessage(messages: InterviewMessage[], nextMessage
 }
 
 /**
- * 将 Float32 单声道音频转换为 16bit PCM 并编码成 base64，供 WebSocket 直接上传。
+ * 将 16bit PCM 数据编码成 base64，供 WebSocket 直接上传。
  */
-export function encodePCM16Base64(channelData: Float32Array): string {
-  const pcmBuffer = new Int16Array(channelData.length)
-  for (let index = 0; index < channelData.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, channelData[index] || 0))
-    pcmBuffer[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
+export function encodePCM16Base64FromInt16(pcmBuffer: Int16Array): string {
+  if (pcmBuffer.length === 0) {
+    return ''
   }
 
   const bytes = new Uint8Array(pcmBuffer.buffer)
@@ -409,6 +408,53 @@ export function encodePCM16Base64(channelData: Float32Array): string {
   }
 
   return window.btoa(binary)
+}
+
+/**
+ * 将浏览器采集的 Float32 音频按目标采样率重采样并转换为 16bit PCM。
+ */
+export function resampleFloat32ToPCM16(
+  channelData: Float32Array,
+  sourceSampleRate: number,
+  targetSampleRate = 16000,
+): Int16Array {
+  if (!channelData.length) {
+    return new Int16Array(0)
+  }
+
+  const normalizedSourceRate = sourceSampleRate > 0 ? sourceSampleRate : targetSampleRate
+  if (normalizedSourceRate === targetSampleRate) {
+    const pcmBuffer = new Int16Array(channelData.length)
+    for (let index = 0; index < channelData.length; index += 1) {
+      const sample = Math.max(-1, Math.min(1, channelData[index] || 0))
+      pcmBuffer[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
+    }
+    return pcmBuffer
+  }
+
+  const sampleRatio = normalizedSourceRate / targetSampleRate
+  const targetLength = Math.max(1, Math.round(channelData.length / sampleRatio))
+  const pcmBuffer = new Int16Array(targetLength)
+
+  for (let targetIndex = 0; targetIndex < targetLength; targetIndex += 1) {
+    const sourceIndex = Math.min(channelData.length - 1, Math.round(targetIndex * sampleRatio))
+    const sample = Math.max(-1, Math.min(1, channelData[sourceIndex] || 0))
+    pcmBuffer[targetIndex] = sample < 0 ? sample * 0x8000 : sample * 0x7fff
+  }
+
+  return pcmBuffer
+}
+
+/**
+ * 将 Float32 单声道音频转换为 16bit PCM 并编码成 base64，供 WebSocket 直接上传。
+ */
+export function encodePCM16Base64(
+  channelData: Float32Array,
+  sourceSampleRate = 16000,
+  targetSampleRate = 16000,
+): string {
+  const pcmBuffer = resampleFloat32ToPCM16(channelData, sourceSampleRate, targetSampleRate)
+  return encodePCM16Base64FromInt16(pcmBuffer)
 }
 
 /**

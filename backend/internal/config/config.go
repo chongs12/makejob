@@ -124,12 +124,13 @@ type MiniMaxTTSConfig struct {
 
 // VolcengineConfig 火山云公共配置
 type VolcengineConfig struct {
-	Region    string        `mapstructure:"region"`
-	AccessKey string        `mapstructure:"access_key"`
-	SecretKey string        `mapstructure:"secret_key"`
-	Ark       VolcArkConfig `mapstructure:"ark"`
-	ASR       VolcASRConfig `mapstructure:"asr"`
-	TTS       VolcTTSConfig `mapstructure:"tts"`
+	Region    string                   `mapstructure:"region"`
+	AccessKey string                   `mapstructure:"access_key"`
+	SecretKey string                   `mapstructure:"secret_key"`
+	Ark       VolcArkConfig            `mapstructure:"ark"`
+	ASR       VolcASRConfig            `mapstructure:"asr"`
+	TTS       VolcTTSConfig            `mapstructure:"tts"`
+	Realtime  VolcRealtimeDialogConfig `mapstructure:"realtime"`
 }
 
 // VolcArkConfig 火山云 Ark 大模型配置
@@ -172,6 +173,28 @@ type VolcTTSConfig struct {
 	VolumeRatio int    `mapstructure:"volume_ratio"`
 	PitchRatio  int    `mapstructure:"pitch_ratio"`
 	SampleRate  int    `mapstructure:"sample_rate"`
+}
+
+// VolcRealtimeDialogConfig 火山云端到端实时语音大模型配置。
+type VolcRealtimeDialogConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	BaseURL         string `mapstructure:"base_url"`
+	AppID           string `mapstructure:"app_id"`
+	AccessToken     string `mapstructure:"access_token"`
+	AppKey          string `mapstructure:"app_key"`
+	ResourceID      string `mapstructure:"resource_id"`
+	Speaker         string `mapstructure:"speaker"`
+	InputMode       string `mapstructure:"input_mode"`
+	AudioFormat     string `mapstructure:"audio_format"`
+	SampleRate      int    `mapstructure:"sample_rate"`
+	TTSFormat       string `mapstructure:"tts_format"`
+	TTSSampleRate   int    `mapstructure:"tts_sample_rate"`
+	BotName         string `mapstructure:"bot_name"`
+	SystemRole      string `mapstructure:"system_role"`
+	SpeakingStyle   string `mapstructure:"speaking_style"`
+	CharacterPrompt string `mapstructure:"character_prompt"`
+	LocationCity    string `mapstructure:"location_city"`
+	RecvTimeout     int    `mapstructure:"recv_timeout"`
 }
 
 // AdminBootstrapConfig 启动时管理员自检与补齐配置
@@ -307,6 +330,22 @@ func GetConfig() *Config {
 						SpeedRatio:  100,
 						VolumeRatio: 100,
 						PitchRatio:  100,
+					},
+					Realtime: VolcRealtimeDialogConfig{
+						BaseURL:       "wss://openspeech.bytedance.com/api/v3/realtime/dialogue",
+						AppKey:        "PlgvMymc7f3tQnJ6",
+						ResourceID:    "volc.speech.dialog",
+						Speaker:       "zh_female_vv_jupiter_bigtts",
+						InputMode:     "push_to_talk",
+						AudioFormat:   "pcm",
+						SampleRate:    16000,
+						TTSFormat:     "pcm_s16le",
+						TTSSampleRate: 24000,
+						BotName:       "Ariu",
+						SystemRole:    "你是一位专业、直接、耐心的中文技术面试官。",
+						SpeakingStyle: "请保持口语化、简洁、明确，每次只说一段自然的中文，不要输出 Markdown。",
+						LocationCity:  "北京",
+						RecvTimeout:   120,
 					},
 				},
 				AdminBootstrap: AdminBootstrapConfig{

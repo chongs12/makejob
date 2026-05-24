@@ -7,6 +7,7 @@ import { useAuthStore } from '../../state/auth'
 import { AsyncInlineState } from '../../shared/asyncState'
 import { readCurrentBrowserPath } from '../../shared/authRedirect'
 import { readSelectedLive2DModelKey } from '../../shared/live2dModelCatalog'
+import { usePCMStreamPlayer } from '../../shared/usePCMStreamPlayer'
 import { useLive2DDialoguePlayback } from '../../shared/useLive2DDialoguePlayback'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
@@ -27,10 +28,12 @@ import {
   appendInterviewMessage,
   buildInterviewWebSocketUrl,
   buildRealtimeInterviewMessage,
-  encodePCM16Base64,
+  encodePCM16Base64FromInt16,
   formatInterviewDateTime,
   INTERVIEW_AUTO_STOP_LEVEL_THRESHOLD,
   INTERVIEW_AUTO_STOP_SILENCE_MS,
+  INTERVIEW_MAX_RECORDING_MS,
+  resampleFloat32ToPCM16,
   resolveCurrentInterviewQuestion,
   resolveCurrentInterviewQuestionFromMessages,
 } from './interviewHelpers'
@@ -39,6 +42,9 @@ import type {
   InterviewMessage,
   InterviewQuestion,
   InterviewSocketASRPayload,
+  InterviewSocketAssistantAudioChunkPayload,
+  InterviewSocketAssistantTranscriptPayload,
+  InterviewSocketAssistantTurnPayload,
   InterviewSocketEvent,
   InterviewSocketExpressionPayload,
   InterviewSocketQuestionPayload,
@@ -65,6 +71,7 @@ export function InterviewSessionPage() {
   })
   const [stageEmotion, setStageEmotion] = useState('neutral')
   const [stageDirective, setStageDirective] = useState<InterviewQuestion['live2d_directive'] | null>(null)
+  const [streamMouthOpen, setStreamMouthOpen] = useState(0)
   const [recognitionPartial, setRecognitionPartial] = useState('')
   const [recognitionFinal, setRecognitionFinal] = useState('')
   const [codingLanguage, setCodingLanguage] = useState('go')
@@ -74,6 +81,9 @@ export function InterviewSessionPage() {
   const [wsTraceId, setWsTraceId] = useState('')
   const [wsConnected, setWsConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [hasRequestedMicrophonePermission, setHasRequestedMicrophonePermission] = useState(false)
+  const [hasGrantedMicrophonePermission, setHasGrantedMicrophonePermission] = useState(false)
+  const [assistantTurnCount, setAssistantTurnCount] = useState(0)
   const [selectedLive2DModelKey, setSelectedLive2DModelKey] = useState(() => readSelectedLive2DModelKey('interview', readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE))
   const {
     liveDialogue,
@@ -82,6 +92,7 @@ export function InterviewSessionPage() {
     stopDialogueTyping,
     startDialogueTyping,
     stopCurrentPlayback,
+    syncDialogueImmediately,
     playTTSAudio,
   } = useLive2DDialoguePlayback({
     initialDialogue: '连接成功后，AI 面试官会在这里播报当前题目。',
@@ -93,13 +104,19 @@ export function InterviewSessionPage() {
     },
   })
   const wsRef = useRef<WebSocket | null>(null)
+  const assistantTranscriptRef = useRef('')
   const recordStreamRef = useRef<MediaStream | null>(null)
   const recordAudioContextRef = useRef<AudioContext | null>(null)
   const recordSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const recordProcessorRef = useRef<ScriptProcessorNode | null>(null)
   const recordSilenceTimeoutRef = useRef<number | null>(null)
+  const recordMaxDurationTimerRef = useRef<number | null>(null)
   const recordSpeechDetectedRef = useRef(false)
   const recordStopRequestedRef = useRef(false)
+  const recordPendingPCMRef = useRef<number[]>([])
+  const recordFrameQueueRef = useRef<string[]>([])
+  const recordFrameTimerRef = useRef<number | null>(null)
+  const recordFrameDrainTimerRef = useRef<number | null>(null)
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
   const editorInstanceRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
@@ -107,6 +124,9 @@ export function InterviewSessionPage() {
   const lastCodingSnapshotRef = useRef('')
   const codingSnapshotTimerRef = useRef<number | null>(null)
   const codingIdleTimerRef = useRef<number | null>(null)
+  const { enqueuePCM16Base64, preparePlayback, stop: stopPCMStreamPlayback } = usePCMStreamPlayer({
+    onLevelChange: setStreamMouthOpen,
+  })
 
   const detailQuery = useQuery({
     queryKey: ['interview-detail', accessToken, interviewId],
@@ -196,6 +216,7 @@ export function InterviewSessionPage() {
     setRuntimeMessages(detailQuery.data.messages)
     const restoredQuestion = resolveCurrentInterviewQuestion(detailQuery.data)
     if (restoredQuestion?.question) {
+      assistantTranscriptRef.current = restoredQuestion.question
       setStageDirective(restoredQuestion.live2d_directive || null)
       setStageEmotion(restoredQuestion.live2d_directive?.emotion || 'neutral')
       stopDialogueTyping(restoredQuestion.question)
@@ -457,6 +478,146 @@ export function InterviewSessionPage() {
   }
 
   /**
+   * 按 20ms 一帧的节奏发送排队中的 PCM 数据，尽量贴近火山实时语音文档建议的麦克风上行节奏。
+   */
+  function ensureQueuedAudioFramesSending(): void {
+    if (recordFrameTimerRef.current !== null) {
+      return
+    }
+
+    recordFrameTimerRef.current = window.setInterval(() => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        return
+      }
+      const nextFrame = recordFrameQueueRef.current.shift()
+      if (!nextFrame) {
+        return
+      }
+
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'audio_chunk',
+          data: {
+            audio_base64: nextFrame,
+          },
+        }),
+      )
+    }, 20)
+  }
+
+  /**
+   * 停止音频发送定时器，避免录音结束后仍然持有旧的发送循环。
+   */
+  function stopQueuedAudioFramesSending(): void {
+    if (recordFrameTimerRef.current !== null) {
+      window.clearInterval(recordFrameTimerRef.current)
+      recordFrameTimerRef.current = null
+    }
+  }
+
+  /**
+   * 结束录音时等待排队中的音频帧按既定节奏发完，再补发 audio_end，避免瞬时突发整段语音。
+   */
+  function finishQueuedAudioFrames(reason: 'manual' | 'auto'): void {
+    const socket = wsRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      recordFrameQueueRef.current = []
+      stopQueuedAudioFramesSending()
+      if (recordFrameDrainTimerRef.current !== null) {
+        window.clearInterval(recordFrameDrainTimerRef.current)
+        recordFrameDrainTimerRef.current = null
+      }
+      return
+    }
+
+    const sendAudioEnd = () => {
+      if (recordFrameDrainTimerRef.current !== null) {
+        window.clearInterval(recordFrameDrainTimerRef.current)
+        recordFrameDrainTimerRef.current = null
+      }
+      stopQueuedAudioFramesSending()
+      socket.send(
+        JSON.stringify({
+          type: 'audio_end',
+        }),
+      )
+      setMessage(
+        reason === 'auto'
+          ? '检测到你已停顿，正在自动提交你的语音回答。'
+          : '录音已结束，正在自动提交你的语音回答。',
+      )
+    }
+
+    if (recordFrameQueueRef.current.length === 0) {
+      sendAudioEnd()
+      return
+    }
+
+    if (recordFrameDrainTimerRef.current !== null) {
+      window.clearInterval(recordFrameDrainTimerRef.current)
+    }
+    recordFrameDrainTimerRef.current = window.setInterval(() => {
+      const activeSocket = wsRef.current
+      if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) {
+        recordFrameQueueRef.current = []
+        stopQueuedAudioFramesSending()
+        if (recordFrameDrainTimerRef.current !== null) {
+          window.clearInterval(recordFrameDrainTimerRef.current)
+          recordFrameDrainTimerRef.current = null
+        }
+        return
+      }
+      if (recordFrameQueueRef.current.length > 0) {
+        return
+      }
+
+      sendAudioEnd()
+    }, 20)
+  }
+
+  /**
+   * 预先解锁浏览器音频播放上下文，避免实时 PCM 首包到达时才触发自动播放限制。
+   */
+  async function ensureRealtimeAudioPlaybackReady(): Promise<void> {
+    try {
+      await preparePlayback()
+    } catch (error) {
+      setMessage(extractErrorMessage(error, '浏览器阻止了自动播放，请点击“开始语音回答”后重试。'))
+    }
+  }
+
+  /**
+   * 提前向浏览器申请麦克风权限，避免候选人真正开始回答时才弹授权框打断节奏。
+   */
+  async function ensureMicrophonePermission(): Promise<boolean> {
+    if (!canRecord) {
+      return false
+    }
+    if (hasGrantedMicrophonePermission) {
+      return true
+    }
+
+    setHasRequestedMicrophonePermission(true)
+    setMessage('正在请求麦克风授权，请留意浏览器权限提示。')
+    // 不在此处 await AudioContext.resume()——浏览器自动播放策略会在无用户交互时
+    // 导致 resume() 的 Promise 永远 pending，从而阻塞后续的 getUserMedia 调用。
+    // 音频播放上下文会在用户真正开始录音（startVoiceCapture）时由用户点击手势解锁。
+    void ensureRealtimeAudioPlaybackReady()
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+      stream.getTracks().forEach((track) => track.stop())
+      setHasGrantedMicrophonePermission(true)
+      setMessage('麦克风权限已就绪，面试官播报结束后会自动开始收音。')
+      return true
+    } catch (error) {
+      setMessage(extractErrorMessage(error, '麦克风权限请求失败，请点击“开始语音回答”并允许浏览器访问麦克风。'))
+      return false
+    }
+  }
+
+  /**
    * 启动浏览器麦克风采集，并将 16k PCM 音频实时推送到后端 WebSocket。
    */
   async function startVoiceCapture(): Promise<void> {
@@ -470,6 +631,7 @@ export function InterviewSessionPage() {
       return
     }
 
+    await ensureRealtimeAudioPlaybackReady()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -477,6 +639,10 @@ export function InterviewSessionPage() {
       const recordContext = new AudioContext({
         sampleRate: 16000,
       })
+      await recordContext.resume()
+      if (recordContext.state !== 'running') {
+        throw new Error('浏览器未真正启动录音上下文，请点击“开始语音回答”后重试。')
+      }
       const source = recordContext.createMediaStreamSource(stream)
       const processor = recordContext.createScriptProcessor(4096, 1, 1)
 
@@ -491,7 +657,14 @@ export function InterviewSessionPage() {
 
       recordStopRequestedRef.current = false
       recordSpeechDetectedRef.current = false
+      recordPendingPCMRef.current = []
+      recordFrameQueueRef.current = []
+      if (recordFrameDrainTimerRef.current !== null) {
+        window.clearInterval(recordFrameDrainTimerRef.current)
+        recordFrameDrainTimerRef.current = null
+      }
       clearRecordSilenceTimer()
+      ensureQueuedAudioFramesSending()
       source.connect(processor)
       processor.connect(recordContext.destination)
       processor.onaudioprocess = (event) => {
@@ -519,24 +692,40 @@ export function InterviewSessionPage() {
             stopVoiceCapture('auto')
           }, INTERVIEW_AUTO_STOP_SILENCE_MS)
         }
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'audio_chunk',
-            data: {
-              audio_base64: encodePCM16Base64(channelData),
-            },
-          }),
-        )
+        const pcmChunk = resampleFloat32ToPCM16(channelData, event.inputBuffer.sampleRate, 16000)
+        if (!pcmChunk.length) {
+          return
+        }
+
+        recordPendingPCMRef.current.push(...pcmChunk)
+        while (recordPendingPCMRef.current.length >= 320) {
+          const frame = new Int16Array(recordPendingPCMRef.current.slice(0, 320))
+          recordPendingPCMRef.current = recordPendingPCMRef.current.slice(320)
+          const audioBase64 = encodePCM16Base64FromInt16(frame)
+          if (!audioBase64) {
+            continue
+          }
+          recordFrameQueueRef.current.push(audioBase64)
+        }
       }
 
       recordStreamRef.current = stream
       recordAudioContextRef.current = recordContext
       recordSourceRef.current = source
       recordProcessorRef.current = processor
+      setHasGrantedMicrophonePermission(true)
       setRecognitionPartial('')
       setRecognitionFinal('')
       setIsRecording(true)
       setMessage('正在实时识别你的回答，请继续说；停顿后会自动提交。')
+      if (recordMaxDurationTimerRef.current !== null) {
+        window.clearTimeout(recordMaxDurationTimerRef.current)
+      }
+      recordMaxDurationTimerRef.current = window.setTimeout(() => {
+        recordMaxDurationTimerRef.current = null
+        setMessage('已达到单轮最大录音时长，正在自动提交。')
+        stopVoiceCapture('auto')
+      }, INTERVIEW_MAX_RECORDING_MS)
     } catch (error) {
       setMessage(extractErrorMessage(error, '麦克风权限申请失败，请检查浏览器设置'))
     }
@@ -550,6 +739,10 @@ export function InterviewSessionPage() {
       recordProcessorRef.current || recordSourceRef.current || recordStreamRef.current || recordAudioContextRef.current,
     )
     clearRecordSilenceTimer()
+    if (recordMaxDurationTimerRef.current !== null) {
+      window.clearTimeout(recordMaxDurationTimerRef.current)
+      recordMaxDurationTimerRef.current = null
+    }
     recordSpeechDetectedRef.current = false
     if (!hasActiveRecording) {
       recordStopRequestedRef.current = false
@@ -575,17 +768,23 @@ export function InterviewSessionPage() {
       void recordAudioContextRef.current.close()
       recordAudioContextRef.current = null
     }
-    if (reason !== 'cleanup' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'audio_end',
-        }),
-      )
-      setMessage(
-        reason === 'auto'
-          ? '检测到你已停顿，正在自动提交你的语音回答。'
-          : '录音已结束，正在自动提交你的语音回答。',
-      )
+    if (reason !== 'cleanup' && recordPendingPCMRef.current.length > 0) {
+      const finalFrame = new Int16Array(recordPendingPCMRef.current)
+      const audioBase64 = encodePCM16Base64FromInt16(finalFrame)
+      if (audioBase64) {
+        recordFrameQueueRef.current.push(audioBase64)
+      }
+    }
+    recordPendingPCMRef.current = []
+    if (reason === 'cleanup') {
+      recordFrameQueueRef.current = []
+      stopQueuedAudioFramesSending()
+      if (recordFrameDrainTimerRef.current !== null) {
+        window.clearInterval(recordFrameDrainTimerRef.current)
+        recordFrameDrainTimerRef.current = null
+      }
+    } else {
+      finishQueuedAudioFrames(reason)
     }
     setIsRecording(false)
     recordStopRequestedRef.current = false
@@ -604,7 +803,7 @@ export function InterviewSessionPage() {
 
     socket.onopen = () => {
       setWsConnected(true)
-      setMessage('实时面试链路已连接。')
+      setMessage('实时面试链路已连接，正在确认当前会话模式。')
     }
 
     socket.onmessage = (event) => {
@@ -694,6 +893,70 @@ export function InterviewSessionPage() {
             }
             break
           }
+          case 'assistant_transcript_partial': {
+            const transcriptPayload = payload.data as InterviewSocketAssistantTranscriptPayload | undefined
+            const nextText = transcriptPayload?.text || payload.content || ''
+            if (nextText) {
+              assistantTranscriptRef.current = nextText
+              syncDialogueImmediately(nextText)
+            }
+            break
+          }
+          case 'assistant_transcript_final': {
+            const transcriptPayload = payload.data as InterviewSocketAssistantTranscriptPayload | undefined
+            const nextText = transcriptPayload?.text || payload.content || ''
+            if (nextText) {
+              assistantTranscriptRef.current = nextText
+              syncDialogueImmediately(nextText)
+            }
+            break
+          }
+          case 'assistant_audio_chunk': {
+            const audioChunkPayload = payload.data as InterviewSocketAssistantAudioChunkPayload | undefined
+            if (audioChunkPayload?.audio_base64) {
+              void enqueuePCM16Base64(audioChunkPayload.audio_base64, audioChunkPayload.sample_rate).catch((error) => {
+                setMessage(extractErrorMessage(error, '浏览器阻止了实时语音播放，请点击“开始语音回答”后重试。'))
+              })
+            }
+            break
+          }
+          case 'assistant_turn_finished': {
+            const turnPayload = payload.data as InterviewSocketAssistantTurnPayload | undefined
+            const finalText = turnPayload?.text || payload.content || ''
+            if (finalText) {
+              assistantTranscriptRef.current = finalText
+              syncDialogueImmediately(finalText)
+              setRuntimeMessages((current) =>
+                appendInterviewMessage(
+                  current,
+                  buildRealtimeInterviewMessage(
+                    'ai',
+                    'text',
+                    finalText,
+                    turnPayload?.is_question
+                      ? {
+                          question: finalText,
+                          topic: '',
+                          difficulty: '',
+                          type: 'technical',
+                          live2d_directive: turnPayload?.live2d_directive || null,
+                        }
+                      : null,
+                  ),
+                ),
+              )
+            }
+            setStageDirective(turnPayload?.live2d_directive || null)
+            setStageEmotion(turnPayload?.live2d_directive?.emotion || 'neutral')
+            setAssistantTurnCount((current) => current + 1)
+            break
+          }
+          case 'barge_in': {
+            stopCurrentPlayback(assistantTranscriptRef.current)
+            stopPCMStreamPlayback()
+            setStreamMouthOpen(0)
+            break
+          }
           case 'live2d_expression': {
             const expressionPayload = payload.data as InterviewSocketExpressionPayload | undefined
             setStageEmotion(expressionPayload?.emotion || 'neutral')
@@ -717,6 +980,10 @@ export function InterviewSessionPage() {
             })
             break
           case 'error':
+            setSessionState({
+              status: 'error',
+              message: payload.content || '实时面试链路发生错误。',
+            })
             setMessage(payload.content || '实时面试链路发生错误。')
             break
           default:
@@ -729,10 +996,21 @@ export function InterviewSessionPage() {
 
     socket.onclose = () => {
       setWsConnected(false)
+      stopPCMStreamPlayback()
+      setStreamMouthOpen(0)
+      setSessionState((current) => (current.status === 'error'
+        ? current
+        : { status: 'idle', message: '实时链路已断开，当前只能使用 HTTP 文本回退模式。' }))
       setMessage('实时面试链路已断开，当前会退回 HTTP 模式，此模式不会触发语音播报。')
     }
 
     socket.onerror = () => {
+      stopPCMStreamPlayback()
+      setStreamMouthOpen(0)
+      setSessionState({
+        status: 'error',
+        message: '实时面试链路连接异常，请检查后端实时语音配置。',
+      })
       setMessage('实时面试链路连接异常，当前会退回 HTTP 模式，此模式不会触发语音播报。')
     }
 
@@ -743,12 +1021,66 @@ export function InterviewSessionPage() {
   }, [accessToken, interviewId])
 
   /**
+   * 实时语音面试进入页面后先抢占一次麦克风权限，避免真正开始回答时才被浏览器权限弹窗打断。
+   */
+  useEffect(() => {
+    if (!wsConnected || sessionState.mode !== 'realtime' || !canRecord || hasRequestedMicrophonePermission) {
+      return
+    }
+
+    void ensureMicrophonePermission()
+  }, [canRecord, hasRequestedMicrophonePermission, sessionState.mode, wsConnected])
+
+  /**
+   * 当实时面试官完成一轮播报并进入 ready 状态后，自动开始收音，让候选人可以直接开口回答。
+   */
+  useEffect(() => {
+    if (sessionState.mode !== 'realtime' || sessionState.status !== 'ready') {
+      return
+    }
+    if (!wsConnected || !canRecord || isRecording || isCodingQuestion) {
+      return
+    }
+    if (!hasGrantedMicrophonePermission || assistantTurnCount <= 0) {
+      return
+    }
+    if (answer.trim() || recognitionPartial.trim()) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      void startVoiceCapture()
+    }, 260)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    answer,
+    assistantTurnCount,
+    canRecord,
+    hasGrantedMicrophonePermission,
+    isCodingQuestion,
+    isRecording,
+    recognitionPartial,
+    sessionState.mode,
+    sessionState.status,
+    wsConnected,
+  ])
+
+  /**
    * 在页面卸载时释放音频播放和录音相关资源，避免浏览器残留占用。
    */
   useEffect(() => {
     return () => {
       clearCodingTimers()
       stopCurrentPlayback()
+      stopPCMStreamPlayback()
+      stopQueuedAudioFramesSending()
+      if (recordFrameDrainTimerRef.current !== null) {
+        window.clearInterval(recordFrameDrainTimerRef.current)
+        recordFrameDrainTimerRef.current = null
+      }
       stopVoiceCapture('cleanup')
     }
   }, [])
@@ -831,7 +1163,7 @@ export function InterviewSessionPage() {
             dialogue={liveDialogue}
             isTyping={isDialogueTyping}
             emotion={stageEmotion}
-            mouthOpen={mouthOpen}
+            mouthOpen={Math.max(mouthOpen, streamMouthOpen)}
             directive={stageDirective || currentQuestion?.live2d_directive || null}
             selectedModelKey={selectedLive2DModelKey}
             onChangeModelKey={setSelectedLive2DModelKey}
@@ -845,8 +1177,10 @@ export function InterviewSessionPage() {
                 <span className="section-kicker">回答输入</span>
                 <h2>直接回答当前问题</h2>
               </div>
-              <span className="companion-card-note">
-                {isRecording ? '麦克风采集中，停顿后自动提交...' : (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式')}
+                <span className="companion-card-note">
+                {isRecording ? '麦克风采集中，停顿后自动提交...' : (sessionState.status === 'error'
+                  ? '实时链路错误'
+                  : (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式'))}
               </span>
             </div>
 
@@ -919,7 +1253,7 @@ export function InterviewSessionPage() {
                       void startVoiceCapture()
                     }}
                   >
-                    {isRecording ? '手动停止并提交' : '开始语音回答'}
+                    {isRecording ? '手动停止并提交' : (hasGrantedMicrophonePermission ? '开始语音回答' : '授权麦克风并开始语音回答')}
                   </button>
                   <button
                     className="secondary-button"

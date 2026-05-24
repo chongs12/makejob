@@ -231,6 +231,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			aiClient.QuizAnalyzer,
 			industryRepo,
 			live2DDirectiveService,
+			service.RealtimeInterviewServiceOption{Enabled: cfg.Volcengine.Realtime.Enabled},
 		)
 		deps.QuestionService = service.NewQuestionService(
 			deps.QuestionRepo,
@@ -277,7 +278,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
 		deps.MembershipHandler = handler.NewMembershipHandler(deps.MembershipService)
-		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsSceneService, ttsProvider, asrProvider)
+		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsSceneService, ttsProvider, asrProvider, cfg.Volcengine.Realtime)
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)

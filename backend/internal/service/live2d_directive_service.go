@@ -35,6 +35,15 @@ type live2dDirectiveService struct {
 	cache      map[string]ai.Live2DManifest
 }
 
+// live2DManifestSource 描述构建一个可控 manifest 所需的最小模型来源信息。
+type live2DManifestSource struct {
+	CacheKey string
+	ModelKey string
+	Name     string
+	Scene    string
+	ModelURL string
+}
+
 // live2DManifestModelPayload 描述 model3.json 中与表达式发现相关的最小字段。
 type live2DManifestModelPayload struct {
 	FileReferences struct {
@@ -85,15 +94,15 @@ func (s *live2dDirectiveService) ResolveActiveManifest(ctx context.Context, scen
 	if err != nil {
 		return nil, err
 	}
-	modelEntity, err := s.resolveActiveModel(ctx, scene, modelKey)
+	source, err := s.resolveManifestSource(ctx, scene, modelKey)
 	if err != nil {
 		return nil, err
 	}
-	if modelEntity == nil {
+	if source == nil {
 		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
 	}
 
-	cacheKey := buildLive2DManifestCacheKey(modelEntity)
+	cacheKey := strings.TrimSpace(source.CacheKey)
 	s.cacheMu.RLock()
 	if cached, ok := s.cache[cacheKey]; ok {
 		s.cacheMu.RUnlock()
@@ -102,7 +111,7 @@ func (s *live2dDirectiveService) ResolveActiveManifest(ctx context.Context, scen
 	}
 	s.cacheMu.RUnlock()
 
-	manifest, err := buildLive2DManifestFromModel(*modelEntity)
+	manifest, err := buildLive2DManifestFromSource(source.ModelKey, source.Name, source.Scene, source.ModelURL)
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +130,21 @@ func (s *live2dDirectiveService) GenerateDirective(ctx context.Context, req ai.L
 	return s.director.GenerateDirective(ctx, req)
 }
 
-// resolveActiveModel 校验模型键并确保只允许已启用的后台模型参与指令生成。
-func (s *live2dDirectiveService) resolveActiveModel(ctx context.Context, scene string, modelKey string) (*model.Live2DModel, error) {
+// resolveManifestSource 根据模型键解析当前需要读取 manifest 的模型来源。
+func (s *live2dDirectiveService) resolveManifestSource(ctx context.Context, scene string, modelKey string) (*live2DManifestSource, error) {
+	normalizedKey := strings.TrimSpace(modelKey)
+	switch {
+	case strings.HasPrefix(normalizedKey, "db:"):
+		return s.resolveDatabaseManifestSource(ctx, scene, normalizedKey)
+	case strings.HasPrefix(normalizedKey, localLive2DModelKeyPrefix):
+		return resolveLocalManifestSource(scene, normalizedKey)
+	default:
+		return nil, common.NewBusinessError(common.CodeBadRequest, "invalid live2d model key")
+	}
+}
+
+// resolveDatabaseManifestSource 校验数据库模型键并返回可用的 manifest 来源信息。
+func (s *live2dDirectiveService) resolveDatabaseManifestSource(ctx context.Context, scene string, modelKey string) (*live2DManifestSource, error) {
 	if s.live2DRepo == nil {
 		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model repository unavailable")
 	}
@@ -139,7 +161,28 @@ func (s *live2dDirectiveService) resolveActiveModel(ctx context.Context, scene s
 	if item == nil || !item.IsActive || strings.TrimSpace(item.Scene) != scene {
 		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
 	}
-	return item, nil
+	return &live2DManifestSource{
+		CacheKey: buildLive2DManifestCacheKey(item),
+		ModelKey: buildDatabaseLive2DModelKey(item.ID),
+		Name:     strings.TrimSpace(item.Name),
+		Scene:    strings.TrimSpace(item.Scene),
+		ModelURL: strings.TrimSpace(item.ModelURL),
+	}, nil
+}
+
+// resolveLocalManifestSource 解析本地兜底模型键并返回对应的 manifest 来源信息。
+func resolveLocalManifestSource(scene string, modelKey string) (*live2DManifestSource, error) {
+	item, err := resolveLocalLive2DModelByKey(scene, modelKey)
+	if err != nil {
+		return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
+	}
+	return &live2DManifestSource{
+		CacheKey: "local:" + strings.TrimSpace(item.AssetDir) + ":" + strings.TrimSpace(item.ModelURL),
+		ModelKey: item.Key,
+		Name:     strings.TrimSpace(item.Name),
+		Scene:    scene,
+		ModelURL: strings.TrimSpace(item.ModelURL),
+	}, nil
 }
 
 // buildLive2DManifestCacheKey 生成当前模型 manifest 的缓存键。
@@ -166,7 +209,17 @@ func parseDatabaseLive2DModelKey(modelKey string) (uint, error) {
 
 // buildLive2DManifestFromModel 从数据库模型和本地资源文件生成可控白名单。
 func buildLive2DManifestFromModel(item model.Live2DModel) (*ai.Live2DManifest, error) {
-	modelFilePath, err := resolveManagedModelFilePath(item.ModelURL)
+	return buildLive2DManifestFromSource(
+		buildDatabaseLive2DModelKey(item.ID),
+		strings.TrimSpace(item.Name),
+		strings.TrimSpace(item.Scene),
+		strings.TrimSpace(item.ModelURL),
+	)
+}
+
+// buildLive2DManifestFromSource 从任意合法模型来源生成可控白名单。
+func buildLive2DManifestFromSource(modelKey string, modelName string, scene string, modelURL string) (*ai.Live2DManifest, error) {
+	modelFilePath, err := resolveManagedModelFilePath(modelURL)
 	if err != nil {
 		return nil, err
 	}
@@ -187,10 +240,10 @@ func buildLive2DManifestFromModel(item model.Live2DModel) (*ai.Live2DManifest, e
 	}
 
 	return &ai.Live2DManifest{
-		ModelKey:    buildDatabaseLive2DModelKey(item.ID),
-		ModelName:   strings.TrimSpace(item.Name),
-		Scene:       strings.TrimSpace(item.Scene),
-		ModelURL:    strings.TrimSpace(item.ModelURL),
+		ModelKey:    strings.TrimSpace(modelKey),
+		ModelName:   strings.TrimSpace(modelName),
+		Scene:       strings.TrimSpace(scene),
+		ModelURL:    strings.TrimSpace(modelURL),
 		Expressions: expressions,
 		Parameters:  parameters,
 		Motions:     motions,

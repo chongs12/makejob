@@ -99,6 +99,14 @@ func (s *live2dService) GetCurrentModel(ctx context.Context, req *CurrentLive2DM
 		}
 	}
 
+	localModels, err := listLocalLive2DModels(scene)
+	if err != nil {
+		return nil, err
+	}
+	if len(localModels) > 0 {
+		return buildLocalLive2DResponse(localModels[0], scene), nil
+	}
+
 	return nil, common.NewBusinessError(common.CodeNotFound, "live2d model not found")
 }
 
@@ -128,6 +136,13 @@ func (s *live2dService) ListSelectableModels(ctx context.Context, req *Selectabl
 
 	recommended := selectActiveLive2DModel(models, scene, requestIndustryID)
 	items := buildSelectableDatabaseLive2DModels(models, scene, requestIndustryID, recommended)
+	if len(items) == 0 {
+		localItems, err := buildSelectableLocalLive2DModels(scene)
+		if err != nil {
+			return nil, err
+		}
+		return localItems, nil
+	}
 	return items, nil
 }
 
@@ -258,6 +273,62 @@ func buildSelectableDatabaseLive2DModels(
 	items = append(items, genericMatches...)
 	items = append(items, otherMatches...)
 	return items
+}
+
+// buildLocalLive2DResponse 组装本地资源兜底命中的模型响应。
+func buildLocalLive2DResponse(item localLive2DModel, scene string) *CurrentLive2DModelResponse {
+	return &CurrentLive2DModelResponse{
+		Name:         strings.TrimSpace(item.Name),
+		Scene:        scene,
+		IndustryCode: "",
+		Path:         strings.TrimSpace(item.ModelURL),
+		ModelURL:     strings.TrimSpace(item.ModelURL),
+		ThumbnailURL: strings.TrimSpace(item.ThumbnailURL),
+		Config:       defaultLive2DConfig(scene),
+		Source:       "local",
+	}
+}
+
+// buildSelectableLocalLive2DModels 组装当前场景可切换的本地兜底模型列表。
+func buildSelectableLocalLive2DModels(scene string) ([]SelectableLive2DModelResponse, error) {
+	localModels, err := listLocalLive2DModels(scene)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]SelectableLive2DModelResponse, 0, len(localModels))
+	for index, item := range localModels {
+		items = append(items, SelectableLive2DModelResponse{
+			Key:           item.Key,
+			Name:          strings.TrimSpace(item.Name),
+			Scene:         scene,
+			ModelURL:      strings.TrimSpace(item.ModelURL),
+			ThumbnailURL:  strings.TrimSpace(item.ThumbnailURL),
+			Source:        "local",
+			MatchType:     "generic",
+			IsGeneric:     true,
+			IsRecommended: index == 0,
+			Motions:       resolveSelectableLocalLive2DModelMotions(item),
+		})
+	}
+	return items, nil
+}
+
+// resolveSelectableLocalLive2DModelMotions 为本地兜底模型补齐可用动作清单。
+func resolveSelectableLocalLive2DModelMotions(item localLive2DModel) []ai.Live2DManifestMotion {
+	manifest, err := buildLive2DManifestFromSource(item.Key, item.Name, item.Scene, item.ModelURL)
+	if err != nil || manifest == nil || len(manifest.Motions) == 0 {
+		return nil
+	}
+
+	motions := make([]ai.Live2DManifestMotion, 0, len(manifest.Motions))
+	for _, motion := range manifest.Motions {
+		if strings.TrimSpace(motion.Key) == "" || strings.TrimSpace(motion.File) == "" {
+			continue
+		}
+		motions = append(motions, motion)
+	}
+	return motions
 }
 
 // resolveSelectableLive2DModelMotions 为前台切换列表补充当前模型可用动作清单，便于前端在原始 model3.json 缺少声明时补全运行时设置。

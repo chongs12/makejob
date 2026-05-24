@@ -69,3 +69,5 @@ _skill_staging/
 docs/*
 !docs/*.md
 live2d-src/
+realtime_dialog/
+.gocache/

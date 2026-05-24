@@ -139,6 +139,11 @@ export type InterviewSocketEventType =
   | 'asr_final'
   | 'tts_audio'
   | 'live2d_expression'
+  | 'assistant_transcript_partial'
+  | 'assistant_transcript_final'
+  | 'assistant_audio_chunk'
+  | 'assistant_turn_finished'
+  | 'barge_in'
   | 'audio_start'
   | 'audio_chunk'
   | 'audio_end'
@@ -157,6 +162,7 @@ export interface InterviewSocketEvent<T = Record<string, unknown>> {
 export interface InterviewSocketStatePayload {
   status: string
   message: string
+  mode?: string
 }
 
 export interface InterviewSocketQuestionPayload {
@@ -195,4 +201,24 @@ export interface InterviewSocketExpressionPayload {
   intensity?: number
   duration_ms?: number
   mouth_open?: number
+}
+
+export interface InterviewSocketAssistantTranscriptPayload {
+  text: string
+  is_final: boolean
+  question_id?: string
+  reply_id?: string
+}
+
+export interface InterviewSocketAssistantAudioChunkPayload {
+  audio_base64: string
+  format: string
+  sample_rate: number
+}
+
+export interface InterviewSocketAssistantTurnPayload {
+  text: string
+  question_no: number
+  is_question: boolean
+  live2d_directive?: Live2DDirective | null
 }

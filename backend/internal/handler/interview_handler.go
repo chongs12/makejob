@@ -18,7 +18,9 @@ import (
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/asr"
 	"makejob-backend/internal/common"
+	appconfig "makejob-backend/internal/config"
 	"makejob-backend/internal/middleware"
+	realtimevolc "makejob-backend/internal/realtime/volcengine"
 	"makejob-backend/internal/service"
 	"makejob-backend/internal/tts"
 	applogger "makejob-backend/pkg/logger"
@@ -32,15 +34,23 @@ type InterviewHandler struct {
 	ttsSceneService  service.SceneTTSService
 	ttsProvider      tts.TTSProvider
 	asrProvider      asr.ASRProvider
+	realtimeConfig   appconfig.VolcRealtimeDialogConfig
 }
 
 // NewInterviewHandler 创建面试处理器实例
-func NewInterviewHandler(svc service.InterviewService, ttsSceneService service.SceneTTSService, ttsProvider tts.TTSProvider, asrProvider asr.ASRProvider) *InterviewHandler {
+func NewInterviewHandler(
+	svc service.InterviewService,
+	ttsSceneService service.SceneTTSService,
+	ttsProvider tts.TTSProvider,
+	asrProvider asr.ASRProvider,
+	realtimeConfig appconfig.VolcRealtimeDialogConfig,
+) *InterviewHandler {
 	return &InterviewHandler{
 		interviewService: svc,
 		ttsSceneService:  ttsSceneService,
 		ttsProvider:      ttsProvider,
 		asrProvider:      asrProvider,
+		realtimeConfig:   realtimeConfig,
 	}
 }
 
@@ -326,21 +336,26 @@ func (h *InterviewHandler) GetReport(c *gin.Context) {
 type WSMessageType string
 
 const (
-	WSMessageTypeConnected        WSMessageType = "connected"
-	WSMessageTypeSessionReady     WSMessageType = "session_ready"
-	WSMessageTypeInterviewState   WSMessageType = "interview_state"
-	WSMessageTypeUserAnswer       WSMessageType = "user_answer"
-	WSMessageTypeAIQuestion       WSMessageType = "ai_question"
-	WSMessageTypeASRPartial       WSMessageType = "asr_partial"
-	WSMessageTypeASRFinal         WSMessageType = "asr_final"
-	WSMessageTypeTTSAudio         WSMessageType = "tts_audio"
-	WSMessageTypeLive2DExpression WSMessageType = "live2d_expression"
-	WSMessageTypeAudioStart       WSMessageType = "audio_start"
-	WSMessageTypeAudioChunk       WSMessageType = "audio_chunk"
-	WSMessageTypeAudioEnd         WSMessageType = "audio_end"
-	WSMessageTypePing             WSMessageType = "ping"
-	WSMessageTypeError            WSMessageType = "error"
-	WSMessageTypeFinished         WSMessageType = "finished"
+	WSMessageTypeConnected                  WSMessageType = "connected"
+	WSMessageTypeSessionReady               WSMessageType = "session_ready"
+	WSMessageTypeInterviewState             WSMessageType = "interview_state"
+	WSMessageTypeUserAnswer                 WSMessageType = "user_answer"
+	WSMessageTypeAIQuestion                 WSMessageType = "ai_question"
+	WSMessageTypeASRPartial                 WSMessageType = "asr_partial"
+	WSMessageTypeASRFinal                   WSMessageType = "asr_final"
+	WSMessageTypeTTSAudio                   WSMessageType = "tts_audio"
+	WSMessageTypeLive2DExpression           WSMessageType = "live2d_expression"
+	WSMessageTypeAssistantTranscriptPartial WSMessageType = "assistant_transcript_partial"
+	WSMessageTypeAssistantTranscriptFinal   WSMessageType = "assistant_transcript_final"
+	WSMessageTypeAssistantAudioChunk        WSMessageType = "assistant_audio_chunk"
+	WSMessageTypeAssistantTurnFinished      WSMessageType = "assistant_turn_finished"
+	WSMessageTypeBargeIn                    WSMessageType = "barge_in"
+	WSMessageTypeAudioStart                 WSMessageType = "audio_start"
+	WSMessageTypeAudioChunk                 WSMessageType = "audio_chunk"
+	WSMessageTypeAudioEnd                   WSMessageType = "audio_end"
+	WSMessageTypePing                       WSMessageType = "ping"
+	WSMessageTypeError                      WSMessageType = "error"
+	WSMessageTypeFinished                   WSMessageType = "finished"
 )
 
 // WSMessage 描述服务端推送给前端的统一 WebSocket 事件。
@@ -360,10 +375,33 @@ type wsClientMessage struct {
 	Data    *json.RawMessage `json:"data,omitempty"`
 }
 
+// summarizeWSClientMessage 为前端上行 WebSocket 消息生成一条适合写日志的摘要。
+func summarizeWSClientMessage(msg wsClientMessage) []zap.Field {
+	fields := []zap.Field{
+		zap.String("type", string(msg.Type)),
+		zap.Int("content_length", len(strings.TrimSpace(msg.Content))),
+	}
+	if msg.Data == nil || len(*msg.Data) == 0 {
+		return fields
+	}
+
+	fields = append(fields, zap.Int("data_bytes", len(*msg.Data)))
+	if msg.Type != WSMessageTypeAudioChunk {
+		return fields
+	}
+
+	var payload wsAudioChunkPayload
+	if err := json.Unmarshal(*msg.Data, &payload); err != nil {
+		return append(fields, zap.String("audio_payload", "unmarshal_failed"))
+	}
+	return append(fields, zap.Int("audio_base64_length", len(strings.TrimSpace(payload.AudioBase64))))
+}
+
 // wsInterviewStatePayload 描述当前会话阶段状态。
 type wsInterviewStatePayload struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
+	Mode    string `json:"mode,omitempty"`
 }
 
 // wsAudioStartPayload 描述一轮语音识别的启动参数。
@@ -407,6 +445,29 @@ type wsTTSAudioPayload struct {
 	SampleRate int     `json:"sample_rate"`
 }
 
+// wsAssistantTranscriptPayload 描述实时模型当前播报中的字幕文本片段。
+type wsAssistantTranscriptPayload struct {
+	Text       string `json:"text"`
+	IsFinal    bool   `json:"is_final"`
+	QuestionID string `json:"question_id,omitempty"`
+	ReplyID    string `json:"reply_id,omitempty"`
+}
+
+// wsAssistantAudioChunkPayload 描述实时模型返回的一段 PCM 音频块。
+type wsAssistantAudioChunkPayload struct {
+	AudioBase64 string `json:"audio_base64"`
+	Format      string `json:"format"`
+	SampleRate  int    `json:"sample_rate"`
+}
+
+// wsAssistantTurnPayload 描述一轮面试官播报结束后的最终文本和题目元数据。
+type wsAssistantTurnPayload struct {
+	Text            string              `json:"text"`
+	QuestionNo      int                 `json:"question_no"`
+	IsQuestion      bool                `json:"is_question"`
+	Live2DDirective *ai.Live2DDirective `json:"live2d_directive,omitempty"`
+}
+
 // wsLive2DExpressionPayload 描述前端应切换到的表情状态。
 type wsLive2DExpressionPayload struct {
 	Emotion            string                       `json:"emotion"`
@@ -427,12 +488,28 @@ type wsInterviewSession struct {
 	interviewID      uint
 	live2DModelKey   string
 	traceID          string
+	realtimeMode     bool
 	writeMu          sync.Mutex
 	asrMu            sync.Mutex
 	asrStream        asr.StreamSession
 	asrLanguage      string
 	asrEngine        string
 	latestTranscript string
+	realtimeClient   *realtimevolc.Client
+	realtimeContext  *service.RealtimeInterviewContext
+	realtimeMu       sync.Mutex
+	realtimeTurn     realtimeTurnState
+}
+
+type realtimeTurnState struct {
+	liveText            string
+	replyText           string
+	questionID          string
+	replyID             string
+	audioEnded          bool
+	textEnded           bool
+	userFinalText       string
+	userAudioChunkCount int
 }
 
 // WebSocket upgrader配置。
@@ -506,6 +583,11 @@ func (h *InterviewHandler) WebSocket(c *gin.Context) {
 			}
 			return
 		}
+		fields := append([]zap.Field{
+			zap.String("trace_id", session.traceID),
+			zap.Uint("interview_id", session.interviewID),
+		}, summarizeWSClientMessage(msg)...)
+		applogger.Info("interview websocket client message received", fields...)
 
 		switch msg.Type {
 		case WSMessageTypeUserAnswer:
@@ -526,6 +608,23 @@ func (h *InterviewHandler) WebSocket(c *gin.Context) {
 
 // bootstrap 恢复会话当前状态，并补发未完成题目和初始表情。
 func (s *wsInterviewSession) bootstrap() {
+	isRealtimeInterview, err := s.handler.interviewService.IsRealtimeInterview(context.Background(), s.userID, s.interviewID)
+	if err != nil {
+		s.sendError("恢复面试模式失败: " + err.Error())
+		return
+	}
+	s.realtimeMode = isRealtimeInterview
+	applogger.Info("interview websocket bootstrap mode resolved",
+		zap.String("trace_id", s.traceID),
+		zap.Uint("user_id", s.userID),
+		zap.Uint("interview_id", s.interviewID),
+		zap.Bool("realtime_mode", s.realtimeMode),
+	)
+	if s.realtimeMode {
+		s.bootstrapRealtime()
+		return
+	}
+
 	detail, err := s.handler.interviewService.GetInterview(context.Background(), s.userID, s.interviewID)
 	if err != nil {
 		s.sendError("恢复面试详情失败: " + err.Error())
@@ -536,7 +635,8 @@ func (s *wsInterviewSession) bootstrap() {
 		Type: WSMessageTypeSessionReady,
 		Data: wsInterviewStatePayload{
 			Status:  detail.Status,
-			Message: "当前面试实时链路已就绪。",
+			Message: "当前面试文本链路已就绪。",
+			Mode:    "http",
 		},
 	})
 	s.live2DModelKey = strings.TrimSpace(detail.Live2DModelKey)
@@ -561,6 +661,11 @@ func (s *wsInterviewSession) bootstrap() {
 
 // handleUserAnswer 处理用户提交的文本答案，并在成功后直接推进下一题。
 func (s *wsInterviewSession) handleUserAnswer(answer string) {
+	if s.realtimeMode {
+		s.handleRealtimeUserAnswer(answer)
+		return
+	}
+
 	if answer == "" {
 		s.sendError("回答内容不能为空")
 		return
@@ -596,6 +701,11 @@ func (s *wsInterviewSession) handleUserAnswer(answer string) {
 
 // handleAudioStart 启动一轮流式语音识别，并把文本片段持续推送给前端。
 func (s *wsInterviewSession) handleAudioStart(rawData *json.RawMessage) {
+	if s.realtimeMode {
+		s.handleRealtimeAudioStart(rawData)
+		return
+	}
+
 	if s.handler.asrProvider == nil {
 		s.sendError("ASR 服务未配置，当前无法使用语音识别。")
 		return
@@ -635,6 +745,11 @@ func (s *wsInterviewSession) handleAudioStart(rawData *json.RawMessage) {
 
 // handleAudioChunk 接收并转发浏览器上传的 PCM 音频块。
 func (s *wsInterviewSession) handleAudioChunk(rawData *json.RawMessage) {
+	if s.realtimeMode {
+		s.handleRealtimeAudioChunk(rawData)
+		return
+	}
+
 	if rawData == nil || len(*rawData) == 0 {
 		s.sendError("缺少语音音频数据")
 		return
@@ -666,6 +781,11 @@ func (s *wsInterviewSession) handleAudioChunk(rawData *json.RawMessage) {
 
 // handleAudioEnd 结束当前识别会话，并在拿到有效转写后自动提交本轮语音回答。
 func (s *wsInterviewSession) handleAudioEnd() {
+	if s.realtimeMode {
+		s.handleRealtimeAudioEnd()
+		return
+	}
+
 	s.asrMu.Lock()
 	recognizedText := strings.TrimSpace(s.latestTranscript)
 	s.asrMu.Unlock()
@@ -855,12 +975,17 @@ func (s *wsInterviewSession) sendDirective(directive *ai.Live2DDirective) {
 
 // sendState 推送当前面试链路所处的阶段状态。
 func (s *wsInterviewSession) sendState(status string, message string) {
+	mode := "http"
+	if s.realtimeMode {
+		mode = "realtime"
+	}
 	s.send(WSMessage{
 		Type:    WSMessageTypeInterviewState,
 		Content: message,
 		Data: wsInterviewStatePayload{
 			Status:  status,
 			Message: message,
+			Mode:    mode,
 		},
 	})
 }
@@ -898,6 +1023,10 @@ func (s *wsInterviewSession) send(msg WSMessage) error {
 
 // close 释放当前连接占用的识别会话和底层 WebSocket。
 func (s *wsInterviewSession) close() {
+	if s.realtimeClient != nil {
+		_ = s.realtimeClient.Close()
+		s.realtimeClient = nil
+	}
 	s.closeASRSession()
 	_ = s.conn.Close()
 	applogger.Info("interview websocket closed",

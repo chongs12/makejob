@@ -19,7 +19,7 @@ redis:
   db: 0
 jwt:
   secret: "makejob-secret-key-change-in-production"
-  expire: 24  # hours
+  expire: 168  # hours
   refresh_expire: 168  # hours (7 days)
 
 casbin:
@@ -99,6 +99,25 @@ volcengine:
     volume_ratio: 100
     pitch_ratio: 100
     sample_rate: 24000
+  realtime:
+    enabled: true
+    base_url: "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
+    app_id: "5042896829"         # 火山实时语音控制台 AppID，可改用环境变量 VOLCENGINE_REALTIME_APP_ID
+    access_token: "MuzdjRWpCVidGWeCslyFMbQ0w8aDLRxZ"   # 火山实时语音控制台 Access Key，可改用环境变量 VOLCENGINE_REALTIME_ACCESS_TOKEN
+    app_key: "PlgvMymc7f3tQnJ6"   # 文档规定固定值，运行时也会强制纠正为该值
+    resource_id: "volc.speech.dialog"
+    speaker: "zh_female_vv_jupiter_bigtts"
+    input_mode: "push_to_talk"
+    audio_format: "pcm"
+    sample_rate: 16000
+    tts_format: "pcm_s16le"
+    tts_sample_rate: 24000
+    bot_name: "Ariu"
+    system_role: "你是一位专业、直接、耐心的中文技术面试官。"
+    speaking_style: "请保持口语化、简洁、明确，每次只说一段自然中文。"
+    character_prompt: ""
+    location_city: "北京"
+    recv_timeout: 120
 
 admin_bootstrap:
   enabled: true

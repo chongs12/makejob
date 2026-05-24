@@ -234,23 +234,77 @@ func TestLive2DServiceListSelectableModelsIncludesFallbackMotions(t *testing.T) 
 	}
 }
 
-// TestLive2DServiceListSelectableModelsWithoutConfirmedModels 验证未确认模型时前台切换列表为空。
-func TestLive2DServiceListSelectableModelsWithoutConfirmedModels(t *testing.T) {
+// TestLive2DServiceListSelectableModelsFallsBackToLocalAssets 验证数据库无可用模型时会回退到本地资源目录。
+func TestLive2DServiceListSelectableModelsFallsBackToLocalAssets(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(live2dassets.AssetsDirEnv, assetsDir)
+
+	modelDir := filepath.Join(assetsDir, "ariu")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("create model dir: %v", err)
+	}
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "ariu.model3.json"), `{
+  "FileReferences": {
+    "Expressions": []
+  }
+}`)
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "intro.motion3.json"), `{}`)
+	if err := os.WriteFile(filepath.Join(modelDir, "cover.png"), []byte("png"), 0o644); err != nil {
+		t.Fatalf("write thumbnail: %v", err)
+	}
+
 	svc := NewLive2DService(nil, nil)
 
 	items, err := svc.ListSelectableModels(context.Background(), &SelectableLive2DModelsRequest{
-		Scene: model.Live2DSceneCompanion,
+		Scene: model.Live2DSceneInterview,
 	})
 	if err != nil {
 		t.Fatalf("ListSelectableModels returned error: %v", err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("expected no selectable models, got %#v", items)
+	if len(items) != 1 {
+		t.Fatalf("expected one local fallback model, got %#v", items)
+	}
+	if items[0].Source != "local" || items[0].Key != "local:ariu" {
+		t.Fatalf("expected local fallback model, got %#v", items[0])
+	}
+	if !items[0].IsRecommended || items[0].MatchType != "generic" {
+		t.Fatalf("expected local fallback model to be recommended generic item, got %#v", items[0])
 	}
 }
 
-// TestLive2DServiceGetCurrentModelWithoutConfirmedModels 验证未确认模型时公开接口返回未找到。
+// TestLive2DServiceGetCurrentModelFallsBackToLocalAssets 验证公开接口会回退返回本地资源模型。
+func TestLive2DServiceGetCurrentModelFallsBackToLocalAssets(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(live2dassets.AssetsDirEnv, assetsDir)
+
+	modelDir := filepath.Join(assetsDir, "yumi")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("create model dir: %v", err)
+	}
+	writeLive2DDirectiveJSONFile(t, filepath.Join(modelDir, "yumi.model3.json"), `{
+  "FileReferences": {
+    "Expressions": []
+  }
+}`)
+
+	svc := NewLive2DService(nil, nil)
+
+	resp, err := svc.GetCurrentModel(context.Background(), &CurrentLive2DModelRequest{
+		Scene: model.Live2DSceneCompanion,
+	})
+	if err != nil {
+		t.Fatalf("GetCurrentModel returned error: %v", err)
+	}
+	if resp.Source != "local" || resp.ModelURL != "/live2d-assets/yumi/yumi.model3.json" {
+		t.Fatalf("expected local fallback current model, got %#v", resp)
+	}
+}
+
+// TestLive2DServiceGetCurrentModelWithoutConfirmedModels 验证资源目录为空时公开接口返回未找到。
 func TestLive2DServiceGetCurrentModelWithoutConfirmedModels(t *testing.T) {
+	assetsDir := t.TempDir()
+	t.Setenv(live2dassets.AssetsDirEnv, assetsDir)
+
 	svc := NewLive2DService(nil, nil)
 
 	resp, err := svc.GetCurrentModel(context.Background(), &CurrentLive2DModelRequest{

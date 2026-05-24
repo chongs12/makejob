@@ -23,6 +23,11 @@ type InterviewService interface {
 	GetNextQuestion(ctx context.Context, userID, interviewID uint) (*NextQuestionResponse, error)
 	FinishInterview(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error)
 	GetReport(ctx context.Context, userID, interviewID uint) (*InterviewReportResponse, error)
+	IsRealtimeInterview(ctx context.Context, userID, interviewID uint) (bool, error)
+	GetRealtimeContext(ctx context.Context, userID, interviewID uint) (*RealtimeInterviewContext, error)
+	BindRealtimeDialog(ctx context.Context, userID, interviewID uint, dialogID string) error
+	AppendRealtimeUserAnswer(ctx context.Context, userID, interviewID uint, answer string) error
+	AppendRealtimeAssistantReply(ctx context.Context, userID, interviewID uint, reply string) (*ai.InterviewQuestion, int, error)
 }
 
 // CreateInterviewRequest 创建面试请求DTO
@@ -106,6 +111,7 @@ type interviewService struct {
 	quizAnalyzer         ai.QuizAnalyzer
 	industryRepo         repository.IndustryRepository
 	live2dDirective      Live2DDirectiveService
+	realtimeEnabled      bool
 }
 
 // NewInterviewService 创建面试服务实例
@@ -132,6 +138,8 @@ func NewInterviewService(
 			s.industryRepo = value
 		case Live2DDirectiveService:
 			s.live2dDirective = value
+		case RealtimeInterviewServiceOption:
+			s.realtimeEnabled = value.Enabled
 		}
 	}
 	return s
@@ -167,6 +175,21 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 
 	if err := s.interviewRepo.Create(ctx, interview); err != nil {
 		return nil, err
+	}
+
+	if s.realtimeEnabled {
+		metadata := buildRealtimeInterviewMetadata(req)
+		interview.AISessionID = encodeRealtimeDialogID("")
+		interview.AIFeedback = metadata.toStorageValue()
+		if err := s.interviewRepo.Update(ctx, interview); err != nil {
+			return nil, err
+		}
+
+		return &InterviewResponse{
+			InterviewID: interview.ID,
+			Status:      interview.Status,
+			CreatedAt:   now,
+		}, nil
 	}
 
 	// 调用AI开始面试
@@ -254,6 +277,21 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 		StartedAt:       interview.StartedAt,
 		EndedAt:         interview.EndedAt,
 	}, nil
+}
+
+// IsRealtimeInterview 判断当前面试记录是否属于实时语音面试链路。
+func (s *interviewService) IsRealtimeInterview(ctx context.Context, userID, interviewID uint) (bool, error) {
+	interview, err := s.interviewRepo.GetByID(ctx, interviewID)
+	if err != nil {
+		return false, err
+	}
+	if interview == nil {
+		return false, common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+	if interview.UserID != userID {
+		return false, common.NewBusinessError(common.CodeForbidden, "无权访问该面试记录")
+	}
+	return isRealtimeInterviewRecord(interview), nil
 }
 
 // resolveInterviewIndustryCode 解析面试记录的行业编码，失败时返回空字符串。
@@ -471,8 +509,12 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 
 	// 获取sessionID
 	sessionID := resolveInterviewSessionID(interview)
-	if sessionID == "" {
+	if sessionID == "" && !isRealtimeInterviewSessionID(interview.AISessionID) {
 		return nil, common.NewBusinessError(common.CodeInternalError, "面试会话不存在")
+	}
+
+	if isRealtimeInterviewSessionID(interview.AISessionID) {
+		return s.finishRealtimeInterview(ctx, userID, interview)
 	}
 
 	// 在面试结束时统一补做评分，避免过程内打断节奏，同时保证报告仍有完整依据。
@@ -615,10 +657,21 @@ func resolveInterviewSessionID(interview *model.MockInterview) string {
 	if strings.TrimSpace(interview.AISessionID) != "" {
 		return strings.TrimSpace(interview.AISessionID)
 	}
-	if interview.IsOngoing() {
+	if interview.IsOngoing() && !strings.Contains(strings.TrimSpace(interview.AIFeedback), `"mode":"realtime_dialog"`) {
 		return strings.TrimSpace(interview.AIFeedback)
 	}
 	return ""
+}
+
+// isRealtimeInterviewRecord 判断一条面试记录是否由实时语音链路创建。
+func isRealtimeInterviewRecord(interview *model.MockInterview) bool {
+	if interview == nil {
+		return false
+	}
+	if isRealtimeInterviewSessionID(interview.AISessionID) {
+		return true
+	}
+	return strings.Contains(strings.TrimSpace(interview.AIFeedback), `"mode":"realtime_dialog"`)
 }
 
 // serializeInterviewReport 将完整面试报告序列化为持久化字符串。
