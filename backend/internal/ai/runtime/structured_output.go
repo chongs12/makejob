@@ -9,30 +9,41 @@ import (
 )
 
 // callStructuredJSON 执行结构化输出调用，并在首次解析失败时尝试一次 JSON 修复。
-func callStructuredJSON[T any](ctx context.Context, provider ai.AIProvider, messages []ai.Message, schema string) (T, string, error) {
+func callStructuredJSON[T any](ctx context.Context, provider ai.AIProvider, messages []ai.Message, schema string) (T, string, ai.TokenUsage, error) {
 	var zero T
+	var usage ai.TokenUsage
 
-	response, err := provider.Chat(ctx, messages)
+	resp, err := provider.Chat(ctx, messages)
 	if err != nil {
-		return zero, "", err
+		return zero, "", usage, err
 	}
+	if resp == nil {
+		return zero, "", usage, fmt.Errorf("provider returned nil response")
+	}
+	usage.InputTokens += resp.InputTokens
+	usage.OutputTokens += resp.OutputTokens
 
-	payload, decodeErr := decodeJSONPayload[T](response)
+	payload, decodeErr := decodeJSONPayload[T](resp.Content)
 	if decodeErr == nil {
-		return payload, response, nil
+		return payload, resp.Content, usage, nil
 	}
 
-	repairedResponse, repairErr := provider.Chat(ctx, buildJSONRepairMessages(schema, response))
+	repairedResp, repairErr := provider.Chat(ctx, buildJSONRepairMessages(schema, resp.Content))
 	if repairErr != nil {
-		return zero, response, fmt.Errorf("decode json payload: %w; repair request failed: %v", decodeErr, repairErr)
+		return zero, resp.Content, usage, fmt.Errorf("decode json payload: %w; repair request failed: %v", decodeErr, repairErr)
 	}
+	if repairedResp == nil {
+		return zero, resp.Content, usage, fmt.Errorf("provider returned nil repair response")
+	}
+	usage.InputTokens += repairedResp.InputTokens
+	usage.OutputTokens += repairedResp.OutputTokens
 
-	repairedPayload, repairedDecodeErr := decodeJSONPayload[T](repairedResponse)
+	repairedPayload, repairedDecodeErr := decodeJSONPayload[T](repairedResp.Content)
 	if repairedDecodeErr != nil {
-		return zero, buildStructuredTrace(response, repairedResponse), fmt.Errorf("decode json payload: %w; repair decode failed: %v", decodeErr, repairedDecodeErr)
+		return zero, buildStructuredTrace(resp.Content, repairedResp.Content), usage, fmt.Errorf("decode json payload: %w; repair decode failed: %v", decodeErr, repairedDecodeErr)
 	}
 
-	return repairedPayload, buildStructuredTrace(response, repairedResponse), nil
+	return repairedPayload, buildStructuredTrace(resp.Content, repairedResp.Content), usage, nil
 }
 
 // buildJSONRepairMessages 构造结构化输出修复请求。

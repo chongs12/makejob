@@ -47,22 +47,27 @@ func NewProvider(ctx context.Context, config map[string]string) (*Provider, erro
 	}, nil
 }
 
-func (p *Provider) Chat(ctx context.Context, messages []ai.Message) (string, error) {
+func (p *Provider) Chat(ctx context.Context, messages []ai.Message) (*ai.ChatResponse, error) {
 	if len(messages) == 0 {
-		return "", fmt.Errorf("messages cannot be empty")
+		return nil, fmt.Errorf("messages cannot be empty")
 	}
 
 	resp, err := p.chatModel.Generate(ctx, toSchemaMessages(messages))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	content := extractMessageText(resp)
 	if content == "" {
-		return "", fmt.Errorf("eino provider returned empty response")
+		return nil, fmt.Errorf("eino provider returned empty response")
 	}
 
-	return content, nil
+	result := &ai.ChatResponse{Content: content}
+	if resp.ResponseMeta != nil && resp.ResponseMeta.Usage != nil {
+		result.InputTokens = resp.ResponseMeta.Usage.PromptTokens
+		result.OutputTokens = resp.ResponseMeta.Usage.CompletionTokens
+	}
+	return result, nil
 }
 
 func (p *Provider) StreamChat(ctx context.Context, messages []ai.Message) (<-chan string, error) {

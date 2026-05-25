@@ -288,14 +288,14 @@ func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[interviewQuestionPayload](ctx, a.provider, messages, interviewQuestionPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[interviewQuestionPayload](ctx, a.provider, messages, interviewQuestionPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.InterviewQuestion{}, err
 	}
 
 	question, err := normalizeQuestionPayload(payload, session, questionIndex)
-	a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
+	a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 	if err != nil {
 		return ai.InterviewQuestion{}, err
 	}
@@ -318,14 +318,14 @@ func (a *providerInterviewAgent) generateFeedback(ctx context.Context, session *
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[interviewFeedbackPayload](ctx, a.provider, messages, interviewFeedbackPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[interviewFeedbackPayload](ctx, a.provider, messages, interviewFeedbackPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, err, startedAt)
+		a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.AnswerFeedback{}, err
 	}
 
 	feedback := normalizeFeedbackPayload(payload)
-	a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, nil, startedAt)
+	a.recordCall(ctx, session, strings.TrimSpace(answer), messages, response, nil, startedAt, usage.InputTokens, usage.OutputTokens)
 	return feedback, nil
 }
 
@@ -344,14 +344,14 @@ func (a *providerInterviewAgent) generateReport(ctx context.Context, session *in
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[interviewReportPayload](ctx, a.provider, messages, interviewReportPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[interviewReportPayload](ctx, a.provider, messages, interviewReportPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, session, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.InterviewReport{}, err
 	}
 
 	report := normalizeReportPayload(payload, session)
-	a.recordCall(ctx, session, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, session, userPrompt, messages, response, nil, startedAt, usage.InputTokens, usage.OutputTokens)
 	return report, nil
 }
 
@@ -364,6 +364,8 @@ func (a *providerInterviewAgent) recordCall(
 	response string,
 	err error,
 	startedAt time.Time,
+	inputTokens int,
+	outputTokens int,
 ) {
 	if a.logger == nil || session == nil {
 		return
@@ -379,6 +381,8 @@ func (a *providerInterviewAgent) recordCall(
 		Output:        response,
 		Err:           err,
 		StartedAt:     startedAt,
+		InputTokens:   inputTokens,
+		OutputTokens:  outputTokens,
 	})
 }
 

@@ -22,6 +22,18 @@ type Config struct {
 	Volcengine     VolcengineConfig     `mapstructure:"volcengine"`
 	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
 	Piston         PistonConfig         `mapstructure:"piston"`
+	Logging        LoggingConfig        `mapstructure:"logging"`
+}
+
+// LoggingConfig 日志配置
+type LoggingConfig struct {
+	Level      string `mapstructure:"level"`       // debug, info, warn, error
+	Format     string `mapstructure:"format"`      // console, json
+	Output     string `mapstructure:"output"`      // stdout, file
+	FilePath   string `mapstructure:"file_path"`   // 日志文件路径（output=file 时生效）
+	MaxSizeMB  int    `mapstructure:"max_size_mb"` // 单个文件最大 MB，默认 100
+	MaxBackups int    `mapstructure:"max_backups"` // 最多保留旧文件数，默认 5
+	MaxDays    int    `mapstructure:"max_days"`    // 最多保留天数，默认 30
 }
 
 // PistonConfig 代码执行引擎配置

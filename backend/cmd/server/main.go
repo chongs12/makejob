@@ -16,11 +16,11 @@ import (
 
 	aiRuntime "makejob-backend/internal/ai/runtime"
 	asrfactory "makejob-backend/internal/asr/factory"
-	"makejob-backend/internal/common"
 	"makejob-backend/internal/config"
 	"makejob-backend/internal/executor"
 	"makejob-backend/internal/handler"
 	"makejob-backend/internal/live2dassets"
+	"makejob-backend/internal/metrics"
 	"makejob-backend/internal/middleware"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
@@ -140,12 +140,14 @@ func main() {
 
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
+	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
+	r.Use(metrics.GinMetricsMiddleware())
 	r.Use(middleware.CORS())
 	r.Use(middleware.RateLimit())
-	r.Use(gin.Recovery())
+	r.Use(middleware.Recovery())
 
-	registerRoutes(r, deps)
+	registerRoutes(r, deps, db, rdb)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
@@ -336,11 +338,22 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 
 func initLogger(cfg *config.Config) error {
 	logConfig := applogger.Config{
-		Level: "info",
-		Mode:  cfg.Server.Mode,
+		Level:      "info",
+		Mode:       cfg.Server.Mode,
+		Format:     cfg.Logging.Format,
+		OutputPath: cfg.Logging.FilePath,
+		MaxSizeMB:  cfg.Logging.MaxSizeMB,
+		MaxBackups: cfg.Logging.MaxBackups,
+		MaxDays:    cfg.Logging.MaxDays,
 	}
 	if cfg.Server.Mode == "debug" {
 		logConfig.Level = "debug"
+	}
+	if cfg.Logging.Level != "" {
+		logConfig.Level = cfg.Logging.Level
+	}
+	if cfg.Logging.Output == "file" && logConfig.OutputPath == "" {
+		logConfig.OutputPath = "./logs/app.log"
 	}
 	return applogger.Init(logConfig)
 }
@@ -366,20 +379,15 @@ func initRedis(cfg *config.Config) (*redis.Client, error) {
 	return rdb, nil
 }
 
-func registerRoutes(r *gin.Engine, deps *AppDependencies) {
+func registerRoutes(r *gin.Engine, deps *AppDependencies, db *gorm.DB, rdb *redis.Client) {
 	if assetsDir, err := live2dassets.EnsureAssetsDir(); err == nil && assetsDir != "" {
 		r.StaticFS(live2dassets.MountPath, gin.Dir(assetsDir, false))
 	} else {
 		applogger.Warn("live2d assets dir not ready", zap.Error(err))
 	}
 
-	r.GET("/api/health", func(c *gin.Context) {
-		common.Success(c, gin.H{
-			"status":    "ok",
-			"version":   Version,
-			"timestamp": time.Now().Unix(),
-		})
-	})
+	healthHandler := handler.NewHealthHandler(db, rdb, Version)
+	healthHandler.RegisterRoutes(r)
 
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/api/health")

@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"makejob-backend/internal/ai"
 )
@@ -11,12 +13,14 @@ import (
 type resumeParser struct {
 	provider ai.AIProvider
 	prompts  *promptResolver
+	logger   *aiCallLogRecorder
 }
 
-func newResumeParser(provider ai.AIProvider, prompts *promptResolver) ai.ResumeParser {
+func newResumeParser(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder) ai.ResumeParser {
 	return &resumeParser{
 		provider: provider,
 		prompts:  prompts,
+		logger:   logger,
 	}
 }
 
@@ -63,10 +67,15 @@ func (p *resumeParser) Parse(ctx context.Context, resumeText string, jobDescript
 		{Role: "user", Content: userPrompt},
 	}
 
-	payload, _, err := callStructuredJSON[resumeProfilePayload](ctx, p.provider, messages, resumeProfilePayloadSchema())
+	startedAt := time.Now()
+	payload, _, usage, err := callStructuredJSON[resumeProfilePayload](ctx, p.provider, messages, resumeProfilePayloadSchema())
 	if err != nil {
+		p.recordCall(ctx, userPrompt, messages, "", err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return nil, fmt.Errorf("parse resume failed: %w", err)
 	}
+
+	output, _ := json.Marshal(payload)
+	p.recordCall(ctx, userPrompt, messages, string(output), nil, startedAt, usage.InputTokens, usage.OutputTokens)
 
 	return &ai.ResumeProfile{
 		Summary:     strings.TrimSpace(payload.Summary),
@@ -75,4 +84,22 @@ func (p *resumeParser) Parse(ctx context.Context, resumeText string, jobDescript
 		Strengths:   normalizeStringSlice(payload.Strengths),
 		WeakSignals: normalizeStringSlice(payload.WeakSignals),
 	}, nil
+}
+
+// recordCall 记录一次简历解析的运行时模型调用。
+func (p *resumeParser) recordCall(ctx context.Context, userInput string, messages []ai.Message, response string, err error, startedAt time.Time, inputTokens int, outputTokens int) {
+	if p.logger == nil {
+		return
+	}
+
+	p.logger.Record(ctx, runtimeCallLogEntry{
+		Request:      messages,
+		UserInput:    userInput,
+		Model:        p.provider.GetModelName(),
+		Output:       response,
+		Err:          err,
+		StartedAt:    startedAt,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	})
 }

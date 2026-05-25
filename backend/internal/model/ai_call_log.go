@@ -31,6 +31,8 @@ type AICallLog struct {
 	ModelError         string `json:"model_error" gorm:"type:text;comment:模型错误"`
 	LatencyMS          int64  `json:"latency_ms" gorm:"not null;default:0;comment:耗时毫秒"`
 	IsSuccess          bool   `json:"is_success" gorm:"not null;default:false;index;comment:是否成功"`
+	InputTokens        int    `json:"input_tokens" gorm:"not null;default:0;comment:输入token数"`
+	OutputTokens       int    `json:"output_tokens" gorm:"not null;default:0;comment:输出token数"`
 }
 
 // TableName 返回 AI 调用日志表名。

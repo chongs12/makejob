@@ -11,7 +11,8 @@ import (
 )
 
 // Logger 请求日志中间件
-// 记录每个HTTP请求的方法、路径、状态码、耗时等信息
+// 记录每个HTTP请求的方法、路径、状态码、耗时、request_id、user_id 等信息。
+// 需放在 RequestID 中间件之后。
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -34,6 +35,16 @@ func Logger() gin.HandlerFunc {
 			zap.Int("status", statusCode),
 			zap.Duration("duration", duration),
 			zap.String("ip", clientIP),
+		}
+
+		// 从 context 注入的 request_id
+		if rid := GetRequestID(c); rid != "" {
+			fields = append(fields, zap.String("request_id", rid))
+		}
+
+		// Auth 中间件在 Logger 之前执行（per-group），此时 user_id 已可用
+		if uid, ok := GetUserID(c); ok {
+			fields = append(fields, zap.Uint("user_id", uid))
 		}
 
 		if raw != "" {
@@ -90,6 +101,14 @@ func LoggerWithSkipPaths(skipPaths []string) gin.HandlerFunc {
 			zap.Int("status", statusCode),
 			zap.Duration("duration", duration),
 			zap.String("ip", clientIP),
+		}
+
+		if rid := GetRequestID(c); rid != "" {
+			fields = append(fields, zap.String("request_id", rid))
+		}
+
+		if uid, ok := GetUserID(c); ok {
+			fields = append(fields, zap.Uint("user_id", uid))
 		}
 
 		if raw != "" {

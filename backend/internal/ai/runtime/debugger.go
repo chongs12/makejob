@@ -130,9 +130,11 @@ func (d *Debugger) Run(ctx context.Context, req DebugRequest) (*DebugResponse, e
 
 	startedAt := time.Now()
 	provider := buildProvider(ctx, sceneConfig)
-	content, runErr := provider.Chat(ctx, response.RequestMessages)
+	resp, runErr := provider.Chat(ctx, response.RequestMessages)
 	response.LatencyMS = time.Since(startedAt).Milliseconds()
-	response.ModelOutput = strings.TrimSpace(content)
+	if resp != nil {
+		response.ModelOutput = strings.TrimSpace(resp.Content)
+	}
 	if runErr != nil {
 		response.ModelError = runErr.Error()
 	}

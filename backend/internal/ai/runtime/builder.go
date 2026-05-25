@@ -80,10 +80,11 @@ func (b *Builder) buildClient(ctx context.Context, runtimeConfig map[string]stri
 			prompts,
 			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourcePlanRuntime, model.PromptScenePlan, runtimeConfig, planSceneConfig),
 		),
-		CompanionAgent: &companionAgent{
-			provider: companionProvider,
-			prompts:  prompts,
-		},
+		CompanionAgent: newCompanionAgent(
+			companionProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceCompanionRuntime, model.PromptSceneCompanion, runtimeConfig, companionSceneConfig),
+		),
 		QuizAnalyzer: newQuizAnalyzer(
 			quizProvider,
 			prompts,
@@ -94,7 +95,11 @@ func (b *Builder) buildClient(ctx context.Context, runtimeConfig map[string]stri
 			prompts,
 			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceCompanionRuntime, model.PromptSceneCompanion, runtimeConfig, companionSceneConfig),
 		),
-		ResumeParser: newResumeParser(interviewProvider, prompts),
+		ResumeParser: newResumeParser(
+			interviewProvider,
+			prompts,
+			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceInterviewRuntime, model.PromptSceneInterview, runtimeConfig, interviewSceneConfig),
+		),
 	}
 }
 
@@ -325,140 +330,6 @@ func renderPrompt(template string, vars map[string]string) string {
 	return rendered
 }
 
-type companionAgent struct {
-	provider ai.AIProvider
-	prompts  *promptResolver
-}
-
-// Chat 调用真实 Provider 生成陪伴回复，并补齐前端需要的情绪与动作字段。
-func (a *companionAgent) Chat(ctx context.Context, messages []ai.Message, userEmotion string) (ai.CompanionResponse, error) {
-	if a.prompts != nil {
-		prompt := a.prompts.ResolveByIndustryID(ctx, model.PromptSceneCompanion, nil, map[string]string{
-			"user_emotion":        userEmotion,
-			"latest_user_message": latestUserMessage(messages),
-		})
-		messages = prependSystemPrompt(messages, prompt)
-	}
-
-	if a.provider == nil {
-		return ai.CompanionResponse{}, fmt.Errorf("ai provider is unavailable")
-	}
-
-	content, err := a.provider.Chat(ctx, messages)
-	if err != nil {
-		return ai.CompanionResponse{}, err
-	}
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return ai.CompanionResponse{}, fmt.Errorf("empty companion response")
-	}
-
-	emotion := normalizeCompanionEmotion(userEmotion)
-	return ai.CompanionResponse{
-		Content: content,
-		Emotion: emotion,
-		Action:  companionActionForEmotion(emotion),
-	}, nil
-}
-
-// GetGreeting 生成无需调用模型的本地欢迎语，避免陪伴首页因 Provider 异常直接报错。
-func (a *companionAgent) GetGreeting(ctx context.Context, profile ai.UserProfile, timeOfDay string) (ai.CompanionResponse, error) {
-	select {
-	case <-ctx.Done():
-		return ai.CompanionResponse{}, ctx.Err()
-	default:
-	}
-
-	content := "你好，今天继续推进你的学习计划。"
-	emotion := "happy"
-	action := "wave"
-	switch strings.ToLower(strings.TrimSpace(timeOfDay)) {
-	case "morning":
-		content = "早上好，先用一个清晰的小目标打开今天的学习节奏。"
-	case "afternoon":
-		content = "下午好，保持专注，把今天最重要的一件学习任务收掉。"
-		emotion = "encouraging"
-		action = "nod"
-	case "evening":
-		content = "晚上好，适合做复盘和查漏补缺，把今天的收获沉淀下来。"
-		emotion = "neutral"
-		action = "idle"
-	case "night":
-		content = "夜深了，注意节奏，优先做轻量复盘，不要透支状态。"
-		emotion = "encouraging"
-		action = "nod"
-	}
-	if strings.EqualFold(strings.TrimSpace(profile.Level), "beginner") {
-		content += " 先稳住基础，不用追求一步到位。"
-	}
-	if strings.EqualFold(strings.TrimSpace(profile.Level), "advanced") {
-		content += " 今天可以主动挑战一个更难的问题。"
-	}
-	return ai.CompanionResponse{Content: content, Emotion: emotion, Action: action}, nil
-}
-
-// GetEncouragement 生成无需调用模型的本地鼓励语，保证基础交互始终可用。
-func (a *companionAgent) GetEncouragement(ctx context.Context, achievement string) (ai.CompanionResponse, error) {
-	select {
-	case <-ctx.Done():
-		return ai.CompanionResponse{}, ctx.Err()
-	default:
-	}
-
-	achievement = strings.TrimSpace(achievement)
-	if achievement == "" {
-		achievement = "当前这一步"
-	}
-	return ai.CompanionResponse{
-		Content: achievement + " 做得不错，继续保持这个节奏，不要被短期波动打断。",
-		Emotion: "encouraging",
-		Action:  "nod",
-	}, nil
-}
-
-// normalizeCompanionEmotion 规范化陪伴场景情绪值，便于前端动作与表情映射保持稳定。
-func normalizeCompanionEmotion(userEmotion string) string {
-	switch strings.ToLower(strings.TrimSpace(userEmotion)) {
-	case "happy", "excited":
-		return "happy"
-	case "sad", "tired":
-		return "encouraging"
-	case "frustrated", "confused":
-		return "thinking"
-	default:
-		return "neutral"
-	}
-}
-
-// companionActionForEmotion 根据情绪选择默认动作，避免陪伴场景出现空动作。
-func companionActionForEmotion(emotion string) string {
-	switch emotion {
-	case "happy":
-		return "wave"
-	case "encouraging":
-		return "nod"
-	case "thinking":
-		return "thinking"
-	default:
-		return "idle"
-	}
-}
-
-func prependSystemPrompt(messages []ai.Message, prompt string) []ai.Message {
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return messages
-	}
-
-	result := make([]ai.Message, 0, len(messages)+1)
-	result = append(result, ai.Message{
-		Role:    "system",
-		Content: prompt,
-	})
-	result = append(result, messages...)
-	return result
-}
-
 func mergePrompt(prompt string, content string) string {
 	prompt = strings.TrimSpace(prompt)
 	content = strings.TrimSpace(content)
@@ -471,15 +342,6 @@ func mergePrompt(prompt string, content string) string {
 	default:
 		return prompt + "\n\n" + content
 	}
-}
-
-func latestUserMessage(messages []ai.Message) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if strings.EqualFold(strings.TrimSpace(messages[i].Role), "user") {
-			return strings.TrimSpace(messages[i].Content)
-		}
-	}
-	return ""
 }
 
 func intToString(value int) string {
@@ -520,13 +382,13 @@ func wrapNamedProvider(provider ai.AIProvider, providerType string) executionTra
 }
 
 // Chat 调用底层 Provider，并记录最近一次实际执行的 provider 与模型。
-func (p *namedProvider) Chat(ctx context.Context, messages []ai.Message) (string, error) {
-	content, err := p.base.Chat(ctx, messages)
+func (p *namedProvider) Chat(ctx context.Context, messages []ai.Message) (*ai.ChatResponse, error) {
+	resp, err := p.base.Chat(ctx, messages)
 	p.setLast(providerExecutionMeta{
 		Provider: strings.TrimSpace(p.name),
 		Model:    strings.TrimSpace(p.base.GetModelName()),
 	})
-	return content, err
+	return resp, err
 }
 
 // StreamChat 调用底层流式 Provider，并记录最近一次实际执行的 provider 与模型。
@@ -567,19 +429,19 @@ type providerWithFallback struct {
 }
 
 // Chat 优先调用主 Provider，失败后自动切换到 fallback。
-func (p *providerWithFallback) Chat(ctx context.Context, messages []ai.Message) (string, error) {
-	content, err := p.primary.Chat(ctx, messages)
+func (p *providerWithFallback) Chat(ctx context.Context, messages []ai.Message) (*ai.ChatResponse, error) {
+	resp, err := p.primary.Chat(ctx, messages)
 	if err == nil {
 		p.setLast(p.primary.LastExecutionMeta())
-		return content, nil
+		return resp, nil
 	}
 
-	content, fallbackErr := p.fallback.Chat(ctx, messages)
+	resp, fallbackErr := p.fallback.Chat(ctx, messages)
 	meta := p.fallback.LastExecutionMeta()
 	meta.UsedFallback = true
 	meta.PrimaryError = err.Error()
 	p.setLast(meta)
-	return content, fallbackErr
+	return resp, fallbackErr
 }
 
 // StreamChat 优先调用主 Provider 的流式输出，失败后自动切换到 fallback。
@@ -623,8 +485,8 @@ type unavailableProvider struct {
 }
 
 // Chat 返回不可用 Provider 的固定错误，避免运行时静默落入其他实现。
-func (p *unavailableProvider) Chat(context.Context, []ai.Message) (string, error) {
-	return "", p.err
+func (p *unavailableProvider) Chat(context.Context, []ai.Message) (*ai.ChatResponse, error) {
+	return nil, p.err
 }
 
 // StreamChat 返回不可用 Provider 的固定错误，避免流式链路静默降级。

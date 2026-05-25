@@ -96,14 +96,14 @@ func (a *providerPlanAgent) GeneratePlan(ctx context.Context, profile ai.UserPro
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.LearningPlan{}, err
 	}
 
 	plan, err := normalizeLearningPlan(payload, profile, industryCode)
-	a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt)
+	a.recordCall(ctx, traceID, industryID, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 	if err != nil {
 		return ai.LearningPlan{}, err
 	}
@@ -135,9 +135,9 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, input ai.PlanAdjustm
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[learningPlanPayload](ctx, a.provider, messages, learningPlanPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.LearningPlan{}, err
 	}
 
@@ -145,7 +145,7 @@ func (a *providerPlanAgent) AdjustPlan(ctx context.Context, input ai.PlanAdjustm
 		DurationDays: maxInt(len(input.CompletedTasks)+7, 7),
 	}
 	plan, err := normalizeLearningPlan(payload, profile, "")
-	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
+	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 	if err != nil {
 		return ai.LearningPlan{}, err
 	}
@@ -177,19 +177,19 @@ func (a *providerPlanAgent) GetStudySuggestion(ctx context.Context, profile ai.U
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
+	resp, err := a.provider.Chat(ctx, messages)
 	if err != nil {
-		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, "", err, startedAt, 0, 0)
 		return "", err
 	}
 
-	content := strings.TrimSpace(response)
+	content := strings.TrimSpace(resp.Content)
 	if content == "" {
-		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, fmt.Errorf("empty study suggestion response"), startedAt)
+		a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, resp.Content, fmt.Errorf("empty study suggestion response"), startedAt, resp.InputTokens, resp.OutputTokens)
 		return "", fmt.Errorf("empty study suggestion response")
 	}
 
-	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, traceID, nil, promptDetails, userPrompt, messages, resp.Content, nil, startedAt, resp.InputTokens, resp.OutputTokens)
 	return content, nil
 }
 
@@ -240,6 +240,8 @@ func (a *providerPlanAgent) recordCall(
 	response string,
 	err error,
 	startedAt time.Time,
+	inputTokens int,
+	outputTokens int,
 ) {
 	if a.logger == nil {
 		return
@@ -255,6 +257,8 @@ func (a *providerPlanAgent) recordCall(
 		Output:        response,
 		Err:           err,
 		StartedAt:     startedAt,
+		InputTokens:   inputTokens,
+		OutputTokens:  outputTokens,
 	})
 }
 

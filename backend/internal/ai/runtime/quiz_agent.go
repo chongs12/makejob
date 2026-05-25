@@ -103,14 +103,14 @@ func (a *providerQuizAnalyzer) AnalyzeCode(ctx context.Context, code string, lan
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[quizAnalysisPayload](ctx, a.provider, messages, quizAnalysisPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[quizAnalysisPayload](ctx, a.provider, messages, quizAnalysisPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.CodeAnalysis{}, err
 	}
 
 	result := normalizeQuizAnalysis(payload, code, language, question)
-	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt, usage.InputTokens, usage.OutputTokens)
 	return result, nil
 }
 
@@ -141,14 +141,14 @@ func (a *providerQuizAnalyzer) DiagnoseInterviewCoding(ctx context.Context, inpu
 	}
 
 	startedAt := time.Now()
-	payload, response, err := callStructuredJSON[interviewCodingDiagnosisPayload](ctx, a.provider, messages, interviewCodingDiagnosisPayloadSchema())
+	payload, response, usage, err := callStructuredJSON[interviewCodingDiagnosisPayload](ctx, a.provider, messages, interviewCodingDiagnosisPayloadSchema())
 	if err != nil {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return ai.CodingQuestionDiagnosis{}, err
 	}
 
 	result := normalizeInterviewCodingDiagnosis(payload, input)
-	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt, usage.InputTokens, usage.OutputTokens)
 	return result, nil
 }
 
@@ -177,19 +177,19 @@ func (a *providerQuizAnalyzer) ExplainAnswer(ctx context.Context, questionTitle 
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
+	resp, err := a.provider.Chat(ctx, messages)
 	if err != nil {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, "", err, startedAt, 0, 0)
 		return "", err
 	}
 
-	content := normalizePlainTextResponse(response)
+	content := normalizePlainTextResponse(resp.Content)
 	if content == "" {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, fmt.Errorf("empty explain answer response"), startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, resp.Content, fmt.Errorf("empty explain answer response"), startedAt, resp.InputTokens, resp.OutputTokens)
 		return "", fmt.Errorf("empty explain answer response")
 	}
 
-	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, resp.Content, nil, startedAt, resp.InputTokens, resp.OutputTokens)
 	return content, nil
 }
 
@@ -217,19 +217,19 @@ func (a *providerQuizAnalyzer) GenerateHint(ctx context.Context, questionTitle s
 	}
 
 	startedAt := time.Now()
-	response, err := a.provider.Chat(ctx, messages)
+	resp, err := a.provider.Chat(ctx, messages)
 	if err != nil {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, err, startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, "", err, startedAt, 0, 0)
 		return "", err
 	}
 
-	content := normalizePlainTextResponse(response)
+	content := normalizePlainTextResponse(resp.Content)
 	if content == "" {
-		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, fmt.Errorf("empty quiz hint response"), startedAt)
+		a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, resp.Content, fmt.Errorf("empty quiz hint response"), startedAt, resp.InputTokens, resp.OutputTokens)
 		return "", fmt.Errorf("empty quiz hint response")
 	}
 
-	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, response, nil, startedAt)
+	a.recordCall(ctx, traceID, promptDetails, userPrompt, messages, resp.Content, nil, startedAt, resp.InputTokens, resp.OutputTokens)
 	return content, nil
 }
 
@@ -260,6 +260,8 @@ func (a *providerQuizAnalyzer) recordCall(
 	response string,
 	err error,
 	startedAt time.Time,
+	inputTokens int,
+	outputTokens int,
 ) {
 	if a.logger == nil {
 		return
@@ -274,6 +276,8 @@ func (a *providerQuizAnalyzer) recordCall(
 		Output:        response,
 		Err:           err,
 		StartedAt:     startedAt,
+		InputTokens:   inputTokens,
+		OutputTokens:  outputTokens,
 	})
 }
 

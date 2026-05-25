@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"makejob-backend/pkg/logger"
 )
 
 // Response 统一API响应结构
@@ -171,12 +174,24 @@ func NotFound(c *gin.Context, message string) {
 	ErrorWithHTTPStatus(c, http.StatusNotFound, CodeNotFound, message)
 }
 
-// InternalError 返回服务器内部错误响应
-func InternalError(c *gin.Context, message string) {
-	if message == "" {
-		message = GetMessage(CodeInternalError)
+// InternalError 返回服务器内部错误响应。
+// 详细错误信息记录到服务端日志，客户端只收到通用文案，避免泄露内部实现细节。
+func InternalError(c *gin.Context, detail string) {
+	if detail != "" {
+		fields := []zap.Field{
+			zap.String("detail", detail),
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.String("ip", c.ClientIP()),
+		}
+		if rid, exists := c.Get("request_id"); exists {
+			if ridStr, ok := rid.(string); ok {
+				fields = append(fields, zap.String("request_id", ridStr))
+			}
+		}
+		logger.Error("internal error", fields...)
 	}
-	ErrorWithHTTPStatus(c, http.StatusInternalServerError, CodeInternalError, message)
+	ErrorWithHTTPStatus(c, http.StatusInternalServerError, CodeInternalError, GetMessage(CodeInternalError))
 }
 
 // parseIntOrDefault 将字符串转成整数，失败时回退为默认值。
@@ -186,11 +201,8 @@ func parseIntOrDefault(raw string, fallback int) int {
 	}
 
 	value := 0
-	for index, ch := range raw {
+	for _, ch := range raw {
 		if ch < '0' || ch > '9' {
-			if index == 0 {
-				return fallback
-			}
 			return fallback
 		}
 		value = value*10 + int(ch-'0')

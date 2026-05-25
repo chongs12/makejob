@@ -14,8 +14,8 @@ type staticProvider struct {
 }
 
 // Chat 返回预设响应。
-func (p *staticProvider) Chat(context.Context, []ai.Message) (string, error) {
-	return p.response, p.err
+func (p *staticProvider) Chat(context.Context, []ai.Message) (*ai.ChatResponse, error) {
+	return &ai.ChatResponse{Content: p.response}, p.err
 }
 
 // StreamChat 为测试桩返回空实现。

@@ -21,20 +21,20 @@ type sequenceProvider struct {
 }
 
 // Chat 按顺序返回测试响应。
-func (p *sequenceProvider) Chat(context.Context, []ai.Message) (string, error) {
+func (p *sequenceProvider) Chat(context.Context, []ai.Message) (*ai.ChatResponse, error) {
 	index := p.callCount
 	p.callCount++
 
 	if index < len(p.errs) && p.errs[index] != nil {
-		return "", p.errs[index]
+		return nil, p.errs[index]
 	}
 	if len(p.responses) == 0 {
-		return "", nil
+		return &ai.ChatResponse{}, nil
 	}
 	if index >= len(p.responses) {
-		return p.responses[len(p.responses)-1], nil
+		return &ai.ChatResponse{Content: p.responses[len(p.responses)-1]}, nil
 	}
-	return p.responses[index], nil
+	return &ai.ChatResponse{Content: p.responses[index]}, nil
 }
 
 // StreamChat 返回空流实现接口。
@@ -56,7 +56,7 @@ func TestCallStructuredJSONRepairsInvalidResponse(t *testing.T) {
 		},
 	}
 
-	payload, trace, err := callStructuredJSON[structuredTestPayload](context.Background(), provider, []ai.Message{
+	payload, trace, _, err := callStructuredJSON[structuredTestPayload](context.Background(), provider, []ai.Message{
 		{Role: "user", Content: "test"},
 	}, `{"value":"字符串"}`)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestCallStructuredJSONReturnsErrorWhenRepairFails(t *testing.T) {
 		},
 	}
 
-	_, trace, err := callStructuredJSON[structuredTestPayload](context.Background(), provider, []ai.Message{
+	_, trace, _, err := callStructuredJSON[structuredTestPayload](context.Background(), provider, []ai.Message{
 		{Role: "user", Content: "test"},
 	}, `{"value":"字符串"}`)
 	if err == nil {

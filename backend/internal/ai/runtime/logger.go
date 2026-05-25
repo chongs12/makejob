@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"makejob-backend/internal/ai"
+	"makejob-backend/internal/metrics"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/repository"
 )
@@ -34,6 +35,8 @@ type runtimeCallLogEntry struct {
 	Output        string
 	Err           error
 	StartedAt     time.Time
+	InputTokens   int
+	OutputTokens  int
 }
 
 // newAICallLogRecorder 创建运行时 AI 调用日志记录器。
@@ -98,9 +101,16 @@ func (r *aiCallLogRecorder) Record(ctx context.Context, entry runtimeCallLogEntr
 		ModelError:         modelError,
 		LatencyMS:          latency,
 		IsSuccess:          modelError == "",
+		InputTokens:        entry.InputTokens,
+		OutputTokens:       entry.OutputTokens,
 	}
 
 	_ = r.repo.Create(ctx, log)
+
+	// 记录 Prometheus 指标
+	duration := time.Duration(latency) * time.Millisecond
+	metrics.RecordAICall(r.scene, r.provider, strings.TrimSpace(entry.Model), modelError == "", duration)
+	metrics.RecordTokenUsage(r.scene, entry.InputTokens, entry.OutputTokens)
 }
 
 // cloneStringMap 复制字符串 map，避免后续修改影响日志快照。

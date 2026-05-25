@@ -1,5 +1,5 @@
 // Package logger 提供基于Zap的结构化日志功能
-// 支持不同日志级别、日志轮转和性能优化
+// 支持不同日志级别、JSON/Console 格式、日志轮转和性能优化
 package logger
 
 import (
@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -19,7 +20,13 @@ var (
 type Config struct {
 	Level      string // debug, info, warn, error
 	Mode       string // development, production
+	Format     string // console, json（为空时根据 Mode 推断）
 	OutputPath string // 日志输出路径，为空时输出到stdout
+
+	// 日志轮转配置（仅 OutputPath 为文件路径时生效）
+	MaxSizeMB  int // 单个文件最大 MB，默认 100
+	MaxBackups int // 最多保留旧文件数，默认 5
+	MaxDays    int // 最多保留天数，默认 30
 }
 
 // Init 初始化全局日志实例
@@ -58,16 +65,25 @@ func New(cfg Config) (*zap.Logger, error) {
 		encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 	}
 
-	encoder := zapcore.NewConsoleEncoder(encoderConfig)
+	// 根据 Format 选择 encoder：production 默认 JSON，development 默认 Console
+	useJSON := cfg.Format == "json" || (cfg.Format == "" && cfg.Mode == "production")
+	var encoder zapcore.Encoder
+	if useJSON {
+		encoder = zapcore.NewJSONEncoder(encoderConfig)
+	} else {
+		encoder = zapcore.NewConsoleEncoder(encoderConfig)
+	}
 
 	// 设置输出
 	var writeSyncer zapcore.WriteSyncer
 	if cfg.OutputPath != "" {
-		file, err := os.OpenFile(cfg.OutputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, err
-		}
-		writeSyncer = zapcore.AddSync(file)
+		writeSyncer = zapcore.AddSync(&lumberjack.Logger{
+			Filename:   cfg.OutputPath,
+			MaxSize:    defaultInt(cfg.MaxSizeMB, 100),
+			MaxBackups: defaultInt(cfg.MaxBackups, 5),
+			MaxAge:     defaultInt(cfg.MaxDays, 30),
+			Compress:   true,
+		})
 	} else {
 		writeSyncer = zapcore.AddSync(os.Stdout)
 	}
@@ -103,6 +119,13 @@ func parseLevel(level string) zapcore.Level {
 	default:
 		return zapcore.InfoLevel
 	}
+}
+
+func defaultInt(v, fallback int) int {
+	if v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 // Debug 输出Debug级别日志

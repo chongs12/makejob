@@ -2,9 +2,11 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/model"
@@ -67,13 +69,36 @@ func (d *providerLive2DDirector) GenerateDirective(ctx context.Context, req ai.L
 		},
 	}
 
-	payload, _, err := callStructuredJSON[live2dDirectivePayload](ctx, d.provider, messages, live2dDirectivePayloadSchema())
+	startedAt := time.Now()
+	payload, _, usage, err := callStructuredJSON[live2dDirectivePayload](ctx, d.provider, messages, live2dDirectivePayloadSchema())
 	if err != nil {
+		d.recordCall(ctx, userPrompt, messages, "", err, startedAt, usage.InputTokens, usage.OutputTokens)
 		return nil, err
 	}
 
+	output, _ := json.Marshal(payload)
+	d.recordCall(ctx, userPrompt, messages, string(output), nil, startedAt, usage.InputTokens, usage.OutputTokens)
+
 	directive := normalizeLive2DDirectivePayload(payload, req)
 	return directive, nil
+}
+
+// recordCall 记录一次 Live2D 指令生成的运行时模型调用。
+func (d *providerLive2DDirector) recordCall(ctx context.Context, userInput string, messages []ai.Message, response string, err error, startedAt time.Time, inputTokens int, outputTokens int) {
+	if d.logger == nil {
+		return
+	}
+
+	d.logger.Record(ctx, runtimeCallLogEntry{
+		Request:      messages,
+		UserInput:    userInput,
+		Model:        d.provider.GetModelName(),
+		Output:       response,
+		Err:          err,
+		StartedAt:    startedAt,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	})
 }
 
 // buildSystemPrompt 组合场景提示词和 Live2D 模型白名单提示。

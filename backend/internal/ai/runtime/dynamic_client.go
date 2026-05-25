@@ -91,10 +91,10 @@ type runtimeProvider struct {
 }
 
 // Chat 委托当前生效 Provider 执行同步对话。
-func (p *runtimeProvider) Chat(ctx context.Context, messages []ai.Message) (string, error) {
+func (p *runtimeProvider) Chat(ctx context.Context, messages []ai.Message) (*ai.ChatResponse, error) {
 	provider, err := p.currentProvider(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	return provider.Chat(ctx, messages)
 }

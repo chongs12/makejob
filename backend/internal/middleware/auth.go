@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -59,6 +60,10 @@ func Auth() gin.HandlerFunc {
 		c.Set(string(ContextKeyUserID), claims.UserID)
 		c.Set(string(ContextKeyRole), claims.Role)
 		c.Set(string(ContextKeyUsername), claims.Username)
+
+		// 同时注入 std context，供下游 service/runtime 通过 context 读取
+		ctx := context.WithValue(c.Request.Context(), ContextKeyUserID, claims.UserID)
+		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
 	}
@@ -147,6 +152,16 @@ func GetUsername(c *gin.Context) (string, bool) {
 	}
 	u, ok := username.(string)
 	return u, ok
+}
+
+// GetUserIDFromContext 从 std context 中读取 user_id。
+func GetUserIDFromContext(ctx context.Context) (uint, bool) {
+	v := ctx.Value(ContextKeyUserID)
+	if v == nil {
+		return 0, false
+	}
+	id, ok := v.(uint)
+	return id, ok
 }
 
 // OptionalAuth 可选认证中间件
