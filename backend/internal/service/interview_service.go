@@ -37,6 +37,9 @@ type CreateInterviewRequest struct {
 	Topics         []string `json:"topics"`
 	QuestionCount  int      `json:"question_count" binding:"required,min=3,max=20"`
 	Live2DModelKey string   `json:"live2d_model_key"`
+	InterviewMode  string   `json:"interview_mode" binding:"omitempty,oneof=general resume_driven"`
+	ResumeText     string   `json:"resume_text"`
+	JobDescription string   `json:"job_description"`
 }
 
 // InterviewResponse 创建面试响应DTO
@@ -109,6 +112,7 @@ type interviewService struct {
 	learningArchiveRepo  repository.LearningArchiveRepository
 	interviewAgent       ai.InterviewAgent
 	quizAnalyzer         ai.QuizAnalyzer
+	resumeParser         ai.ResumeParser
 	industryRepo         repository.IndustryRepository
 	live2dDirective      Live2DDirectiveService
 	realtimeEnabled      bool
@@ -140,6 +144,8 @@ func NewInterviewService(
 			s.live2dDirective = value
 		case RealtimeInterviewServiceOption:
 			s.realtimeEnabled = value.Enabled
+		case ai.ResumeParser:
+			s.resumeParser = value
 		}
 	}
 	return s
@@ -179,6 +185,22 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 
 	if s.realtimeEnabled {
 		metadata := buildRealtimeInterviewMetadata(req)
+		if metadata.InterviewMode == "resume_driven" {
+			if strings.TrimSpace(req.ResumeText) == "" {
+				return nil, common.NewBusinessError(common.CodeBadRequest, "简历驱动面试模式需要提供简历文本")
+			}
+			if s.resumeParser != nil {
+				profile, parseErr := s.resumeParser.Parse(ctx, req.ResumeText, req.JobDescription)
+				if parseErr != nil {
+					return nil, common.NewBusinessError(common.CodeInternalError, "简历解析失败: "+parseErr.Error())
+				}
+				if profile != nil {
+					if profileJSON, marshalErr := json.Marshal(profile); marshalErr == nil {
+						metadata.ResumeProfileJSON = string(profileJSON)
+					}
+				}
+			}
+		}
 		interview.AISessionID = encodeRealtimeDialogID("")
 		interview.AIFeedback = metadata.toStorageValue()
 		if err := s.interviewRepo.Update(ctx, interview); err != nil {
@@ -194,10 +216,11 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 
 	// 调用AI开始面试
 	config := ai.InterviewConfig{
-		IndustryCode:  req.IndustryCode,
-		Difficulty:    req.Difficulty,
-		Topics:        req.Topics,
-		QuestionCount: req.QuestionCount,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		Topics:         req.Topics,
+		QuestionCount:  req.QuestionCount,
+		UserWeakTopics: s.resolveUserWeakTopicsForInterview(ctx, userID),
 	}
 
 	sessionID, firstQuestion, err := s.interviewAgent.StartInterview(ctx, config)
@@ -848,11 +871,12 @@ func (s *interviewService) persistLearningArchiveEntries(
 	report ai.InterviewReport,
 	occurredAt time.Time,
 ) error {
-	if s.learningArchiveRepo == nil || interview == nil || len(report.CodingDiagnostics) == 0 {
+	if s.learningArchiveRepo == nil || interview == nil {
 		return nil
 	}
 
 	industryCode := s.resolveInterviewIndustryCode(ctx, interview.IndustryID)
+
 	for _, diagnosis := range report.CodingDiagnostics {
 		mistakeTagsJSON, err := json.Marshal(diagnosis.MistakeTags)
 		if err != nil {
@@ -887,6 +911,34 @@ func (s *interviewService) persistLearningArchiveEntries(
 			return err
 		}
 	}
+
+	if len(report.CodingDiagnostics) == 0 && len(report.Weaknesses) > 0 {
+		mistakeTagsJSON, err := json.Marshal(report.Weaknesses)
+		if err != nil {
+			return fmt.Errorf("序列化面试报告薄弱项失败: %w", err)
+		}
+		suggestionsJSON, err := json.Marshal(report.Suggestions)
+		if err != nil {
+			return fmt.Errorf("序列化面试报告建议失败: %w", err)
+		}
+
+		entry := &model.LearningArchiveEntry{
+			UserID:          interview.UserID,
+			SourceType:      model.LearningArchiveSourceInterviewCoding,
+			SourceRef:       fmt.Sprintf("interview:%d:report", interview.ID),
+			InterviewID:     interview.ID,
+			IndustryCode:    industryCode,
+			TaskPhase:       model.LearningPhaseMock,
+			TaskPhaseGoal:   model.BuildLearningPhaseGoal(model.LearningPhaseMock),
+			MistakeTagsJSON: string(mistakeTagsJSON),
+			SuggestionsJSON: string(suggestionsJSON),
+			OccurredAt:      &occurredAt,
+		}
+		if err := s.learningArchiveRepo.Upsert(ctx, entry); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -947,6 +999,31 @@ func (s *interviewService) decorateInterviewQuestionWithLive2D(
 		return
 	}
 	question.Live2DDirective = directive
+}
+
+// resolveUserWeakTopicsForInterview 从学习档案中提取用户近期高频薄弱主题，供面试出题参考。
+func (s *interviewService) resolveUserWeakTopicsForInterview(ctx context.Context, userID uint) []string {
+	if s.learningArchiveRepo == nil {
+		return nil
+	}
+
+	entries, err := s.learningArchiveRepo.ListRecentByUser(ctx, userID, 20, nil)
+	if err != nil || len(entries) == 0 {
+		return nil
+	}
+
+	signals := buildTrainingFocusSignals(entries, nil, 3)
+	if len(signals) == 0 {
+		return nil
+	}
+
+	tags := make([]string, 0, len(signals))
+	for _, signal := range signals {
+		if tag := strings.TrimSpace(signal.Tag); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
 }
 
 // parseIndustryCode 解析行业代码为行业ID（简化实现）

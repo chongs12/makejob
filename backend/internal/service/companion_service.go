@@ -9,6 +9,7 @@ import (
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/repository"
 	"makejob-backend/internal/tts"
 	applogger "makejob-backend/pkg/logger"
 
@@ -41,10 +42,13 @@ type CompanionService interface {
 }
 
 type companionService struct {
-	companionAgent  ai.CompanionAgent
-	live2dDirective Live2DDirectiveService
-	ttsSceneService SceneTTSService
-	ttsProvider     tts.TTSProvider
+	companionAgent      ai.CompanionAgent
+	live2dDirective     Live2DDirectiveService
+	ttsSceneService     SceneTTSService
+	ttsProvider         tts.TTSProvider
+	learningArchiveRepo repository.LearningArchiveRepository
+	interviewRepo       repository.InterviewRepository
+	planRepo            repository.PlanRepository
 }
 
 // NewCompanionService 创建陪伴服务，并按传入依赖自动接入 Live2D 指令和 TTS 能力。
@@ -52,6 +56,9 @@ func NewCompanionService(companionAgent ai.CompanionAgent, dependencies ...any) 
 	var directiveService Live2DDirectiveService
 	var ttsSceneService SceneTTSService
 	var ttsProvider tts.TTSProvider
+	var learningArchiveRepo repository.LearningArchiveRepository
+	var interviewRepo repository.InterviewRepository
+	var planRepo repository.PlanRepository
 	for _, dependency := range dependencies {
 		switch typedDependency := dependency.(type) {
 		case Live2DDirectiveService:
@@ -60,13 +67,22 @@ func NewCompanionService(companionAgent ai.CompanionAgent, dependencies ...any) 
 			ttsSceneService = typedDependency
 		case tts.TTSProvider:
 			ttsProvider = typedDependency
+		case repository.LearningArchiveRepository:
+			learningArchiveRepo = typedDependency
+		case repository.InterviewRepository:
+			interviewRepo = typedDependency
+		case repository.PlanRepository:
+			planRepo = typedDependency
 		}
 	}
 	return &companionService{
-		companionAgent:  companionAgent,
-		live2dDirective: directiveService,
-		ttsSceneService: ttsSceneService,
-		ttsProvider:     ttsProvider,
+		companionAgent:      companionAgent,
+		live2dDirective:     directiveService,
+		ttsSceneService:     ttsSceneService,
+		ttsProvider:         ttsProvider,
+		learningArchiveRepo: learningArchiveRepo,
+		interviewRepo:       interviewRepo,
+		planRepo:            planRepo,
 	}
 }
 
@@ -75,6 +91,8 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 	if req == nil {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "请求不能为空")
 	}
+
+	s.enrichRequestContext(ctx, userID, req)
 
 	messages := normalizeCompanionMessages(req)
 	if len(messages) == 0 {
@@ -121,6 +139,79 @@ func (s *companionService) Chat(ctx context.Context, userID uint, req *Companion
 		AudioSampleRate: ttsAudio.SampleRate,
 		Live2DDirective: directive,
 	}, nil
+}
+
+// enrichRequestContext 将后端查询到的用户学习状态合并到请求上下文中，前端已传入的字段优先保留。
+func (s *companionService) enrichRequestContext(ctx context.Context, userID uint, req *CompanionChatRequest) {
+	if userID == 0 {
+		return
+	}
+
+	backendCtx := s.buildBackendLearningContext(ctx, userID)
+	if len(backendCtx) == 0 {
+		return
+	}
+
+	if req.Context == nil {
+		req.Context = make(map[string]any, len(backendCtx))
+	}
+	for key, value := range backendCtx {
+		if _, exists := req.Context[key]; !exists {
+			req.Context[key] = value
+		}
+	}
+}
+
+// buildBackendLearningContext 从学习档案、面试和计划中提取用户当前学习状态摘要。
+func (s *companionService) buildBackendLearningContext(ctx context.Context, userID uint) map[string]any {
+	result := make(map[string]any, 3)
+
+	if s.learningArchiveRepo != nil {
+		entries, err := s.learningArchiveRepo.ListRecentByUser(ctx, userID, 12, nil)
+		if err == nil && len(entries) > 0 {
+			signals := buildTrainingFocusSignals(entries, nil, 3)
+			if len(signals) > 0 {
+				tags := make([]string, 0, len(signals))
+				for _, signal := range signals {
+					if tag := strings.TrimSpace(signal.Tag); tag != "" {
+						tags = append(tags, tag)
+					}
+				}
+				if len(tags) > 0 {
+					result["当前高频薄弱点"] = strings.Join(tags, "、")
+				}
+			}
+		}
+	}
+
+	if s.interviewRepo != nil {
+		interviews, _, err := s.interviewRepo.ListByUser(ctx, userID, 1, 3)
+		if err == nil && len(interviews) > 0 {
+			result["最近面试"] = buildCompanionInterviewBrief(interviews)
+		}
+	}
+
+	if s.planRepo != nil {
+		plan, err := s.planRepo.GetCurrentByUser(ctx, userID)
+		if err == nil && plan != nil {
+			result["当前计划"] = fmt.Sprintf("%s（进度 %d%%）", plan.Title, plan.Progress())
+		}
+	}
+
+	return result
+}
+
+// buildCompanionInterviewBrief 将最近面试记录整理为简短摘要文本。
+func buildCompanionInterviewBrief(interviews []model.MockInterview) string {
+	parts := make([]string, 0, len(interviews))
+	for _, interview := range interviews {
+		if interview.Status == model.InterviewStatusCompleted {
+			parts = append(parts, fmt.Sprintf("得分%.0f", interview.Score))
+		} else {
+			parts = append(parts, "进行中")
+		}
+	}
+	return fmt.Sprintf("最近 %d 场面试: %s", len(interviews), strings.Join(parts, "、"))
 }
 
 // synthesizeCompanionSpeech 为陪伴回复生成可选语音资源，失败时静默降级到纯文本。

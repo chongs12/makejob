@@ -232,6 +232,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			industryRepo,
 			live2DDirectiveService,
 			service.RealtimeInterviewServiceOption{Enabled: cfg.Volcengine.Realtime.Enabled},
+			aiClient.ResumeParser,
 		)
 		deps.QuestionService = service.NewQuestionService(
 			deps.QuestionRepo,
@@ -268,7 +269,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanTaskRepo,
 			deps.LearningArchiveRepo,
 		)
-		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent, live2DDirectiveService, ttsSceneService, ttsProvider)
+		deps.CompanionService = service.NewCompanionService(aiClient.CompanionAgent, live2DDirectiveService, ttsSceneService, ttsProvider, deps.LearningArchiveRepo, deps.InterviewRepo, deps.PlanRepo)
 		deps.Live2DService = service.NewLive2DService(live2DRepo, industryRepo)
 		communityService := service.NewCommunityService(communityRepo, deps.UserRepo)
 		asrProvider, err := asrfactory.NewASRProviderWithConfig("", cfg)

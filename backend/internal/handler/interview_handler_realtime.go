@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"makejob-backend/internal/ai"
 	realtimevolc "makejob-backend/internal/realtime/volcengine"
 	"makejob-backend/internal/service"
 	applogger "makejob-backend/pkg/logger"
@@ -565,18 +566,63 @@ func (s *wsInterviewSession) buildRealtimeSystemRole(ctx *service.RealtimeInterv
 		topics = strings.Join(ctx.Topics, "、")
 	}
 
-	return strings.TrimSpace(strings.Join([]string{
+	lines := []string{
 		s.handler.realtimeConfig.SystemRole,
 		fmt.Sprintf("你正在进行一场中文技术模拟面试，目标方向是 %s。", firstNonEmpty(safeRealtimeIndustryCode(ctx), "通用方向")),
 		fmt.Sprintf("整场面试共 %d 题，目标难度为 %s，优先覆盖这些主题：%s。", safeRealtimeQuestionCount(ctx), safeRealtimeDifficulty(ctx), topics),
+	}
+
+	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
+		lines = append(lines, buildResumeDrivenSystemPromptLines(ctx.ResumeProfile)...)
+	}
+
+	if ctx != nil && len(ctx.WeakTopics) > 0 {
+		lines = append(lines, fmt.Sprintf("用户近期高频薄弱点：%s。至少 1-2 道题目围绕这些薄弱点出题，帮助用户验证是否已克服。", strings.Join(ctx.WeakTopics, "、")))
+	}
+	lines = append(lines,
 		"你必须一次只问一个问题，用户回答后先给一句简短反馈，再自然进入下一题。",
 		"到最后一题回答完成后，请只给简短总结，不要继续追问。",
 		"请始终使用自然口语中文，不要输出 Markdown、列表标题或代码块。",
-	}, "\n"))
+	)
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// buildResumeDrivenSystemPromptLines 根据简历画像生成简历驱动面试模式的系统提示行。
+func buildResumeDrivenSystemPromptLines(profile *ai.ResumeProfile) []string {
+	if profile == nil {
+		return nil
+	}
+	var lines []string
+	if s := strings.TrimSpace(profile.Summary); s != "" {
+		lines = append(lines, fmt.Sprintf("候选人背景：%s。", s))
+	}
+	if len(profile.Skills) > 0 {
+		lines = append(lines, fmt.Sprintf("候选人核心技术栈：%s。", strings.Join(profile.Skills, "、")))
+	}
+	if len(profile.Projects) > 0 {
+		lines = append(lines, fmt.Sprintf("候选人重点项目经历：%s。", strings.Join(profile.Projects, "；")))
+	}
+	if len(profile.Strengths) > 0 {
+		lines = append(lines, fmt.Sprintf("简历体现的优势：%s。", strings.Join(profile.Strengths, "、")))
+	}
+	if len(profile.WeakSignals) > 0 {
+		lines = append(lines, fmt.Sprintf("简历中潜在薄弱信号：%s。请重点追问这些方向，验证候选人真实掌握程度。", strings.Join(profile.WeakSignals, "、")))
+	}
+	if len(lines) > 0 {
+		lines = append(lines, "请围绕候选人简历经历和技术栈出题，结合岗位要求考察真实项目深度和技术理解，而非泛泛八股。")
+	}
+	return lines
 }
 
 // buildRealtimeKickoffPrompt 生成进入第一题前主动唤起模型开场的文本指令。
 func (s *wsInterviewSession) buildRealtimeKickoffPrompt(ctx *service.RealtimeInterviewContext) string {
+	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
+		summary := strings.TrimSpace(ctx.ResumeProfile.Summary)
+		if summary != "" {
+			return fmt.Sprintf("现在开始这场基于候选人简历的技术面试。候选人背景：%s。请先用一句简短开场白提及候选人的核心经历，然后直接提出第 1 道针对其项目或技术栈的问题。整场共 %d 题。", summary, safeRealtimeQuestionCount(ctx))
+		}
+		return fmt.Sprintf("现在开始这场基于候选人简历的技术面试。请先用一句简短开场白，然后直接提出第 1 道针对候选人经历的问题。整场共 %d 题。", safeRealtimeQuestionCount(ctx))
+	}
 	return fmt.Sprintf("现在开始这场中文技术面试。请先用一句简短开场白，然后直接提出第 1 道问题。整场共 %d 题。", safeRealtimeQuestionCount(ctx))
 }
 

@@ -13,10 +13,20 @@ type Message struct {
 
 // InterviewConfig 面试配置
 type InterviewConfig struct {
-	IndustryCode  string   `json:"industry_code"`
-	Difficulty    string   `json:"difficulty"` // easy/medium/hard/mixed
-	Topics        []string `json:"topics"`     // 面试主题
-	QuestionCount int      `json:"question_count"`
+	IndustryCode   string   `json:"industry_code"`
+	Difficulty     string   `json:"difficulty"` // easy/medium/hard/mixed
+	Topics         []string `json:"topics"`     // 面试主题
+	QuestionCount  int      `json:"question_count"`
+	UserWeakTopics []string `json:"user_weak_topics"` // 从学习档案注入的用户近期高频薄弱主题
+}
+
+// ResumeProfile 描述从简历文本中解析出的结构化画像，供简历驱动面试模式使用。
+type ResumeProfile struct {
+	Summary      string   `json:"summary"`       // 一段话概括候选人背景
+	Skills       []string `json:"skills"`        // 核心技术栈
+	Projects     []string `json:"projects"`      // 重点项目经历（简述）
+	Strengths    []string `json:"strengths"`     // 简历中体现的优势
+	WeakSignals  []string `json:"weak_signals"`  // 简历中可能的薄弱信号（如技术栈跨度大但深度不足）
 }
 
 // InterviewQuestion 面试问题

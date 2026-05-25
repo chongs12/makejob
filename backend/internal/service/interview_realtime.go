@@ -30,15 +30,20 @@ type RealtimeInterviewContext struct {
 	AnsweredQuestionCount int
 	Difficulty            string
 	Topics                []string
+	WeakTopics            []string
+	InterviewMode         string
+	ResumeProfile         *ai.ResumeProfile
 	DialogID              string
 	HasStarted            bool
 }
 
 type realtimeInterviewMetadata struct {
-	Mode          string   `json:"mode"`
-	Difficulty    string   `json:"difficulty"`
-	Topics        []string `json:"topics"`
-	QuestionCount int      `json:"question_count"`
+	Mode             string   `json:"mode"`
+	InterviewMode    string   `json:"interview_mode"`
+	ResumeProfileJSON string `json:"resume_profile_json,omitempty"`
+	Difficulty       string   `json:"difficulty"`
+	Topics           []string `json:"topics"`
+	QuestionCount    int      `json:"question_count"`
 }
 
 // toStorageValue 将实时面试元数据序列化到复用字段，便于刷新后恢复配置。
@@ -54,6 +59,7 @@ func (m realtimeInterviewMetadata) toStorageValue() string {
 func buildRealtimeInterviewMetadata(req *CreateInterviewRequest) realtimeInterviewMetadata {
 	metadata := realtimeInterviewMetadata{
 		Mode:          "realtime_dialog",
+		InterviewMode: "general",
 		Difficulty:    "mixed",
 		Topics:        []string{},
 		QuestionCount: 5,
@@ -67,6 +73,9 @@ func buildRealtimeInterviewMetadata(req *CreateInterviewRequest) realtimeIntervi
 	if req.QuestionCount > 0 {
 		metadata.QuestionCount = req.QuestionCount
 	}
+	if firstNonEmptyInterviewString(req.InterviewMode, "") == "resume_driven" {
+		metadata.InterviewMode = "resume_driven"
+	}
 	return metadata
 }
 
@@ -74,6 +83,7 @@ func buildRealtimeInterviewMetadata(req *CreateInterviewRequest) realtimeIntervi
 func parseRealtimeInterviewMetadata(raw string, fallbackCount int) realtimeInterviewMetadata {
 	metadata := realtimeInterviewMetadata{
 		Mode:          "realtime_dialog",
+		InterviewMode: "general",
 		Difficulty:    "mixed",
 		Topics:        []string{},
 		QuestionCount: fallbackCount,
@@ -87,6 +97,9 @@ func parseRealtimeInterviewMetadata(raw string, fallbackCount int) realtimeInter
 	_ = json.Unmarshal([]byte(raw), &metadata)
 	if strings.TrimSpace(metadata.Mode) == "" {
 		metadata.Mode = "realtime_dialog"
+	}
+	if strings.TrimSpace(metadata.InterviewMode) == "" {
+		metadata.InterviewMode = "general"
 	}
 	if strings.TrimSpace(metadata.Difficulty) == "" {
 		metadata.Difficulty = "mixed"
@@ -133,6 +146,14 @@ func (s *interviewService) GetRealtimeContext(ctx context.Context, userID, inter
 		}
 	}
 
+	var resumeProfile *ai.ResumeProfile
+	if strings.TrimSpace(metadata.ResumeProfileJSON) != "" {
+		var rp ai.ResumeProfile
+		if jsonErr := json.Unmarshal([]byte(metadata.ResumeProfileJSON), &rp); jsonErr == nil {
+			resumeProfile = &rp
+		}
+	}
+
 	return &RealtimeInterviewContext{
 		InterviewID:           interview.ID,
 		IndustryCode:          s.resolveInterviewIndustryCode(ctx, interview.IndustryID),
@@ -142,6 +163,9 @@ func (s *interviewService) GetRealtimeContext(ctx context.Context, userID, inter
 		AnsweredQuestionCount: countAnsweredInterviewQuestions(messages),
 		Difficulty:            metadata.Difficulty,
 		Topics:                append([]string(nil), metadata.Topics...),
+		WeakTopics:            s.resolveUserWeakTopicsForInterview(ctx, userID),
+		InterviewMode:         firstNonEmptyInterviewString(metadata.InterviewMode, "general"),
+		ResumeProfile:         resumeProfile,
 		DialogID:              decodeRealtimeDialogID(interview.AISessionID),
 		HasStarted:            askedQuestionCount > 0,
 	}, nil

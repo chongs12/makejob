@@ -404,7 +404,7 @@ func buildQuestionUserPrompt(session *interviewSessionState, questionIndex int) 
 		topics = defaultTopicsByIndustry(session.Config.IndustryCode)
 	}
 
-	return fmt.Sprintf(
+	prompt := fmt.Sprintf(
 		"请生成第 %d/%d 道面试题。\n行业: %s\n难度要求: %s\n候选主题: %s\n已出题列表: %s\n要求题目和已出题不重复，保持循序渐进，并结合真实面试场景。",
 		questionIndex+1,
 		session.Config.QuestionCount,
@@ -413,6 +413,12 @@ func buildQuestionUserPrompt(session *interviewSessionState, questionIndex int) 
 		strings.Join(topics, "、"),
 		renderAskedQuestions(session.Questions),
 	)
+
+	if len(session.Config.UserWeakTopics) > 0 {
+		prompt += fmt.Sprintf("\n用户近期高频薄弱点: %s\n要求: 至少 1-2 道题目围绕上述薄弱点出题，帮助用户验证是否已克服这些问题。", strings.Join(session.Config.UserWeakTopics, "、"))
+	}
+
+	return prompt
 }
 
 // buildFeedbackSystemPrompt 构建答案评分的系统提示词。

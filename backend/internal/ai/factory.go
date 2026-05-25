@@ -25,6 +25,7 @@ type AIClient struct {
 	CompanionAgent CompanionAgent
 	QuizAnalyzer   QuizAnalyzer
 	Live2DDirector Live2DDirectiveGenerator
+	ResumeParser   ResumeParser
 }
 
 // GetModelName 获取当前使用的模型名称

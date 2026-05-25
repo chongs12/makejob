@@ -94,6 +94,7 @@ func (b *Builder) buildClient(ctx context.Context, runtimeConfig map[string]stri
 			prompts,
 			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceCompanionRuntime, model.PromptSceneCompanion, runtimeConfig, companionSceneConfig),
 		),
+		ResumeParser: newResumeParser(interviewProvider, prompts),
 	}
 }
 
