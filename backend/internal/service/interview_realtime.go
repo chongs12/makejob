@@ -68,13 +68,18 @@ func buildRealtimeInterviewMetadata(req *CreateInterviewRequest) realtimeIntervi
 		return metadata
 	}
 
+	if firstNonEmptyInterviewString(req.InterviewMode, "") == "resume_driven" {
+		metadata.InterviewMode = "resume_driven"
+		metadata.Difficulty = "mixed"
+		metadata.QuestionCount = 20
+		metadata.Topics = append([]string(nil), req.Topics...)
+		return metadata
+	}
+
 	metadata.Difficulty = firstNonEmptyInterviewString(req.Difficulty, metadata.Difficulty)
 	metadata.Topics = append([]string(nil), req.Topics...)
 	if req.QuestionCount > 0 {
 		metadata.QuestionCount = req.QuestionCount
-	}
-	if firstNonEmptyInterviewString(req.InterviewMode, "") == "resume_driven" {
-		metadata.InterviewMode = "resume_driven"
 	}
 	return metadata
 }
@@ -208,14 +213,35 @@ func (s *interviewService) AppendRealtimeUserAnswer(ctx context.Context, userID,
 	return s.interviewMessageRepo.Create(ctx, answerMsg)
 }
 
+// isRealtimeInterviewClosingReply 检测面试官回复是否包含结束信号。
+func isRealtimeInterviewClosingReply(text string) bool {
+	closingPhrases := []string{
+		"我的问题基本就是这些",
+		"面试到这里",
+		"面试就到这里",
+		"今天的面试到这里",
+		"我的问题就到这里",
+		"你有什么想问我的吗",
+		"你有什么想问的吗",
+		"有什么想问我的",
+	}
+	for _, phrase := range closingPhrases {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 // AppendRealtimeAssistantReply 将实时模型最终回复写入消息流，并为当前题目补齐 Live2D 指令元数据。
-func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, userID, interviewID uint, reply string) (*ai.InterviewQuestion, int, error) {
+// 返回值中的 bool 表示面试是否已结束（仅 resume_driven 模式下通过结束信号检测触发）。
+func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, userID, interviewID uint, reply string) (*ai.InterviewQuestion, int, bool, error) {
 	interview, messages, err := s.loadInterviewWithMessages(ctx, userID, interviewID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 	if !interview.IsOngoing() {
-		return nil, 0, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+		return nil, 0, false, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
 	}
 
 	metadata := parseRealtimeInterviewMetadata(interview.AIFeedback, interview.TotalQuestions)
@@ -226,7 +252,9 @@ func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, use
 		}
 	}
 
-	if countAnsweredInterviewQuestions(messages) >= maxRealtimeInterviewInt(interview.TotalQuestions, metadata.QuestionCount) {
+	isResumeDriven := strings.TrimSpace(metadata.InterviewMode) == "resume_driven"
+
+	if !isResumeDriven && countAnsweredInterviewQuestions(messages) >= maxRealtimeInterviewInt(interview.TotalQuestions, metadata.QuestionCount) {
 		msg := &model.InterviewMessage{
 			InterviewID: interviewID,
 			Role:        model.MessageRoleAI,
@@ -234,9 +262,15 @@ func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, use
 			MessageType: model.MessageTypeText,
 		}
 		if err := s.interviewMessageRepo.Create(ctx, msg); err != nil {
-			return nil, 0, err
+			return nil, 0, false, err
 		}
-		return nil, questionNo, nil
+		return nil, questionNo, false, nil
+	}
+
+	// resume_driven 模式：检测结束信号
+	finished := false
+	if isResumeDriven && isRealtimeInterviewClosingReply(reply) {
+		finished = true
 	}
 
 	question := ai.InterviewQuestion{
@@ -249,12 +283,12 @@ func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, use
 
 	questionMsg, err := buildInterviewQuestionMessage(interviewID, question)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 	if err := s.interviewMessageRepo.Create(ctx, questionMsg); err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	return &question, questionNo + 1, nil
+	return &question, questionNo + 1, finished, nil
 }
 
 // finishRealtimeInterview 在实时语音模式下用持久化问答记录生成兜底面试报告。

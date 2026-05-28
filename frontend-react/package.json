@@ -24,6 +24,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@makejob/web": "^0.0.1",
+    "pdfjs-dist": "^5.7.284",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^6.5.10"
   }

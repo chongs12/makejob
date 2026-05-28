@@ -524,10 +524,25 @@ func (s *wsInterviewSession) finalizeRealtimeAssistantTurn(force bool) {
 		zap.String("final_text", finalText),
 	)
 
-	question, questionNo, err := s.handler.interviewService.AppendRealtimeAssistantReply(context.Background(), s.userID, s.interviewID, finalText)
+	question, questionNo, finished, err := s.handler.interviewService.AppendRealtimeAssistantReply(context.Background(), s.userID, s.interviewID, finalText)
 	if err != nil {
 		s.sendError("保存实时面试官回复失败: " + err.Error())
 		return
+	}
+
+	if finished {
+		_, finishErr := s.handler.interviewService.FinishInterview(context.Background(), s.userID, s.interviewID)
+		if finishErr != nil {
+			applogger.Warn("auto-finish resume_driven interview failed",
+				zap.String("trace_id", s.traceID),
+				zap.Uint("interview_id", s.interviewID),
+				zap.Error(finishErr),
+			)
+		}
+		s.send(WSMessage{
+			Type:    WSMessageTypeFinished,
+			Content: "面试已结束，正在生成报告。",
+		})
 	}
 
 	s.send(WSMessage{
@@ -561,6 +576,10 @@ func (s *wsInterviewSession) finalizeRealtimeAssistantTurn(force bool) {
 
 // buildRealtimeSystemRole 构造实时模型整场面试要遵守的固定系统提示词。
 func (s *wsInterviewSession) buildRealtimeSystemRole(ctx *service.RealtimeInterviewContext) string {
+	if ctx != nil && ctx.InterviewMode == "resume_driven" {
+		return buildResumeDrivenSystemPrompt(ctx.ResumeProfile, safeRealtimeIndustryCode(ctx))
+	}
+
 	topics := "通用技术能力"
 	if ctx != nil && len(ctx.Topics) > 0 {
 		topics = strings.Join(ctx.Topics, "、")
@@ -570,10 +589,6 @@ func (s *wsInterviewSession) buildRealtimeSystemRole(ctx *service.RealtimeInterv
 		s.handler.realtimeConfig.SystemRole,
 		fmt.Sprintf("你正在进行一场中文技术模拟面试，目标方向是 %s。", firstNonEmpty(safeRealtimeIndustryCode(ctx), "通用方向")),
 		fmt.Sprintf("整场面试共 %d 题，目标难度为 %s，优先覆盖这些主题：%s。", safeRealtimeQuestionCount(ctx), safeRealtimeDifficulty(ctx), topics),
-	}
-
-	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
-		lines = append(lines, buildResumeDrivenSystemPromptLines(ctx.ResumeProfile)...)
 	}
 
 	if ctx != nil && len(ctx.WeakTopics) > 0 {
@@ -587,31 +602,83 @@ func (s *wsInterviewSession) buildRealtimeSystemRole(ctx *service.RealtimeInterv
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-// buildResumeDrivenSystemPromptLines 根据简历画像生成简历驱动面试模式的系统提示行。
-func buildResumeDrivenSystemPromptLines(profile *ai.ResumeProfile) []string {
-	if profile == nil {
-		return nil
+// buildResumeDrivenSystemPrompt 根据简历画像生成简历驱动面试模式的完整系统提示词。
+func buildResumeDrivenSystemPrompt(profile *ai.ResumeProfile, industryCode string) string {
+	industryLabel := firstNonEmpty(industryCode, "通用方向")
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "你是一位专业、敏锐、耐心的技术面试官。\n你正在主持一场针对 %s 的面试。\n\n", industryLabel)
+
+	sb.WriteString("## 面试总原则\n")
+	sb.WriteString("1. 自然对话，而非问答列表：不要提及\"第X题\"、\"共N题\"等计数语言，不要像考试一样按顺序提问，要像真正的面试官一样进行对话。\n")
+	sb.WriteString("2. 阶段驱动，而非计数驱动：整场面试按阶段推进（破冰→项目深挖→技术基础→开放题→结束），每个阶段根据候选人回答质量动态决定深度和轮数。\n")
+	sb.WriteString("3. 简历即线索，追问即核心：简历中提到的每段经历、每项技术都必须被追问验证，而不是泛泛而谈。追问深度取决于候选人回答的真实性。\n")
+	sb.WriteString("4. 一次只问一个问题：等候选人回答完毕后，根据回答质量决定是追问细节还是切换话题。\n\n")
+
+	sb.WriteString("## 面试阶段规划\n\n")
+
+	sb.WriteString("### 阶段 1：破冰与自我介绍（1 轮）\n")
+	sb.WriteString("- 用一句友好的开场白提及候选人的核心经历，然后请候选人做自我介绍。\n")
+	sb.WriteString("- 观察候选人的表达结构、逻辑性、重点选择。\n\n")
+
+	sb.WriteString("### 阶段 2：项目深挖与真实性验证（3-5 轮追问）\n")
+	sb.WriteString("- 从简历中最核心的项目切入，依次追问：\n")
+	sb.WriteString("  - 项目的背景和你的具体职责\n")
+	sb.WriteString("  - 技术选型的原因（为什么用X而不用Y）\n")
+	sb.WriteString("  - 遇到的最大技术挑战及解决方案\n")
+	sb.WriteString("  - 项目成果的量化指标（性能提升、用户量、稳定性等）\n")
+	sb.WriteString("- 如果候选人回答模糊或回避细节，追问具体实现，验证是否真正参与。\n")
+	sb.WriteString("- 如果回答清晰有深度，可以快速过渡到下一个项目或技术点。\n\n")
+
+	sb.WriteString("### 阶段 3：技术基础的情景化考察（2-3 轮）\n")
+	sb.WriteString("- 结合候选人简历中的技术栈，设计情景化问题而非纯八股文。\n")
+	sb.WriteString("- 例如：\"你在项目中用了Redis缓存，能说说你们的缓存失效策略是怎么设计的吗？遇到过缓存穿透的问题吗？\"\n")
+	sb.WriteString("- 追问方向：原理理解 → 实际应用场景 → 边界条件和异常处理。\n\n")
+
+	sb.WriteString("### 阶段 4：工程素养与开放题（1-2 轮）\n")
+	sb.WriteString("- 问一个开放性问题，考察候选人的工程思维和学习能力。\n")
+	sb.WriteString("- 例如：\"如果让你重新做这个项目，你会在架构上做哪些改变？\"或\"你最近关注的技术趋势是什么？\"\n")
+	sb.WriteString("- 观察候选人的思考深度、技术视野、自我反思能力。\n\n")
+
+	sb.WriteString("### 阶段 5：结束与候选人提问（1 轮）\n")
+	sb.WriteString("- 简要总结面试亮点，然后问候选人：\"你有什么想问我的吗？\"\n")
+	sb.WriteString("- 无论候选人是否提问，都友好结束面试。\n\n")
+
+	sb.WriteString("## 追问决策引擎\n")
+	sb.WriteString("- 回答具体且有深度 → 给予肯定，快速进入下一个话题\n")
+	sb.WriteString("- 回答模糊但方向正确 → 追问细节，引导候选人展开\n")
+	sb.WriteString("- 回答明显错误 → 温和指出，给候选人补充机会\n")
+	sb.WriteString("- 回答过于简短 → 追问\"能再具体说说吗？\"或\"能举个例子吗？\"\n")
+	sb.WriteString("- 回答明显背诵痕迹 → 追问实际应用和变体场景\n\n")
+
+	sb.WriteString("## 绝对禁止的行为\n")
+	sb.WriteString("- 禁止提及\"第X题\"、\"共N题\"、\"让我们进入下一题\"等考试化语言\n")
+	sb.WriteString("- 禁止一次性抛出多个问题\n")
+	sb.WriteString("- 禁止跳过自我介绍阶段直接问技术题\n")
+	sb.WriteString("- 禁止忽略简历内容而问泛泛的八股文\n")
+	sb.WriteString("- 禁止在候选人回答后不给任何反馈就直接问下一个问题\n")
+	sb.WriteString("- 禁止使用 Markdown、列表标题或代码块格式\n\n")
+
+	if profile != nil {
+		sb.WriteString("## 简历数据\n")
+		if s := strings.TrimSpace(profile.Summary); s != "" {
+			fmt.Fprintf(&sb, "候选人背景：%s\n", s)
+		}
+		if len(profile.Skills) > 0 {
+			fmt.Fprintf(&sb, "核心技术栈：%s\n", strings.Join(profile.Skills, "、"))
+		}
+		if len(profile.Projects) > 0 {
+			fmt.Fprintf(&sb, "重点项目经历：%s\n", strings.Join(profile.Projects, "；"))
+		}
+		if len(profile.Strengths) > 0 {
+			fmt.Fprintf(&sb, "简历优势：%s\n", strings.Join(profile.Strengths, "、"))
+		}
+		if len(profile.WeakSignals) > 0 {
+			fmt.Fprintf(&sb, "简历薄弱信号：%s（请重点追问验证）\n", strings.Join(profile.WeakSignals, "、"))
+		}
 	}
-	var lines []string
-	if s := strings.TrimSpace(profile.Summary); s != "" {
-		lines = append(lines, fmt.Sprintf("候选人背景：%s。", s))
-	}
-	if len(profile.Skills) > 0 {
-		lines = append(lines, fmt.Sprintf("候选人核心技术栈：%s。", strings.Join(profile.Skills, "、")))
-	}
-	if len(profile.Projects) > 0 {
-		lines = append(lines, fmt.Sprintf("候选人重点项目经历：%s。", strings.Join(profile.Projects, "；")))
-	}
-	if len(profile.Strengths) > 0 {
-		lines = append(lines, fmt.Sprintf("简历体现的优势：%s。", strings.Join(profile.Strengths, "、")))
-	}
-	if len(profile.WeakSignals) > 0 {
-		lines = append(lines, fmt.Sprintf("简历中潜在薄弱信号：%s。请重点追问这些方向，验证候选人真实掌握程度。", strings.Join(profile.WeakSignals, "、")))
-	}
-	if len(lines) > 0 {
-		lines = append(lines, "请围绕候选人简历经历和技术栈出题，结合岗位要求考察真实项目深度和技术理解，而非泛泛八股。")
-	}
-	return lines
+
+	return sb.String()
 }
 
 // buildRealtimeKickoffPrompt 生成进入第一题前主动唤起模型开场的文本指令。
@@ -619,9 +686,9 @@ func (s *wsInterviewSession) buildRealtimeKickoffPrompt(ctx *service.RealtimeInt
 	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
 		summary := strings.TrimSpace(ctx.ResumeProfile.Summary)
 		if summary != "" {
-			return fmt.Sprintf("现在开始这场基于候选人简历的技术面试。候选人背景：%s。请先用一句简短开场白提及候选人的核心经历，然后直接提出第 1 道针对其项目或技术栈的问题。整场共 %d 题。", summary, safeRealtimeQuestionCount(ctx))
+			return fmt.Sprintf("现在开始这场基于候选人简历的技术面试。候选人背景：%s。请用一句友好的开场白提及候选人的核心经历，然后请候选人做自我介绍。", summary)
 		}
-		return fmt.Sprintf("现在开始这场基于候选人简历的技术面试。请先用一句简短开场白，然后直接提出第 1 道针对候选人经历的问题。整场共 %d 题。", safeRealtimeQuestionCount(ctx))
+		return "现在开始这场基于候选人简历的技术面试。请用一句友好的开场白，然后请候选人做自我介绍。"
 	}
 	return fmt.Sprintf("现在开始这场中文技术面试。请先用一句简短开场白，然后直接提出第 1 道问题。整场共 %d 题。", safeRealtimeQuestionCount(ctx))
 }

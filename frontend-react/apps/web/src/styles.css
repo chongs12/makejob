@@ -1231,6 +1231,104 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.interview-mode-toggle {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  background: rgba(19, 34, 56, 0.06);
+  border-radius: 14px;
+  width: fit-content;
+}
+
+.interview-mode-pill {
+  height: 38px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #566a84;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.interview-mode-pill:hover {
+  color: #1d2c3f;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.interview-mode-pill.is-active {
+  background: linear-gradient(135deg, #ffb316 0%, #f0821e 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(240, 130, 30, 0.28);
+}
+
+.interview-pdf-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 100px;
+  padding: 20px;
+  border: 2px dashed rgba(19, 34, 56, 0.18);
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.8);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.interview-pdf-dropzone:hover {
+  border-color: rgba(240, 130, 30, 0.4);
+  background: rgba(255, 245, 214, 0.4);
+}
+
+.interview-pdf-dropzone.is-drag-over {
+  border-color: #f0821e;
+  background: rgba(255, 245, 214, 0.7);
+}
+
+.interview-pdf-dropzone.is-loading {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.interview-pdf-input {
+  display: none;
+}
+
+.interview-pdf-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.interview-pdf-hint {
+  color: #566a84;
+  font-size: 14px;
+}
+
+.interview-pdf-status {
+  color: #1d2c3f;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.interview-pdf-error {
+  margin: -4px 0 0;
+  color: #e74c3c;
+  font-size: 13px;
+}
+
 .interview-report-metrics,
 .interview-dimension-grid,
 .interview-overview-stats {

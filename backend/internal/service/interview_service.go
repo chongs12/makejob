@@ -27,15 +27,15 @@ type InterviewService interface {
 	GetRealtimeContext(ctx context.Context, userID, interviewID uint) (*RealtimeInterviewContext, error)
 	BindRealtimeDialog(ctx context.Context, userID, interviewID uint, dialogID string) error
 	AppendRealtimeUserAnswer(ctx context.Context, userID, interviewID uint, answer string) error
-	AppendRealtimeAssistantReply(ctx context.Context, userID, interviewID uint, reply string) (*ai.InterviewQuestion, int, error)
+	AppendRealtimeAssistantReply(ctx context.Context, userID, interviewID uint, reply string) (*ai.InterviewQuestion, int, bool, error)
 }
 
 // CreateInterviewRequest 创建面试请求DTO
 type CreateInterviewRequest struct {
 	IndustryCode   string   `json:"industry_code" binding:"required"`
-	Difficulty     string   `json:"difficulty" binding:"required,oneof=easy medium hard mixed"`
+	Difficulty     string   `json:"difficulty" binding:"omitempty,oneof=easy medium hard mixed"`
 	Topics         []string `json:"topics"`
-	QuestionCount  int      `json:"question_count" binding:"required,min=3,max=20"`
+	QuestionCount  int      `json:"question_count" binding:"omitempty,min=3,max=20"`
 	Live2DModelKey string   `json:"live2d_model_key"`
 	InterviewMode  string   `json:"interview_mode" binding:"omitempty,oneof=general resume_driven"`
 	ResumeText     string   `json:"resume_text"`

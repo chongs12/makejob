@@ -5,6 +5,9 @@ export interface InterviewConfigForm {
   questionCount: string
   topicsText: string
   live2dModelKey: string
+  interviewMode: 'general' | 'resume_driven'
+  resumeText: string
+  jobDescription: string
 }
 
 export interface InterviewQuestion {
@@ -54,10 +57,13 @@ export interface InterviewCodingDiagnosis {
 
 export interface InterviewCreatePayload {
   industry_code: string
-  difficulty: string
-  topics: string[]
-  question_count: number
+  difficulty?: string
+  topics?: string[]
+  question_count?: number
   live2d_model_key?: string
+  interview_mode?: 'general' | 'resume_driven'
+  resume_text?: string
+  job_description?: string
 }
 
 export interface InterviewCreateResponse {

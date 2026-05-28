@@ -1,5 +1,5 @@
-import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import type { DragEvent, FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { extractErrorMessage } from '@makejob/api-client'
@@ -25,7 +25,36 @@ import {
   interviewStatusLabel,
   parseInterviewTopics,
 } from './interviewHelpers'
-import type { InterviewConfigForm } from './interviewTypes'
+import type { InterviewConfigForm, InterviewCreatePayload } from './interviewTypes'
+
+const PDF_MAX_SIZE_MB = 10
+const PDF_MAX_BYTES = PDF_MAX_SIZE_MB * 1024 * 1024
+
+/**
+ * 使用 pdfjs-dist 从 PDF 文件中提取纯文本内容。
+ */
+async function extractTextFromPDF(file: File): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.mjs',
+    import.meta.url,
+  ).toString()
+
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+  const chunks: string[] = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const pageText = content.items.map((item) => ('str' in item ? item.str : '')).join(' ')
+    if (pageText.trim()) {
+      chunks.push(pageText)
+    }
+  }
+
+  return chunks.join('\n').trim()
+}
 
 /**
  * 渲染 AI 面试入口页，承接创建会话与历史记录查看。
@@ -38,6 +67,11 @@ export function InterviewHubPage() {
   const [form, setForm] = useState<InterviewConfigForm>(() => buildInitialInterviewForm())
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
   const [message, setMessage] = useState('先选择目标方向，再开始这场文本模拟面试。')
+  const [pdfFileName, setPdfFileName] = useState('')
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfError, setPdfError] = useState('')
+  const [pdfDragOver, setPdfDragOver] = useState(false)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
   const industriesQuery = useFrontendIndustriesQuery()
 
   const historyQuery = useQuery({
@@ -55,12 +89,7 @@ export function InterviewHubPage() {
   const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
 
   const createMutation = useMutation({
-    mutationFn: (payload: {
-      industry_code: string
-      difficulty: string
-      topics: string[]
-      question_count: number
-    }) => createInterviewRequest(accessToken as string, payload),
+    mutationFn: (payload: InterviewCreatePayload) => createInterviewRequest(accessToken as string, payload),
     onSuccess: async (data) => {
       setMessage('面试会话已创建，正在进入面试页。')
       await invalidateInterviewHistoryQueries(queryClient)
@@ -109,6 +138,57 @@ export function InterviewHubPage() {
   }
 
   /**
+   * 处理 PDF 文件选择，提取文本并填入简历字段。
+   */
+  const handlePdfFile = useCallback(async (file: File) => {
+    setPdfError('')
+    setPdfFileName('')
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setPdfError('请上传 PDF 格式的文件。')
+      return
+    }
+    if (file.size > PDF_MAX_BYTES) {
+      setPdfError(`文件大小不能超过 ${PDF_MAX_SIZE_MB}MB。`)
+      return
+    }
+
+    setPdfLoading(true)
+    setPdfFileName(file.name)
+    try {
+      const text = await extractTextFromPDF(file)
+      if (!text || text.length < 20) {
+        setPdfError('未能从 PDF 中提取到有效文本，请检查文件或手动粘贴简历内容。')
+        setPdfFileName('')
+        return
+      }
+      setForm((current) => ({ ...current, resumeText: text }))
+      setMessage(`已从 "${file.name}" 提取 ${text.length} 个字符，可直接开始面试。`)
+    } catch {
+      setPdfError('PDF 解析失败，请尝试手动粘贴简历内容。')
+      setPdfFileName('')
+    } finally {
+      setPdfLoading(false)
+    }
+  }, [])
+
+  const handlePdfDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setPdfDragOver(false)
+    const file = event.dataTransfer.files[0]
+    if (file) {
+      handlePdfFile(file)
+    }
+  }, [handlePdfFile])
+
+  const handlePdfInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      handlePdfFile(file)
+    }
+  }, [handlePdfFile])
+
+  /**
    * 提交面试配置表单，并创建新的 AI 面试会话。
    */
   async function handleCreateInterview(event: FormEvent<HTMLFormElement>) {
@@ -119,20 +199,37 @@ export function InterviewHubPage() {
       return
     }
 
-    const topics = parseInterviewTopics(form.topicsText)
-    if (topics.length === 0) {
-      setMessage(`至少填写一个主题，例如 ${buildDefaultInterviewTopics(effectiveIndustryCode).split(',')[0]}。`)
-      return
+    const isResumeMode = form.interviewMode === 'resume_driven'
+
+    if (isResumeMode) {
+      if (form.resumeText.trim().length < 50) {
+        setMessage('简历文本至少需要 50 个字符，请粘贴你的简历内容。')
+        return
+      }
+    } else {
+      const topics = parseInterviewTopics(form.topicsText)
+      if (topics.length === 0) {
+        setMessage(`至少填写一个主题，例如 ${buildDefaultInterviewTopics(effectiveIndustryCode).split(',')[0]}。`)
+        return
+      }
     }
 
     setMessage('Ariu 正在准备你的第一道面试题...')
     try {
       await createMutation.mutateAsync({
         industry_code: effectiveIndustryCode,
-        difficulty: form.difficulty,
-        topics,
-        question_count: Number(form.questionCount) || 5,
         live2d_model_key: readSelectedLive2DModelKey('interview', effectiveIndustryCode),
+        ...(isResumeMode
+          ? {
+              interview_mode: 'resume_driven',
+              resume_text: form.resumeText.trim(),
+              job_description: form.jobDescription.trim() || undefined,
+            }
+          : {
+              difficulty: form.difficulty,
+              topics: parseInterviewTopics(form.topicsText),
+              question_count: Number(form.questionCount) || 5,
+            }),
       })
     } catch {
       if (!useAuthStore.getState().accessToken) {
@@ -190,9 +287,26 @@ export function InterviewHubPage() {
           <div className="companion-card-head">
             <div>
               <span className="section-kicker">创建面试</span>
-              <h2>先定难度、题量和想覆盖的主题</h2>
+              <h2>{form.interviewMode === 'resume_driven' ? '上传简历，AI 围绕你的经历出题' : '先定难度、题量和想覆盖的主题'}</h2>
             </div>
             <span className="companion-card-note">当前行业：{effectiveIndustryLabel}</span>
+          </div>
+
+          <div className="interview-mode-toggle">
+            <button
+              type="button"
+              className={`interview-mode-pill ${form.interviewMode === 'general' ? 'is-active' : ''}`}
+              onClick={() => setForm((current) => ({ ...current, interviewMode: 'general' }))}
+            >
+              知识练习
+            </button>
+            <button
+              type="button"
+              className={`interview-mode-pill ${form.interviewMode === 'resume_driven' ? 'is-active' : ''}`}
+              onClick={() => setForm((current) => ({ ...current, interviewMode: 'resume_driven' }))}
+            >
+              实战面试
+            </button>
           </div>
 
           <form className="stack-form" onSubmit={handleCreateInterview}>
@@ -215,29 +329,33 @@ export function InterviewHubPage() {
                 </select>
               </label>
 
-              <label className="field">
-                <span>难度</span>
-                <select
-                  value={form.difficulty}
-                  onChange={(event) => setForm((current) => ({ ...current, difficulty: event.target.value }))}
-                >
-                  <option value="easy">{interviewDifficultyLabel('easy')}</option>
-                  <option value="medium">{interviewDifficultyLabel('medium')}</option>
-                  <option value="hard">{interviewDifficultyLabel('hard')}</option>
-                  <option value="mixed">{interviewDifficultyLabel('mixed')}</option>
-                </select>
-              </label>
+              {form.interviewMode !== 'resume_driven' ? (
+                <>
+                  <label className="field">
+                    <span>难度</span>
+                    <select
+                      value={form.difficulty}
+                      onChange={(event) => setForm((current) => ({ ...current, difficulty: event.target.value }))}
+                    >
+                      <option value="easy">{interviewDifficultyLabel('easy')}</option>
+                      <option value="medium">{interviewDifficultyLabel('medium')}</option>
+                      <option value="hard">{interviewDifficultyLabel('hard')}</option>
+                      <option value="mixed">{interviewDifficultyLabel('mixed')}</option>
+                    </select>
+                  </label>
 
-              <label className="field">
-                <span>题量</span>
-                <input
-                  type="number"
-                  min={3}
-                  max={20}
-                  value={form.questionCount}
-                  onChange={(event) => setForm((current) => ({ ...current, questionCount: event.target.value }))}
-                />
-              </label>
+                  <label className="field">
+                    <span>题量</span>
+                    <input
+                      type="number"
+                      min={3}
+                      max={20}
+                      value={form.questionCount}
+                      onChange={(event) => setForm((current) => ({ ...current, questionCount: event.target.value }))}
+                    />
+                  </label>
+                </>
+              ) : null}
 
               {industriesQuery.isError ? (
                 <AsyncInlineState
@@ -248,15 +366,68 @@ export function InterviewHubPage() {
               ) : null}
             </div>
 
-            <label className="field">
-              <span>主题（逗号或换行分隔）</span>
-              <textarea
-                rows={4}
-                value={form.topicsText}
-                onChange={(event) => setForm((current) => ({ ...current, topicsText: event.target.value }))}
-                placeholder={`例如：${buildDefaultInterviewTopics(effectiveIndustryCode)}`}
-              />
-            </label>
+            {form.interviewMode === 'resume_driven' ? (
+              <>
+                <div
+                  className={`interview-pdf-dropzone ${pdfDragOver ? 'is-drag-over' : ''} ${pdfLoading ? 'is-loading' : ''}`}
+                  onDragOver={(event) => { event.preventDefault(); setPdfDragOver(true) }}
+                  onDragLeave={() => setPdfDragOver(false)}
+                  onDrop={handlePdfDrop}
+                  onClick={() => pdfInputRef.current?.click()}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') pdfInputRef.current?.click() }}
+                >
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept=".pdf"
+                    className="interview-pdf-input"
+                    onChange={handlePdfInputChange}
+                  />
+                  {pdfLoading ? (
+                    <span className="interview-pdf-status">正在解析 PDF...</span>
+                  ) : pdfFileName ? (
+                    <span className="interview-pdf-status">已选择：{pdfFileName}</span>
+                  ) : (
+                    <>
+                      <span className="interview-pdf-icon">PDF</span>
+                      <span className="interview-pdf-hint">点击或拖拽上传 PDF 简历（最大 {PDF_MAX_SIZE_MB}MB）</span>
+                    </>
+                  )}
+                </div>
+                {pdfError ? <p className="interview-pdf-error">{pdfError}</p> : null}
+
+                <label className="field">
+                  <span>简历文本（必填，可手动粘贴或上传 PDF 自动填入）</span>
+                  <textarea
+                    rows={8}
+                    value={form.resumeText}
+                    onChange={(event) => setForm((current) => ({ ...current, resumeText: event.target.value }))}
+                    placeholder={'请粘贴你的简历内容，AI 将根据你的项目经历和技术栈出题。\n\n示例：\n3 年 Go 后端开发经验，负责过微服务架构设计和性能优化。核心技术栈：Go、gRPC、Redis、MySQL、Kubernetes。主导过 XX 项目，将接口延迟从 500ms 优化到 120ms。'}
+                  />
+                </label>
+                <label className="field">
+                  <span>目标岗位描述（可选）</span>
+                  <textarea
+                    rows={3}
+                    value={form.jobDescription}
+                    onChange={(event) => setForm((current) => ({ ...current, jobDescription: event.target.value }))}
+                    placeholder="粘贴目标岗位的 JD，AI 会结合岗位要求出更有针对性的题目。"
+                  />
+                </label>
+              </>
+            ) : (
+              <label className="field">
+                <span>主题（逗号或换行分隔）</span>
+                <textarea
+                  rows={4}
+                  value={form.topicsText}
+                  onChange={(event) => setForm((current) => ({ ...current, topicsText: event.target.value }))}
+                  placeholder={`例如：${buildDefaultInterviewTopics(effectiveIndustryCode)}`}
+                />
+              </label>
+            )}
 
             <div className="page-actions">
               <button className="primary-button" type="submit" disabled={createMutation.isPending}>
@@ -273,7 +444,7 @@ export function InterviewHubPage() {
               ) : null}
             </div>
             <p className="companion-composer-message">
-              {message || (accessToken ? '配置完成后即可开始文本面试。' : '登录后可创建和查看你的面试会话。')}
+              {message || (accessToken ? '配置完成后即可开始面试。' : '登录后可创建和查看你的面试会话。')}
             </p>
           </form>
         </section>
