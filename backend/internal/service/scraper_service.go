@@ -11,6 +11,7 @@ import (
 
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
 )
@@ -31,12 +32,14 @@ type ScraperService interface {
 
 // scraperService 爬虫服务实现
 type scraperService struct {
-	provider     scraper.ScraperProvider
-	cleaner      scraper.QuestionCleaner
-	scraperRepo  repository.ScraperTaskRepository
-	industryRepo repository.IndustryRepository
-	categoryRepo repository.AdminCategoryRepository
-	questionRepo repository.AdminQuestionRepository
+	provider      scraper.ScraperProvider
+	cleaner       scraper.QuestionCleaner
+	scraperRepo   repository.ScraperTaskRepository
+	industryRepo  repository.IndustryRepository
+	categoryRepo  repository.AdminCategoryRepository
+	questionRepo  repository.AdminQuestionRepository
+	taskPublisher mq.TaskPublisher
+	asyncEnabled  bool
 }
 
 // NewScraperService 创建爬虫服务实例
@@ -47,8 +50,9 @@ func NewScraperService(
 	industryRepo repository.IndustryRepository,
 	categoryRepo repository.AdminCategoryRepository,
 	questionRepo repository.AdminQuestionRepository,
+	deps ...interface{},
 ) ScraperService {
-	return &scraperService{
+	service := &scraperService{
 		provider:     provider,
 		cleaner:      cleaner,
 		scraperRepo:  scraperRepo,
@@ -56,6 +60,13 @@ func NewScraperService(
 		categoryRepo: categoryRepo,
 		questionRepo: questionRepo,
 	}
+	for _, dep := range deps {
+		if option, ok := dep.(AsyncDispatchOption); ok {
+			service.asyncEnabled = option.Enabled
+			service.taskPublisher = option.Publisher
+		}
+	}
+	return service
 }
 
 // Search 搜索面经
@@ -132,6 +143,9 @@ func (s *scraperService) CreateImportTask(ctx context.Context, req scraper.Impor
 		task.SourceURL = "manual://question-import"
 	}
 	if err := s.scraperRepo.Create(ctx, task); err != nil {
+		return nil, err
+	}
+	if err := s.publishScraperTaskMessage(ctx, task); err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -291,6 +305,23 @@ func (s *scraperService) executeImportTask(ctx context.Context, task *model.Scra
 	return nil
 }
 
+// ProcessImportTask 按任务 ID 执行爬虫导入任务，供 RabbitMQ 消费者直接调用。
+func (s *scraperService) ProcessImportTask(ctx context.Context, taskID uint) error {
+	if s.scraperRepo == nil {
+		return fmt.Errorf("scraper task repository is required")
+	}
+
+	task, shouldRun, err := s.scraperRepo.ClaimByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task == nil || !shouldRun {
+		return nil
+	}
+
+	return s.executeImportTask(ctx, task)
+}
+
 // failScraperTask 将执行失败的任务写回失败状态，确保后台任务页可以直接看到失败原因。
 func (s *scraperService) failScraperTask(ctx context.Context, task *model.ScraperTask, taskErr error) error {
 	now := time.Now()
@@ -443,10 +474,73 @@ func (s *scraperService) RetryTask(ctx context.Context, taskID uint) (*model.Scr
 	if err := s.scraperRepo.Update(ctx, task); err != nil {
 		return nil, err
 	}
+	if err := s.publishScraperTaskMessage(ctx, task); err != nil {
+		return nil, err
+	}
 	return task, nil
 }
 
 // GetSources 获取支持的数据源列表
 func (s *scraperService) GetSources(ctx context.Context) ([]scraper.Source, error) {
 	return s.provider.GetSupportedSources(), nil
+}
+
+// publishScraperTaskMessage 在启用 RabbitMQ 时按任务类型投递对应消息，未启用时保持数据库待处理状态供轮询 worker 消费。
+func (s *scraperService) publishScraperTaskMessage(ctx context.Context, task *model.ScraperTask) error {
+	if !s.asyncEnabled || s.taskPublisher == nil || task == nil {
+		return nil
+	}
+
+	spec, payloadBytes, taskType, source, idempotencyKey, err := buildScraperTaskDispatchPayload(task)
+	if err != nil {
+		return err
+	}
+	if taskType == "" {
+		return nil
+	}
+	message := buildAsyncTaskMessage(
+		taskType,
+		0,
+		"scraper_task",
+		task.ID,
+		source,
+		idempotencyKey,
+		payloadBytes,
+	)
+	if err := s.taskPublisher.PublishTask(ctx, spec.RoutingKey, message); err != nil {
+		return fmt.Errorf("投递异步任务失败: %w", err)
+	}
+	return nil
+}
+
+// buildScraperTaskDispatchPayload 根据 scraper_tasks 中的任务类型构造对应 RabbitMQ 投递载荷。
+func buildScraperTaskDispatchPayload(task *model.ScraperTask) (mq.QueueSpec, []byte, string, string, string, error) {
+	if task == nil {
+		return mq.QueueSpec{}, nil, "", "", "", fmt.Errorf("task is nil")
+	}
+
+	switch strings.TrimSpace(task.TaskType) {
+	case scraper.TaskTypeImportQuestions:
+		spec, ok := mq.QueueSpecByTaskType(mq.TaskTypeScraperImport)
+		if !ok {
+			return mq.QueueSpec{}, nil, "", "", "", fmt.Errorf("未找到爬虫导入队列配置")
+		}
+		payloadBytes, err := json.Marshal(mq.ScraperImportPayload{ScraperTaskID: task.ID})
+		if err != nil {
+			return mq.QueueSpec{}, nil, "", "", "", fmt.Errorf("序列化爬虫导入投递消息失败: %w", err)
+		}
+		return spec, payloadBytes, mq.TaskTypeScraperImport, "scraper-service", fmt.Sprintf("scraper-import:%d", task.ID), nil
+	case scraper.TaskTypeQuestionPipelineBuild:
+		spec, ok := mq.QueueSpecByTaskType(mq.TaskTypeAdminQuestionPipeline)
+		if !ok {
+			return mq.QueueSpec{}, nil, "", "", "", fmt.Errorf("未找到题目流水线队列配置")
+		}
+		payloadBytes, err := json.Marshal(mq.AdminQuestionPipelinePayload{ScraperTaskID: task.ID})
+		if err != nil {
+			return mq.QueueSpec{}, nil, "", "", "", fmt.Errorf("序列化题目流水线投递消息失败: %w", err)
+		}
+		return spec, payloadBytes, mq.TaskTypeAdminQuestionPipeline, "scraper-service", fmt.Sprintf("question-pipeline:%d", task.ID), nil
+	default:
+		return mq.QueueSpec{}, nil, "", "", "", nil
+	}
 }

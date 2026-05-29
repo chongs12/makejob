@@ -136,10 +136,27 @@ func isRealtimeInterviewSessionID(raw string) bool {
 	return strings.HasPrefix(strings.TrimSpace(raw), realtimeInterviewSessionPrefix)
 }
 
+// ensureRealtimeInterviewReady 校验实时面试是否已经进入可交互状态，避免 preparing 阶段提前进入实时问答。
+func ensureRealtimeInterviewReady(interview *model.MockInterview) error {
+	if interview == nil {
+		return common.NewBusinessError(common.CodeNotFound, "面试记录不存在")
+	}
+	if interview.IsPreparing() {
+		return common.NewBusinessError(common.CodeBadRequest, "简历解析中，请稍后开始面试")
+	}
+	if !interview.IsOngoing() {
+		return common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	}
+	return nil
+}
+
 // GetRealtimeContext 返回恢复实时语音面试会话所需的上下文数据。
 func (s *interviewService) GetRealtimeContext(ctx context.Context, userID, interviewID uint) (*RealtimeInterviewContext, error) {
 	interview, messages, err := s.loadInterviewWithMessages(ctx, userID, interviewID)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureRealtimeInterviewReady(interview); err != nil {
 		return nil, err
 	}
 
@@ -199,8 +216,8 @@ func (s *interviewService) AppendRealtimeUserAnswer(ctx context.Context, userID,
 	if err != nil {
 		return err
 	}
-	if !interview.IsOngoing() {
-		return common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	if err := ensureRealtimeInterviewReady(interview); err != nil {
+		return err
 	}
 
 	currentQuestion := resolveCurrentQuestionFromStoredMessages(messages)
@@ -240,8 +257,8 @@ func (s *interviewService) AppendRealtimeAssistantReply(ctx context.Context, use
 	if err != nil {
 		return nil, 0, false, err
 	}
-	if !interview.IsOngoing() {
-		return nil, 0, false, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
+	if err := ensureRealtimeInterviewReady(interview); err != nil {
+		return nil, 0, false, err
 	}
 
 	metadata := parseRealtimeInterviewMetadata(interview.AIFeedback, interview.TotalQuestions)

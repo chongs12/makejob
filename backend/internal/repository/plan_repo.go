@@ -76,7 +76,8 @@ func (r *planRepository) GetByID(ctx context.Context, id uint) (*model.LearningP
 func (r *planRepository) GetCurrentByUser(ctx context.Context, userID uint) (*model.LearningPlan, error) {
 	var plan model.LearningPlan
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND status = ?", userID, model.PlanStatusActive).
+		Where("user_id = ? AND status IN ?", userID, []string{model.PlanStatusGenerating, model.PlanStatusActive}).
+		Order("created_at DESC, id DESC").
 		Preload("Tasks", func(db *gorm.DB) *gorm.DB {
 			return db.Order("sort_order ASC")
 		}).

@@ -206,7 +206,9 @@ function growthPlanStatusLabel(status: string): string {
  */
 function growthInterviewStatusLabel(status: string): string {
   const labelMap: Record<string, string> = {
+    preparing: '准备中',
     ongoing: '进行中',
+    report_generating: '报告生成中',
     completed: '已完成',
     cancelled: '已取消',
   }
@@ -931,7 +933,7 @@ export default function GrowthPage() {
                       <p>题目数：{interview.total_questions}</p>
                       <p>开始时间：{formatGrowthDateTime(interview.created_at)}</p>
                       <div className="page-actions">
-                        <Link className="secondary-link" to={interview.status === 'ongoing' ? '/interview/$interviewId' : '/interview/$interviewId/report'} params={{ interviewId: String(interview.id) }}>
+                        <Link className="secondary-link" to={interview.status === 'ongoing' || interview.status === 'preparing' ? '/interview/$interviewId' : '/interview/$interviewId/report'} params={{ interviewId: String(interview.id) }}>
                           查看详情
                         </Link>
                       </div>

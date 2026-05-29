@@ -7,7 +7,9 @@ import (
 
 // InterviewStatus 面试状态枚举
 const (
+	InterviewStatusPreparing       = "preparing"         // 准备中
 	InterviewStatusOngoing   = "ongoing"   // 进行中
+	InterviewStatusReportGenerating = "report_generating" // 报告生成中
 	InterviewStatusCompleted = "completed" // 已完成
 	InterviewStatusCancelled = "cancelled" // 已取消
 )
@@ -41,6 +43,16 @@ func (MockInterview) TableName() string {
 // IsOngoing 判断面试是否进行中
 func (m *MockInterview) IsOngoing() bool {
 	return m.Status == InterviewStatusOngoing
+}
+
+// IsPreparing 判断面试是否仍处于准备阶段。
+func (m *MockInterview) IsPreparing() bool {
+	return m.Status == InterviewStatusPreparing
+}
+
+// IsReportGenerating 判断面试是否正在异步生成报告。
+func (m *MockInterview) IsReportGenerating() bool {
+	return m.Status == InterviewStatusReportGenerating
 }
 
 // IsCompleted 判断面试是否已完成

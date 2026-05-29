@@ -23,6 +23,7 @@ import (
 	"makejob-backend/internal/metrics"
 	"makejob-backend/internal/middleware"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
 	scraperMock "makejob-backend/internal/scraper/mock"
@@ -72,6 +73,7 @@ type AppDependencies struct {
 	PlanTaskDiagnosisRepo repository.PlanTaskDiagnosisRepository
 	StudyLogRepo          repository.StudyLogRepository
 	LearningArchiveRepo   repository.LearningArchiveRepository
+	AsyncTaskRepo         repository.AsyncTaskRepository
 
 	AuthService       service.AuthService
 	MembershipService service.MembershipService
@@ -82,6 +84,7 @@ type AppDependencies struct {
 	GrowthService     service.GrowthService
 	Live2DService     service.Live2DService
 	CasbinService     service.CasbinService
+	TaskPublisher     mq.TaskPublisher
 
 	AuthHandler       *handler.AuthHandler
 	MembershipHandler *handler.MembershipHandler
@@ -137,6 +140,9 @@ func main() {
 	}
 
 	deps := initDependencies(db, cfg)
+	if deps.TaskPublisher != nil {
+		defer deps.TaskPublisher.Close()
+	}
 
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
@@ -202,6 +208,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		deps.PlanTaskDiagnosisRepo = repository.NewPlanTaskDiagnosisRepository(db)
 		deps.StudyLogRepo = repository.NewStudyLogRepository(db)
 		deps.LearningArchiveRepo = repository.NewLearningArchiveRepository(db)
+		deps.AsyncTaskRepo = repository.NewAsyncTaskRepository(db)
 
 		industryRepo = repository.NewIndustryRepository(db)
 		adminConfigRepo := repository.NewAdminConfigRepository(db)
@@ -215,6 +222,17 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		ttsRepo := repository.NewTTSConfigRepository(db)
 		mockInterviewRepo := repository.NewMockInterviewRepository(db)
 		scraperTaskRepo := repository.NewScraperTaskRepository(db)
+		taskPublisher, publisherErr := mq.NewTaskPublisher(cfg.RabbitMQ, mq.DefaultQueueSpecs())
+		if publisherErr != nil {
+			applogger.Warn("RabbitMQ publisher init failed, fallback to local async mode", zap.Error(publisherErr))
+		} else {
+			deps.TaskPublisher = taskPublisher
+		}
+		asyncOption := service.AsyncDispatchOption{
+			Enabled:       cfg.RabbitMQ.Enabled && deps.TaskPublisher != nil,
+			Publisher:     deps.TaskPublisher,
+			AsyncTaskRepo: deps.AsyncTaskRepo,
+		}
 		runtimeBuilder := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults())
 		aiClient := aiRuntime.NewRuntimeManager(runtimeBuilder).BuildDynamicClient()
 		live2DDirectiveService := service.NewLive2DDirectiveService(live2DRepo, aiClient.Live2DDirector)
@@ -235,6 +253,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			live2DDirectiveService,
 			service.RealtimeInterviewServiceOption{Enabled: cfg.Volcengine.Realtime.Enabled},
 			aiClient.ResumeParser,
+			asyncOption,
 		)
 		deps.QuestionService = service.NewQuestionService(
 			deps.QuestionRepo,
@@ -257,6 +276,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			deps.PlanTaskDiagnosisRepo,
 			aiClient.QuizAnalyzer,
 			industryRepo,
+			asyncOption,
 		)
 		ttsProvider, err := ttsfactory.NewTTSProviderWithConfig("", cfg)
 		if err != nil {
@@ -305,6 +325,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			scraperProvider,
 			questionCleaner,
 			cfg.AIRuntimeDefaults(),
+			asyncOption,
 		)
 		deps.AdminHandler = handler.NewAdminHandler(adminService)
 
@@ -315,6 +336,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			industryRepo,
 			adminCategoryRepo,
 			adminQuestionRepo,
+			asyncOption,
 		)
 		deps.ScraperHandler = handler.NewScraperHandler(scraperService)
 	}

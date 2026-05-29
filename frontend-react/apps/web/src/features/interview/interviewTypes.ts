@@ -69,6 +69,9 @@ export interface InterviewCreatePayload {
 export interface InterviewCreateResponse {
   interview_id: number
   status: string
+  async_task_id?: number
+  task_status?: string
+  task_error?: string
   first_question?: InterviewQuestion | null
   created_at: string
 }
@@ -95,6 +98,9 @@ export interface InterviewDetailResponse {
   id: number
   industry_code: string
   status: string
+  async_task_id?: number
+  task_status?: string
+  task_error?: string
   score: number
   total_questions: number
   messages: InterviewMessage[]
@@ -123,6 +129,10 @@ export interface InterviewNextQuestionResponse {
 
 export interface InterviewReportResponse {
   interview_id: number
+  status: string
+  async_task_id?: number
+  task_status?: string
+  task_error?: string
   report?: InterviewReport | null
   duration_seconds: number
   completed_at: string

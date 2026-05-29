@@ -88,6 +88,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Live2DModel{},
 		&TTSConfig{},
 		&ScraperTask{},
+		&AsyncTask{},
 	}
 
 	for _, model := range models {

@@ -51,6 +51,14 @@ func (s *scraperTaskRepositoryStub) ClaimNextPending(_ context.Context, _ string
 	return nil, nil
 }
 
+// ClaimByID 模拟按 ID 领取指定任务，供 RabbitMQ 消费相关测试满足接口要求。
+func (s *scraperTaskRepositoryStub) ClaimByID(_ context.Context, _ uint) (*model.ScraperTask, bool, error) {
+	if s.task == nil {
+		return nil, false, nil
+	}
+	return s.task, true, nil
+}
+
 type scraperIndustryRepositoryStub struct {
 	industry *model.Industry
 }

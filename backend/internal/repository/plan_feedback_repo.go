@@ -13,6 +13,7 @@ import (
 // PlanTaskFeedbackRepository 定义学习任务反馈的数据访问接口。
 type PlanTaskFeedbackRepository interface {
 	Create(ctx context.Context, feedback *model.LearningTaskFeedback) error
+	GetByID(ctx context.Context, id uint) (*model.LearningTaskFeedback, error)
 }
 
 // planTaskFeedbackRepository 提供学习任务反馈仓储实现。
@@ -31,4 +32,16 @@ func (r *planTaskFeedbackRepository) Create(ctx context.Context, feedback *model
 		return fmt.Errorf("创建学习任务反馈失败: %w", err)
 	}
 	return nil
+}
+
+// GetByID 根据反馈 ID 查询学习任务反馈详情。
+func (r *planTaskFeedbackRepository) GetByID(ctx context.Context, id uint) (*model.LearningTaskFeedback, error) {
+	var feedback model.LearningTaskFeedback
+	if err := r.db.WithContext(ctx).First(&feedback, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("查询学习任务反馈失败: %w", err)
+	}
+	return &feedback, nil
 }

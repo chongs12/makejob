@@ -69,6 +69,7 @@ export function InterviewReportPage() {
     enabled: Boolean(accessToken && interviewId),
     retry: false,
     refetchOnWindowFocus: false,
+    refetchInterval: (query) => (query.state.data?.status === 'report_generating' ? 3000 : false),
   })
   const detailQuery = useQuery({
     queryKey: ['interview-report-detail', accessToken, interviewId],
@@ -294,6 +295,13 @@ export function InterviewReportPage() {
               title="报告暂不可用"
               message={reportQuery.error instanceof Error ? reportQuery.error.message : '面试报告加载失败'}
               action={<Link className="secondary-link" to="/interview/$interviewId" params={{ interviewId }}>返回面试页</Link>}
+            />
+          ) : null}
+          {reportQuery.data?.status === 'report_generating' && !report ? (
+            <AsyncEmptyState
+              title="报告生成中"
+              message={reportQuery.data.task_error || '面试已结束，系统正在补评答案、生成报告并沉淀学习档案，页面会自动刷新。'}
+              action={<Link className="secondary-link" to="/interview/$interviewId" params={{ interviewId }}>返回面试页查看状态</Link>}
             />
           ) : null}
 

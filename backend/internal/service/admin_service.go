@@ -11,6 +11,7 @@ import (
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
 )
@@ -306,6 +307,8 @@ type adminService struct {
 	scraperProvider   scraper.ScraperProvider
 	questionCleaner   scraper.QuestionCleaner
 	baseAIConfig      map[string]string
+	taskPublisher     mq.TaskPublisher
+	asyncEnabled      bool
 }
 
 // NewAdminService 创建后台管理服务。
@@ -325,8 +328,9 @@ func NewAdminService(
 	scraperProvider scraper.ScraperProvider,
 	questionCleaner scraper.QuestionCleaner,
 	baseAIConfig map[string]string,
+	deps ...interface{},
 ) AdminService {
-	return &adminService{
+	service := &adminService{
 		adminUserRepo:     adminUserRepo,
 		adminQuestionRepo: adminQuestionRepo,
 		industryRepo:      industryRepo,
@@ -343,6 +347,13 @@ func NewAdminService(
 		questionCleaner:   questionCleaner,
 		baseAIConfig:      ai.NormalizeRuntimeConfig(baseAIConfig),
 	}
+	for _, dep := range deps {
+		if option, ok := dep.(AsyncDispatchOption); ok {
+			service.asyncEnabled = option.Enabled
+			service.taskPublisher = option.Publisher
+		}
+	}
+	return service
 }
 
 func (s *adminService) GetDashboard(ctx context.Context) (*DashboardResponse, error) {

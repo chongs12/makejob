@@ -180,6 +180,13 @@ export function CompanionHubPage() {
     queryFn: () => fetchCurrentPlan(accessToken as string),
     enabled: Boolean(accessToken),
     retry: false,
+    refetchInterval: (query) => {
+      const plan = query.state.data
+      if (plan?.status === 'generating' && plan.task_status !== 'failed' && plan.task_status !== 'dead') {
+        return 3000
+      }
+      return false
+    },
   })
 
   const practiceStatsQuery = usePracticeStatsQuery(accessToken)
@@ -237,7 +244,7 @@ export function CompanionHubPage() {
       if (plan.industry_code) {
         setSelectedIndustryCode(plan.industry_code)
       }
-      setPlanFormMessage(`新计划已生成：${plan.title}`)
+      setPlanFormMessage(plan.status === 'generating' ? '学习计划任务已提交，系统正在异步生成内容，页面会自动刷新。' : `新计划已生成：${plan.title}`)
       await invalidateCompanionPlanQueries(queryClient)
     },
     onError: (error) => {
@@ -349,6 +356,7 @@ export function CompanionHubPage() {
   const progressText = currentPlanQuery.data
     ? `${Math.round(currentPlanQuery.data.progress || 0)}%`
     : (sessionSummary ? `${sessionSummary.progress}%` : '--')
+  const isPlanGenerating = currentPlanQuery.data?.status === 'generating'
   const latestCompletedTask = useMemo(() => deriveLatestCompletedTask(currentPlanQuery.data || null), [currentPlanQuery.data])
   const upcomingTasks = useMemo(() => deriveUpcomingTasks(currentPlanQuery.data || null), [currentPlanQuery.data])
   const todayGoals = useMemo(() => deriveTodayGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
@@ -582,7 +590,7 @@ export function CompanionHubPage() {
       return
     }
 
-    setPlanFormMessage('陪伴助手正在整理你的阶段计划...')
+    setPlanFormMessage('陪伴助手正在提交计划生成任务...')
     try {
       await createPlanMutation.mutateAsync(payload)
     } catch {
@@ -941,12 +949,12 @@ export function CompanionHubPage() {
                   <span className="section-kicker">今日执行</span>
                   <h2>先把今天真正要推进的任务抓出来</h2>
                 </div>
-                <span className="companion-card-note">{focusedTask ? '已找到续接任务' : '等待任务接入'}</span>
+                <span className="companion-card-note">{isPlanGenerating ? '计划生成中' : (focusedTask ? '已找到续接任务' : '等待任务接入')}</span>
               </div>
 
               <article className="timeline-item">
-                <strong>{focusedTask ? `继续「${focusedTask.title}」` : '当前还没有明确续接任务'}</strong>
-                <p>{dailyDigestText}</p>
+                <strong>{isPlanGenerating ? '当前计划正在生成中' : (focusedTask ? `继续「${focusedTask.title}」` : '当前还没有明确续接任务')}</strong>
+                <p>{isPlanGenerating ? (currentPlanQuery.data?.task_error || '系统正在结合你的目标、弱项和最近训练结果生成计划，完成后会自动把今日任务接入到这里。') : dailyDigestText}</p>
                 {focusedTask?.phase ? <p>所处阶段：{formatCompanionPhaseLabel(focusedTask.phase)}</p> : null}
                 {focusedTask?.phase_goal ? <p>阶段目标：{focusedTask.phase_goal}</p> : null}
                 {phaseAdjustmentHint ? <p>阶段调整说明：{phaseAdjustmentHint}</p> : null}
@@ -956,7 +964,7 @@ export function CompanionHubPage() {
                 {focusedTask?.collection_hint ? <p>建议题单：{resolvePracticeQuestionSetTitle(focusedTask.collection_hint)}</p> : null}
                 {focusedTask?.source_ref ? <p>来源引用：{focusedTask.source_ref}</p> : null}
                 <div className="page-actions">
-                  <button className="primary-button" type="button" onClick={() => handleContinueTask(focusedTask)}>
+                  <button className="primary-button" type="button" disabled={isPlanGenerating} onClick={() => handleContinueTask(focusedTask)}>
                     {focusedTask ? '进入陪伴页继续' : '进入陪伴页'}
                   </button>
                   {focusedTask?.collection_hint ? (
@@ -974,7 +982,7 @@ export function CompanionHubPage() {
                     </Link>
                   ) : null}
                   {focusedTask ? (
-                    <button className="secondary-button" type="button" onClick={() => void handleHubTaskStatusChange(focusedTask, 'completed')}>
+                    <button className="secondary-button" type="button" disabled={isPlanGenerating} onClick={() => void handleHubTaskStatusChange(focusedTask, 'completed')}>
                       记录反馈后完成
                     </button>
                   ) : null}
@@ -999,7 +1007,7 @@ export function CompanionHubPage() {
 
               <GoalList
                 items={todayGoals}
-                emptyText={accessToken ? '今天没有待推进任务，当前计划可能已经推进完毕。' : '登录后会在这里显示今天最该推进的任务。'}
+                emptyText={isPlanGenerating ? '计划生成完成后，这里会自动出现今天最值得先推进的任务。' : (accessToken ? '今天没有待推进任务，当前计划可能已经推进完毕。' : '登录后会在这里显示今天最该推进的任务。')}
                 onStatusChange={handleHubTaskStatusChange}
                 pendingTaskId={taskActionTaskId}
                 onContinueTask={handleContinueTask}
@@ -1027,6 +1035,12 @@ export function CompanionHubPage() {
 
                 {currentPlanQuery.data ? (
                   <>
+                    {isPlanGenerating ? (
+                      <div className="timeline-item">
+                        <strong>计划生成中</strong>
+                        <p>{currentPlanQuery.data.task_error || '系统正在异步生成完整学习计划，当前页面会自动刷新；后续拆分成独立计划服务后，这个消息契约可以保持不变。'}</p>
+                      </div>
+                    ) : null}
                     <p className="companion-empty-text">{currentPlanQuery.data.description || '当前计划暂未补充描述。'}</p>
                     {currentPlanQuery.data.phase ? <p className="companion-empty-text">当前阶段：{formatCompanionPhaseLabel(currentPlanQuery.data.phase)}</p> : null}
                     {currentPlanQuery.data.phase_goal ? <p className="companion-empty-text">阶段目标：{currentPlanQuery.data.phase_goal}</p> : null}

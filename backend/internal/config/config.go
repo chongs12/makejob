@@ -15,6 +15,7 @@ type Config struct {
 	Server         ServerConfig         `mapstructure:"server"`
 	Database       DatabaseConfig       `mapstructure:"database"`
 	Redis          RedisConfig          `mapstructure:"redis"`
+	RabbitMQ       RabbitMQConfig       `mapstructure:"rabbitmq"`
 	JWT            JWTConfig            `mapstructure:"jwt"`
 	Casbin         CasbinConfig         `mapstructure:"casbin"`
 	AI             AIConfig             `mapstructure:"ai"`
@@ -23,6 +24,16 @@ type Config struct {
 	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
 	Piston         PistonConfig         `mapstructure:"piston"`
 	Logging        LoggingConfig        `mapstructure:"logging"`
+}
+
+// RabbitMQConfig RabbitMQ 连接与消费配置。
+type RabbitMQConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	URL              string `mapstructure:"url"`
+	ManagementURL    string `mapstructure:"management_url"`
+	PrefetchCount    int    `mapstructure:"prefetch_count"`
+	PublisherConfirm bool   `mapstructure:"publisher_confirm"`
+	ReconnectSeconds int    `mapstructure:"reconnect_seconds"`
 }
 
 // LoggingConfig 日志配置
@@ -295,6 +306,14 @@ func GetConfig() *Config {
 					Host: "localhost",
 					Port: 6379,
 					DB:   0,
+				},
+				RabbitMQ: RabbitMQConfig{
+					Enabled:          true,
+					URL:              "amqp://makejob:makejob123@localhost:5672/%2Fmakejob",
+					ManagementURL:    "http://localhost:15672",
+					PrefetchCount:    8,
+					PublisherConfirm: false,
+					ReconnectSeconds: 5,
 				},
 				JWT: JWTConfig{
 					Secret:        "makejob-secret-key",

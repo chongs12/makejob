@@ -1394,7 +1394,11 @@ func (s *stubPlanRepository) GetByID(context.Context, uint) (*model.LearningPlan
 
 // GetCurrentByUser 满足接口，当前测试不依赖该行为。
 func (s *stubPlanRepository) GetCurrentByUser(context.Context, uint) (*model.LearningPlan, error) {
-	return nil, nil
+	if s.plan == nil {
+		return nil, nil
+	}
+	clone := *s.plan
+	return &clone, nil
 }
 
 // Update 记录服务层写回的学习计划。
@@ -1430,6 +1434,7 @@ func (s *stubPlanTaskRepository) Create(context.Context, *model.LearningTask) er
 // BatchCreate 记录新建任务列表。
 func (s *stubPlanTaskRepository) BatchCreate(_ context.Context, tasks []model.LearningTask) error {
 	s.createdTasks = append([]model.LearningTask(nil), tasks...)
+	s.tasks = append([]model.LearningTask(nil), tasks...)
 	return nil
 }
 
@@ -1455,6 +1460,7 @@ func (s *stubPlanTaskRepository) CountByPlanAndStatus(context.Context, uint, str
 
 // DeleteByPlan 满足接口，当前测试不依赖该行为。
 func (s *stubPlanTaskRepository) DeleteByPlan(context.Context, uint) error {
+	s.tasks = nil
 	return nil
 }
 

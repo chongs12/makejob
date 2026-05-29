@@ -104,6 +104,8 @@ export function InterviewSessionPage() {
     },
   })
   const wsRef = useRef<WebSocket | null>(null)
+  const wsCleanupTimerRef = useRef<number | null>(null)
+  const wsConnectionKeyRef = useRef('')
   const assistantTranscriptRef = useRef('')
   const recordStreamRef = useRef<MediaStream | null>(null)
   const recordAudioContextRef = useRef<AudioContext | null>(null)
@@ -134,6 +136,13 @@ export function InterviewSessionPage() {
     enabled: Boolean(accessToken && interviewId),
     retry: false,
     refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === 'preparing' || status === 'report_generating') {
+        return 3000
+      }
+      return false
+    },
   })
   const submitMutation = useMutation({
     mutationFn: (payload: SubmitInterviewAnswerPayload) => submitInterviewAnswer(accessToken as string, interviewId, payload),
@@ -184,7 +193,10 @@ export function InterviewSessionPage() {
   })
 
   const effectiveMessages = runtimeMessages.length ? runtimeMessages : (detailQuery.data?.messages || [])
-  const effectiveStatus = detailQuery.data?.status || 'ongoing'
+  const effectiveStatus = detailQuery.data?.status || ''
+  const isPreparing = effectiveStatus === 'preparing'
+  const isReportGenerating = effectiveStatus === 'report_generating'
+  const isInterviewOngoing = effectiveStatus === 'ongoing'
   const currentQuestion = useMemo(
     () => resolveCurrentInterviewQuestionFromMessages(effectiveMessages, effectiveStatus, detailQuery.data?.total_questions || 0),
     [detailQuery.data?.total_questions, effectiveMessages, effectiveStatus],
@@ -791,22 +803,76 @@ export function InterviewSessionPage() {
   }
 
   /**
+   * 取消已安排的 WebSocket 延迟关闭，避免开发模式下的 StrictMode 清理误杀刚建立的连接。
+   */
+  function cancelScheduledSocketClose(): void {
+    if (wsCleanupTimerRef.current !== null) {
+      window.clearTimeout(wsCleanupTimerRef.current)
+      wsCleanupTimerRef.current = null
+    }
+  }
+
+  /**
+   * 延迟关闭当前 WebSocket，仅在确认没有被下一轮 effect 复用时才真正断开连接。
+   */
+  function scheduleSocketClose(socket: WebSocket | null, connectionKey: string): void {
+    cancelScheduledSocketClose()
+    if (!socket) {
+      return
+    }
+
+    wsCleanupTimerRef.current = window.setTimeout(() => {
+      wsCleanupTimerRef.current = null
+      if (wsRef.current !== socket || wsConnectionKeyRef.current !== connectionKey) {
+        return
+      }
+
+      wsRef.current = null
+      wsConnectionKeyRef.current = ''
+      socket.close()
+    }, 120)
+  }
+
+  /**
    * 订阅面试 WebSocket 事件，并在页面侧同步更新题目、语音和表情状态。
    */
   useEffect(() => {
-    if (!accessToken || !interviewId) {
+    if (!accessToken || !interviewId || !detailQuery.data || !isInterviewOngoing) {
+      cancelScheduledSocketClose()
       return undefined
     }
 
-    const socket = new WebSocket(buildInterviewWebSocketUrl(interviewId, accessToken))
+    const connectionKey = `${accessToken}:${interviewId}`
+    cancelScheduledSocketClose()
+
+    let socket = wsRef.current
+    const canReuseSocket = Boolean(
+      socket
+      && wsConnectionKeyRef.current === connectionKey
+      && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN),
+    )
+    if (!canReuseSocket) {
+      if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+        socket.close()
+      }
+      socket = new WebSocket(buildInterviewWebSocketUrl(interviewId, accessToken))
+    }
+
+    wsConnectionKeyRef.current = connectionKey
     wsRef.current = socket
 
     socket.onopen = () => {
+      if (wsRef.current !== socket) {
+        return
+      }
       setWsConnected(true)
       setMessage('实时面试链路已连接，正在确认当前会话模式。')
     }
 
     socket.onmessage = (event) => {
+      if (wsRef.current !== socket) {
+        return
+      }
       try {
         const payload = JSON.parse(String(event.data)) as InterviewSocketEvent
         setWsTraceId(payload.trace_id || '')
@@ -995,6 +1061,11 @@ export function InterviewSessionPage() {
     }
 
     socket.onclose = () => {
+      if (wsRef.current !== socket) {
+        return
+      }
+      wsRef.current = null
+      wsConnectionKeyRef.current = ''
       setWsConnected(false)
       stopPCMStreamPlayback()
       setStreamMouthOpen(0)
@@ -1005,6 +1076,9 @@ export function InterviewSessionPage() {
     }
 
     socket.onerror = () => {
+      if (wsRef.current !== socket) {
+        return
+      }
       stopPCMStreamPlayback()
       setStreamMouthOpen(0)
       setSessionState({
@@ -1015,10 +1089,9 @@ export function InterviewSessionPage() {
     }
 
     return () => {
-      socket.close()
-      wsRef.current = null
+      scheduleSocketClose(socket, connectionKey)
     }
-  }, [accessToken, interviewId])
+  }, [accessToken, detailQuery.data, interviewId, isInterviewOngoing])
 
   /**
    * 实时语音面试进入页面后先抢占一次麦克风权限，避免真正开始回答时才被浏览器权限弹窗打断。
@@ -1073,6 +1146,7 @@ export function InterviewSessionPage() {
    */
   useEffect(() => {
     return () => {
+      cancelScheduledSocketClose()
       clearCodingTimers()
       stopCurrentPlayback()
       stopPCMStreamPlayback()
@@ -1190,6 +1264,21 @@ export function InterviewSessionPage() {
                 {recognitionPartial ? <p className="interview-answer-status-secondary">实时识别：{recognitionPartial}</p> : null}
                 {recognitionFinal ? <p className="interview-answer-status-secondary">识别结果：{recognitionFinal}</p> : null}
               </div>
+              {isPreparing ? (
+                <div className="timeline-item">
+                  <strong>简历题单准备中</strong>
+                  <p>{detailQuery.data?.task_error || 'Ariu 正在解析简历并生成针对你经历的面试问题，页面会自动刷新，准备完成后再建立实时链路。'}</p>
+                </div>
+              ) : null}
+              {isReportGenerating ? (
+                <div className="timeline-item">
+                  <strong>报告生成中</strong>
+                  <p>{detailQuery.data?.task_error || '本场面试已结束，系统正在补评答案、生成报告和后续学习档案，完成后可直接进入报告页。'}</p>
+                  <Link className="secondary-link" to="/interview/$interviewId/report" params={{ interviewId }}>
+                    去报告页查看进度
+                  </Link>
+                </div>
+              ) : null}
               {isCodingQuestion ? (
                 <div className="timeline-item">
                   <strong>编程题工作区</strong>
@@ -1230,7 +1319,7 @@ export function InterviewSessionPage() {
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
                 placeholder={isCodingQuestion ? '可选：补充你的解题思路、复杂度权衡或边界条件说明。' : '直接输入你的回答。建议先说思路，再补关键点、权衡和落地细节。'}
-                disabled={detailQuery.data?.status !== 'ongoing'}
+                disabled={!isInterviewOngoing}
               />
               <div className="interview-answer-actions">
                 <div className="page-actions">
@@ -1244,7 +1333,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={!canRecord || isCodingQuestion}
+                    disabled={!canRecord || isCodingQuestion || !isInterviewOngoing}
                     onClick={() => {
                       if (isRecording) {
                         stopVoiceCapture()
@@ -1258,7 +1347,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={nextQuestionMutation.isPending || detailQuery.data?.status !== 'ongoing' || Boolean(currentQuestion)}
+                    disabled={nextQuestionMutation.isPending || !isInterviewOngoing || Boolean(currentQuestion)}
                     onClick={() => void nextQuestionMutation.mutateAsync()}
                   >
                     {nextQuestionMutation.isPending ? '恢复中...' : '恢复下一题'}
@@ -1266,7 +1355,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={finishMutation.isPending}
+                    disabled={finishMutation.isPending || !isInterviewOngoing}
                     onClick={() => void finishMutation.mutateAsync()}
                   >
                     {finishMutation.isPending ? '生成报告中...' : '结束面试'}
@@ -1274,7 +1363,7 @@ export function InterviewSessionPage() {
                   <button
                     className="primary-button"
                     type="submit"
-                    disabled={isRecording || submitMutation.isPending || detailQuery.data?.status !== 'ongoing'}
+                    disabled={isRecording || submitMutation.isPending || !isInterviewOngoing}
                   >
                     {submitMutation.isPending ? '提交中...' : (isCodingQuestion ? '提交代码与过程数据' : '手动提交答案')}
                   </button>
@@ -1289,6 +1378,12 @@ export function InterviewSessionPage() {
                 <Link className="secondary-link" to="/interview/$interviewId/report" params={{ interviewId }}>
                   查看面试报告
                 </Link>
+              </div>
+            ) : null}
+            {isReportGenerating ? (
+              <div className="timeline-item">
+                <strong>结果仍在落库</strong>
+                <p>当前会话已经结束，报告页会持续自动刷新直到完整结果可用。</p>
               </div>
             ) : null}
           </section>

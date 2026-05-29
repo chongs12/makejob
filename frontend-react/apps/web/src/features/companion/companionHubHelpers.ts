@@ -171,6 +171,7 @@ export function buildCompanionContextPresetText(draft: CompanionPlanContextDraft
  */
 export function planStatusLabel(status: string): string {
   const map: Record<string, string> = {
+    generating: '生成中',
     active: '进行中',
     paused: '已暂停',
     completed: '已完成',

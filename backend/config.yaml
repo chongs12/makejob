@@ -17,6 +17,15 @@ redis:
   port: 6384          # 修改点：对应 Docker 映射的宿主机端口
   password: ""        # 你启动 Redis 时未设置密码，保持为空
   db: 0
+
+rabbitmq:
+  enabled: true
+  url: "amqp://makejob:makejob123@localhost:5672/%2Fmakejob"
+  management_url: "http://localhost:15672"
+  prefetch_count: 8
+  publisher_confirm: false
+  reconnect_seconds: 5
+
 jwt:
   secret: "makejob-secret-key-change-in-production"
   expire: 168  # hours

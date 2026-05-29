@@ -12,7 +12,12 @@
       "Bash(wc -l backend/internal/handler/interview_handler_realtime.go backend/internal/realtime/volcengine/client.go backend/internal/realtime/volcengine/protocol.go backend/internal/realtime/volcengine/client_test.go backend/internal/service/interview_realtime.go backend/internal/service/live2d_local_support.go frontend-react/apps/web/src/shared/usePCMStreamPlayer.ts)",
       "Bash(go get *)",
       "WebSearch",
-      "Bash(go env *)"
+      "Bash(go env *)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.volcengine.com)"
     ]
   }
 }

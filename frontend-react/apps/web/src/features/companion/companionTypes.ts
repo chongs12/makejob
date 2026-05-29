@@ -65,6 +65,9 @@ export interface CompanionPlanDetail {
   adjustment_reason_codes?: string[]
   phase_blueprint_summary?: CompanionPhaseBlueprintSummaryEntry[]
   status: string
+  async_task_id?: number
+  task_status?: string
+  task_error?: string
   total_tasks: number
   completed_tasks: number
   progress: number

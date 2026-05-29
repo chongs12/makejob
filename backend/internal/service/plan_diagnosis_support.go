@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	applogger "makejob-backend/pkg/logger"
 
 	"go.uber.org/zap"
@@ -70,6 +71,113 @@ func (s *planService) enqueueTaskFeedbackDiagnosis(plan *model.LearningPlan, tas
 		return
 	}
 
+	if s.asyncEnabled && s.taskPublisher != nil && s.asyncTaskRepo != nil {
+		if err := s.enqueueTaskFeedbackDiagnosisByMQ(plan, task, feedback); err == nil {
+			return
+		} else {
+			applogger.Warn(
+				"学习任务反馈诊断投递 RabbitMQ 失败，回退进程内异步",
+				zap.Uint("plan_id", plan.ID),
+				zap.Uint("task_id", task.ID),
+				zap.Uint("feedback_id", feedback.ID),
+				zap.Error(err),
+			)
+		}
+	}
+
+	s.enqueueTaskFeedbackDiagnosisInProcess(plan, task, feedback)
+}
+
+// enqueueTaskFeedbackDiagnosisByMQ 将训练反馈诊断任务写入通用任务表并投递到 RabbitMQ。
+func (s *planService) enqueueTaskFeedbackDiagnosisByMQ(plan *model.LearningPlan, task *model.LearningTask, feedback *model.LearningTaskFeedback) error {
+	payload := mq.PlanFeedbackDiagnosisPayload{
+		PlanID:     plan.ID,
+		TaskID:     task.ID,
+		FeedbackID: feedback.ID,
+		UserID:     feedback.UserID,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化训练反馈诊断载荷失败: %w", err)
+	}
+
+	spec, ok := mq.QueueSpecByTaskType(mq.TaskTypePlanFeedbackDiagnosis)
+	if !ok {
+		return fmt.Errorf("未找到训练反馈诊断队列配置")
+	}
+
+	idempotencyKey := buildPlanFeedbackDiagnosisIdempotencyKey(feedback.ID)
+	existingTask, err := s.asyncTaskRepo.GetByIdempotencyKey(context.Background(), idempotencyKey)
+	if err != nil {
+		return err
+	}
+	if existingTask != nil {
+		switch existingTask.Status {
+		case model.AsyncTaskStatusQueued, model.AsyncTaskStatusRunning, model.AsyncTaskStatusSucceeded:
+			return nil
+		}
+	}
+
+	asyncTask := &model.AsyncTask{
+		TaskType:       mq.TaskTypePlanFeedbackDiagnosis,
+		Source:         "plan-service",
+		Status:         model.AsyncTaskStatusPending,
+		QueueName:      spec.QueueName,
+		RoutingKey:     spec.RoutingKey,
+		EntityType:     "learning_task_feedback",
+		EntityID:       feedback.ID,
+		IdempotencyKey: idempotencyKey,
+		PayloadJSON:    string(payloadBytes),
+		MaxRetries:     spec.MaxRetries,
+	}
+	if existingTask == nil {
+		if err := s.asyncTaskRepo.Create(context.Background(), asyncTask); err != nil {
+			return err
+		}
+	} else {
+		asyncTask = existingTask
+		asyncTask.TaskType = mq.TaskTypePlanFeedbackDiagnosis
+		asyncTask.Source = "plan-service"
+		asyncTask.Status = model.AsyncTaskStatusPending
+		asyncTask.QueueName = spec.QueueName
+		asyncTask.RoutingKey = spec.RoutingKey
+		asyncTask.EntityType = "learning_task_feedback"
+		asyncTask.EntityID = feedback.ID
+		asyncTask.PayloadJSON = string(payloadBytes)
+		asyncTask.MaxRetries = spec.MaxRetries
+		asyncTask.ErrorMsg = ""
+		asyncTask.FinishedAt = nil
+		if err := s.asyncTaskRepo.Update(context.Background(), asyncTask); err != nil {
+			return err
+		}
+	}
+
+	message := buildAsyncTaskMessage(
+		mq.TaskTypePlanFeedbackDiagnosis,
+		asyncTask.ID,
+		asyncTask.EntityType,
+		asyncTask.EntityID,
+		asyncTask.Source,
+		asyncTask.IdempotencyKey,
+		payloadBytes,
+	)
+	if err := s.taskPublisher.PublishTask(context.Background(), spec.RoutingKey, message); err != nil {
+		asyncTask.Status = model.AsyncTaskStatusFailed
+		asyncTask.ErrorMsg = err.Error()
+		asyncTask.FinishedAt = nil
+		_ = s.asyncTaskRepo.Update(context.Background(), asyncTask)
+		return err
+	}
+
+	now := time.Now()
+	asyncTask.Status = model.AsyncTaskStatusQueued
+	asyncTask.PublishedAt = &now
+	asyncTask.ErrorMsg = ""
+	return s.asyncTaskRepo.Update(context.Background(), asyncTask)
+}
+
+// enqueueTaskFeedbackDiagnosisInProcess 保留进程内异步回退逻辑，避免 MQ 不可用时影响用户提交反馈。
+func (s *planService) enqueueTaskFeedbackDiagnosisInProcess(plan *model.LearningPlan, task *model.LearningTask, feedback *model.LearningTaskFeedback) {
 	planSnapshot := *plan
 	taskSnapshot := *task
 	feedbackSnapshot := *feedback
@@ -114,6 +222,108 @@ func (s *planService) enqueueTaskFeedbackDiagnosis(plan *model.LearningPlan, tas
 			)
 		}
 	}()
+}
+
+// buildPlanFeedbackDiagnosisIdempotencyKey 生成训练反馈诊断任务的稳定幂等键。
+func buildPlanFeedbackDiagnosisIdempotencyKey(feedbackID uint) string {
+	return fmt.Sprintf("plan-feedback-diagnosis:%d", feedbackID)
+}
+
+// ProcessTaskFeedbackDiagnosisTask 根据通用异步任务记录执行训练反馈诊断消费逻辑。
+func (s *planService) ProcessTaskFeedbackDiagnosisTask(ctx context.Context, asyncTaskID uint) error {
+	if s.asyncTaskRepo == nil {
+		return fmt.Errorf("async task repository is required")
+	}
+	if s.planRepo == nil || s.taskRepo == nil || s.feedbackRepo == nil {
+		return fmt.Errorf("plan diagnosis task dependencies are incomplete")
+	}
+
+	asyncTask, shouldRun, err := s.asyncTaskRepo.ClaimByID(ctx, asyncTaskID)
+	if err != nil {
+		return err
+	}
+	if asyncTask == nil || !shouldRun {
+		return nil
+	}
+
+	payload, err := decodePlanFeedbackDiagnosisPayload(asyncTask.PayloadJSON)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, fmt.Errorf("解析训练反馈诊断载荷失败: %w", err), false)
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, payload.PlanID)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, err, true)
+	}
+	if plan == nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, fmt.Errorf("学习计划不存在: %d", payload.PlanID), false)
+	}
+
+	task, err := s.taskRepo.GetByID(ctx, payload.TaskID)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, err, true)
+	}
+	if task == nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, fmt.Errorf("学习任务不存在: %d", payload.TaskID), false)
+	}
+
+	feedback, err := s.feedbackRepo.GetByID(ctx, payload.FeedbackID)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, err, true)
+	}
+	if feedback == nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, fmt.Errorf("学习任务反馈不存在: %d", payload.FeedbackID), false)
+	}
+
+	result, err := s.buildTaskFeedbackDiagnosis(ctx, plan, task, feedback)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, err, true)
+	}
+	if err := s.persistTaskFeedbackDiagnosis(ctx, plan, task, feedback, result); err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, err, true)
+	}
+
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return s.failAsyncDiagnosisTask(ctx, asyncTask, fmt.Errorf("序列化训练反馈诊断结果失败: %w", err), false)
+	}
+
+	now := time.Now()
+	asyncTask.Status = model.AsyncTaskStatusSucceeded
+	asyncTask.ResultJSON = string(resultJSON)
+	asyncTask.ErrorMsg = ""
+	asyncTask.FinishedAt = &now
+	return s.asyncTaskRepo.Update(ctx, asyncTask)
+}
+
+// decodePlanFeedbackDiagnosisPayload 解析训练反馈诊断任务载荷。
+func decodePlanFeedbackDiagnosisPayload(raw string) (mq.PlanFeedbackDiagnosisPayload, error) {
+	var payload mq.PlanFeedbackDiagnosisPayload
+	if strings.TrimSpace(raw) == "" {
+		return payload, fmt.Errorf("empty payload")
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return payload, err
+	}
+	return payload, nil
+}
+
+// failAsyncDiagnosisTask 回写诊断任务失败状态，并按是否可重试决定最终状态。
+func (s *planService) failAsyncDiagnosisTask(ctx context.Context, asyncTask *model.AsyncTask, taskErr error, retryable bool) error {
+	now := time.Now()
+	asyncTask.ErrorMsg = taskErr.Error()
+	asyncTask.FinishedAt = &now
+	if retryable && asyncTask.RetryCount < asyncTask.MaxRetries {
+		asyncTask.Status = model.AsyncTaskStatusQueued
+	} else if retryable && asyncTask.RetryCount >= asyncTask.MaxRetries {
+		asyncTask.Status = model.AsyncTaskStatusDead
+	} else {
+		asyncTask.Status = model.AsyncTaskStatusFailed
+	}
+	if err := s.asyncTaskRepo.Update(ctx, asyncTask); err != nil {
+		return err
+	}
+	return taskErr
 }
 
 // buildTaskFeedbackDiagnosis 基于训练反馈、任务信息和可选AI分析构建结构化诊断结果。

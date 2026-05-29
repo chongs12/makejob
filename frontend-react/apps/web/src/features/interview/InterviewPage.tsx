@@ -91,7 +91,7 @@ export function InterviewHubPage() {
   const createMutation = useMutation({
     mutationFn: (payload: InterviewCreatePayload) => createInterviewRequest(accessToken as string, payload),
     onSuccess: async (data) => {
-      setMessage('面试会话已创建，正在进入面试页。')
+      setMessage(data.status === 'preparing' ? '简历已提交，Ariu 正在解析你的经历并准备问题。' : '面试会话已创建，正在进入面试页。')
       await invalidateInterviewHistoryQueries(queryClient)
       navigate({
         to: '/interview/$interviewId',
@@ -106,7 +106,7 @@ export function InterviewHubPage() {
   })
 
   const ongoingInterview = useMemo(
-    () => historyQuery.data?.list.find((item) => item.status === 'ongoing') || null,
+    () => historyQuery.data?.list.find((item) => item.status === 'ongoing' || item.status === 'preparing') || null,
     [historyQuery.data],
   )
 
@@ -491,9 +491,9 @@ export function InterviewHubPage() {
                   </p>
                   <p>开始时间：{formatInterviewDateTime(item.started_at || item.created_at)}</p>
                   <div className="page-actions">
-                    {item.status === 'ongoing' ? (
+                    {item.status === 'ongoing' || item.status === 'preparing' ? (
                       <Link className="secondary-link" to="/interview/$interviewId" params={{ interviewId: String(item.id) }}>
-                        继续面试
+                        {item.status === 'preparing' ? '查看准备进度' : '继续面试'}
                       </Link>
                     ) : (
                       <Link className="secondary-link" to="/interview/$interviewId/report" params={{ interviewId: String(item.id) }}>

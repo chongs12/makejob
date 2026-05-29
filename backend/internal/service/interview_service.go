@@ -11,6 +11,7 @@ import (
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 )
 
@@ -47,6 +48,9 @@ type InterviewResponse struct {
 	InterviewID   uint                  `json:"interview_id"`
 	Status        string                `json:"status"`
 	FirstQuestion *ai.InterviewQuestion `json:"first_question"`
+	AsyncTaskID   uint                  `json:"async_task_id,omitempty"`
+	TaskStatus    string                `json:"task_status,omitempty"`
+	TaskError     string                `json:"task_error,omitempty"`
 	CreatedAt     time.Time             `json:"created_at"`
 }
 
@@ -56,6 +60,9 @@ type InterviewDetailResponse struct {
 	IndustryCode    string                     `json:"industry_code"`
 	Live2DModelKey  string                     `json:"live2d_model_key"`
 	Status          string                     `json:"status"`
+	AsyncTaskID     uint                       `json:"async_task_id,omitempty"`
+	TaskStatus      string                     `json:"task_status,omitempty"`
+	TaskError       string                     `json:"task_error,omitempty"`
 	Score           float64                    `json:"score"`
 	TotalQuestions  int                        `json:"total_questions"`
 	Messages        []InterviewMessageResponse `json:"messages"`
@@ -99,6 +106,10 @@ type NextQuestionResponse struct {
 // InterviewReportResponse 面试报告响应DTO
 type InterviewReportResponse struct {
 	InterviewID uint                `json:"interview_id"`
+	Status      string              `json:"status"`
+	AsyncTaskID uint                `json:"async_task_id,omitempty"`
+	TaskStatus  string              `json:"task_status,omitempty"`
+	TaskError   string              `json:"task_error,omitempty"`
 	Report      *ai.InterviewReport `json:"report"`
 	Duration    int64               `json:"duration_seconds"`
 	CompletedAt time.Time           `json:"completed_at"`
@@ -116,6 +127,9 @@ type interviewService struct {
 	industryRepo         repository.IndustryRepository
 	live2dDirective      Live2DDirectiveService
 	realtimeEnabled      bool
+	taskPublisher        mq.TaskPublisher
+	asyncTaskRepo        repository.AsyncTaskRepository
+	asyncEnabled         bool
 }
 
 // NewInterviewService 创建面试服务实例
@@ -146,6 +160,10 @@ func NewInterviewService(
 			s.realtimeEnabled = value.Enabled
 		case ai.ResumeParser:
 			s.resumeParser = value
+		case AsyncDispatchOption:
+			s.asyncEnabled = value.Enabled
+			s.taskPublisher = value.Publisher
+			s.asyncTaskRepo = value.AsyncTaskRepo
 		}
 	}
 	return s
@@ -170,10 +188,15 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 
 	// 创建面试记录
 	now := time.Now()
+	initialStatus := model.InterviewStatusOngoing
+	isRealtimeResumeDriven := s.realtimeEnabled && strings.TrimSpace(req.InterviewMode) == "resume_driven"
+	if isRealtimeResumeDriven {
+		initialStatus = model.InterviewStatusPreparing
+	}
 	interview := &model.MockInterview{
 		UserID:         userID,
 		IndustryID:     industryID,
-		Status:         model.InterviewStatusOngoing,
+		Status:         initialStatus,
 		Live2DModelKey: strings.TrimSpace(req.Live2DModelKey),
 		TotalQuestions: req.QuestionCount,
 		StartedAt:      &now,
@@ -189,22 +212,30 @@ func (s *interviewService) CreateInterview(ctx context.Context, userID uint, req
 			if strings.TrimSpace(req.ResumeText) == "" {
 				return nil, common.NewBusinessError(common.CodeBadRequest, "简历驱动面试模式需要提供简历文本")
 			}
-			if s.resumeParser != nil {
-				profile, parseErr := s.resumeParser.Parse(ctx, req.ResumeText, req.JobDescription)
-				if parseErr != nil {
-					return nil, common.NewBusinessError(common.CodeInternalError, "简历解析失败: "+parseErr.Error())
-				}
-				if profile != nil {
-					if profileJSON, marshalErr := json.Marshal(profile); marshalErr == nil {
-						metadata.ResumeProfileJSON = string(profileJSON)
-					}
-				}
-			}
 		}
 		interview.AISessionID = encodeRealtimeDialogID("")
 		interview.AIFeedback = metadata.toStorageValue()
 		if err := s.interviewRepo.Update(ctx, interview); err != nil {
 			return nil, err
+		}
+
+		if metadata.InterviewMode == "resume_driven" {
+			if s.asyncEnabled && s.taskPublisher != nil && s.asyncTaskRepo != nil {
+				asyncTask, err := s.enqueueInterviewResumeParseTask(ctx, interview, req)
+				if err == nil {
+					resp := &InterviewResponse{
+						InterviewID: interview.ID,
+						Status:      interview.Status,
+						CreatedAt:   now,
+					}
+					applyInterviewAsyncTaskState(resp, asyncTask)
+					return resp, nil
+				}
+			}
+
+			if err := s.parseResumeAndActivateInterview(ctx, interview, req.ResumeText, req.JobDescription); err != nil {
+				return nil, common.NewBusinessError(common.CodeInternalError, err.Error())
+			}
 		}
 
 		return &InterviewResponse{
@@ -288,7 +319,7 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 	// resolveInterviewIndustryCode 解析面试记录对应的行业编码。
 	industryCode := s.resolveInterviewIndustryCode(ctx, interview.IndustryID)
 
-	return &InterviewDetailResponse{
+	resp := &InterviewDetailResponse{
 		ID:              interview.ID,
 		IndustryCode:    industryCode,
 		Live2DModelKey:  strings.TrimSpace(interview.Live2DModelKey),
@@ -299,7 +330,15 @@ func (s *interviewService) GetInterview(ctx context.Context, userID, interviewID
 		CurrentQuestion: resolveCurrentInterviewQuestionFromMessages(messageResponses, interview.TotalQuestions, interview.Status),
 		StartedAt:       interview.StartedAt,
 		EndedAt:         interview.EndedAt,
-	}, nil
+	}
+	if interview.IsPreparing() || interview.IsReportGenerating() {
+		task, taskErr := s.loadLatestInterviewAsyncTask(ctx, interview.ID)
+		if taskErr != nil {
+			return nil, taskErr
+		}
+		applyInterviewAsyncTaskState(resp, task)
+	}
+	return resp, nil
 }
 
 // IsRealtimeInterview 判断当前面试记录是否属于实时语音面试链路。
@@ -527,6 +566,9 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 		if interview.IsCompleted() {
 			return s.GetReport(ctx, userID, interviewID)
 		}
+		if interview.IsReportGenerating() {
+			return s.GetReport(ctx, userID, interviewID)
+		}
 		return nil, common.NewBusinessError(common.CodeBadRequest, "面试已结束")
 	}
 
@@ -540,58 +582,30 @@ func (s *interviewService) FinishInterview(ctx context.Context, userID, intervie
 		return s.finishRealtimeInterview(ctx, userID, interview)
 	}
 
-	// 在面试结束时统一补做评分，避免过程内打断节奏，同时保证报告仍有完整依据。
-	if err := s.evaluateInterviewAnswersForReport(ctx, interviewID, sessionID); err != nil {
-		return nil, fmt.Errorf("补全作答评分失败: %w", err)
-	}
-
-	// 生成面试报告
-	report, err := s.interviewAgent.GenerateReport(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("生成面试报告失败: %w", err)
-	}
-
-	if err := s.enrichInterviewReportWithCoding(ctx, interview, &report); err != nil {
-		return nil, fmt.Errorf("生成编程题诊断失败: %w", err)
-	}
-	reportJSON, err := serializeInterviewReport(report)
-	if err != nil {
-		return nil, fmt.Errorf("序列化面试报告失败: %w", err)
-	}
-
 	now := time.Now()
-	if err := s.persistLearningArchiveEntries(ctx, interview, report, now); err != nil {
-		return nil, err
-	}
-
-	// 更新面试记录
-	interview.Status = model.InterviewStatusCompleted
-	interview.Score = report.OverallScore
+	interview.Status = model.InterviewStatusReportGenerating
 	interview.EndedAt = &now
-	interview.ReportJSON = reportJSON
-	interview.AIFeedback = buildInterviewReportSummary(report)
-
 	if err := s.interviewRepo.Update(ctx, interview); err != nil {
 		return nil, err
 	}
 
-	// 结束AI会话
-	if err := s.interviewAgent.EndInterview(ctx, sessionID); err != nil {
-		// 记录错误但不影响主流程
-		// TODO: 记录日志
+	if s.asyncEnabled && s.taskPublisher != nil && s.asyncTaskRepo != nil {
+		asyncTask, err := s.enqueueInterviewReportTask(ctx, interview, sessionID)
+		if err == nil {
+			return s.buildInterviewReportResponse(interview, nil, asyncTask), nil
+		}
 	}
 
-	// 计算面试时长
-	var duration int64
-	if interview.StartedAt != nil {
-		duration = int64(now.Sub(*interview.StartedAt).Seconds())
+	report, duration, completedAt, err := s.generateAndPersistInterviewReport(ctx, interview, sessionID)
+	if err != nil {
+		return nil, err
 	}
-
 	return &InterviewReportResponse{
 		InterviewID: interviewID,
+		Status:      model.InterviewStatusCompleted,
 		Report:      &report,
 		Duration:    duration,
-		CompletedAt: now,
+		CompletedAt: completedAt,
 	}, nil
 }
 
@@ -644,6 +658,16 @@ func (s *interviewService) GetReport(ctx context.Context, userID, interviewID ui
 	if interview.IsOngoing() {
 		return nil, common.NewBusinessError(common.CodeBadRequest, "面试尚未结束")
 	}
+	if interview.IsPreparing() {
+		return nil, common.NewBusinessError(common.CodeBadRequest, "面试仍在准备中")
+	}
+	if interview.IsReportGenerating() {
+		task, taskErr := s.loadLatestInterviewAsyncTask(ctx, interview.ID)
+		if taskErr != nil {
+			return nil, taskErr
+		}
+		return s.buildInterviewReportResponse(interview, nil, task), nil
+	}
 
 	// 计算面试时长
 	var duration int64
@@ -666,6 +690,7 @@ func (s *interviewService) GetReport(ctx context.Context, userID, interviewID ui
 
 	return &InterviewReportResponse{
 		InterviewID: interviewID,
+		Status:      interview.Status,
 		Report:      report,
 		Duration:    duration,
 		CompletedAt: completedAt,

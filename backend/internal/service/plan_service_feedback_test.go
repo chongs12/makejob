@@ -461,6 +461,18 @@ func (s *planTaskFeedbackRepositoryStub) Create(_ context.Context, feedback *mod
 	return nil
 }
 
+// GetByID 按反馈 ID 返回最近一次写入的反馈记录，供异步诊断消费测试复用。
+func (s *planTaskFeedbackRepositoryStub) GetByID(_ context.Context, id uint) (*model.LearningTaskFeedback, error) {
+	if s.created == nil {
+		return nil, nil
+	}
+	if id != 0 && s.created.ID != id {
+		return nil, nil
+	}
+	clone := *s.created
+	return &clone, nil
+}
+
 // planTaskDiagnosisRepositoryStub 模拟学习任务诊断仓库，用于接收异步诊断结果。
 type planTaskDiagnosisRepositoryStub struct {
 	created   *model.LearningTaskDiagnosis

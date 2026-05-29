@@ -361,10 +361,10 @@ export default function HomePage() {
                 {latestInterview ? (
                   <Link
                     className="sidebar-link"
-                    to={latestInterview.status === 'ongoing' ? '/interview/$interviewId' : '/interview/$interviewId/report'}
+                    to={latestInterview.status === 'ongoing' || latestInterview.status === 'preparing' ? '/interview/$interviewId' : '/interview/$interviewId/report'}
                     params={{ interviewId: String(latestInterview.id) }}
                   >
-                    {latestInterview.status === 'ongoing' ? '继续最近一场面试' : '查看最近一场报告'}
+                    {latestInterview.status === 'ongoing' || latestInterview.status === 'preparing' ? '继续最近一场面试' : '查看最近一场报告'}
                   </Link>
                 ) : (
                   <Link className="sidebar-link" to="/interview" preload="intent">开始第一场面试</Link>

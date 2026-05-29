@@ -21,6 +21,7 @@ type ScraperTaskRepository interface {
 	List(ctx context.Context, page, pageSize int, filter scraper.TaskListFilter) ([]model.ScraperTask, int64, error)
 	GetByID(ctx context.Context, id uint) (*model.ScraperTask, error)
 	ClaimNextPending(ctx context.Context, taskType string) (*model.ScraperTask, error)
+	ClaimByID(ctx context.Context, id uint) (*model.ScraperTask, bool, error)
 }
 
 // scraperTaskRepository 爬取任务仓库实现
@@ -122,4 +123,43 @@ func (r *scraperTaskRepository) ClaimNextPending(ctx context.Context, taskType s
 		return nil, err
 	}
 	return claimed, nil
+}
+
+// ClaimByID 按任务 ID 领取指定异步任务，并以行锁保证消息重复投递时仍只会有一个消费者真正执行。
+func (r *scraperTaskRepository) ClaimByID(ctx context.Context, id uint) (*model.ScraperTask, bool, error) {
+	var claimed *model.ScraperTask
+	var shouldRun bool
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task model.ScraperTask
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, id).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil
+			}
+			return fmt.Errorf("按 ID 领取异步任务失败: %w", err)
+		}
+
+		switch task.Status {
+		case scraper.TaskStatusSucceeded, scraper.TaskStatusImported, scraper.TaskStatusFetched, scraper.TaskStatusCleaned, scraper.TaskStatusRunning:
+			claimed = &task
+			shouldRun = false
+			return nil
+		}
+
+		now := time.Now()
+		task.Status = scraper.TaskStatusRunning
+		task.StartedAt = &now
+		task.FinishedAt = nil
+		task.RetryCount++
+		if err := tx.Save(&task).Error; err != nil {
+			return fmt.Errorf("更新异步任务运行状态失败: %w", err)
+		}
+		claimed = &task
+		shouldRun = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return claimed, shouldRun, nil
 }

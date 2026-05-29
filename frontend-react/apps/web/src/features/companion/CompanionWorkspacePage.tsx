@@ -179,6 +179,13 @@ export function CompanionWorkspacePage() {
     queryFn: () => fetchCurrentPlan(accessToken as string),
     enabled: Boolean(accessToken),
     retry: false,
+    refetchInterval: (query) => {
+      const plan = query.state.data
+      if (plan?.status === 'generating' && plan.task_status !== 'failed' && plan.task_status !== 'dead') {
+        return 3000
+      }
+      return false
+    },
   })
 
   const planProgressQuery = useQuery({
@@ -216,6 +223,7 @@ export function CompanionWorkspacePage() {
     [industriesQuery.data, workspaceIndustryCode],
   )
   const workspaceIndustryLabel = formatCompanionIndustryLabel(workspaceIndustry, workspaceIndustryCode)
+  const isPlanGenerating = currentPlanQuery.data?.status === 'generating'
   const isPlanPanelLoading = currentPlanQuery.isLoading || (Boolean(accessToken && currentPlanQuery.data?.id) && planProgressQuery.isLoading)
 
   /**
@@ -314,7 +322,7 @@ export function CompanionWorkspacePage() {
    * 当房间拿到当前计划后，自动注入一条续接提示，避免每次进入都像从零开始。
    */
   useEffect(() => {
-    if (hasInjectedResumeMessageRef.current || !accessToken || !currentPlanQuery.data) {
+    if (hasInjectedResumeMessageRef.current || !accessToken || !currentPlanQuery.data || isPlanGenerating) {
       return
     }
 
@@ -328,7 +336,7 @@ export function CompanionWorkspacePage() {
       live2dDirective: null,
       createdAt: Date.now(),
     })
-  }, [accessToken, currentPlanQuery.data, dailyDigest, focusedTask])
+  }, [accessToken, currentPlanQuery.data, dailyDigest, focusedTask, isPlanGenerating])
 
   /**
    * 当当前计划或入口页偏好发生变化时，同步持久化当前陪伴场景应使用的行业上下文。
@@ -416,6 +424,10 @@ export function CompanionWorkspacePage() {
       setPlanActionMessage('请先登录并确保当前存在可操作的学习计划。')
       return
     }
+    if (isPlanGenerating) {
+      setPlanActionMessage(currentPlanQuery.data.task_error || '当前计划仍在生成中，待任务落库后才能更新任务状态。')
+      return
+    }
 
     if (status === 'completed') {
       setFeedbackTask(task)
@@ -480,6 +492,10 @@ export function CompanionWorkspacePage() {
       setPlanActionMessage('请先登录并生成学习计划后再调整。')
       return
     }
+    if (isPlanGenerating) {
+      setPlanActionMessage(currentPlanQuery.data.task_error || '当前计划仍在生成中，暂时不能调整，请等待异步任务完成。')
+      return
+    }
 
     setPlanActionMessage('陪伴助手正在重新整理你的计划节奏...')
     try {
@@ -505,6 +521,10 @@ export function CompanionWorkspacePage() {
 
     if (!accessToken) {
       requestLoginPrompt('/companion/room', 'missing')
+      return
+    }
+    if (isPlanGenerating) {
+      setComposerMessage(currentPlanQuery.data?.task_error || '学习计划仍在生成中，等任务落库后再让陪伴助手继续拆解。')
       return
     }
 
@@ -621,9 +641,15 @@ export function CompanionWorkspacePage() {
                     <h2>{currentPlanQuery.data?.title || '等待计划接入'}</h2>
                   </div>
                   <span className="companion-card-note">
-                    {currentPlanQuery.data ? `${Math.round(currentPlanQuery.data.progress || 0)}%` : '--'}
+                    {isPlanGenerating ? '计划生成中' : (currentPlanQuery.data ? `${Math.round(currentPlanQuery.data.progress || 0)}%` : '--')}
                   </span>
                 </div>
+                {isPlanGenerating ? (
+                  <div className="timeline-item">
+                    <strong>学习计划生成中</strong>
+                    <p>{currentPlanQuery.data?.task_error || '系统正在异步整理完整计划、阶段蓝图和任务清单，当前页面会自动刷新；后续拆分为独立计划服务后，仍沿用同一消息契约。'}</p>
+                  </div>
+                ) : null}
                 <div className="companion-progress-block">
                   <div className="companion-progress-head">
                     <strong>当前任务推进情况</strong>
@@ -663,7 +689,7 @@ export function CompanionWorkspacePage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={!currentPlanQuery.data?.id || adjustPlanMutation.isPending}
+                    disabled={!currentPlanQuery.data?.id || adjustPlanMutation.isPending || isPlanGenerating}
                     onClick={() => void handleAdjustPlan()}
                   >
                     {adjustPlanMutation.isPending ? '调整中...' : '重新调整计划'}
@@ -681,26 +707,28 @@ export function CompanionWorkspacePage() {
               <div className="companion-card-head">
                 <div>
                   <span className="section-kicker">当前续接</span>
-                  <h2>{focusedTask ? focusedTask.title : '等待任务接入'}</h2>
+                  <h2>{isPlanGenerating ? '等待计划生成完成' : (focusedTask ? focusedTask.title : '等待任务接入')}</h2>
                 </div>
-                <span className="companion-card-note">{focusedTask ? taskStatusLabel(focusedTask.status) : '暂无聚焦任务'}</span>
+                <span className="companion-card-note">{isPlanGenerating ? '计划生成中' : (focusedTask ? taskStatusLabel(focusedTask.status) : '暂无聚焦任务')}</span>
               </div>
               <p className="companion-empty-text">
-                {focusedTask?.description || dailyDigestText}
+                {isPlanGenerating
+                  ? (currentPlanQuery.data?.task_error || '系统会在计划生成完成后自动补齐今日续接任务，你现在可以先停留在本页等待刷新。')
+                  : (focusedTask?.description || dailyDigestText)}
               </p>
-              {focusedTask?.phase ? <p className="companion-empty-text">所处阶段：{formatCompanionPhaseLabel(focusedTask.phase)}</p> : null}
-              {focusedTask?.phase_goal ? <p className="companion-empty-text">阶段目标：{focusedTask.phase_goal}</p> : null}
-              {phaseAdjustmentHint ? <p className="companion-empty-text">阶段调整说明：{phaseAdjustmentHint}</p> : null}
-              {focusedTask?.source_label ? <p className="companion-empty-text">任务来源：{focusedTask.source_label}</p> : null}
-              {focusedTask?.reason ? <p className="companion-empty-text">安排原因：{focusedTask.reason}</p> : null}
-              {focusedTask?.priority_explanation ? <p className="companion-empty-text">优先级说明：{focusedTask.priority_explanation}</p> : null}
-              {focusedTask?.collection_hint ? <p className="companion-empty-text">建议题单：{resolvePracticeQuestionSetTitle(focusedTask.collection_hint)}</p> : null}
-              {focusedTask?.source_ref ? <p className="companion-empty-text">来源引用：{focusedTask.source_ref}</p> : null}
+              {!isPlanGenerating && focusedTask?.phase ? <p className="companion-empty-text">所处阶段：{formatCompanionPhaseLabel(focusedTask.phase)}</p> : null}
+              {!isPlanGenerating && focusedTask?.phase_goal ? <p className="companion-empty-text">阶段目标：{focusedTask.phase_goal}</p> : null}
+              {!isPlanGenerating && phaseAdjustmentHint ? <p className="companion-empty-text">阶段调整说明：{phaseAdjustmentHint}</p> : null}
+              {!isPlanGenerating && focusedTask?.source_label ? <p className="companion-empty-text">任务来源：{focusedTask.source_label}</p> : null}
+              {!isPlanGenerating && focusedTask?.reason ? <p className="companion-empty-text">安排原因：{focusedTask.reason}</p> : null}
+              {!isPlanGenerating && focusedTask?.priority_explanation ? <p className="companion-empty-text">优先级说明：{focusedTask.priority_explanation}</p> : null}
+              {!isPlanGenerating && focusedTask?.collection_hint ? <p className="companion-empty-text">建议题单：{resolvePracticeQuestionSetTitle(focusedTask.collection_hint)}</p> : null}
+              {!isPlanGenerating && focusedTask?.source_ref ? <p className="companion-empty-text">来源引用：{focusedTask.source_ref}</p> : null}
               <div className="companion-hub-meta">
-                <span>{dailyDigestText}</span>
+                <span>{isPlanGenerating ? '计划生成完成后，这里会展示最新续接摘要。' : dailyDigestText}</span>
                 {focusTaskDraft?.updatedAt ? <span>最近续接：{formatCompanionDateTime(focusTaskDraft.updatedAt)}</span> : null}
               </div>
-              {focusedTask?.collection_hint ? (
+              {!isPlanGenerating && focusedTask?.collection_hint ? (
                 <div className="page-actions">
                   <Link
                     className="secondary-link"
@@ -718,7 +746,7 @@ export function CompanionWorkspacePage() {
               ) : null}
               <div className="companion-quick-actions">
                 {quickPrompts.map((item) => (
-                  <button className="secondary-button" key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
+                  <button className="secondary-button" disabled={isPlanGenerating} key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
                     {item.label}
                   </button>
                 ))}
@@ -751,7 +779,7 @@ export function CompanionWorkspacePage() {
               </div>
               <GoalList
                 items={todayGoals}
-                emptyText={accessToken ? '当前没有识别到今日目标，可以先去生成学习计划。' : '登录后会自动同步你的今日学习目标。'}
+                emptyText={isPlanGenerating ? '计划生成完成后，这里会自动接入今日最值得先推进的任务。' : (accessToken ? '当前没有识别到今日目标，可以先去生成学习计划。' : '登录后会自动同步你的今日学习目标。')}
                 onStatusChange={handleTaskStatusChange}
                 pendingTaskId={taskActionTaskId}
                 onContinueTask={(task) => handleApplyQuickPrompt(buildCompanionContinuePrompt(currentPlanQuery.data || null, task))}
@@ -768,7 +796,7 @@ export function CompanionWorkspacePage() {
               </div>
               <GoalList
                 items={activeGoals}
-                emptyText={accessToken ? '当前没有进行中的任务，陪伴助手会把下一项未完成目标顶上来。' : '登录后会显示你当前正在推进的任务。'}
+                emptyText={isPlanGenerating ? '计划生成完成前，当前不会暴露可继续推进的执行任务。' : (accessToken ? '当前没有进行中的任务，陪伴助手会把下一项未完成目标顶上来。' : '登录后会显示你当前正在推进的任务。')}
                 onStatusChange={handleTaskStatusChange}
                 pendingTaskId={taskActionTaskId}
                 onContinueTask={(task) => handleApplyQuickPrompt(buildCompanionContinuePrompt(currentPlanQuery.data || null, task))}
@@ -856,29 +884,32 @@ export function CompanionWorkspacePage() {
                   <span className="section-kicker">输入区</span>
                   <h2>直接让陪伴助手帮你拆解问题</h2>
                 </div>
-                <span className="companion-card-note">{sending ? '陪伴助手思考中…' : 'Enter 发送'}</span>
+                <span className="companion-card-note">{isPlanGenerating ? '等待计划生成' : (sending ? '陪伴助手思考中…' : 'Enter 发送')}</span>
               </div>
 
               <form className="companion-composer" onSubmit={handleSubmit}>
                 <textarea
                   value={composer}
                   onChange={(event) => setComposer(event.target.value)}
-                  placeholder={focusedTask ? `例如：帮我继续推进「${focusedTask.title}」，或者总结一下今天还差什么没完成。` : '例如：帮我安排今晚的 Go 并发复习顺序，或者总结一下今天还差什么没完成。'}
+                  placeholder={isPlanGenerating ? '学习计划仍在生成中，任务落库后再继续和陪伴助手推进执行。' : (focusedTask ? `例如：帮我继续推进「${focusedTask.title}」，或者总结一下今天还差什么没完成。` : '例如：帮我安排今晚的 Go 并发复习顺序，或者总结一下今天还差什么没完成。')}
                   rows={4}
+                  disabled={isPlanGenerating || sending}
                 />
                 <div className="companion-quick-actions">
                   {quickPrompts.map((item) => (
-                    <button className="secondary-button" key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
+                    <button className="secondary-button" disabled={isPlanGenerating} key={item.label} type="button" onClick={() => handleApplyQuickPrompt(item.content)}>
                       {item.label}
                     </button>
                   ))}
                 </div>
                 <div className="companion-composer-actions">
                   <p className="companion-composer-message">
-                    {composerMessage || (accessToken ? '已登录，可直接使用 AI 陪伴接口。' : '未登录时会显示本地提示，不会请求后端陪伴接口。')}
+                    {composerMessage || (isPlanGenerating
+                      ? (currentPlanQuery.data?.task_error || '系统正在异步生成学习计划，生成完成后会自动开放陪伴输入。')
+                      : (accessToken ? '已登录，可直接使用 AI 陪伴接口。' : '未登录时会显示本地提示，不会请求后端陪伴接口。'))}
                   </p>
-                  <button className="primary-button" type="submit" disabled={sending}>
-                    {sending ? '发送中...' : '发送给陪伴助手'}
+                  <button className="primary-button" type="submit" disabled={sending || isPlanGenerating}>
+                    {isPlanGenerating ? '等待计划完成...' : (sending ? '发送中...' : '发送给陪伴助手')}
                   </button>
                 </div>
               </form>

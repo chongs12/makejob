@@ -32,6 +32,7 @@ func (m *RuntimeManager) BuildDynamicClient() *ai.AIClient {
 		CompanionAgent: newRuntimeCompanionAgent(m),
 		QuizAnalyzer:   newRuntimeQuizAnalyzer(m),
 		Live2DDirector: newRuntimeLive2DDirector(m),
+		ResumeParser:   newRuntimeResumeParser(m),
 	}
 }
 
@@ -282,6 +283,37 @@ func (a *runtimeQuizAnalyzer) currentAgent(ctx context.Context) (ai.QuizAnalyzer
 		return nil, fmt.Errorf("quiz analyzer is unavailable")
 	}
 	return agent, nil
+}
+
+// runtimeResumeParser 为简历解析场景提供可热切换的动态代理。
+type runtimeResumeParser struct {
+	manager *RuntimeManager
+}
+
+// newRuntimeResumeParser 创建简历解析场景的动态 Parser。
+func newRuntimeResumeParser(manager *RuntimeManager) ai.ResumeParser {
+	return &runtimeResumeParser{manager: manager}
+}
+
+// Parse 委托当前生效的简历解析器执行结构化解析。
+func (a *runtimeResumeParser) Parse(ctx context.Context, resumeText string, jobDescription string) (*ai.ResumeProfile, error) {
+	parser, err := a.currentParser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return parser.Parse(ctx, resumeText, jobDescription)
+}
+
+// currentParser 获取当前生效的简历解析器。
+func (a *runtimeResumeParser) currentParser(ctx context.Context) (ai.ResumeParser, error) {
+	if a == nil || a.manager == nil {
+		return nil, fmt.Errorf("resume parser is unavailable")
+	}
+	parser := a.manager.CurrentClient(ctx).ResumeParser
+	if parser == nil {
+		return nil, fmt.Errorf("resume parser is unavailable")
+	}
+	return parser, nil
 }
 
 // runtimeLive2DDirector 为 Live2D 指令场景提供可热切换的动态代理。

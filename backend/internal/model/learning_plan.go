@@ -7,6 +7,7 @@ import (
 
 // PlanStatus 学习计划状态枚举
 const (
+	PlanStatusGenerating = "generating" // 生成中
 	PlanStatusActive    = "active"    // 进行中
 	PlanStatusCompleted = "completed" // 已完成
 	PlanStatusPaused    = "paused"    // 已暂停
@@ -51,4 +52,9 @@ func (p *LearningPlan) Progress() int {
 // IsActive 判断计划是否进行中
 func (p *LearningPlan) IsActive() bool {
 	return p.Status == PlanStatusActive
+}
+
+// IsGenerating 判断计划是否仍处于异步生成阶段。
+func (p *LearningPlan) IsGenerating() bool {
+	return p.Status == PlanStatusGenerating
 }

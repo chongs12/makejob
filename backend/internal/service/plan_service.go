@@ -11,6 +11,7 @@ import (
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 )
 
@@ -68,6 +69,9 @@ type PlanDetailResponse struct {
 	AdjustmentReasonCodes []string                     `json:"adjustment_reason_codes,omitempty"`
 	PhaseBlueprintSummary []phaseBlueprintSummaryEntry `json:"phase_blueprint_summary,omitempty"`
 	Status                string                       `json:"status"`
+	AsyncTaskID           uint                         `json:"async_task_id,omitempty"`
+	TaskStatus            string                       `json:"task_status,omitempty"`
+	TaskError             string                       `json:"task_error,omitempty"`
 	TotalTasks            int                          `json:"total_tasks"`
 	CompletedTasks        int                          `json:"completed_tasks"`
 	Progress              float64                      `json:"progress"` // 0-100
@@ -136,6 +140,9 @@ type planService struct {
 	diagnosisRepo       repository.PlanTaskDiagnosisRepository
 	quizAnalyzer        ai.QuizAnalyzer
 	industryRepo        repository.IndustryRepository
+	taskPublisher       mq.TaskPublisher
+	asyncTaskRepo       repository.AsyncTaskRepository
+	asyncEnabled        bool
 }
 
 // NewPlanService 创建学习计划服务实例
@@ -148,7 +155,7 @@ func NewPlanService(
 	feedbackRepo repository.PlanTaskFeedbackRepository,
 	diagnosisRepo repository.PlanTaskDiagnosisRepository,
 	quizAnalyzer ai.QuizAnalyzer,
-	industryRepo ...repository.IndustryRepository,
+	deps ...interface{},
 ) PlanService {
 	s := &planService{
 		planRepo:            planRepo,
@@ -160,8 +167,15 @@ func NewPlanService(
 		diagnosisRepo:       diagnosisRepo,
 		quizAnalyzer:        quizAnalyzer,
 	}
-	if len(industryRepo) > 0 {
-		s.industryRepo = industryRepo[0]
+	for _, dep := range deps {
+		switch value := dep.(type) {
+		case repository.IndustryRepository:
+			s.industryRepo = value
+		case AsyncDispatchOption:
+			s.asyncEnabled = value.Enabled
+			s.taskPublisher = value.Publisher
+			s.asyncTaskRepo = value.AsyncTaskRepo
+		}
 	}
 	return s
 }
@@ -185,78 +199,33 @@ func (s *planService) GeneratePlan(ctx context.Context, userID uint, req *Genera
 		DurationDays:    req.DurationDays,
 		GoalDescription: req.GoalDescription,
 	}
+	storedContext := buildPlanStoredContext(req, industryCode)
+	storedContext.FocusSignals = normalizeTrainingFocusSignals(focusSignals)
 
-	// 调用AI生成学习计划
-	aiPlan, err := s.planAgent.GeneratePlan(ctx, profile, industryCode)
-	if err != nil {
-		return nil, fmt.Errorf("AI生成学习计划失败: %w", err)
+	if s.asyncEnabled && s.taskPublisher != nil && s.asyncTaskRepo != nil {
+		plan, _, enqueueErr := s.enqueuePlanGenerateTask(ctx, userID, industryID, industryCode, req, storedContext)
+		if enqueueErr == nil {
+			return s.buildPlanDetailResponse(ctx, plan, nil)
+		}
+		if plan != nil {
+			resultPlan, tasks, syncErr := s.generateAndPersistLearningPlan(ctx, plan, profile, industryCode, storedContext)
+			if syncErr != nil {
+				return nil, syncErr
+			}
+			return s.buildPlanDetailResponse(ctx, resultPlan, tasks)
+		}
 	}
-	aiPlan = normalizeLearningPlanPhases(aiPlan)
-	aiPlan = arrangeLearningPlanByPhase(aiPlan, false)
 
-	// 暂停用户的其他活跃计划
 	if err := s.planRepo.PauseActivePlans(ctx, userID); err != nil {
 		return nil, err
 	}
-
-	// 计算开始和结束日期
-	now := time.Now()
-	startDate := now
-	endDate := now.AddDate(0, 0, req.DurationDays)
-
-	// 序列化计划JSON
-	storedContext := buildPlanStoredContext(req, industryCode)
-	storedContext.FocusSignals = normalizeTrainingFocusSignals(focusSignals)
-	storedContext.PhaseBlueprintVersion = PhaseBlueprintVersion
-	storedContext.PhaseBlueprint = buildPhaseBlueprintFromPlanTasks(aiPlan.Tasks, req.DurationDays, PhaseBlueprintSourceDuration)
-	planJSON, err := buildPlanStoredPayload(aiPlan, storedContext)
+	plan, tasks, err := s.generateAndPersistLearningPlan(ctx, &model.LearningPlan{
+		UserID:     userID,
+		IndustryID: industryID,
+	}, profile, industryCode, storedContext)
 	if err != nil {
-		return nil, fmt.Errorf("序列化计划失败: %w", err)
-	}
-
-	// 创建学习计划记录
-	plan := &model.LearningPlan{
-		UserID:         userID,
-		IndustryID:     industryID,
-		Title:          aiPlan.Title,
-		Description:    aiPlan.Description,
-		Phase:          aiPlan.Phase,
-		PhaseGoal:      aiPlan.PhaseGoal,
-		PlanJSON:       string(planJSON),
-		Status:         model.PlanStatusActive,
-		TotalTasks:     len(aiPlan.Tasks),
-		CompletedTasks: 0,
-		StartDate:      &startDate,
-		EndDate:        &endDate,
-	}
-
-	if err := s.planRepo.Create(ctx, plan); err != nil {
 		return nil, err
 	}
-
-	// 创建任务记录
-	tasks := make([]model.LearningTask, 0, len(aiPlan.Tasks))
-	for i, t := range aiPlan.Tasks {
-		dueDate := startDate.AddDate(0, 0, t.DayNumber-1)
-		task := model.LearningTask{
-			PlanID:      plan.ID,
-			Title:       t.Title,
-			Description: t.Description,
-			TaskType:    t.TaskType,
-			Phase:       t.Phase,
-			PhaseGoal:   t.PhaseGoal,
-			Status:      model.TaskStatusPending,
-			DueDate:     &dueDate,
-			SortOrder:   i,
-		}
-		tasks = append(tasks, task)
-	}
-
-	if err := s.taskRepo.BatchCreate(ctx, tasks); err != nil {
-		return nil, err
-	}
-
-	// 返回计划详情
 	return s.buildPlanDetailResponse(ctx, plan, tasks)
 }
 
@@ -771,6 +740,17 @@ func (s *planService) GetProgress(ctx context.Context, userID, planID uint) (*Pl
 
 // buildPlanDetailResponse 构建计划详情响应。
 func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.LearningPlan, tasks []model.LearningTask) (*PlanDetailResponse, error) {
+	if plan == nil {
+		return nil, fmt.Errorf("学习计划不存在")
+	}
+	if tasks == nil {
+		var err error
+		tasks, err = s.taskRepo.ListByPlan(ctx, plan.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	storedPlan := readPlanStoredPayload(plan.PlanJSON)
 	taskPriorityQueue := buildPlanTaskPriorityQueue(storedPlan.Plan)
 	planPhase, planPhaseGoal := resolvePlanPhaseFields(plan, tasks)
@@ -810,7 +790,7 @@ func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.L
 		progress = float64(plan.CompletedTasks) / float64(plan.TotalTasks) * 100
 	}
 
-	return &PlanDetailResponse{
+	resp := &PlanDetailResponse{
 		ID:                    plan.ID,
 		IndustryID:            plan.IndustryID,
 		IndustryCode:          s.resolvePlanIndustryCode(ctx, plan.IndustryID),
@@ -830,7 +810,15 @@ func (s *planService) buildPlanDetailResponse(ctx context.Context, plan *model.L
 		EndDate:               plan.EndDate,
 		Tasks:                 taskResponses,
 		CreatedAt:             plan.CreatedAt,
-	}, nil
+	}
+	if plan.IsGenerating() {
+		task, err := s.loadLatestPlanAsyncTask(ctx, plan.ID)
+		if err != nil {
+			return nil, err
+		}
+		applyPlanAsyncTaskState(resp, task)
+	}
+	return resp, nil
 }
 
 // resolvePlanIndustryCode 根据计划记录中的行业ID反查行业编码，失败时返回空字符串。

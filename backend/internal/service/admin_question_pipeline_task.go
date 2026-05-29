@@ -9,6 +9,7 @@ import (
 
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/model"
+	"makejob-backend/internal/mq"
 	"makejob-backend/internal/scraper"
 )
 
@@ -36,6 +37,9 @@ func (s *adminService) CreateQuestionPipelineTask(ctx context.Context, req *Admi
 		QuestionCount: normalizeQuestionPipelineCount(normalizedReq.CandidateCount),
 	}
 	if err := s.scraperTaskRepo.Create(ctx, task); err != nil {
+		return nil, err
+	}
+	if err := s.publishQuestionPipelineTask(ctx, task); err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -160,6 +164,23 @@ func (s *adminService) executeQuestionPipelineTask(ctx context.Context, task *mo
 	return nil
 }
 
+// ProcessQuestionPipelineTask 按任务 ID 执行题目流水线任务，供 RabbitMQ 消费者按消息直接消费。
+func (s *adminService) ProcessQuestionPipelineTask(ctx context.Context, taskID uint) error {
+	if s.scraperTaskRepo == nil {
+		return fmt.Errorf("question pipeline task repository is required")
+	}
+
+	task, shouldRun, err := s.scraperTaskRepo.ClaimByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task == nil || !shouldRun {
+		return nil
+	}
+
+	return s.executeQuestionPipelineTask(ctx, task)
+}
+
 // failQuestionPipelineTask 将执行失败的题目流水线任务回写为 failed，确保后台可以直接看到失败原因。
 func (s *adminService) failQuestionPipelineTask(ctx context.Context, task *model.ScraperTask, taskErr error) error {
 	now := time.Now()
@@ -170,4 +191,35 @@ func (s *adminService) failQuestionPipelineTask(ctx context.Context, task *model
 		return err
 	}
 	return taskErr
+}
+
+// publishQuestionPipelineTask 在启用 RabbitMQ 时把后台题目流水线任务投递到异步队列。
+func (s *adminService) publishQuestionPipelineTask(ctx context.Context, task *model.ScraperTask) error {
+	if !s.asyncEnabled || s.taskPublisher == nil || task == nil {
+		return nil
+	}
+
+	spec, ok := mq.QueueSpecByTaskType(mq.TaskTypeAdminQuestionPipeline)
+	if !ok {
+		return fmt.Errorf("未找到题目流水线队列配置")
+	}
+
+	payloadBytes, err := json.Marshal(mq.AdminQuestionPipelinePayload{ScraperTaskID: task.ID})
+	if err != nil {
+		return fmt.Errorf("序列化题目流水线投递消息失败: %w", err)
+	}
+
+	message := buildAsyncTaskMessage(
+		mq.TaskTypeAdminQuestionPipeline,
+		0,
+		"scraper_task",
+		task.ID,
+		"admin-service",
+		fmt.Sprintf("question-pipeline:%d", task.ID),
+		payloadBytes,
+	)
+	if err := s.taskPublisher.PublishTask(ctx, spec.RoutingKey, message); err != nil {
+		return fmt.Errorf("投递题目流水线任务失败: %w", err)
+	}
+	return nil
 }
