@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"makejob-backend/internal/ai"
 	aiRuntime "makejob-backend/internal/ai/runtime"
 	asrfactory "makejob-backend/internal/asr/factory"
 	"makejob-backend/internal/config"
@@ -24,6 +25,7 @@ import (
 	"makejob-backend/internal/middleware"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/mq"
+	"makejob-backend/internal/rag"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
 	scraperMock "makejob-backend/internal/scraper/mock"
@@ -86,17 +88,20 @@ type AppDependencies struct {
 	CasbinService     service.CasbinService
 	TaskPublisher     mq.TaskPublisher
 
-	AuthHandler       *handler.AuthHandler
-	MembershipHandler *handler.MembershipHandler
-	InterviewHandler  *handler.InterviewHandler
-	QuestionHandler   *handler.QuestionHandler
-	PlanHandler       *handler.PlanHandler
-	CompanionHandler  *handler.CompanionHandler
-	GrowthHandler     *handler.GrowthHandler
-	Live2DHandler     *handler.Live2DHandler
-	AdminHandler      *handler.AdminHandler
-	ScraperHandler    *handler.ScraperHandler
-	CommunityHandler  *handler.CommunityHandler
+	AuthHandler             *handler.AuthHandler
+	MembershipHandler       *handler.MembershipHandler
+	InterviewHandler        *handler.InterviewHandler
+	QuestionHandler         *handler.QuestionHandler
+	PlanHandler             *handler.PlanHandler
+	CompanionHandler        *handler.CompanionHandler
+	GrowthHandler           *handler.GrowthHandler
+	Live2DHandler           *handler.Live2DHandler
+	AdminHandler            *handler.AdminHandler
+	ScraperHandler          *handler.ScraperHandler
+	CommunityHandler        *handler.CommunityHandler
+	AdminRAGHandler         *handler.AdminRAGHandler
+	AdminRAGDocumentHandler *handler.AdminRAGDocumentHandler
+	RAGCloser               func() // RAG资源清理函数
 }
 
 func main() {
@@ -142,6 +147,9 @@ func main() {
 	deps := initDependencies(db, cfg)
 	if deps.TaskPublisher != nil {
 		defer deps.TaskPublisher.Close()
+	}
+	if deps.RAGCloser != nil {
+		defer deps.RAGCloser()
 	}
 
 	gin.SetMode(cfg.Server.Mode)
@@ -236,6 +244,44 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 		runtimeBuilder := aiRuntime.NewBuilder(adminConfigRepo, promptRepo, industryRepo, aiCallLogRepo, cfg.AIRuntimeDefaults())
 		aiClient := aiRuntime.NewRuntimeManager(runtimeBuilder).BuildDynamicClient()
 		live2DDirectiveService := service.NewLive2DDirectiveService(live2DRepo, aiClient.Live2DDirector)
+
+		// 初始化RAG系统
+		// 优先从admin_configs表读取配置，回退到config.yaml
+		ragConfigs := cfg.AIRuntimeDefaults()
+		if adminConfigs, adminErr := adminConfigRepo.List(context.Background()); adminErr == nil {
+			for _, item := range adminConfigs {
+				if ai.IsRAGConfigKey(item.ConfigKey) {
+					ragConfigs[item.ConfigKey] = item.ConfigValue
+				}
+			}
+		}
+
+		// RAG文档管理独立初始化（不依赖RAG是否启用）
+		ragDocRepo := repository.NewRAGDocumentRepository(db)
+
+		if rag.IsRAGEnabled(ragConfigs) {
+			ragResult, ragErr := rag.InitFromConfigs(context.Background(), ragConfigs)
+			if ragErr != nil {
+				applogger.Warn("RAG init failed, continuing without RAG", zap.Error(ragErr))
+				// RAG初始化失败，但文档管理仍可用
+				ragDocService := service.NewRAGDocumentService(ragDocRepo, nil)
+				deps.AdminRAGDocumentHandler = handler.NewAdminRAGDocumentHandler(ragDocService)
+			} else {
+				deps.RAGCloser = ragResult.Closer
+				deps.AdminRAGHandler = handler.NewAdminRAGHandler(ragResult.Service, deps.QuestionRepo)
+
+				// RAG初始化成功，文档管理可使用同步功能
+				ragDocService := service.NewRAGDocumentService(ragDocRepo, ragResult.Service)
+				deps.AdminRAGDocumentHandler = handler.NewAdminRAGDocumentHandler(ragDocService)
+
+				applogger.Info("RAG system initialized successfully")
+			}
+		} else {
+			applogger.Info("RAG system disabled, document management available without sync")
+			// RAG未启用，文档管理可用但同步功能不可用
+			ragDocService := service.NewRAGDocumentService(ragDocRepo, nil)
+			deps.AdminRAGDocumentHandler = handler.NewAdminRAGDocumentHandler(ragDocService)
+		}
 		scraperProvider := scraperMock.NewMockScraperProvider()
 		questionCleaner := scraper.NewMockCleaner()
 		communityRepo := repository.NewCommunityRepository(db)
@@ -471,6 +517,12 @@ func registerRoutes(r *gin.Engine, deps *AppDependencies, db *gorm.DB, rdb *redi
 		}
 		if deps.ScraperHandler != nil {
 			deps.ScraperHandler.RegisterRoutes(admin)
+		}
+		if deps.AdminRAGHandler != nil {
+			deps.AdminRAGHandler.RegisterRoutes(admin)
+		}
+		if deps.AdminRAGDocumentHandler != nil {
+			deps.AdminRAGDocumentHandler.RegisterRoutes(admin)
 		}
 	}
 }

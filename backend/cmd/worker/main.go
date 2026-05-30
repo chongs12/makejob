@@ -16,6 +16,7 @@ import (
 	"makejob-backend/internal/config"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/mq"
+	"makejob-backend/internal/rag"
 	"makejob-backend/internal/repository"
 	scraperimpl "makejob-backend/internal/scraper"
 	scraperMock "makejob-backend/internal/scraper/mock"
@@ -90,7 +91,7 @@ func main() {
 	defer stop()
 
 	if cfg.RabbitMQ.Enabled {
-		if err := runWorkerMQ(ctx, cfg, scraperService, adminService, planService, interviewService); err == nil || err == context.Canceled {
+		if err := runWorkerMQ(ctx, cfg, db, scraperService, adminService, planService, interviewService); err == nil || err == context.Canceled {
 			applogger.Info("worker exited")
 			return
 		} else {
@@ -213,11 +214,32 @@ func buildWorkerInterviewService(db *gorm.DB, cfg *config.Config) service.Interv
 }
 
 // runWorkerMQ 使用 RabbitMQ 持续消费异步任务，覆盖学习诊断、爬虫导入、题目流水线和面试异步后处理任务。
-func runWorkerMQ(ctx context.Context, cfg *config.Config, scraperService service.ScraperService, adminService service.AdminService, planService service.PlanService, interviewService service.InterviewService) error {
+func runWorkerMQ(ctx context.Context, cfg *config.Config, db *gorm.DB, scraperService service.ScraperService, adminService service.AdminService, planService service.PlanService, interviewService service.InterviewService) error {
 	handlers, err := buildWorkerTaskHandlers(scraperService, adminService, planService, interviewService)
 	if err != nil {
 		return err
 	}
+
+	// 初始化RAG同步消费者（如果启用）
+	if cfg.Milvus.Enabled {
+		// 从配置中读取RAG配置
+		ragConfigs := cfg.AIRuntimeDefaults()
+		if rag.IsRAGEnabled(ragConfigs) {
+			ragResult, ragErr := rag.InitFromConfigs(ctx, ragConfigs)
+			if ragErr != nil {
+				applogger.Warn("RAG init failed in worker, skipping RAG sync", zap.Error(ragErr))
+			} else {
+				defer ragResult.Closer()
+				questionRepo := repository.NewQuestionRepository(db)
+				ragSyncConsumer := rag.NewSyncConsumer(ragResult.Service, questionRepo)
+				handlers["makejob.async.rag.sync.question"] = mq.TaskHandlerFunc(func(ctx context.Context, message mq.TaskMessage) error {
+					return ragSyncConsumer.Handle(ctx, message.Payload)
+				})
+				applogger.Info("RAG sync consumer registered")
+			}
+		}
+	}
+
 	consumer := mq.NewConsumer(cfg.RabbitMQ, mq.DefaultQueueSpecs(), handlers)
 	return consumer.Start(ctx)
 }

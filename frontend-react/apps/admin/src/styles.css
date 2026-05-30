@@ -2377,4 +2377,462 @@ body {
   .admin-taxonomy-editor__grid {
     grid-template-columns: 1fr;
   }
+
+  .admin-rag-config__grid,
+  .admin-rag-config__summary,
+  .admin-rag-knowledge__layout,
+  .admin-rag-knowledge__form-grid,
+  .admin-rag-knowledge__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-rag-config__hero,
+  .admin-rag-knowledge__hero,
+  .admin-rag-knowledge__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ==================== RAG配置页 ==================== */
+
+.admin-rag-config__hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.admin-rag-config__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #16304e, #1b7a72);
+  border-radius: 16px;
+  color: #fff;
+  min-width: 120px;
+}
+
+.admin-rag-config__status strong {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.admin-rag-config__status span {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.admin-rag-config__summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.admin-rag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 14px;
+  border: 1px solid #e8edf3;
+}
+
+.admin-rag-field__label {
+  font-size: 13px;
+  color: #53657f;
+}
+
+.admin-rag-field strong {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f1d31;
+}
+
+.admin-rag-config__warnings {
+  margin-bottom: 20px;
+}
+
+.admin-rag-config__warnings p {
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.admin-rag-config__form {
+  margin-top: 24px;
+}
+
+.admin-rag-config__section {
+  margin-bottom: 28px;
+  padding: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 18px;
+  border: 1px solid #e8edf3;
+}
+
+.admin-rag-config__section-head {
+  margin-bottom: 20px;
+}
+
+.admin-rag-config__section-head h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #0f1d31;
+  margin: 0 0 4px;
+}
+
+.admin-rag-config__section-head p {
+  font-size: 13px;
+  color: #53657f;
+  margin: 0;
+}
+
+.admin-rag-config__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.admin-rag-config__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.admin-rag-config__test-result {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 18px;
+  border: 1px solid #e8edf3;
+}
+
+.admin-rag-config__test-result h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f1d31;
+  margin: 0 0 16px;
+}
+
+.admin-rag-config__test-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.admin-rag-config__test-items > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+}
+
+.admin-rag-config__test-items span {
+  font-size: 14px;
+  color: #53657f;
+}
+
+.admin-rag-config__test-items strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-rag-config__message {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 12px;
+}
+
+.admin-rag-config__message p {
+  margin: 0;
+  font-size: 13px;
+  color: #53657f;
+}
+
+/* ==================== 知识库管理页 ==================== */
+
+.admin-rag-knowledge__hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.admin-rag-knowledge__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #14243b, #146b6f);
+  border-radius: 16px;
+  color: #fff;
+  min-width: 120px;
+}
+
+.admin-rag-knowledge__status strong {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.admin-rag-knowledge__status span {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.admin-rag-knowledge__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 16px;
+  border: 1px solid #e8edf3;
+}
+
+.admin-rag-knowledge__toolbar select,
+.admin-rag-knowledge__toolbar input {
+  padding: 8px 14px;
+  border: 1px solid #dde3eb;
+  border-radius: 10px;
+  font-size: 14px;
+  min-height: 38px;
+}
+
+.admin-rag-knowledge__toolbar select {
+  min-width: 120px;
+}
+
+.admin-rag-knowledge__toolbar input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.admin-rag-knowledge__batch-import {
+  margin-bottom: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 18px;
+  border: 1px solid #e8edf3;
+}
+
+.admin-rag-knowledge__batch-import h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f1d31;
+  margin: 0 0 8px;
+}
+
+.admin-rag-knowledge__batch-import p {
+  font-size: 13px;
+  color: #53657f;
+  margin: 0 0 12px;
+}
+
+.admin-rag-knowledge__batch-import textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px;
+  border: 1px solid #dde3eb;
+  border-radius: 12px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+
+.admin-rag-knowledge__layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  min-height: 500px;
+}
+
+.admin-rag-knowledge__list {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 18px;
+  border: 1px solid #e8edf3;
+  overflow: hidden;
+}
+
+.admin-rag-knowledge__list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.admin-rag-knowledge__list-head span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f1d31;
+}
+
+.admin-rag-knowledge__list-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.admin-rag-knowledge__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #53657f;
+  font-size: 14px;
+}
+
+.admin-rag-knowledge__card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.admin-rag-knowledge__card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(28, 48, 78, 0.08);
+}
+
+.admin-rag-knowledge__card--active {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+}
+
+.admin-rag-knowledge__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.admin-rag-knowledge__card-head strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f1d31;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-rag-knowledge__card-head span {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.admin-rag-knowledge__card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #53657f;
+}
+
+.admin-rag-knowledge__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #e8edf3;
+  font-size: 13px;
+  color: #53657f;
+}
+
+.admin-rag-knowledge__pagination button {
+  padding: 6px 12px;
+  border: 1px solid #dde3eb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-rag-knowledge__pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-rag-knowledge__editor {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-radius: 18px;
+  border: 1px solid #e8edf3;
+  overflow: hidden;
+}
+
+.admin-rag-knowledge__editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.admin-rag-knowledge__editor-head h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f1d31;
+  margin: 0;
+}
+
+.admin-rag-knowledge__editor-head span {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.admin-rag-knowledge__form {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.admin-rag-knowledge__form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.admin-rag-knowledge__editor-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e8edf3;
+}
+
+.admin-rag-knowledge__message {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: #f5f7fa;
+  border-radius: 12px;
+}
+
+.admin-rag-knowledge__message p {
+  margin: 0;
+  font-size: 13px;
+  color: #53657f;
 }

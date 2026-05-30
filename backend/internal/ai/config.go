@@ -17,6 +17,18 @@ const (
 	ConfigKeyPlanModel        = "ai_scene_plan_model"
 	ConfigKeyCompanionModel   = "ai_scene_companion_model"
 	ConfigKeyQuizModel        = "ai_scene_quiz_model"
+
+	// RAG配置键
+	ConfigKeyRAGEnabled        = "ai_rag_enabled"
+	ConfigKeyRAGEmbedAPIKey    = "ai_rag_embed_api_key"
+	ConfigKeyRAGEmbedModel     = "ai_rag_embed_model"
+	ConfigKeyRAGEmbedBaseURL   = "ai_rag_embed_base_url"
+	ConfigKeyRAGMilvusAddr     = "ai_rag_milvus_addr"
+	ConfigKeyRAGMilvusUser     = "ai_rag_milvus_user"
+	ConfigKeyRAGMilvusPassword = "ai_rag_milvus_password"
+	ConfigKeyRAGCollection     = "ai_rag_collection"
+	ConfigKeyRAGTopK           = "ai_rag_top_k"
+	ConfigKeyRAGScoreThreshold = "ai_rag_score_threshold"
 )
 
 var defaultRuntimeConfig = map[string]string{
@@ -34,6 +46,18 @@ var defaultRuntimeConfig = map[string]string{
 	ConfigKeyPlanModel:        "",
 	ConfigKeyCompanionModel:   "",
 	ConfigKeyQuizModel:        "",
+
+	// RAG默认值
+	ConfigKeyRAGEnabled:        "false",
+	ConfigKeyRAGEmbedAPIKey:    "",
+	ConfigKeyRAGEmbedModel:     "doubao-embedding-large-text-240915",
+	ConfigKeyRAGEmbedBaseURL:   "https://ark.cn-beijing.volces.com/api/v3",
+	ConfigKeyRAGMilvusAddr:     "localhost:19530",
+	ConfigKeyRAGMilvusUser:     "root",
+	ConfigKeyRAGMilvusPassword: "Milvus",
+	ConfigKeyRAGCollection:     "interview_questions",
+	ConfigKeyRAGTopK:           "5",
+	ConfigKeyRAGScoreThreshold: "0.5",
 }
 
 var legacyRuntimeAliases = map[string]string{
@@ -62,6 +86,11 @@ func DefaultRuntimeConfig() map[string]string {
 // IsRuntimeConfigKey 判断配置键是否属于 AI runtime 命名空间。
 func IsRuntimeConfigKey(key string) bool {
 	return strings.HasPrefix(key, "ai_")
+}
+
+// IsRAGConfigKey 判断配置键是否属于 RAG 命名空间。
+func IsRAGConfigKey(key string) bool {
+	return strings.HasPrefix(key, "ai_rag_")
 }
 
 // IsKnownRuntimeConfigKey 判断配置键是否属于当前已知的 runtime 配置集合。

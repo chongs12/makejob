@@ -23,6 +23,7 @@ type Config struct {
 	Volcengine     VolcengineConfig     `mapstructure:"volcengine"`
 	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
 	Piston         PistonConfig         `mapstructure:"piston"`
+	Milvus         MilvusConfig         `mapstructure:"milvus"`
 	Logging        LoggingConfig        `mapstructure:"logging"`
 }
 
@@ -61,18 +62,27 @@ type ServerConfig struct {
 
 // DatabaseConfig 数据库连接配置
 type DatabaseConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"dbname"`
-	SSLMode  string `mapstructure:"sslmode"`
+	Host           string `mapstructure:"host"`
+	Port           int    `mapstructure:"port"`
+	User           string `mapstructure:"user"`
+	Password       string `mapstructure:"password"`
+	DBName         string `mapstructure:"dbname"`
+	SSLMode        string `mapstructure:"sslmode"`
+	ConnectTimeout int    `mapstructure:"connect_timeout"`
 }
 
 // DSN 生成PostgreSQL连接字符串
 func (d DatabaseConfig) DSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode, d.ConnectTimeoutSeconds())
+}
+
+// ConnectTimeoutSeconds 返回数据库连接超时秒数，未配置时使用安全默认值。
+func (d DatabaseConfig) ConnectTimeoutSeconds() int {
+	if d.ConnectTimeout <= 0 {
+		return 5
+	}
+	return d.ConnectTimeout
 }
 
 // RedisConfig Redis连接配置
@@ -98,6 +108,14 @@ type JWTConfig struct {
 // CasbinConfig Casbin RBAC权限配置
 type CasbinConfig struct {
 	ModelPath string `mapstructure:"model_path"`
+}
+
+// MilvusConfig Milvus 向量数据库配置
+type MilvusConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Addr     string `mapstructure:"addr"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
 }
 
 // AIConfig AI 运行时默认配置
@@ -296,11 +314,12 @@ func GetConfig() *Config {
 					Mode: "debug",
 				},
 				Database: DatabaseConfig{
-					Host:    "localhost",
-					Port:    5432,
-					User:    "postgres",
-					DBName:  "makejob",
-					SSLMode: "disable",
+					Host:           "localhost",
+					Port:           5432,
+					User:           "postgres",
+					DBName:         "makejob",
+					SSLMode:        "disable",
+					ConnectTimeout: 5,
 				},
 				Redis: RedisConfig{
 					Host: "localhost",
@@ -385,6 +404,12 @@ func GetConfig() *Config {
 					Email:           "admin@makejob.com",
 					Password:        "admin123456",
 					MembershipLevel: "pro",
+				},
+				Milvus: MilvusConfig{
+					Enabled:  true,
+					Addr:     "localhost:19530",
+					User:     "root",
+					Password: "Milvus",
 				},
 				Piston: PistonConfig{
 					Endpoint: "http://localhost:2000/api/v2/execute",

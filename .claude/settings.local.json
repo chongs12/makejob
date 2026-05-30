@@ -17,7 +17,9 @@
       "Bash(gh repo *)",
       "Bash(gh api *)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:www.volcengine.com)"
+      "WebFetch(domain:www.volcengine.com)",
+      "Bash(go mod *)",
+      "Bash(go clean *)"
     ]
   }
 }

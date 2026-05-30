@@ -14,6 +14,8 @@ import { useAdminAuthStore } from './state/auth'
 import { AIConfigPage } from './features/ai-config/AIConfigPage'
 import { Live2DPage } from './features/live2d/Live2DPage'
 import { PromptPage } from './features/prompt/PromptPage'
+import { RAGConfigPage } from './features/rag-config/RAGConfigPage'
+import { RAGKnowledgePage } from './features/rag-knowledge/RAGKnowledgePage'
 import { QuestionPipelinePage } from './features/question-pipeline/QuestionPipelinePage'
 import { QuestionPage } from './features/question/QuestionPage'
 import { RuntimeOverviewPage } from './features/runtime/RuntimeOverviewPage'
@@ -69,6 +71,8 @@ function AdminLayout() {
           <Link className="admin-link" to="/dashboard">总览</Link>
           <Link className="admin-link" to="/runtime">运行任务</Link>
           <Link className="admin-link" to="/ai-configs">AI 配置</Link>
+          <Link className="admin-link" to="/rag-configs">RAG 配置</Link>
+          <Link className="admin-link" to="/rag-knowledge">知识库管理</Link>
           <Link className="admin-link" to="/prompts">Prompt 管理</Link>
           <Link className="admin-link" to="/live2d">Live2D 管理</Link>
           <Link className="admin-link" to="/tts">TTS 配置</Link>
@@ -197,6 +201,14 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: AdminLayout,
 })
 
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/dashboard' })
+  },
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth/login',
@@ -222,6 +234,20 @@ const aiConfigsRoute = createRoute({
   path: 'ai-configs',
   beforeLoad: ensureAdminRouteAccess,
   component: AIConfigPage,
+})
+
+const ragConfigsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'rag-configs',
+  beforeLoad: ensureAdminRouteAccess,
+  component: RAGConfigPage,
+})
+
+const ragKnowledgeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'rag-knowledge',
+  beforeLoad: ensureAdminRouteAccess,
+  component: RAGKnowledgePage,
 })
 
 const promptsRoute = createRoute({
@@ -267,10 +293,13 @@ const questionPipelineRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
+  indexRoute,
   loginRoute,
   dashboardRoute,
   runtimeRoute,
   aiConfigsRoute,
+  ragConfigsRoute,
+  ragKnowledgeRoute,
   promptsRoute,
   live2DRoute,
   ttsRoute,

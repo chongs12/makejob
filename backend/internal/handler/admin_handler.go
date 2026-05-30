@@ -90,6 +90,11 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/tts-configs/defaults", h.UpdateTTSSceneDefaults)
 	r.PUT("/tts-configs/:id", h.UpdateTTSConfig)
 	r.DELETE("/tts-configs/:id", h.DeleteTTSConfig)
+
+	// RAG配置管理
+	r.GET("/rag-configs", h.GetRAGConfigs)
+	r.PUT("/rag-configs", h.UpdateRAGConfigs)
+	r.POST("/rag-configs/test", h.TestRAGConnection)
 }
 
 // ==================== 仪表盘 ====================
@@ -1177,4 +1182,54 @@ func (h *AdminHandler) DeleteTTSConfig(c *gin.Context) {
 	}
 
 	common.SuccessWithMessage(c, "删除成功", nil)
+}
+
+// ==================== RAG配置管理 ====================
+
+// GetRAGConfigs 获取RAG配置
+func (h *AdminHandler) GetRAGConfigs(c *gin.Context) {
+	result, err := h.adminService.GetRAGConfigs(c.Request.Context())
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "获取RAG配置失败: "+err.Error())
+		}
+		return
+	}
+	common.Success(c, result)
+}
+
+// UpdateRAGConfigs 更新RAG配置
+func (h *AdminHandler) UpdateRAGConfigs(c *gin.Context) {
+	var configs map[string]string
+	if err := c.ShouldBindJSON(&configs); err != nil {
+		common.BadRequest(c, "无效的配置数据")
+		return
+	}
+
+	if err := h.adminService.UpdateRAGConfigs(c.Request.Context(), configs); err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "更新RAG配置失败: "+err.Error())
+		}
+		return
+	}
+
+	common.SuccessWithMessage(c, "保存成功", nil)
+}
+
+// TestRAGConnection 测试RAG连接
+func (h *AdminHandler) TestRAGConnection(c *gin.Context) {
+	result, err := h.adminService.TestRAGConnection(c.Request.Context())
+	if err != nil {
+		if businessErr, ok := err.(*common.BusinessError); ok {
+			common.Error(c, businessErr.Code, businessErr.Message)
+		} else {
+			common.InternalError(c, "测试RAG连接失败: "+err.Error())
+		}
+		return
+	}
+	common.Success(c, result)
 }

@@ -24,6 +24,8 @@ const (
 	TaskTypeInterviewArchivePersist = "interview.archive.persist"
 	// TaskTypePlanGenerate 表示学习计划生成任务。
 	TaskTypePlanGenerate = "plan.generate"
+	// TaskTypeRAGSync 表示RAG向量库同步任务。
+	TaskTypeRAGSync = "rag.sync.question"
 )
 
 // TaskMessage 表示统一的异步任务消息结构，供不同服务独立消费。
@@ -93,4 +95,10 @@ type PlanGeneratePayload struct {
 	UserID       uint            `json:"user_id"`
 	RequestJSON  json.RawMessage `json:"request_json"`
 	IndustryCode string          `json:"industry_code"`
+}
+
+// RAGSyncPayload 表示RAG向量库同步任务的业务载荷。
+type RAGSyncPayload struct {
+	Action     string `json:"action"`      // index | update | delete
+	QuestionID uint   `json:"question_id"` // 题目ID
 }

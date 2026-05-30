@@ -11,6 +11,7 @@ database:
   password: password  # 对应你启动命令中的 POSTGRES_PASSWORD
   dbname: makejob
   sslmode: disable
+  connect_timeout: 5
 
 redis:
   host: localhost
@@ -49,6 +50,12 @@ ai:
   plan_model: ""
   companion_model: ""
   quiz_model: ""
+
+milvus:
+  enabled: true
+  addr: "localhost:19530"
+  user: "root"
+  password: "Milvus"
 
 minimax:
   group_id: "2045005272065249730"               # 旧版兼容参数；当前官方 TTS 可不依赖该字段

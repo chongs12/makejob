@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"makejob-backend/internal/ai"
+	eino "makejob-backend/internal/ai/eino"
 	"makejob-backend/internal/common"
 	"makejob-backend/internal/live2dassets"
 	"makejob-backend/internal/model"
 	"makejob-backend/internal/mq"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
+
+	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 type DashboardResponse struct {
@@ -289,6 +292,11 @@ type AdminService interface {
 	UpdateTTSConfig(ctx context.Context, id uint, req *UpdateTTSConfigRequest) error
 	DeleteTTSConfig(ctx context.Context, id uint) error
 	UpdateTTSSceneDefaults(ctx context.Context, req *UpdateTTSSceneDefaultsRequest) error
+
+	// RAG配置管理
+	GetRAGConfigs(ctx context.Context) (*RAGConfigResponse, error)
+	UpdateRAGConfigs(ctx context.Context, configs map[string]string) error
+	TestRAGConnection(ctx context.Context) (*RAGConnectionTestResult, error)
 }
 
 type adminService struct {
@@ -1183,6 +1191,143 @@ func (s *adminService) UpdateTTSSceneDefaults(ctx context.Context, req *UpdateTT
 		return common.NewBusinessError(common.CodeBadRequest, err.Error())
 	}
 	return s.adminConfigRepo.BatchUpsert(ctx, adminConfigs)
+}
+
+// GetRAGConfigs 返回后台 RAG 配置页需要的配置和状态信息。
+func (s *adminService) GetRAGConfigs(ctx context.Context) (*RAGConfigResponse, error) {
+	items, err := s.adminConfigRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return buildRAGConfigResponse(items, s.baseAIConfig), nil
+}
+
+// UpdateRAGConfigs 校验并持久化后台提交的 RAG 配置。
+func (s *adminService) UpdateRAGConfigs(ctx context.Context, configs map[string]string) error {
+	normalizedConfigs, err := normalizeRAGConfigs(configs)
+	if err != nil {
+		return common.NewBusinessError(common.CodeBadRequest, err.Error())
+	}
+
+	adminConfigs := buildRAGConfigItems(normalizedConfigs)
+	if len(adminConfigs) == 0 {
+		return common.NewBusinessError(common.CodeBadRequest, "no valid rag configs provided")
+	}
+
+	return s.adminConfigRepo.BatchUpsert(ctx, adminConfigs)
+}
+
+// TestRAGConnection 测试 RAG 系统连接状态。
+func (s *adminService) TestRAGConnection(ctx context.Context) (*RAGConnectionTestResult, error) {
+	items, err := s.adminConfigRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 合并配置
+	configs := ai.DefaultRuntimeConfig()
+	for _, item := range items {
+		if ai.IsRAGConfigKey(item.ConfigKey) {
+			configs[item.ConfigKey] = item.ConfigValue
+		}
+	}
+
+	// 检查是否启用
+	if configs[ai.ConfigKeyRAGEnabled] != "true" {
+		return &RAGConnectionTestResult{
+			MilvusOK:    false,
+			EmbeddingOK: false,
+			Error:       "RAG未启用",
+		}, nil
+	}
+
+	result := &RAGConnectionTestResult{}
+
+	// 测试Milvus连接
+	milvusAddr := configs[ai.ConfigKeyRAGMilvusAddr]
+	if milvusAddr == "" {
+		milvusAddr = "localhost:19530"
+	}
+	milvusUser := configs[ai.ConfigKeyRAGMilvusUser]
+	if milvusUser == "" {
+		milvusUser = "root"
+	}
+	milvusPassword := configs[ai.ConfigKeyRAGMilvusPassword]
+	if milvusPassword == "" {
+		milvusPassword = "Milvus"
+	}
+
+	milvusClient, milvusErr := milvusclient.New(ctx, &milvusclient.ClientConfig{
+		Address:  milvusAddr,
+		Username: milvusUser,
+		Password: milvusPassword,
+	})
+	if milvusErr != nil {
+		result.MilvusOK = false
+		result.Error = fmt.Sprintf("Milvus连接失败: %s", milvusErr.Error())
+		return result, nil
+	}
+	defer milvusClient.Close(ctx)
+
+	// 通过GetServerVersion验证连接可用性
+	_, milvusErr = milvusClient.GetServerVersion(ctx, milvusclient.NewGetServerVersionOption())
+	if milvusErr != nil {
+		result.MilvusOK = false
+		result.Error = fmt.Sprintf("Milvus版本查询失败: %s", milvusErr.Error())
+		return result, nil
+	}
+	result.MilvusOK = true
+
+	// 测试Embedding连接
+	apiKey := strings.TrimSpace(configs[ai.ConfigKeyRAGEmbedAPIKey])
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(configs[ai.ConfigKeyAPIKey])
+	}
+	embedModel := strings.TrimSpace(configs[ai.ConfigKeyRAGEmbedModel])
+	if embedModel == "" {
+		embedModel = "doubao-embedding-large-text-240915"
+	}
+	baseURL := strings.TrimSpace(configs[ai.ConfigKeyRAGEmbedBaseURL])
+	if baseURL == "" {
+		baseURL = "https://ark.cn-beijing.volces.com/api/v3"
+	}
+
+	if apiKey == "" {
+		result.EmbeddingOK = false
+		if result.Error == "" {
+			result.Error = "Embedding API Key未配置"
+		}
+		return result, nil
+	}
+
+	embedder, embedErr := eino.NewEmbedder(ctx, apiKey, embedModel, baseURL)
+	if embedErr != nil {
+		result.EmbeddingOK = false
+		if result.Error == "" {
+			result.Error = fmt.Sprintf("Embedding初始化失败: %s", embedErr.Error())
+		}
+		return result, nil
+	}
+
+	// 发送最小化测试请求
+	vectors, embedErr := embedder.EmbedStrings(ctx, []string{"test"})
+	if embedErr != nil {
+		result.EmbeddingOK = false
+		if result.Error == "" {
+			result.Error = fmt.Sprintf("Embedding API调用失败: %s", embedErr.Error())
+		}
+		return result, nil
+	}
+	if len(vectors) == 0 || len(vectors[0]) == 0 {
+		result.EmbeddingOK = false
+		if result.Error == "" {
+			result.Error = "Embedding API返回空向量"
+		}
+		return result, nil
+	}
+	result.EmbeddingOK = true
+
+	return result, nil
 }
 
 func parseQuestionOptions(raw string) []string {
