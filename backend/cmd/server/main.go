@@ -30,6 +30,7 @@ import (
 	"makejob-backend/internal/scraper"
 	scraperMock "makejob-backend/internal/scraper/mock"
 	"makejob-backend/internal/service"
+	"makejob-backend/internal/telemetry"
 	ttsfactory "makejob-backend/internal/tts/factory"
 	applogger "makejob-backend/pkg/logger"
 )
@@ -116,6 +117,16 @@ func main() {
 
 	applogger.Info("starting makejob backend", zap.String("version", Version))
 
+	otelShutdown, otelErr := telemetry.Init(context.Background(), cfg.Telemetry)
+	if otelErr != nil {
+		applogger.Warn("otel init failed, continuing without tracing", zap.Error(otelErr))
+	} else {
+		defer otelShutdown()
+		if cfg.Telemetry.Enabled {
+			applogger.Info("opentelemetry initialized", zap.String("endpoint", cfg.Telemetry.Endpoint))
+		}
+	}
+
 	db, dbErr := model.InitDB(&cfg.Database)
 	if dbErr != nil {
 		applogger.Warn("database init failed, continuing without db", zap.Error(dbErr))
@@ -156,10 +167,11 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
 	r.Use(middleware.RequestID())
+	r.Use(middleware.Tracing())
 	r.Use(middleware.Logger())
 	r.Use(metrics.GinMetricsMiddleware())
 	r.Use(middleware.CORS())
-	r.Use(middleware.RateLimit())
+	r.Use(middleware.DistributedRateLimit(rdb, cfg.DistributedRateLimit))
 	r.Use(middleware.Recovery())
 
 	registerRoutes(r, deps, db, rdb)

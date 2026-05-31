@@ -145,3 +145,26 @@ admin_bootstrap:
 piston:
   endpoint: "http://localhost:2000/api/v2/execute"
   timeout: 30
+
+telemetry:
+  enabled: false
+  endpoint: "localhost:4317"
+  service_name: "makejob-backend"
+  sample_rate: 1.0
+
+distributed_ratelimit:
+  enabled: false
+  fallback_local: true
+  rules:
+    - name: "default"
+      rate: 100
+      capacity: 200
+      by_key: "ip"
+    - name: "strict"
+      rate: 1
+      capacity: 3
+      by_key: "ip"
+    - name: "public"
+      rate: 20
+      capacity: 50
+      by_key: "ip"

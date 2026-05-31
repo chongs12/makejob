@@ -42,6 +42,13 @@ func Logger() gin.HandlerFunc {
 			fields = append(fields, zap.String("request_id", rid))
 		}
 
+		// 从 context 注入的 OTel trace_id
+		if traceID, exists := c.Get("trace_id"); exists {
+			if tid, ok := traceID.(string); ok && tid != "" {
+				fields = append(fields, zap.String("trace_id", tid))
+			}
+		}
+
 		// Auth 中间件在 Logger 之前执行（per-group），此时 user_id 已可用
 		if uid, ok := GetUserID(c); ok {
 			fields = append(fields, zap.Uint("user_id", uid))
@@ -105,6 +112,13 @@ func LoggerWithSkipPaths(skipPaths []string) gin.HandlerFunc {
 
 		if rid := GetRequestID(c); rid != "" {
 			fields = append(fields, zap.String("request_id", rid))
+		}
+
+		// 从 context 注入的 OTel trace_id
+		if traceID, exists := c.Get("trace_id"); exists {
+			if tid, ok := traceID.(string); ok && tid != "" {
+				fields = append(fields, zap.String("trace_id", tid))
+			}
 		}
 
 		if uid, ok := GetUserID(c); ok {

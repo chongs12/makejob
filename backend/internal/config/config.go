@@ -12,19 +12,21 @@ import (
 
 // Config 应用程序全局配置结构体
 type Config struct {
-	Server         ServerConfig         `mapstructure:"server"`
-	Database       DatabaseConfig       `mapstructure:"database"`
-	Redis          RedisConfig          `mapstructure:"redis"`
-	RabbitMQ       RabbitMQConfig       `mapstructure:"rabbitmq"`
-	JWT            JWTConfig            `mapstructure:"jwt"`
-	Casbin         CasbinConfig         `mapstructure:"casbin"`
-	AI             AIConfig             `mapstructure:"ai"`
-	MiniMax        MiniMaxConfig        `mapstructure:"minimax"`
-	Volcengine     VolcengineConfig     `mapstructure:"volcengine"`
-	AdminBootstrap AdminBootstrapConfig `mapstructure:"admin_bootstrap"`
-	Piston         PistonConfig         `mapstructure:"piston"`
-	Milvus         MilvusConfig         `mapstructure:"milvus"`
-	Logging        LoggingConfig        `mapstructure:"logging"`
+	Server               ServerConfig               `mapstructure:"server"`
+	Database             DatabaseConfig             `mapstructure:"database"`
+	Redis                RedisConfig                `mapstructure:"redis"`
+	RabbitMQ             RabbitMQConfig             `mapstructure:"rabbitmq"`
+	JWT                  JWTConfig                  `mapstructure:"jwt"`
+	Casbin               CasbinConfig               `mapstructure:"casbin"`
+	AI                   AIConfig                   `mapstructure:"ai"`
+	MiniMax              MiniMaxConfig              `mapstructure:"minimax"`
+	Volcengine           VolcengineConfig           `mapstructure:"volcengine"`
+	AdminBootstrap       AdminBootstrapConfig       `mapstructure:"admin_bootstrap"`
+	Piston               PistonConfig               `mapstructure:"piston"`
+	Milvus               MilvusConfig               `mapstructure:"milvus"`
+	Logging              LoggingConfig              `mapstructure:"logging"`
+	Telemetry            TelemetryConfig            `mapstructure:"telemetry"`
+	DistributedRateLimit DistributedRateLimitConfig `mapstructure:"distributed_ratelimit"`
 }
 
 // RabbitMQConfig RabbitMQ 连接与消费配置。
@@ -247,6 +249,29 @@ type AdminBootstrapConfig struct {
 	MembershipLevel string `mapstructure:"membership_level"`
 }
 
+// TelemetryConfig OpenTelemetry 配置
+type TelemetryConfig struct {
+	Enabled     bool    `mapstructure:"enabled"`
+	Endpoint    string  `mapstructure:"endpoint"`      // OTLP gRPC endpoint, 如 "localhost:4317"
+	ServiceName string  `mapstructure:"service_name"`  // 服务名, 默认 "makejob-backend"
+	SampleRate  float64 `mapstructure:"sample_rate"`   // 采样率, 0.0-1.0, 默认 1.0
+}
+
+// DistributedRateLimitConfig 分布式限流配置
+type DistributedRateLimitConfig struct {
+	Enabled       bool                  `mapstructure:"enabled"`
+	FallbackLocal bool                  `mapstructure:"fallback_local"` // Redis 不可用时是否降级到本地限流
+	Rules         []RateLimitRuleConfig `mapstructure:"rules"`
+}
+
+// RateLimitRuleConfig 限流规则配置
+type RateLimitRuleConfig struct {
+	Name     string  `mapstructure:"name"`     // 规则名称, 如 "default", "strict", "public"
+	Rate     float64 `mapstructure:"rate"`     // 每秒允许请求数
+	Capacity int     `mapstructure:"capacity"` // 突发容量
+	ByKey    string  `mapstructure:"by_key"`   // 限流维度: "ip" 或 "user_id"
+}
+
 var (
 	instance *Config
 	once     sync.Once
@@ -414,6 +439,21 @@ func GetConfig() *Config {
 				Piston: PistonConfig{
 					Endpoint: "http://localhost:2000/api/v2/execute",
 					Timeout:  30,
+				},
+				Telemetry: TelemetryConfig{
+					Enabled:     false,
+					Endpoint:    "localhost:4317",
+					ServiceName: "makejob-backend",
+					SampleRate:  1.0,
+				},
+				DistributedRateLimit: DistributedRateLimitConfig{
+					Enabled:       false,
+					FallbackLocal: true,
+					Rules: []RateLimitRuleConfig{
+						{Name: "default", Rate: 100, Capacity: 200, ByKey: "ip"},
+						{Name: "strict", Rate: 1, Capacity: 3, ByKey: "ip"},
+						{Name: "public", Rate: 20, Capacity: 50, ByKey: "ip"},
+					},
 				},
 			}
 		}

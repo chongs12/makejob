@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"makejob-backend/internal/ai"
 	"makejob-backend/internal/metrics"
@@ -69,7 +70,13 @@ func (r *aiCallLogRecorder) Record(ctx context.Context, entry runtimeCallLogEntr
 
 	traceID := strings.TrimSpace(entry.TraceID)
 	if traceID == "" {
-		traceID = uuid.NewString()
+		// 优先从 OTel span context 获取 traceID，实现 HTTP 请求与 AI 调用的链路关联
+		spanCtx := trace.SpanFromContext(ctx).SpanContext()
+		if spanCtx.HasTraceID() {
+			traceID = spanCtx.TraceID().String()
+		} else {
+			traceID = uuid.NewString()
+		}
 	}
 
 	modelError := ""
