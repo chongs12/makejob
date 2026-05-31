@@ -126,7 +126,7 @@ export function InterviewSessionPage() {
   const lastCodingSnapshotRef = useRef('')
   const codingSnapshotTimerRef = useRef<number | null>(null)
   const codingIdleTimerRef = useRef<number | null>(null)
-  const { enqueuePCM16Base64, preparePlayback, stop: stopPCMStreamPlayback } = usePCMStreamPlayer({
+  const { enqueuePCM16Base64, preparePlayback, stop: stopPCMStreamPlayback, isPlaying: isPCMPlaying, waitForPlaybackEnd: waitForPCMPlaybackEnd } = usePCMStreamPlayer({
     onLevelChange: setStreamMouthOpen,
   })
 
@@ -1106,6 +1106,7 @@ export function InterviewSessionPage() {
 
   /**
    * 当实时面试官完成一轮播报并进入 ready 状态后，自动开始收音，让候选人可以直接开口回答。
+   * 等待 PCM 流式播放真正结束后再启动录音，避免 TTS 未播完就开始收音。
    */
   useEffect(() => {
     if (sessionState.mode !== 'realtime' || sessionState.status !== 'ready') {
@@ -1121,12 +1122,25 @@ export function InterviewSessionPage() {
       return
     }
 
-    const timer = window.setTimeout(() => {
+    let cancelled = false
+
+    const startAfterPlayback = async () => {
+      if (isPCMPlaying()) {
+        await waitForPCMPlaybackEnd()
+      }
+      if (cancelled) return
+      // 再等一小段缓冲，确保浏览器音频管道完全排空
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 300)
+      })
+      if (cancelled) return
       void startVoiceCapture()
-    }, 260)
+    }
+
+    void startAfterPlayback()
 
     return () => {
-      window.clearTimeout(timer)
+      cancelled = true
     }
   }, [
     answer,
@@ -1134,10 +1148,12 @@ export function InterviewSessionPage() {
     canRecord,
     hasGrantedMicrophonePermission,
     isCodingQuestion,
+    isPCMPlaying,
     isRecording,
     recognitionPartial,
     sessionState.mode,
     sessionState.status,
+    waitForPCMPlaybackEnd,
     wsConnected,
   ])
 
@@ -1333,7 +1349,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={!canRecord || isCodingQuestion || !isInterviewOngoing}
+                    disabled={!canRecord || isCodingQuestion || !isInterviewOngoing || sessionState.status === 'speaking' || sessionState.status === 'thinking'}
                     onClick={() => {
                       if (isRecording) {
                         stopVoiceCapture()
@@ -1342,7 +1358,7 @@ export function InterviewSessionPage() {
                       void startVoiceCapture()
                     }}
                   >
-                    {isRecording ? '手动停止并提交' : (hasGrantedMicrophonePermission ? '开始语音回答' : '授权麦克风并开始语音回答')}
+                    {isRecording ? '手动停止并提交' : sessionState.status === 'speaking' ? '面试官播报中...' : sessionState.status === 'thinking' ? '面试官思考中...' : (hasGrantedMicrophonePermission ? '开始语音回答' : '授权麦克风并开始语音回答')}
                   </button>
                   <button
                     className="secondary-button"

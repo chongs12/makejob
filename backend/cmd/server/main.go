@@ -102,6 +102,7 @@ type AppDependencies struct {
 	AdminRAGHandler         *handler.AdminRAGHandler
 	AdminRAGDocumentHandler *handler.AdminRAGDocumentHandler
 	RAGCloser               func() // RAG资源清理函数
+	RAGService              *rag.Service
 }
 
 func main() {
@@ -268,6 +269,7 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 				deps.AdminRAGDocumentHandler = handler.NewAdminRAGDocumentHandler(ragDocService)
 			} else {
 				deps.RAGCloser = ragResult.Closer
+				deps.RAGService = ragResult.Service
 				deps.AdminRAGHandler = handler.NewAdminRAGHandler(ragResult.Service, deps.QuestionRepo)
 
 				// RAG初始化成功，文档管理可使用同步功能
@@ -347,7 +349,17 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 
 		deps.AuthHandler = handler.NewAuthHandler(deps.AuthService)
 		deps.MembershipHandler = handler.NewMembershipHandler(deps.MembershipService)
-		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsSceneService, ttsProvider, asrProvider, cfg.Volcengine.Realtime)
+
+		// 创建面试RAG服务（如果RAG已初始化）
+		var interviewRAGService *rag.InterviewRAGService
+		if deps.RAGService != nil {
+			interviewRAGService = rag.NewInterviewRAGService(deps.RAGService)
+
+			// 设置面试Agent的提示词增强器
+			aiRuntime.SetPromptEnhancer(aiClient.InterviewAgent, interviewRAGService)
+		}
+
+		deps.InterviewHandler = handler.NewInterviewHandler(deps.InterviewService, ttsSceneService, ttsProvider, asrProvider, cfg.Volcengine.Realtime, interviewRAGService)
 		deps.QuestionHandler = handler.NewQuestionHandler(deps.QuestionService)
 		deps.PlanHandler = handler.NewPlanHandler(deps.PlanService)
 		deps.CompanionHandler = handler.NewCompanionHandler(deps.CompanionService)

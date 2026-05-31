@@ -35,6 +35,7 @@ type RealtimeInterviewContext struct {
 	ResumeProfile         *ai.ResumeProfile
 	DialogID              string
 	HasStarted            bool
+	CurrentTopic          string // 当前面试话题（从模型回复中提取）
 }
 
 type realtimeInterviewMetadata struct {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"makejob-backend/internal/ai"
 	realtimevolc "makejob-backend/internal/realtime/volcengine"
@@ -306,6 +307,27 @@ func (s *wsInterviewSession) handleRealtimeASREnded() {
 		s.sendState("ready", "本轮未识别到有效回答，请重新开始。")
 		return
 	}
+
+	// RAG增强：同步检索并注入，确保模型生成回复前已获得参考知识
+	if s.ragService != nil {
+		s.realtimeMu.Lock()
+		client := s.realtimeClient
+		var skills []string
+		var currentTopic, industry string
+		if s.realtimeContext != nil {
+			currentTopic = s.realtimeContext.CurrentTopic
+			industry = s.realtimeContext.IndustryCode
+			if s.realtimeContext.ResumeProfile != nil {
+				skills = s.realtimeContext.ResumeProfile.Skills
+			}
+		}
+		s.realtimeMu.Unlock()
+
+		if client != nil {
+			s.injectRAGContext(text, client, skills, currentTopic, industry)
+		}
+	}
+
 	if err := s.handler.interviewService.AppendRealtimeUserAnswer(context.Background(), s.userID, s.interviewID, text); err != nil {
 		s.sendError("写入实时语音回答失败: " + err.Error())
 		return
@@ -343,6 +365,7 @@ func (s *wsInterviewSession) handleRealtimeTTSSentenceStart(payload []byte) {
 	applogger.Info("realtime assistant tts sentence started",
 		zap.String("trace_id", s.traceID),
 		zap.Uint("interview_id", s.interviewID),
+		zap.String("tts_type", response.TTSType),
 		zap.String("text", text),
 		zap.String("question_id", response.QuestionID),
 		zap.String("reply_id", response.ReplyID),
@@ -424,6 +447,11 @@ func (s *wsInterviewSession) handleRealtimeChatResponse(payload []byte) {
 	}
 	if response.ReplyID != "" {
 		s.realtimeTurn.replyID = response.ReplyID
+	}
+
+	// 从模型回复中提取当前话题（用于RAG检索）
+	if s.realtimeContext != nil && len(text) > 10 {
+		s.realtimeContext.CurrentTopic = extractTopicFromReply(text)
 	}
 	if s.realtimeTurn.liveText == "" {
 		currentText := s.realtimeTurn.replyText
@@ -727,4 +755,67 @@ func appendRealtimeTextChunk(current string, next string) string {
 		return current
 	}
 	return current + next
+}
+
+// injectRAGContext 异步检索RAG知识并注入到实时语音模型。
+// 参数通过快照传入，避免goroutine中的竞态条件。
+func (s *wsInterviewSession) injectRAGContext(
+	userAnswer string,
+	client *realtimevolc.Client,
+	skills []string,
+	currentTopic string,
+	industry string,
+) {
+	defer func() {
+		if r := recover(); r != nil {
+			applogger.Error("RAG注入异常", zap.Any("error", r))
+		}
+	}()
+
+	// 带超时的context，避免阻塞面试流程过久
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// RAG检索
+	result, err := s.ragService.RetrieveForInterview(ctx, userAnswer, industry, currentTopic, skills)
+	if err != nil {
+		applogger.Warn("面试RAG检索失败，跳过注入", zap.Error(err))
+		return
+	}
+	if result == nil || len(result.Documents) == 0 {
+		return
+	}
+
+	// 格式化为external_rag格式
+	ragJSON := s.ragService.FormatForExternalRAG(result.Documents, 4000)
+	if ragJSON == "[]" {
+		return
+	}
+
+	// 发送安抚话术
+	soothingPhrase := s.ragService.GetSoothingPhrase()
+	if err := client.SendChatTTSText(soothingPhrase); err != nil {
+		applogger.Warn("发送安抚话术失败", zap.Error(err))
+	}
+
+	// 注入RAG数据
+	if err := client.SendChatRAGText(ragJSON); err != nil {
+		applogger.Error("注入RAG数据失败", zap.Error(err))
+		return
+	}
+
+	applogger.Info("面试RAG注入成功",
+		zap.String("query", result.Query),
+		zap.Int("docs", len(result.Documents)),
+	)
+}
+
+// extractTopicFromReply 从模型回复中提取当前面试话题。
+// 简单实现：取回复的前50个字符作为话题摘要。
+func extractTopicFromReply(reply string) string {
+	reply = strings.TrimSpace(reply)
+	if len(reply) > 50 {
+		reply = reply[:50]
+	}
+	return reply
 }

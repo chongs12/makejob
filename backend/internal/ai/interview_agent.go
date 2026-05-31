@@ -2,6 +2,16 @@ package ai
 
 import "context"
 
+// PromptEnhancer 提示词增强接口
+// 用于在生成面试题或评估答案时注入额外上下文（如RAG检索结果）
+type PromptEnhancer interface {
+	// EnhanceQuestionPrompt 增强出题提示词
+	EnhanceQuestionPrompt(ctx context.Context, originalPrompt string, topic string, industry string, skills []string) string
+
+	// EnhanceFeedbackPrompt 增强评估提示词
+	EnhanceFeedbackPrompt(ctx context.Context, originalPrompt string, question string, answer string) string
+}
+
 // InterviewAgent 面试Agent接口
 // 提供模拟面试的完整流程控制，包括开始面试、评估答案、生成报告等
 type InterviewAgent interface {

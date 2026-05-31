@@ -8,6 +8,8 @@ export interface PCMStreamPlayerController {
   enqueuePCM16Base64: (audioBase64: string, sampleRate: number) => Promise<void>
   preparePlayback: () => Promise<void>
   stop: () => void
+  isPlaying: () => boolean
+  waitForPlaybackEnd: () => Promise<void>
 }
 
 /**
@@ -18,6 +20,7 @@ export function usePCMStreamPlayer(options: PCMStreamPlayerOptions = {}): PCMStr
   const nextStartTimeRef = useRef(0)
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set())
   const levelResetTimerRef = useRef<number | null>(null)
+  const playbackEndResolversRef = useRef<Array<() => void>>([])
 
   /**
    * 确保存在可用的 Web Audio 上下文，并在浏览器挂起后恢复到可播放状态。
@@ -84,6 +87,12 @@ export function usePCMStreamPlayer(options: PCMStreamPlayerOptions = {}): PCMStr
     source.connect(audioContext.destination)
     source.onended = () => {
       activeSourcesRef.current.delete(source)
+      if (activeSourcesRef.current.size === 0) {
+        const resolvers = playbackEndResolversRef.current.splice(0)
+        for (const resolve of resolvers) {
+          resolve()
+        }
+      }
     }
 
     const startAt = Math.max(nextStartTimeRef.current, audioContext.currentTime + 0.01)
@@ -111,6 +120,12 @@ export function usePCMStreamPlayer(options: PCMStreamPlayerOptions = {}): PCMStr
     activeSourcesRef.current.clear()
     nextStartTimeRef.current = 0
 
+    // resolve any pending waitForPlaybackEnd promises
+    const resolvers = playbackEndResolversRef.current.splice(0)
+    for (const resolve of resolvers) {
+      resolve()
+    }
+
     if (levelResetTimerRef.current !== null) {
       window.clearTimeout(levelResetTimerRef.current)
       levelResetTimerRef.current = null
@@ -123,6 +138,19 @@ export function usePCMStreamPlayer(options: PCMStreamPlayerOptions = {}): PCMStr
     }
   }
 
+  function isPlaying(): boolean {
+    return activeSourcesRef.current.size > 0
+  }
+
+  function waitForPlaybackEnd(): Promise<void> {
+    if (activeSourcesRef.current.size === 0) {
+      return Promise.resolve()
+    }
+    return new Promise<void>((resolve) => {
+      playbackEndResolversRef.current.push(resolve)
+    })
+  }
+
   useEffect(() => {
     return () => {
       stop()
@@ -133,5 +161,7 @@ export function usePCMStreamPlayer(options: PCMStreamPlayerOptions = {}): PCMStr
     enqueuePCM16Base64,
     preparePlayback,
     stop,
+    isPlaying,
+    waitForPlaybackEnd,
   }
 }

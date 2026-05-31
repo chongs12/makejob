@@ -17,10 +17,11 @@ import (
 
 // providerInterviewAgent 基于真实 Provider 驱动面试链路，并保留本地兜底能力。
 type providerInterviewAgent struct {
-	provider ai.AIProvider
-	prompts  *promptResolver
-	logger   *aiCallLogRecorder
-	sessions sync.Map
+	provider       ai.AIProvider
+	prompts        *promptResolver
+	logger         *aiCallLogRecorder
+	sessions       sync.Map
+	promptEnhancer ai.PromptEnhancer // 可选的提示词增强器（如RAG）
 }
 
 // interviewSessionState 保存真实面试链路的会话状态。
@@ -119,11 +120,19 @@ func interviewReportPayloadSchema() string {
 }
 
 // newInterviewAgent 创建 interview 场景专用 Agent。
-func newInterviewAgent(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder) ai.InterviewAgent {
+func newInterviewAgent(provider ai.AIProvider, prompts *promptResolver, logger *aiCallLogRecorder, enhancer ai.PromptEnhancer) ai.InterviewAgent {
 	return &providerInterviewAgent{
-		provider: provider,
-		prompts:  prompts,
-		logger:   logger,
+		provider:       provider,
+		prompts:        prompts,
+		logger:         logger,
+		promptEnhancer: enhancer,
+	}
+}
+
+// SetPromptEnhancer 设置提示词增强器（用于RAG集成）
+func SetPromptEnhancer(agent ai.InterviewAgent, enhancer ai.PromptEnhancer) {
+	if a, ok := agent.(*providerInterviewAgent); ok {
+		a.promptEnhancer = enhancer
 	}
 }
 
@@ -276,6 +285,17 @@ func (a *providerInterviewAgent) getSession(sessionID string) (*interviewSession
 // generateQuestion 调用 Provider 生成结构化面试题。
 func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *interviewSessionState, questionIndex int) (ai.InterviewQuestion, error) {
 	userPrompt := buildQuestionUserPrompt(session, questionIndex)
+
+	// 如果有提示词增强器（如RAG），增强出题提示词
+	if a.promptEnhancer != nil {
+		topics := session.Config.Topics
+		if len(topics) > 0 {
+			topic := topics[questionIndex%len(topics)]
+			skills := session.Config.UserWeakTopics
+			userPrompt = a.promptEnhancer.EnhanceQuestionPrompt(ctx, userPrompt, topic, session.Config.IndustryCode, skills)
+		}
+	}
+
 	messages := []ai.Message{
 		{
 			Role:    "system",
@@ -306,6 +326,13 @@ func (a *providerInterviewAgent) generateQuestion(ctx context.Context, session *
 // generateFeedback 调用 Provider 生成结构化答案反馈。
 func (a *providerInterviewAgent) generateFeedback(ctx context.Context, session *interviewSessionState, questionIndex int, answer string) (ai.AnswerFeedback, error) {
 	userPrompt := buildFeedbackUserPrompt(session, questionIndex, answer)
+
+	// 如果有提示词增强器（如RAG），增强评估提示词
+	if a.promptEnhancer != nil && questionIndex < len(session.Questions) {
+		question := session.Questions[questionIndex].Question
+		userPrompt = a.promptEnhancer.EnhanceFeedbackPrompt(ctx, userPrompt, question, answer)
+	}
+
 	messages := []ai.Message{
 		{
 			Role:    "system",

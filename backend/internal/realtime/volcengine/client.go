@@ -35,6 +35,10 @@ const (
 	EventEndASR int32 = 400
 	// EventChatTextQuery 表示向实时模型发送一段文本输入。
 	EventChatTextQuery int32 = 501
+	// EventChatTTSText 表示向实时模型发送安抚话术（用于RAG检索期间）。
+	EventChatTTSText int32 = 500
+	// EventChatRAGText 表示向实时模型注入外部RAG数据。
+	EventChatRAGText int32 = 502
 
 	// EventConnectionStarted 表示连接建立成功。
 	EventConnectionStarted int32 = 50
@@ -114,6 +118,16 @@ type chatTextQueryPayload struct {
 
 type sayHelloPayload struct {
 	Content string `json:"content"`
+}
+
+type chatTTSTextPayload struct {
+	Start   bool   `json:"start"`
+	Content string `json:"content"`
+	End     bool   `json:"end"`
+}
+
+type chatRAGTextPayload struct {
+	ExternalRAG string `json:"external_rag"`
 }
 
 // ClientEvent 描述火山实时语音网关返回的一条事件。
@@ -285,6 +299,7 @@ func (c *Client) Start(ctx context.Context, options StartOptions) (string, error
 				"input_mod":              firstNonEmptyRealtimeString(options.InputMode, c.cfg.InputMode),
 				"recv_timeout":           firstNonEmptyRealtimeInt(options.RecvTimeout, c.cfg.RecvTimeout),
 				"enable_user_query_exit": false,
+				"model":                  "1.2.1.1",
 			},
 		},
 	}
@@ -352,6 +367,27 @@ func (c *Client) SendSayHello(text string) error {
 // SendEndASR 在 push_to_talk 模式下显式结束当前一轮用户语音输入。
 func (c *Client) SendEndASR() error {
 	return c.sendFullJSON(EventEndASR, c.sessionID, map[string]interface{}{})
+}
+
+// SendChatTTSText 向实时模型发送安抚话术（事件500）。
+// 用于RAG检索期间播放安抚语音，避免用户等待沉默。
+func (c *Client) SendChatTTSText(content string) error {
+	payload := chatTTSTextPayload{
+		Start:   true,
+		Content: strings.TrimSpace(content),
+		End:     true,
+	}
+	return c.sendFullJSON(EventChatTTSText, c.sessionID, payload)
+}
+
+// SendChatRAGText 向实时模型注入外部RAG数据（事件502）。
+// externalRAG 格式: [{"title":"...","content":"..."}]
+// 模型会自动总结和口语化改写RAG内容后输出音频。
+func (c *Client) SendChatRAGText(externalRAG string) error {
+	payload := chatRAGTextPayload{
+		ExternalRAG: externalRAG,
+	}
+	return c.sendFullJSON(EventChatRAGText, c.sessionID, payload)
 }
 
 // Close 结束当前实时语音会话并释放底层连接。

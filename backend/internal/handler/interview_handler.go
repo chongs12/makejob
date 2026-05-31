@@ -20,6 +20,7 @@ import (
 	"makejob-backend/internal/common"
 	appconfig "makejob-backend/internal/config"
 	"makejob-backend/internal/middleware"
+	"makejob-backend/internal/rag"
 	realtimevolc "makejob-backend/internal/realtime/volcengine"
 	"makejob-backend/internal/service"
 	"makejob-backend/internal/tts"
@@ -35,6 +36,7 @@ type InterviewHandler struct {
 	ttsProvider      tts.TTSProvider
 	asrProvider      asr.ASRProvider
 	realtimeConfig   appconfig.VolcRealtimeDialogConfig
+	ragService       *rag.InterviewRAGService
 }
 
 // NewInterviewHandler 创建面试处理器实例
@@ -44,6 +46,7 @@ func NewInterviewHandler(
 	ttsProvider tts.TTSProvider,
 	asrProvider asr.ASRProvider,
 	realtimeConfig appconfig.VolcRealtimeDialogConfig,
+	ragService *rag.InterviewRAGService,
 ) *InterviewHandler {
 	return &InterviewHandler{
 		interviewService: svc,
@@ -51,6 +54,7 @@ func NewInterviewHandler(
 		ttsProvider:      ttsProvider,
 		asrProvider:      asrProvider,
 		realtimeConfig:   realtimeConfig,
+		ragService:       ragService,
 	}
 }
 
@@ -499,6 +503,7 @@ type wsInterviewSession struct {
 	realtimeContext  *service.RealtimeInterviewContext
 	realtimeMu       sync.Mutex
 	realtimeTurn     realtimeTurnState
+	ragService       *rag.InterviewRAGService
 }
 
 type realtimeTurnState struct {
@@ -564,6 +569,7 @@ func (h *InterviewHandler) WebSocket(c *gin.Context) {
 		interviewID: uint(interviewID),
 		traceID:     uuid.NewString(),
 		asrLanguage: "zh-CN",
+		ragService:  h.ragService,
 	}
 	defer session.close()
 
@@ -583,11 +589,13 @@ func (h *InterviewHandler) WebSocket(c *gin.Context) {
 			}
 			return
 		}
-		fields := append([]zap.Field{
-			zap.String("trace_id", session.traceID),
-			zap.Uint("interview_id", session.interviewID),
-		}, summarizeWSClientMessage(msg)...)
-		applogger.Info("interview websocket client message received", fields...)
+		if msg.Type != WSMessageTypeAudioChunk {
+			fields := append([]zap.Field{
+				zap.String("trace_id", session.traceID),
+				zap.Uint("interview_id", session.interviewID),
+			}, summarizeWSClientMessage(msg)...)
+			applogger.Info("interview websocket client message received", fields...)
+		}
 
 		switch msg.Type {
 		case WSMessageTypeUserAnswer:

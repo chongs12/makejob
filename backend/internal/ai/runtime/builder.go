@@ -74,6 +74,7 @@ func (b *Builder) buildClient(ctx context.Context, runtimeConfig map[string]stri
 			interviewProvider,
 			prompts,
 			newAICallLogRecorder(b.aiCallLogRepo, model.AICallSourceInterviewRuntime, model.PromptSceneInterview, runtimeConfig, interviewSceneConfig),
+			nil, // PromptEnhancer will be set later if RAG is available
 		),
 		PlanAgent: newPlanAgent(
 			planProvider,

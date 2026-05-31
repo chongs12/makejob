@@ -117,3 +117,8 @@
   5. 关掉 worker，再重复一次创建学习计划或面试，确认状态会卡住，证明 MQ 消费链确实生效
 
   如果你要，我下一条可以直接给你一份“按接口/按页面操作”的最短测试清单。
+
+
+
+curl "http://localhost:8082/api/admin/rag/search?query=GC调优+STW+全局停顿&top_k=3" \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0LCJ1c2VybmFtZSI6IkFkbWluIiwicm9sZSI6ImFkbWluIiwiaXNzIjoibWFrZWpvYi1iYWNrZW5kIiwiZXhwIjoxNzgwODI3ODAyLCJuYmYiOjE3ODAyMjMwMDIsImlhdCI6MTc4MDIyMzAwMn0.L2i1YvkHPDZzUNPqYYHFwEXB4Cai08-tbSTDmo8JWWc"
