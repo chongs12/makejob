@@ -1,0 +1,11 @@
+syntax = "proto3";
+package makejob.shared.v1;
+option go_package = "makejob/api/makejob/shared/v1;sharedv1";
+
+import "google/protobuf/timestamp.proto";
+
+message BaseModel {
+  uint64 id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}

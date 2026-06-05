@@ -1,0 +1,117 @@
+syntax = "proto3";
+package makejob.community.v1;
+option go_package = "makejob/api/makejob/community/v1;communityv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "makejob/shared/v1/pagination.proto";
+
+service CommunityService {
+  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+  rpc GetPost(GetPostRequest) returns (PostDetail);
+  rpc CreatePost(CreatePostRequest) returns (Post);
+  rpc UpdatePost(UpdatePostRequest) returns (Post);
+  rpc DeletePost(DeletePostRequest) returns (google.protobuf.Empty);
+  rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse);
+  rpc CreateComment(CreateCommentRequest) returns (Comment);
+  rpc ToggleLike(ToggleLikeRequest) returns (LikeResponse);
+}
+
+message ListPostsRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string category = 2;
+}
+
+message ListPostsResponse {
+  repeated PostSummary posts = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message PostSummary {
+  uint64 id = 1;
+  string title = 2;
+  string category = 3;
+  uint64 author_id = 4;
+  string author_name = 5;
+  int32 like_count = 6;
+  int32 comment_count = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message GetPostRequest {
+  uint64 id = 1;
+}
+
+message PostDetail {
+  uint64 id = 1;
+  string title = 2;
+  string content = 3;
+  string category = 4;
+  uint64 author_id = 5;
+  string author_name = 6;
+  string author_avatar = 7;
+  int32 like_count = 8;
+  int32 comment_count = 9;
+  bool is_liked = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message CreatePostRequest {
+  uint64 author_id = 1;
+  string title = 2;
+  string content = 3;
+  string category = 4;
+}
+
+message Post {
+  uint64 id = 1;
+  string title = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message UpdatePostRequest {
+  uint64 id = 1;
+  uint64 author_id = 2;
+  string title = 3;
+  string content = 4;
+}
+
+message DeletePostRequest {
+  uint64 id = 1;
+  uint64 author_id = 2;
+}
+
+message ListCommentsRequest {
+  uint64 post_id = 1;
+  makejob.shared.v1.PageParam page = 2;
+}
+
+message ListCommentsResponse {
+  repeated Comment comments = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message Comment {
+  uint64 id = 1;
+  uint64 post_id = 2;
+  uint64 author_id = 3;
+  string author_name = 4;
+  string content = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateCommentRequest {
+  uint64 post_id = 1;
+  uint64 author_id = 2;
+  string content = 3;
+}
+
+message ToggleLikeRequest {
+  uint64 user_id = 1;
+  uint64 post_id = 2;
+}
+
+message LikeResponse {
+  bool liked = 1;
+  int32 like_count = 2;
+}

@@ -1,0 +1,84 @@
+syntax = "proto3";
+package makejob.learning_archive.v1;
+option go_package = "makejob/api/makejob/learning_archive/v1;archivev1";
+
+import "google/protobuf/timestamp.proto";
+
+service LearningArchiveService {
+  rpc WriteEntry(WriteArchiveEntryRequest) returns (ArchiveEntry);
+  rpc BatchWriteEntries(BatchWriteRequest) returns (BatchWriteResponse);
+  rpc ListByUser(ListByUserRequest) returns (ArchiveEntryList);
+  rpc GetWeakTopics(UserIDRequest) returns (WeakTopicList);
+  rpc GetFocusSignals(UserIDRequest) returns (FocusSignalList);
+}
+
+message UserIDRequest {
+  uint64 user_id = 1;
+}
+
+message WriteArchiveEntryRequest {
+  uint64 user_id = 1;
+  string source_type = 2;
+  string source_ref = 3;
+  uint64 interview_id = 4;
+  int32 question_index = 5;
+  string industry_code = 6;
+  string plan_phase = 7;
+  string plan_phase_goal = 8;
+  string language = 9;
+  repeated string mistake_tags = 10;
+  repeated string strength_tags = 11;
+  repeated string suggestions = 12;
+  string evidence_summary = 13;
+  google.protobuf.Timestamp occurred_at = 14;
+}
+
+message BatchWriteRequest {
+  repeated WriteArchiveEntryRequest entries = 1;
+}
+
+message BatchWriteResponse {
+  int32 written = 1;
+}
+
+message ArchiveEntry {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string source_type = 3;
+  string source_ref = 4;
+  uint64 interview_id = 5;
+  int32 question_index = 6;
+  string industry_code = 7;
+  string plan_phase = 8;
+  string language = 9;
+  repeated string mistake_tags = 10;
+  repeated string strength_tags = 11;
+  repeated string suggestions = 12;
+  string evidence_summary = 13;
+  string plan_phase_goal = 16;
+  google.protobuf.Timestamp occurred_at = 14;
+  google.protobuf.Timestamp created_at = 15;
+}
+
+message ListByUserRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;
+}
+
+message ArchiveEntryList {
+  repeated ArchiveEntry entries = 1;
+}
+
+message WeakTopicList {
+  repeated string topics = 1;
+}
+
+message FocusSignalList {
+  repeated FocusSignal signals = 1;
+}
+
+message FocusSignal {
+  string topic = 1;
+  double weight = 2;
+  string source = 3;
+}

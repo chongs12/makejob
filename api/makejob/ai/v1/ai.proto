@@ -1,0 +1,123 @@
+syntax = "proto3";
+package makejob.ai.v1;
+option go_package = "makejob/api/makejob/ai/v1;aiv1";
+
+import "google/protobuf/struct.proto";
+
+service AIService {
+  rpc InterviewAgent(InterviewAgentRequest) returns (InterviewAgentResponse);
+  rpc PlanAgent(PlanAgentRequest) returns (PlanAgentResponse);
+  rpc CompanionAgent(CompanionAgentRequest) returns (CompanionAgentResponse);
+  rpc QuizAnalyzer(QuizAnalyzerRequest) returns (QuizAnalyzerResponse);
+  rpc ResumeParser(ResumeParserRequest) returns (ResumeParserResponse);
+  rpc Live2DDirector(Live2DDirectiveRequest) returns (Live2DDirectiveResponse);
+}
+
+message InterviewAgentRequest {
+  uint64 interview_id = 1;
+  string industry_code = 2;
+  string difficulty = 3;
+  repeated Message history = 4;
+  string user_answer = 5;
+  int32 question_index = 6;
+  string resume_text = 7;
+  string job_description = 8;
+}
+
+message Message {
+  string role = 1;
+  string content = 2;
+}
+
+message InterviewAgentResponse {
+  string question = 1;
+  string topic = 2;
+  string difficulty = 3;
+  string type = 4;
+  string hints = 5;
+  string feedback = 6;
+  double score = 7;
+  bool should_end = 8;
+  string live2d_emotion = 9;
+  string live2d_action = 10;
+}
+
+message PlanAgentRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  string goal = 3;
+  int32 daily_hours = 4;
+  repeated string weak_topics = 5;
+  repeated string recent_activities = 6;
+}
+
+message PlanAgentResponse {
+  string plan_title = 1;
+  repeated PlanTask tasks = 2;
+  string summary = 3;
+}
+
+message PlanTask {
+  string title = 1;
+  string description = 2;
+  string phase = 3;
+  int32 order_index = 4;
+  int32 estimated_hours = 5;
+}
+
+message CompanionAgentRequest {
+  uint64 user_id = 1;
+  string message = 2;
+  string context_type = 3;
+  repeated string recent_topics = 4;
+}
+
+message CompanionAgentResponse {
+  string reply = 1;
+  string emotion = 2;
+  repeated string suggestions = 3;
+}
+
+message QuizAnalyzerRequest {
+  string question = 1;
+  string answer = 2;
+  string topic = 3;
+  string difficulty = 4;
+  string question_type = 5;
+}
+
+message QuizAnalyzerResponse {
+  double score = 1;
+  bool is_correct = 2;
+  string feedback = 3;
+  repeated string key_points = 4;
+  string suggestions = 5;
+  string correct_answer = 6;
+}
+
+message ResumeParserRequest {
+  string resume_text = 1;
+}
+
+message ResumeParserResponse {
+  repeated string skills = 1;
+  repeated string experience = 2;
+  repeated string education = 3;
+  repeated string projects = 4;
+  string summary = 5;
+}
+
+message Live2DDirectiveRequest {
+  string context = 1;
+  string emotion_hint = 2;
+  string reply_text = 3;
+}
+
+message Live2DDirectiveResponse {
+  string emotion = 1;
+  string action = 2;
+  string reply = 3;
+  string motion_key = 4;
+  string motion_group = 5;
+  int32 duration_ms = 6;
+}

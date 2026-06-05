@@ -1,0 +1,1038 @@
+syntax = "proto3";
+package makejob.admin.v1;
+option go_package = "makejob/api/makejob/admin/v1;adminv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "makejob/shared/v1/pagination.proto";
+
+service AdminService {
+  // === 仪表盘 ===
+  rpc GetDashboard(google.protobuf.Empty) returns (DashboardResponse);
+
+  // === 用户管理 ===
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUserRole(UpdateUserRoleRequest) returns (google.protobuf.Empty);
+  rpc DisableUser(DisableUserRequest) returns (google.protobuf.Empty);
+
+  // === 题库管理 ===
+  rpc AdminListQuestions(AdminListQuestionsRequest) returns (AdminListQuestionsResponse);
+  rpc CreateQuestion(CreateQuestionRequest) returns (QuestionInfo);
+  rpc UpdateQuestion(UpdateQuestionRequest) returns (google.protobuf.Empty);
+  rpc DeleteQuestion(DeleteQuestionRequest) returns (google.protobuf.Empty);
+  rpc BatchImportQuestions(BatchImportQuestionsRequest) returns (BatchImportQuestionsResponse);
+  rpc GetQuestionTagTaxonomy(google.protobuf.Empty) returns (QuestionTagTaxonomyResponse);
+
+  // === 题目流水线 ===
+  rpc GenerateQuestionPipeline(GenerateQuestionPipelineRequest) returns (GenerateQuestionPipelineResponse);
+  rpc GenerateQuestionPipelineAsync(GenerateQuestionPipelineRequest) returns (PipelineTaskInfo);
+  rpc ImportQuestionPipeline(ImportQuestionPipelineRequest) returns (BatchImportQuestionsResponse);
+
+  // === 分类管理 ===
+  rpc AdminListCategories(google.protobuf.Empty) returns (AdminListCategoriesResponse);
+  rpc CreateCategory(CreateCategoryRequest) returns (CategoryInfo);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (google.protobuf.Empty);
+  rpc DeleteCategory(DeleteCategoryRequest) returns (google.protobuf.Empty);
+
+  // === 行业管理 ===
+  rpc AdminListIndustries(google.protobuf.Empty) returns (AdminListIndustriesResponse);
+  rpc CreateIndustry(CreateIndustryRequest) returns (IndustryInfo);
+  rpc UpdateIndustry(UpdateIndustryRequest) returns (google.protobuf.Empty);
+
+  // === Prompt 模板管理 ===
+  rpc ListPromptTemplates(ListPromptTemplatesRequest) returns (ListPromptTemplatesResponse);
+  rpc SavePromptTemplate(SavePromptTemplateRequest) returns (PromptTemplate);
+  rpc CreatePrompt(CreatePromptRequest) returns (PromptTemplate);
+  rpc UpdatePrompt(UpdatePromptRequest) returns (google.protobuf.Empty);
+  rpc DeletePrompt(DeletePromptRequest) returns (google.protobuf.Empty);
+  rpc TestRenderPrompt(TestRenderPromptRequest) returns (TestRenderPromptResponse);
+
+  // === AI 配置 ===
+  rpc GetAIConfigs(google.protobuf.Empty) returns (GetAIConfigsResponse);
+  rpc UpdateAIConfigs(UpdateAIConfigsRequest) returns (google.protobuf.Empty);
+
+  // === AI 预设管理 ===
+  rpc ListAIPresets(google.protobuf.Empty) returns (ListAIPresetsResponse);
+  rpc SaveAIPreset(SaveAIPresetRequest) returns (AIPreset);
+  rpc CreateAIPreset(CreateAIPresetRequest) returns (AIPreset);
+  rpc UpdateAIPreset(UpdateAIPresetRequest) returns (AIPreset);
+  rpc DeleteAIPreset(DeleteAIPresetRequest) returns (google.protobuf.Empty);
+  rpc ApplyAIPreset(ApplyAIPresetRequest) returns (GetAIConfigsResponse);
+
+  // === AI 调试 & 日志 ===
+  rpc DebugAI(DebugAIRequest) returns (DebugAIResponse);
+  rpc ListAICallLogs(ListAICallLogsRequest) returns (ListAICallLogsResponse);
+  rpc GetAICallLog(GetAICallLogRequest) returns (AICallLogDetail);
+
+  // === Live2D 管理 ===
+  rpc ListLive2DModels(google.protobuf.Empty) returns (ListLive2DModelsResponse);
+  rpc CreateLive2DModel(CreateLive2DModelRequest) returns (Live2DModelInfo);
+  rpc UpdateLive2DModel(UpdateLive2DModelRequest) returns (google.protobuf.Empty);
+  rpc DeleteLive2DModel(DeleteLive2DModelRequest) returns (google.protobuf.Empty);
+  rpc ImportLive2DPackage(ImportLive2DPackageRequest) returns (ImportLive2DPackageResponse);
+  rpc ImportLive2DBackground(ImportLive2DBackgroundRequest) returns (ImportLive2DBackgroundResponse);
+
+  // === TTS 管理 ===
+  rpc ListTTSConfigs(google.protobuf.Empty) returns (ListTTSConfigsResponse);
+  rpc CreateTTSConfig(CreateTTSConfigRequest) returns (TTSConfigInfo);
+  rpc UpdateTTSConfig(UpdateTTSConfigRequest) returns (google.protobuf.Empty);
+  rpc DeleteTTSConfig(DeleteTTSConfigRequest) returns (google.protobuf.Empty);
+  rpc UpdateTTSSceneDefaults(UpdateTTSSceneDefaultsRequest) returns (google.protobuf.Empty);
+
+  // === RAG 配置 ===
+  rpc GetRAGConfigs(google.protobuf.Empty) returns (GetRAGConfigsResponse);
+  rpc UpdateRAGConfigs(UpdateRAGConfigsRequest) returns (google.protobuf.Empty);
+  rpc TestRAGConnection(google.protobuf.Empty) returns (TestRAGConnectionResponse);
+
+  // === RAG 索引管理 ===
+  rpc IndexAllQuestions(IndexAllQuestionsRequest) returns (IndexResult);
+  rpc IndexQuestions(IndexQuestionsRequest) returns (IndexResult);
+  rpc DeleteRAGIndex(DeleteRAGIndexRequest) returns (IndexResult);
+  rpc SearchRAGQuestions(SearchRAGQuestionsRequest) returns (SearchRAGQuestionsResponse);
+
+  // === RAG 文档管理 ===
+  rpc ListRAGDocuments(ListRAGDocumentsRequest) returns (ListRAGDocumentsResponse);
+  rpc GetRAGDocumentStats(GetRAGDocumentStatsRequest) returns (RAGDocumentStatsResponse);
+  rpc GetRAGDocument(GetRAGDocumentRequest) returns (RAGDocumentDetail);
+  rpc CreateRAGDocument(CreateRAGDocumentRequest) returns (RAGDocumentDetail);
+  rpc UpdateRAGDocument(UpdateRAGDocumentRequest) returns (google.protobuf.Empty);
+  rpc DeleteRAGDocument(DeleteRAGDocumentRequest) returns (google.protobuf.Empty);
+  rpc BatchImportRAGDocuments(BatchImportRAGDocumentsRequest) returns (BatchImportRAGDocumentsResponse);
+  rpc SyncRAGDocumentsToVectorDB(SyncRAGDocumentsRequest) returns (google.protobuf.Empty);
+  rpc SyncAllPendingRAGDocuments(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+  // === 面经爬虫 ===
+  rpc GetScraperSources(google.protobuf.Empty) returns (GetScraperSourcesResponse);
+  rpc ScraperSearch(ScraperSearchRequest) returns (ScraperSearchResponse);
+  rpc ScraperFetch(ScraperFetchRequest) returns (ScraperFetchResponse);
+  rpc ScraperClean(ScraperCleanRequest) returns (ScraperCleanResponse);
+  rpc ScraperImport(ScraperImportRequest) returns (ScraperImportResponse);
+  rpc ScraperImportAsync(ScraperImportRequest) returns (ScraperTaskInfo);
+  rpc ListScraperTasks(ListScraperTasksRequest) returns (ListScraperTasksResponse);
+  rpc GetScraperTask(GetScraperTaskRequest) returns (ScraperTaskDetail);
+  rpc RetryScraperTask(RetryScraperTaskRequest) returns (ScraperTaskInfo);
+
+  // === 系统配置 ===
+  rpc GetAdminConfig(GetAdminConfigRequest) returns (AdminConfigValue);
+  rpc SetAdminConfig(SetAdminConfigRequest) returns (google.protobuf.Empty);
+}
+
+// ============================================================
+// 仪表盘
+// ============================================================
+
+message DashboardResponse {
+  int64 total_users = 1;
+  int64 total_questions = 2;
+  int64 total_interviews = 3;
+  int64 today_active_users = 4;
+  int64 pro_members = 5;
+  int64 new_users_today = 6;
+}
+
+// ============================================================
+// 用户管理
+// ============================================================
+
+message ListUsersRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string keyword = 2;
+}
+
+message ListUsersResponse {
+  repeated AdminUserInfo users = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message AdminUserInfo {
+  uint64 id = 1;
+  string username = 2;
+  string email = 3;
+  string role = 4;
+  string membership_level = 5;
+  google.protobuf.Timestamp created_at = 6;
+  string avatar = 7;
+  string membership_type = 8;
+  google.protobuf.Timestamp membership_expire_at = 9;
+  bool is_disabled = 10;
+}
+
+message UpdateUserRoleRequest {
+  uint64 user_id = 1;
+  string role = 2;
+}
+
+message DisableUserRequest {
+  uint64 user_id = 1;
+}
+
+// ============================================================
+// 题库管理
+// ============================================================
+
+message AdminListQuestionsRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string keyword = 2;
+  string difficulty = 3;
+  uint64 category_id = 4;
+  string industry_code = 5;
+}
+
+message AdminListQuestionsResponse {
+  repeated QuestionInfo questions = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message QuestionInfo {
+  uint64 id = 1;
+  uint64 category_id = 2;
+  uint64 industry_id = 3;
+  string type = 4;
+  string difficulty = 5;
+  string title = 6;
+  string content = 7;
+  string options_json = 8;
+  string answer = 9;
+  string explanation = 10;
+  string solution_json = 11;
+  string judge_config_json = 12;
+  string answer_template_json = 13;
+  string tags = 14;
+  bool is_active = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+  string category_name = 18;
+  string industry_name = 19;
+}
+
+message CreateQuestionRequest {
+  uint64 category_id = 1;
+  uint64 industry_id = 2;
+  string type = 3;
+  string difficulty = 4;
+  string title = 5;
+  string content = 6;
+  string options_json = 7;
+  string answer = 8;
+  string explanation = 9;
+  string solution_json = 10;
+  string judge_config_json = 11;
+  string answer_template_json = 12;
+  string tags = 13;
+  bool is_active = 14;
+}
+
+message UpdateQuestionRequest {
+  uint64 id = 1;
+  uint64 category_id = 2;
+  uint64 industry_id = 3;
+  string type = 4;
+  string difficulty = 5;
+  string title = 6;
+  string content = 7;
+  string options_json = 8;
+  string answer = 9;
+  string explanation = 10;
+  string solution_json = 11;
+  string judge_config_json = 12;
+  string answer_template_json = 13;
+  string tags = 14;
+  optional bool is_active = 15;
+}
+
+message DeleteQuestionRequest {
+  uint64 id = 1;
+}
+
+message BatchImportQuestionsRequest {
+  string industry_code = 1;
+  repeated ImportQuestionItem questions = 2;
+}
+
+message ImportQuestionItem {
+  string category_name = 1;
+  string type = 2;
+  string difficulty = 3;
+  string title = 4;
+  string content = 5;
+  string options_json = 6;
+  string answer = 7;
+  string explanation = 8;
+  string solution_json = 9;
+  string judge_config_json = 10;
+  string answer_template_json = 11;
+  string tags = 12;
+}
+
+message BatchImportQuestionsResponse {
+  int32 total_count = 1;
+  int32 success_count = 2;
+  int32 fail_count = 3;
+  repeated string errors = 4;
+}
+
+message QuestionTagTaxonomyResponse {
+  repeated TagTaxonomyGroup groups = 1;
+}
+
+message TagTaxonomyGroup {
+  string category = 1;
+  repeated string tags = 2;
+}
+
+// ============================================================
+// 题目流水线
+// ============================================================
+
+message GenerateQuestionPipelineRequest {
+  string industry_code = 1;
+  string requirement = 2;
+  string agent_prompt = 3;
+  string generation_mode = 4;
+  int32 candidate_count = 5;
+  bool include_scraped = 6;
+  bool include_generated = 7;
+  repeated string sources = 8;
+}
+
+message GenerateQuestionPipelineResponse {
+  string industry_code = 1;
+  string requirement = 2;
+  string generation_mode = 3;
+  repeated PipelineCard cards = 4;
+  repeated string warnings = 5;
+  google.protobuf.Struct stats = 6;
+}
+
+message PipelineCard {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string type = 4;
+  string difficulty = 5;
+  string category = 6;
+  string answer = 7;
+  string solution = 8;
+  string explanation = 9;
+  repeated string tags = 10;
+  string judge_config = 11;
+  double confidence = 12;
+  string source_type = 13;
+  string source_label = 14;
+  string source_title = 15;
+  string source_url = 16;
+}
+
+message PipelineTaskInfo {
+  uint64 task_id = 1;
+  string status = 2;
+}
+
+message ImportQuestionPipelineRequest {
+  string industry_code = 1;
+  repeated PipelineCard cards = 2;
+}
+
+// ============================================================
+// 分类管理
+// ============================================================
+
+message AdminListCategoriesResponse {
+  repeated CategoryInfo categories = 1;
+}
+
+message CategoryInfo {
+  uint64 id = 1;
+  uint64 industry_id = 2;
+  string name = 3;
+  uint64 parent_id = 4;
+  int32 sort_order = 5;
+  string icon = 6;
+  string description = 7;
+  google.protobuf.Timestamp created_at = 8;
+  repeated CategoryInfo children = 9;
+}
+
+message CreateCategoryRequest {
+  uint64 industry_id = 1;
+  string name = 2;
+  uint64 parent_id = 3;
+  int32 sort_order = 4;
+  string icon = 5;
+  string description = 6;
+}
+
+message UpdateCategoryRequest {
+  uint64 id = 1;
+  uint64 industry_id = 2;
+  string name = 3;
+  uint64 parent_id = 4;
+  int32 sort_order = 5;
+  string icon = 6;
+  string description = 7;
+}
+
+message DeleteCategoryRequest {
+  uint64 id = 1;
+}
+
+// ============================================================
+// 行业管理
+// ============================================================
+
+message AdminListIndustriesResponse {
+  repeated IndustryInfo industries = 1;
+}
+
+message IndustryInfo {
+  uint64 id = 1;
+  string code = 2;
+  string name = 3;
+  string description = 4;
+  string icon = 5;
+  bool is_active = 6;
+  int32 sort_order = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateIndustryRequest {
+  string code = 1;
+  string name = 2;
+  string description = 3;
+  string icon = 4;
+  int32 sort_order = 5;
+}
+
+message UpdateIndustryRequest {
+  uint64 id = 1;
+  string code = 2;
+  string name = 3;
+  string description = 4;
+  string icon = 5;
+  optional bool is_active = 6;
+  int32 sort_order = 7;
+}
+
+// ============================================================
+// Prompt 模板管理
+// ============================================================
+
+message ListPromptTemplatesRequest {
+  string industry_code = 1;
+}
+
+message ListPromptTemplatesResponse {
+  repeated PromptTemplate templates = 1;
+}
+
+message PromptTemplate {
+  uint64 id = 1;
+  string name = 2;
+  string industry_code = 3;
+  string template_type = 4;
+  string content = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string scene = 7;
+  string variables = 8;
+  bool is_active = 9;
+}
+
+message SavePromptTemplateRequest {
+  uint64 id = 1;
+  string name = 2;
+  string industry_code = 3;
+  string template_type = 4;
+  string content = 5;
+}
+
+message CreatePromptRequest {
+  uint64 industry_id = 1;
+  string name = 2;
+  string scene = 3;
+  string template_content = 4;
+  string variables = 5;
+  bool is_active = 6;
+}
+
+message UpdatePromptRequest {
+  uint64 id = 1;
+  uint64 industry_id = 2;
+  string name = 3;
+  string scene = 4;
+  string template_content = 5;
+  string variables = 6;
+  optional bool is_active = 7;
+}
+
+message DeletePromptRequest {
+  uint64 id = 1;
+}
+
+message TestRenderPromptRequest {
+  string agent_type = 1;
+  string prompt = 2;
+  map<string, string> params = 3;
+}
+
+message TestRenderPromptResponse {
+  string rendered_prompt = 1;
+  string response = 2;
+  string model = 3;
+  int64 latency_ms = 4;
+}
+
+// ============================================================
+// AI 配置
+// ============================================================
+
+message GetAIConfigsResponse {
+  map<string, string> configs = 1;
+  repeated AdminConfigItem items = 2;
+  repeated AIPreset presets = 3;
+  uint64 active_preset_id = 4;
+}
+
+message AdminConfigItem {
+  string key = 1;
+  string value = 2;
+  string config_type = 3;
+  string description = 4;
+}
+
+message UpdateAIConfigsRequest {
+  map<string, string> configs = 1;
+}
+
+// ============================================================
+// AI 预设管理
+// ============================================================
+
+message ListAIPresetsResponse {
+  repeated AIPreset presets = 1;
+}
+
+message AIPreset {
+  uint64 id = 1;
+  string name = 2;
+  string provider = 3;
+  string model = 4;
+  map<string, string> params = 5;
+  bool is_default = 6;
+  map<string, string> configs = 7;
+  bool is_active = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message SaveAIPresetRequest {
+  uint64 id = 1;
+  string name = 2;
+  string provider = 3;
+  string model = 4;
+  map<string, string> params = 5;
+  bool is_default = 6;
+}
+
+message CreateAIPresetRequest {
+  string name = 1;
+  map<string, string> configs = 2;
+}
+
+message UpdateAIPresetRequest {
+  uint64 id = 1;
+  string name = 2;
+  map<string, string> configs = 3;
+}
+
+message DeleteAIPresetRequest {
+  uint64 id = 1;
+}
+
+message ApplyAIPresetRequest {
+  uint64 id = 1;
+}
+
+// ============================================================
+// AI 调试 & 日志
+// ============================================================
+
+message DebugAIRequest {
+  string agent_type = 1;
+  string prompt = 2;
+  map<string, string> params = 3;
+}
+
+message DebugAIResponse {
+  string response = 1;
+  string model = 2;
+  int32 tokens_used = 3;
+  int64 latency_ms = 4;
+}
+
+message ListAICallLogsRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string agent_type = 2;
+  string scene = 3;
+  string source = 4;
+  string status = 5;
+  string trace_id = 6;
+  uint64 task_id = 7;
+}
+
+message ListAICallLogsResponse {
+  repeated AICallLog logs = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message AICallLog {
+  uint64 id = 1;
+  string agent_type = 2;
+  string model = 3;
+  int32 tokens_used = 4;
+  int64 latency_ms = 5;
+  string status = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message GetAICallLogRequest {
+  uint64 id = 1;
+}
+
+message AICallLogDetail {
+  uint64 id = 1;
+  string trace_id = 2;
+  string source = 3;
+  string scene = 4;
+  string provider = 5;
+  string model = 6;
+  string user_input = 7;
+  string model_output = 8;
+  string model_error = 9;
+  int64 latency_ms = 10;
+  bool is_success = 11;
+  int32 input_tokens = 12;
+  int32 output_tokens = 13;
+  string rendered_prompt = 14;
+  string request_messages = 15;
+  string runtime_config = 16;
+  google.protobuf.Timestamp created_at = 17;
+}
+
+// ============================================================
+// Live2D 管理
+// ============================================================
+
+message ListLive2DModelsResponse {
+  repeated Live2DModelInfo models = 1;
+}
+
+message Live2DModelInfo {
+  uint64 id = 1;
+  string name = 2;
+  uint64 industry_id = 3;
+  string scene = 4;
+  string model_url = 5;
+  string thumbnail_url = 6;
+  string config_json = 7;
+  uint64 tts_config_id = 8;
+  bool is_active = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message CreateLive2DModelRequest {
+  string name = 1;
+  uint64 industry_id = 2;
+  string scene = 3;
+  string model_url = 4;
+  string thumbnail_url = 5;
+  string config_json = 6;
+  uint64 tts_config_id = 7;
+  bool is_active = 8;
+}
+
+message UpdateLive2DModelRequest {
+  uint64 id = 1;
+  string name = 2;
+  uint64 industry_id = 3;
+  string scene = 4;
+  string model_url = 5;
+  string thumbnail_url = 6;
+  string config_json = 7;
+  uint64 tts_config_id = 8;
+  optional bool is_active = 9;
+}
+
+message DeleteLive2DModelRequest {
+  uint64 id = 1;
+}
+
+message ImportLive2DPackageRequest {
+  bytes file_content = 1;
+  string filename = 2;
+}
+
+message ImportLive2DPackageResponse {
+  string name = 1;
+  string asset_dir = 2;
+  string model_url = 3;
+  string thumbnail_url = 4;
+  uint64 model_id = 5;
+  bool created = 6;
+  bool is_active = 7;
+}
+
+message ImportLive2DBackgroundRequest {
+  bytes file_content = 1;
+  string filename = 2;
+}
+
+message ImportLive2DBackgroundResponse {
+  string file_name = 1;
+  string asset_url = 2;
+}
+
+// ============================================================
+// TTS 管理
+// ============================================================
+
+message ListTTSConfigsResponse {
+  repeated TTSConfigInfo configs = 1;
+}
+
+message TTSConfigInfo {
+  uint64 id = 1;
+  string name = 2;
+  string engine = 3;
+  string voice_id = 4;
+  string auth_config_json = 5;
+  string params_json = 6;
+  bool is_active = 7;
+  int32 sort_order = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message CreateTTSConfigRequest {
+  string name = 1;
+  string engine = 2;
+  string voice_id = 3;
+  string auth_config_json = 4;
+  string params_json = 5;
+  bool is_active = 6;
+  int32 sort_order = 7;
+}
+
+message UpdateTTSConfigRequest {
+  uint64 id = 1;
+  string name = 2;
+  string engine = 3;
+  string voice_id = 4;
+  string auth_config_json = 5;
+  string params_json = 6;
+  optional bool is_active = 7;
+  int32 sort_order = 8;
+}
+
+message DeleteTTSConfigRequest {
+  uint64 id = 1;
+}
+
+message UpdateTTSSceneDefaultsRequest {
+  map<string, uint64> default_bindings = 1;
+}
+
+// ============================================================
+// RAG 配置
+// ============================================================
+
+message GetRAGConfigsResponse {
+  map<string, string> configs = 1;
+  repeated AdminConfigItem items = 2;
+  RAGSystemStatus status = 3;
+  repeated string warnings = 4;
+}
+
+message RAGSystemStatus {
+  bool enabled = 1;
+  bool milvus_connected = 2;
+  string collection = 3;
+  string embed_model = 4;
+}
+
+message UpdateRAGConfigsRequest {
+  map<string, string> configs = 1;
+}
+
+message TestRAGConnectionResponse {
+  bool milvus_ok = 1;
+  bool embedding_ok = 2;
+  string error = 3;
+}
+
+// ============================================================
+// RAG 索引管理
+// ============================================================
+
+message IndexAllQuestionsRequest {
+  uint64 industry_id = 1;
+}
+
+message IndexQuestionsRequest {
+  repeated uint64 question_ids = 1;
+}
+
+message DeleteRAGIndexRequest {
+  repeated uint64 question_ids = 1;
+}
+
+message IndexResult {
+  int32 indexed = 1;
+  int32 deleted = 2;
+  string error = 3;
+}
+
+message SearchRAGQuestionsRequest {
+  string query = 1;
+  int32 top_k = 2;
+}
+
+message SearchRAGQuestionsResponse {
+  string query = 1;
+  repeated RAGSearchResult results = 2;
+}
+
+message RAGSearchResult {
+  string doc_id = 1;
+  string title = 2;
+  string content = 3;
+  double score = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+// ============================================================
+// RAG 文档管理
+// ============================================================
+
+message ListRAGDocumentsRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string collection = 2;
+  string doc_type = 3;
+  string keyword = 4;
+  string sync_status = 5;
+}
+
+message ListRAGDocumentsResponse {
+  repeated RAGDocumentDetail documents = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message GetRAGDocumentStatsRequest {
+  string collection = 1;
+}
+
+message RAGDocumentStatsResponse {
+  map<string, int64> stats = 1;
+}
+
+message GetRAGDocumentRequest {
+  uint64 id = 1;
+}
+
+message RAGDocumentDetail {
+  uint64 id = 1;
+  string collection = 2;
+  string doc_type = 3;
+  string title = 4;
+  string content = 5;
+  string metadata = 6;
+  string vector_id = 7;
+  string sync_status = 8;
+  bool is_active = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message CreateRAGDocumentRequest {
+  string collection = 1;
+  string doc_type = 2;
+  string title = 3;
+  string content = 4;
+  map<string, string> metadata = 5;
+}
+
+message UpdateRAGDocumentRequest {
+  uint64 id = 1;
+  string collection = 2;
+  string doc_type = 3;
+  string title = 4;
+  string content = 5;
+  map<string, string> metadata = 6;
+  optional bool is_active = 7;
+}
+
+message DeleteRAGDocumentRequest {
+  uint64 id = 1;
+}
+
+message BatchImportRAGDocumentsRequest {
+  string collection = 1;
+  string doc_type = 2;
+  repeated BatchImportDocItem documents = 3;
+}
+
+message BatchImportDocItem {
+  string title = 1;
+  string content = 2;
+  map<string, string> metadata = 3;
+}
+
+message BatchImportRAGDocumentsResponse {
+  int32 imported = 1;
+  int32 failed = 2;
+  repeated string errors = 3;
+}
+
+message SyncRAGDocumentsRequest {
+  repeated uint64 ids = 1;
+}
+
+// ============================================================
+// 面经爬虫
+// ============================================================
+
+message GetScraperSourcesResponse {
+  repeated ScraperSource sources = 1;
+}
+
+message ScraperSource {
+  string name = 1;
+  string label = 2;
+  string base_url = 3;
+  bool is_active = 4;
+}
+
+message ScraperSearchRequest {
+  string keyword = 1;
+  string source = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ScraperSearchResponse {
+  repeated ScraperSearchResult results = 1;
+}
+
+message ScraperSearchResult {
+  string title = 1;
+  string url = 2;
+  string source = 3;
+  string snippet = 4;
+}
+
+message ScraperFetchRequest {
+  string url = 1;
+  string source = 2;
+}
+
+message ScraperFetchResponse {
+  string title = 1;
+  string content = 2;
+  string source = 3;
+  string url = 4;
+}
+
+message ScraperCleanRequest {
+  string content = 1;
+  string industry_code = 2;
+  string source = 3;
+  string source_url = 4;
+}
+
+message ScraperCleanResponse {
+  repeated ScraperCleanedQuestion questions = 1;
+  int32 total_extracted = 2;
+}
+
+message ScraperCleanedQuestion {
+  string category_name = 1;
+  string type = 2;
+  string difficulty = 3;
+  string title = 4;
+  string content = 5;
+  string options_json = 6;
+  string answer = 7;
+  string explanation = 8;
+  string tags = 9;
+}
+
+message ScraperImportRequest {
+  string industry_code = 1;
+  repeated ScraperCleanedQuestion questions = 2;
+  string source_url = 3;
+  string source_title = 4;
+}
+
+message ScraperImportResponse {
+  int32 total_count = 1;
+  int32 success_count = 2;
+  int32 fail_count = 3;
+  repeated string errors = 4;
+}
+
+message ScraperTaskInfo {
+  uint64 task_id = 1;
+  string status = 2;
+}
+
+message ListScraperTasksRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string status = 2;
+  string task_type = 3;
+}
+
+message ListScraperTasksResponse {
+  repeated ScraperTaskDetail tasks = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message GetScraperTaskRequest {
+  uint64 id = 1;
+}
+
+message ScraperTaskDetail {
+  uint64 id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  string task_type = 4;
+  string source_url = 5;
+  string source_title = 6;
+  string source = 7;
+  string status = 8;
+  int32 question_count = 9;
+  int32 imported_count = 10;
+  int32 retry_count = 11;
+  google.protobuf.Timestamp started_at = 12;
+  google.protobuf.Timestamp finished_at = 13;
+  string error_msg = 14;
+}
+
+message RetryScraperTaskRequest {
+  uint64 id = 1;
+}
+
+// ============================================================
+// 系统配置
+// ============================================================
+
+message GetAdminConfigRequest {
+  string key = 1;
+}
+
+message AdminConfigValue {
+  string key = 1;
+  string value = 2;
+}
+
+message SetAdminConfigRequest {
+  string key = 1;
+  string value = 2;
+}

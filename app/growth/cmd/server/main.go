@@ -1,0 +1,91 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/log"
+
+	"makejob/app/growth/internal/biz"
+	"makejob/app/growth/internal/conf"
+	"makejob/app/growth/internal/data"
+	"makejob/app/growth/internal/server"
+	"makejob/app/growth/internal/service"
+	"makejob/pkg/auth"
+	mlog "makejob/pkg/logger"
+)
+
+var flagConf string
+
+func init() {
+	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path, eg: -conf configs/config.yaml")
+}
+
+func main() {
+	flag.Parse()
+
+	// 初始化日志
+	logger := mlog.NewZapLogger()
+	log.SetLogger(logger)
+
+	// 加载配置
+	bc, err := conf.Load(flagConf)
+	if err != nil {
+		log.Errorf("failed to load config: %v", err)
+		os.Exit(1)
+	}
+
+	// 手动组装依赖
+	app, cleanup, err := wireApp(bc, logger)
+	if err != nil {
+		log.Errorf("failed to wire app: %v", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	// 启动应用
+	if err := app.Run(); err != nil {
+		log.Errorf("failed to run app: %v", err)
+		os.Exit(1)
+	}
+}
+
+// wireApp 手动组装依赖
+func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error) {
+	// data 层：数据库连接
+	db, err := data.NewData(bc.Data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
+	}
+
+	// data 层：仓库实现
+	growthRepo := data.NewGrowthRepo(db)
+
+	// biz 层：业务用例
+	growthUseCase := biz.NewGrowthUseCase(growthRepo)
+
+	// service 层：gRPC 服务实现
+	growthService := service.NewGrowthService(growthUseCase)
+
+	// auth 拦截器
+	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
+
+	// server 层：gRPC 服务器
+	gs := server.NewGRPCServer(bc.Server, growthService, authInterceptor, logger)
+
+	// 组装 Kratos app
+	app := kratos.New(
+		kratos.Name("makejob.growth"),
+		kratos.Version("1.0.0"),
+		kratos.Logger(logger),
+		kratos.Server(gs),
+	)
+
+	cleanup := func() {
+		// 清理资源
+	}
+
+	return app, cleanup, nil
+}

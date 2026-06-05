@@ -19,7 +19,31 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:www.volcengine.com)",
       "Bash(go mod *)",
-      "Bash(go clean *)"
+      "Bash(go clean *)",
+      "Bash(python -c ' *)",
+      "Bash(go doc *)",
+      "Bash(protoc --version)",
+      "Read(//e/anaconda3/**)",
+      "Bash(protoc --proto_path=./api --proto_path=/e/anaconda3/Library/include --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/shared/v1/base.proto api/makejob/shared/v1/pagination.proto api/makejob/shared/v1/error.proto)",
+      "Bash(protoc --proto_path=./api --proto_path=/e/anaconda3/Library/include --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/interview/v1/interview.proto)",
+      "Bash(protoc --proto_path=./api --proto_path=/e/anaconda3/Library/include --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/learning_archive/v1/archive.proto)",
+      "Bash(cp -r makejob/api/makejob/learning_archive api/makejob/)",
+      "Bash(rm -rf makejob/api/makejob/learning_archive)",
+      "Bash(buf generate *)",
+      "Bash(go install *)",
+      "Bash(rm -rf makejob)",
+      "Bash(protoc --proto_path=./api --go_out=./api --go_opt=paths=source_relative --go-grpc_out=./api --go-grpc_opt=paths=source_relative makejob/admin/v1/admin.proto)",
+      "Bash(cp -r backend/internal/ai pkg/ai)",
+      "Bash(cp -r backend/internal/rag pkg/rag)",
+      "Bash(cp -r backend/internal/scraper pkg/scraper)",
+      "Bash(cp -r backend/internal/live2dassets pkg/live2dassets)",
+      "Bash(cp -r backend/internal/metrics pkg/metrics)",
+      "Bash(cp -r backend/internal/repository pkg/repository)",
+      "Bash(cp -r backend/internal/model pkg/model)",
+      "Bash(cp -r backend/internal/common pkg/common)",
+      "Bash(cp -r backend/internal/executor pkg/executor)",
+      "Bash(python3 *)",
+      "Bash(python *)"
     ]
   }
 }

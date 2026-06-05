@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: api
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    - UNARY_RPC
+    - PACKAGE_DIRECTORY_MATCH
+    - FIELD_LOWER_SNAKE_CASE
+breaking:
+  use:
+    - FILE

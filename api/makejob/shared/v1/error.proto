@@ -1,0 +1,14 @@
+syntax = "proto3";
+package makejob.shared.v1;
+option go_package = "makejob/api/makejob/shared/v1;sharedv1";
+
+enum ErrorCode {
+  OK = 0;
+  BAD_REQUEST = 400;
+  UNAUTHORIZED = 401;
+  FORBIDDEN = 403;
+  NOT_FOUND = 404;
+  CONFLICT = 409;
+  INTERNAL = 500;
+  TOO_MANY_REQUESTS = 429;
+}

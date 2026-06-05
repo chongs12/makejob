@@ -1,0 +1,272 @@
+syntax = "proto3";
+package makejob.question.v1;
+option go_package = "makejob/api/makejob/question/v1;questionv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "makejob/shared/v1/pagination.proto";
+
+service QuestionService {
+  // --- 题库浏览 ---
+  rpc ListQuestions(ListQuestionsRequest) returns (ListQuestionsResponse);
+  rpc GetQuestion(GetQuestionRequest) returns (QuestionDetail);
+  rpc ListCategories(ListCategoriesRequest) returns (CategoryTreeResponse);
+  rpc ListIndustries(google.protobuf.Empty) returns (IndustryListResponse);
+
+  // --- 刷题交互 ---
+  rpc SubmitAnswer(SubmitAnswerRequest) returns (SubmitAnswerResponse);
+  rpc RunCode(RunCodeRequest) returns (RunCodeResponse);
+
+  // --- 收藏/笔记 ---
+  rpc CreateFavorite(CreateFavoriteRequest) returns (google.protobuf.Empty);
+  rpc DeleteFavorite(DeleteFavoriteRequest) returns (google.protobuf.Empty);
+  rpc ListFavorites(ListFavoritesRequest) returns (FavoriteListResponse);
+  rpc CreateNote(CreateNoteRequest) returns (NoteResponse);
+  rpc UpdateNote(UpdateNoteRequest) returns (NoteResponse);
+  rpc ListNotes(ListNotesRequest) returns (NoteListResponse);
+
+  // --- 智能推荐 ---
+  rpc GetPracticeRecommendations(UserIDRequest) returns (PracticeRecommendationResponse);
+  rpc GetWrongQuestions(WrongQuestionRequest) returns (WrongQuestionListResponse);
+  rpc GetUserPracticeStats(UserIDRequest) returns (UserPracticeStats);
+
+  // --- 模拟考试 ---
+  rpc GetRandomExam(RandomExamRequest) returns (ExamResponse);
+}
+
+// === 题库浏览 ===
+
+message UserIDRequest {
+  uint64 user_id = 1;
+}
+
+message ListQuestionsRequest {
+  string industry_code = 1;
+  uint64 category_id = 2;
+  string difficulty = 3;
+  string keyword = 4;
+  makejob.shared.v1.PageParam page = 5;
+}
+
+message ListQuestionsResponse {
+  repeated QuestionSummary questions = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message QuestionSummary {
+  uint64 id = 1;
+  string title = 2;
+  string difficulty = 3;
+  string type = 4;
+  string industry_code = 5;
+  string category_name = 6;
+}
+
+message GetQuestionRequest {
+  uint64 id = 1;
+}
+
+message QuestionDetail {
+  uint64 id = 1;
+  string title = 2;
+  string content = 3;
+  string difficulty = 4;
+  string type = 5;
+  string industry_code = 6;
+  CategoryInfo category = 7;
+  repeated string tags = 8;
+  string starter_code = 9;
+  string language = 10;
+  string evaluation_mode = 11;
+  repeated TestCase test_cases = 12;
+  string reference_answer = 13;
+  string explanation = 14;
+  bool is_favorited = 15;
+  google.protobuf.Timestamp created_at = 16;
+}
+
+message TestCase {
+  string input = 1;
+  string expected_output = 2;
+  bool is_hidden = 3;
+}
+
+message CategoryInfo {
+  uint64 id = 1;
+  string name = 2;
+  uint64 parent_id = 3;
+}
+
+message ListCategoriesRequest {
+  string industry_code = 1;
+}
+
+message CategoryTreeResponse {
+  repeated CategoryNode categories = 1;
+}
+
+message CategoryNode {
+  uint64 id = 1;
+  string name = 2;
+  repeated CategoryNode children = 3;
+  int32 question_count = 4;
+}
+
+message IndustryListResponse {
+  repeated IndustryInfo industries = 1;
+}
+
+message IndustryInfo {
+  string code = 1;
+  string name = 2;
+  string icon = 3;
+}
+
+// === 刷题交互 ===
+
+message SubmitAnswerRequest {
+  uint64 question_id = 1;
+  uint64 user_id = 2;
+  string answer = 3;
+  string language = 4;
+}
+
+message SubmitAnswerResponse {
+  bool is_correct = 1;
+  double score = 2;
+  string feedback = 3;
+  string correct_answer = 4;
+  string explanation = 5;
+  repeated string key_points = 6;
+}
+
+message RunCodeRequest {
+  uint64 question_id = 1;
+  string language = 2;
+  string code = 3;
+}
+
+message RunCodeResponse {
+  bool success = 1;
+  string output = 2;
+  string error = 3;
+  int32 test_cases_passed = 4;
+  int32 total_test_cases = 5;
+  int64 execution_time_ms = 6;
+}
+
+// === 收藏/笔记 ===
+
+message CreateFavoriteRequest {
+  uint64 user_id = 1;
+  uint64 question_id = 2;
+}
+
+message DeleteFavoriteRequest {
+  uint64 user_id = 1;
+  uint64 question_id = 2;
+}
+
+message ListFavoritesRequest {
+  uint64 user_id = 1;
+  makejob.shared.v1.PageParam page = 2;
+}
+
+message FavoriteListResponse {
+  repeated QuestionSummary questions = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message CreateNoteRequest {
+  uint64 user_id = 1;
+  uint64 question_id = 2;
+  string content = 3;
+}
+
+message NoteResponse {
+  uint64 id = 1;
+  uint64 question_id = 2;
+  string content = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message UpdateNoteRequest {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string content = 3;
+}
+
+message ListNotesRequest {
+  uint64 user_id = 1;
+  uint64 question_id = 2;
+  makejob.shared.v1.PageParam page = 3;
+}
+
+message NoteListResponse {
+  repeated NoteResponse notes = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+// === 智能推荐 ===
+
+message PracticeRecommendationResponse {
+  repeated RecommendedQuestion questions = 1;
+  string reason = 2;
+}
+
+message RecommendedQuestion {
+  uint64 question_id = 1;
+  string title = 2;
+  string difficulty = 3;
+  double relevance_score = 4;
+  string recommend_reason = 5;
+}
+
+message WrongQuestionRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  makejob.shared.v1.PageParam page = 3;
+}
+
+message WrongQuestionListResponse {
+  repeated WrongQuestionEntry entries = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message WrongQuestionEntry {
+  uint64 question_id = 1;
+  string title = 2;
+  int32 wrong_count = 3;
+  google.protobuf.Timestamp last_wrong_at = 4;
+  string last_answer = 5;
+}
+
+message UserPracticeStats {
+  int32 total_answered = 1;
+  int32 total_correct = 2;
+  double accuracy = 3;
+  repeated CategoryStat category_stats = 4;
+  int32 streak_days = 5;
+}
+
+message CategoryStat {
+  string category_name = 1;
+  int32 answered = 2;
+  int32 correct = 3;
+  double accuracy = 4;
+}
+
+// === 模拟考试 ===
+
+message RandomExamRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  int32 question_count = 3;
+  repeated string categories = 4;
+}
+
+message ExamResponse {
+  repeated QuestionDetail questions = 1;
+  int32 time_limit_minutes = 2;
+}

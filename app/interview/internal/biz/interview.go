@@ -1,0 +1,190 @@
+package biz
+
+import (
+	"context"
+	"time"
+)
+
+// InterviewRepo data 层必须实现的接口（接口隔离原则）
+type InterviewRepo interface {
+	Create(ctx context.Context, interview *Interview) error
+	GetByID(ctx context.Context, id uint64) (*Interview, error)
+	ListByUser(ctx context.Context, userID uint64, page, pageSize int32) ([]*Interview, int64, error)
+	Update(ctx context.Context, interview *Interview) error
+	CreateMessage(ctx context.Context, msg *InterviewMessage) error
+	ListMessages(ctx context.Context, interviewID uint64) ([]*InterviewMessage, error)
+	CreateCodingAttempt(ctx context.Context, attempt *CodingAttempt) error
+	UpdateCodingAttempt(ctx context.Context, attempt *CodingAttempt) error
+}
+
+// AIServiceClient AI 服务的 gRPC 客户端接口
+type AIServiceClient interface {
+	InterviewAgent(ctx context.Context, req *InterviewAgentRequest) (*InterviewAgentResponse, error)
+	QuizAnalyzer(ctx context.Context, req *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error)
+	ResumeParser(ctx context.Context, req *ResumeParserRequest) (*ResumeParserResponse, error)
+}
+
+// LearningArchiveClient 学习档案服务的 gRPC 客户端接口
+type LearningArchiveClient interface {
+	WriteEntry(ctx context.Context, entry *ArchiveEntry) error
+	ListByUser(ctx context.Context, userID uint64, limit int32) ([]*ArchiveEntry, error)
+}
+
+// IndustryClient 行业服务的 gRPC 客户端接口
+type IndustryClient interface {
+	GetIndustry(ctx context.Context, code string) (*Industry, error)
+}
+
+// --- 领域实体 ---
+
+type Interview struct {
+	ID             uint64
+	UserID         uint64
+	IndustryCode   string
+	Difficulty     string
+	Status         string // created, in_progress, completed
+	InterviewMode  string // standard, realtime_voice, coding
+	QuestionCount  int32
+	CurrentIndex   int32
+	OverallScore   float64
+	ResumeText     string
+	JobDescription string
+	Live2DModelKey string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type InterviewMessage struct {
+	ID            uint64
+	InterviewID   uint64
+	Role          string // user, assistant
+	Content       string
+	MessageType   string // text, code, audio
+	QuestionIndex int32
+	CreatedAt     time.Time
+}
+
+type CodingAttempt struct {
+	ID              uint64
+	InterviewID     uint64
+	QuestionIndex   int32
+	Language        string
+	Code            string
+	Passed          bool
+	TestCasesPassed int32
+	TotalTestCases  int32
+	Output          string
+	ErrorMsg        string
+	CreatedAt       time.Time
+}
+
+// --- AI 请求/响应 DTO ---
+
+type InterviewAgentRequest struct {
+	InterviewID   uint64
+	IndustryCode  string
+	Difficulty    string
+	History       []*InterviewMessage
+	UserAnswer    string
+	QuestionIndex int32
+	ResumeText    string
+	JobDesc       string
+}
+
+type InterviewAgentResponse struct {
+	Question        *InterviewQuestion
+	Feedback        *AnswerFeedback
+	ShouldEnd       bool
+	Live2DDirective *Live2DDirective
+}
+
+type InterviewQuestion struct {
+	Question    string
+	Topic       string
+	Difficulty  string
+	Type        string
+	Hints       string
+	Language    string
+	StarterCode string
+	EditorMode  string
+	EvalMode    string
+}
+
+type AnswerFeedback struct {
+	Score       float64
+	IsCorrect   bool
+	Feedback    string
+	KeyPoints   []string
+	Suggestions string
+	FollowUp    string
+}
+
+type Live2DDirective struct {
+	Emotion string
+	Action  string
+}
+
+type QuizAnalyzerRequest struct {
+	Question   string
+	Answer     string
+	Topic      string
+	Difficulty string
+}
+
+type QuizAnalyzerResponse struct {
+	Score         float64
+	IsCorrect     bool
+	Feedback      string
+	KeyPoints     []string
+	Suggestions   string
+	CorrectAnswer string
+}
+
+type ResumeParserRequest struct {
+	ResumeText string
+}
+
+type ResumeParserResponse struct {
+	Skills     []string
+	Experience []string
+	Education  []string
+}
+
+type ArchiveEntry struct {
+	ID              uint64
+	UserID          uint64
+	SourceType      string
+	SourceRef       string
+	InterviewID     uint64
+	QuestionIndex   int32
+	IndustryCode    string
+	Language        string
+	MistakeTags     []string
+	StrengthTags    []string
+	Suggestions     []string
+	EvidenceSummary string
+	OccurredAt      time.Time
+	CreatedAt       time.Time
+}
+
+type Industry struct {
+	Code string
+	Name string
+}
+
+type InterviewStats struct {
+	TotalInterviews int32
+	AvgScore        float64
+}
+
+type CreateInterviewRequest struct {
+	UserID         uint64
+	IndustryCode   string
+	Difficulty     string
+	Topics         []string
+	QuestionCount  int32
+	InterviewMode  string
+	ResumeText     string
+	JobDescription string
+	Live2DModelKey string
+}

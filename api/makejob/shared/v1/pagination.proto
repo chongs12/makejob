@@ -1,0 +1,14 @@
+syntax = "proto3";
+package makejob.shared.v1;
+option go_package = "makejob/api/makejob/shared/v1;sharedv1";
+
+message PageParam {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message PageResult {
+  int64 total = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}

@@ -1,0 +1,262 @@
+syntax = "proto3";
+package makejob.interview.v1;
+option go_package = "makejob/api/makejob/interview/v1;interviewv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "makejob/shared/v1/pagination.proto";
+
+service InterviewService {
+  // --- 面试会话管理 ---
+  rpc CreateInterview(CreateInterviewRequest) returns (InterviewResponse);
+  rpc GetInterview(GetInterviewRequest) returns (InterviewDetail);
+  rpc ListInterviews(ListInterviewsRequest) returns (ListInterviewsResponse);
+  rpc FinishInterview(FinishInterviewRequest) returns (InterviewReport);
+
+  // --- 答题交互 ---
+  rpc SubmitAnswer(SubmitAnswerRequest) returns (AnswerFeedback);
+  rpc GetNextQuestion(GetNextQuestionRequest) returns (NextQuestionResponse);
+
+  // --- 实时语音面试 ---
+  rpc IsRealtimeInterview(IsRealtimeRequest) returns (IsRealtimeResponse);
+  rpc GetRealtimeContext(GetRealtimeRequest) returns (RealtimeInterviewContext);
+  rpc BindRealtimeDialog(BindDialogRequest) returns (google.protobuf.Empty);
+  rpc AppendRealtimeUserAnswer(AppendAnswerRequest) returns (google.protobuf.Empty);
+  rpc AppendRealtimeAssistantReply(AppendReplyRequest) returns (AppendReplyResponse);
+
+  // --- 编程题 ---
+  rpc SubmitCodingAnswer(SubmitCodingRequest) returns (CodingResult);
+
+  // --- 报告 ---
+  rpc GetReport(GetReportRequest) returns (InterviewReport);
+
+  // --- 跨服务调用（供 growth 服务使用）---
+  rpc GetInterviewStats(UserIDRequest) returns (InterviewStats);
+}
+
+// === 请求/响应消息 ===
+
+message UserIDRequest {
+  uint64 user_id = 1;
+}
+
+message CreateInterviewRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  string difficulty = 3;
+  repeated string topics = 4;
+  int32 question_count = 5;
+  string live2d_model_key = 6;
+  string interview_mode = 7;
+  string resume_text = 8;
+  string job_description = 9;
+}
+
+message InterviewResponse {
+  uint64 id = 1;
+  string status = 2;
+  InterviewQuestion first_question = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message InterviewDetail {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string industry_code = 3;
+  string status = 4;
+  string interview_mode = 5;
+  repeated InterviewMessage messages = 6;
+  InterviewReport report = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message InterviewMessage {
+  uint64 id = 1;
+  string role = 2;
+  string content = 3;
+  string message_type = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message InterviewQuestion {
+  string question = 1;
+  string topic = 2;
+  string difficulty = 3;
+  string type = 4;
+  string hints = 5;
+  string language = 6;
+  string starter_code = 7;
+  string editor_mode = 8;
+  string evaluation_mode = 9;
+  Live2DDirective live2d_directive = 10;
+}
+
+message Live2DDirective {
+  string emotion = 1;
+  string action = 2;
+  string reply = 3;
+  repeated Live2DExpressionLayer expression_mix = 4;
+  repeated Live2DParameterOverride parameter_overrides = 5;
+  string motion_key = 6;
+  string motion_group = 7;
+  int32 motion_duration_ms = 8;
+  double intensity = 9;
+  int32 duration_ms = 10;
+}
+
+message Live2DExpressionLayer {
+  string expression = 1;
+  double weight = 2;
+}
+
+message Live2DParameterOverride {
+  string param = 1;
+  double value = 2;
+}
+
+message SubmitAnswerRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+  int32 question_index = 3;
+  string answer = 4;
+  string language = 5;
+}
+
+message AnswerFeedback {
+  double score = 1;
+  bool is_correct = 2;
+  string feedback = 3;
+  repeated string key_points = 4;
+  string suggestions = 5;
+  string follow_up = 6;
+  InterviewQuestion next_question = 7;
+}
+
+message GetNextQuestionRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+  int32 current_index = 3;
+}
+
+message NextQuestionResponse {
+  InterviewQuestion question = 1;
+  bool is_last = 2;
+}
+
+message FinishInterviewRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+}
+
+message InterviewReport {
+  uint64 interview_id = 1;
+  double overall_score = 2;
+  int32 total_questions = 3;
+  int32 correct_count = 4;
+  map<string, double> dimension_scores = 5;
+  repeated string strengths = 6;
+  repeated string weaknesses = 7;
+  repeated string suggestions = 8;
+  string summary = 9;
+  repeated CodingDiagnosis coding_diagnostics = 10;
+}
+
+message CodingDiagnosis {
+  int32 question_index = 1;
+  string language = 2;
+  string topic = 3;
+  double score = 4;
+  repeated string mistake_tags = 5;
+  repeated string strength_tags = 6;
+  string evidence_summary = 7;
+  repeated string suggestions = 8;
+}
+
+message SubmitCodingRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+  int32 question_index = 3;
+  string language = 4;
+  string code = 5;
+}
+
+message CodingResult {
+  bool passed = 1;
+  int32 test_cases_passed = 2;
+  int32 total_test_cases = 3;
+  string output = 4;
+  string error = 5;
+  AnswerFeedback feedback = 6;
+}
+
+message GetInterviewRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+}
+
+message ListInterviewsRequest {
+  uint64 user_id = 1;
+  makejob.shared.v1.PageParam page = 2;
+}
+
+message ListInterviewsResponse {
+  repeated InterviewResponse interviews = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message GetReportRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+}
+
+message InterviewStats {
+  int32 total_interviews = 1;
+  double avg_score = 2;
+  int32 total_questions_answered = 3;
+  double avg_accuracy = 4;
+}
+
+// --- 实时语音面试消息 ---
+
+message IsRealtimeRequest {
+  uint64 interview_id = 1;
+}
+
+message IsRealtimeResponse {
+  bool is_realtime = 1;
+}
+
+message GetRealtimeRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+}
+
+message RealtimeInterviewContext {
+  uint64 interview_id = 1;
+  string industry_code = 2;
+  string difficulty = 3;
+  repeated InterviewMessage history = 4;
+  string current_topic = 5;
+  int32 question_index = 6;
+}
+
+message BindDialogRequest {
+  uint64 interview_id = 1;
+  string dialog_id = 2;
+}
+
+message AppendAnswerRequest {
+  uint64 interview_id = 1;
+  string answer_text = 2;
+}
+
+message AppendReplyRequest {
+  uint64 interview_id = 1;
+  string reply_text = 2;
+  Live2DDirective live2d_directive = 3;
+}
+
+message AppendReplyResponse {
+  bool should_end = 1;
+  InterviewQuestion next_question = 2;
+}

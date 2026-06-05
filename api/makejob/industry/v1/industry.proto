@@ -1,0 +1,41 @@
+syntax = "proto3";
+package makejob.industry.v1;
+option go_package = "makejob/api/makejob/industry/v1;industryv1";
+
+import "google/protobuf/empty.proto";
+
+service IndustryService {
+  rpc ListIndustries(google.protobuf.Empty) returns (ListIndustriesResponse);
+  rpc GetIndustry(GetIndustryRequest) returns (Industry);
+  rpc CreateIndustry(CreateIndustryRequest) returns (Industry);
+  rpc UpdateIndustry(UpdateIndustryRequest) returns (Industry);
+}
+
+message GetIndustryRequest {
+  string code = 1;
+}
+
+message ListIndustriesResponse {
+  repeated Industry industries = 1;
+}
+
+message Industry {
+  string code = 1;
+  string name = 2;
+  string icon = 3;
+  string description = 4;
+}
+
+message CreateIndustryRequest {
+  string code = 1;
+  string name = 2;
+  string icon = 3;
+  string description = 4;
+}
+
+message UpdateIndustryRequest {
+  string code = 1;
+  string name = 2;
+  string icon = 3;
+  string description = 4;
+}

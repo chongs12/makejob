@@ -19,7 +19,6 @@ import (
 	"makejob-backend/internal/rag"
 	"makejob-backend/internal/repository"
 	scraperimpl "makejob-backend/internal/scraper"
-	scraperMock "makejob-backend/internal/scraper/mock"
 	"makejob-backend/internal/service"
 	applogger "makejob-backend/pkg/logger"
 )
@@ -136,8 +135,8 @@ func buildWorkerAdminService(db *gorm.DB, cfg *config.Config) service.AdminServi
 	promptRepo := repository.NewPromptTemplateRepository(db)
 	aiCallLogRepo := repository.NewAICallLogRepository(db)
 	scraperTaskRepo := repository.NewScraperTaskRepository(db)
-	scraperProvider := scraperMock.NewMockScraperProvider()
-	questionCleaner := scraperimpl.NewMockCleaner()
+	scraperProvider := scraperimpl.NewHTTPProvider()
+	questionCleaner := scraperimpl.NewHeuristicCleaner()
 
 	return service.NewAdminService(
 		nil,

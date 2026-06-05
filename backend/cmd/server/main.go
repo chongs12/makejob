@@ -28,7 +28,6 @@ import (
 	"makejob-backend/internal/rag"
 	"makejob-backend/internal/repository"
 	"makejob-backend/internal/scraper"
-	scraperMock "makejob-backend/internal/scraper/mock"
 	"makejob-backend/internal/service"
 	"makejob-backend/internal/telemetry"
 	ttsfactory "makejob-backend/internal/tts/factory"
@@ -296,8 +295,8 @@ func initDependencies(db *gorm.DB, cfg *config.Config) *AppDependencies {
 			ragDocService := service.NewRAGDocumentService(ragDocRepo, nil)
 			deps.AdminRAGDocumentHandler = handler.NewAdminRAGDocumentHandler(ragDocService)
 		}
-		scraperProvider := scraperMock.NewMockScraperProvider()
-		questionCleaner := scraper.NewMockCleaner()
+		scraperProvider := scraper.NewHTTPProvider()
+		questionCleaner := scraper.NewHeuristicCleaner()
 		communityRepo := repository.NewCommunityRepository(db)
 
 		deps.AuthService = service.NewAuthService(deps.UserRepo, cfg)

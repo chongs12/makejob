@@ -1,0 +1,16 @@
+server:
+  http:
+    addr: 0.0.0.0:8002
+  grpc:
+    addr: 0.0.0.0:9002
+
+data:
+  database:
+    driver: postgres
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
+
+ai:
+  service_addr: "localhost:9014"
+
+jwt:
+  secret: "makejob-secret-key-change-in-production"

@@ -1,0 +1,141 @@
+syntax = "proto3";
+package makejob.growth.v1;
+option go_package = "makejob/api/makejob/growth/v1;growthv1";
+
+import "google/protobuf/timestamp.proto";
+import "makejob/shared/v1/pagination.proto";
+
+service GrowthService {
+  rpc GetGrowthSummary(UserIDRequest) returns (GrowthSummary);
+  rpc GetWeeklyFocus(UserIDRequest) returns (WeeklyFocus);
+  rpc SyncStudyLog(SyncStudyLogRequest) returns (StudyLog);
+  rpc CreatePlan(CreatePlanRequest) returns (PlanResponse);
+  rpc GetPlan(GetPlanRequest) returns (PlanDetail);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDetail);
+  rpc SubmitTaskFeedback(SubmitFeedbackRequest) returns (FeedbackResponse);
+  rpc Chat(CompanionChatRequest) returns (CompanionChatResponse);
+}
+
+message UserIDRequest {
+  uint64 user_id = 1;
+}
+
+message GrowthSummary {
+  int32 total_study_days = 1;
+  int32 total_questions = 2;
+  int32 total_interviews = 3;
+  int32 current_streak = 4;
+  double avg_score = 5;
+  repeated WeeklyStat weekly_stats = 6;
+  repeated TopicWeakness weak_topics = 7;
+}
+
+message WeeklyStat {
+  string week = 1;
+  int32 questions_answered = 2;
+  int32 interviews_taken = 3;
+  double avg_score = 4;
+}
+
+message TopicWeakness {
+  string topic = 1;
+  double weakness_score = 2;
+  int32 mistake_count = 3;
+}
+
+message WeeklyFocus {
+  repeated FocusItem items = 1;
+  string summary = 2;
+}
+
+message FocusItem {
+  string topic = 1;
+  string source = 2;
+  double weight = 3;
+  string suggestion = 4;
+}
+
+message SyncStudyLogRequest {
+  uint64 user_id = 1;
+  string action = 2;
+  uint64 ref_id = 3;
+  int32 duration_seconds = 4;
+}
+
+message StudyLog {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string action = 3;
+  uint64 ref_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message CreatePlanRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  string goal = 3;
+  int32 daily_hours = 4;
+}
+
+message PlanResponse {
+  uint64 id = 1;
+  string status = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message GetPlanRequest {
+  uint64 plan_id = 1;
+  uint64 user_id = 2;
+}
+
+message PlanDetail {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string industry_code = 3;
+  string goal = 4;
+  string status = 5;
+  repeated TaskDetail tasks = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message TaskDetail {
+  uint64 id = 1;
+  uint64 plan_id = 2;
+  string title = 3;
+  string description = 4;
+  string status = 5;
+  string phase = 6;
+  int32 order_index = 7;
+}
+
+message UpdateTaskStatusRequest {
+  uint64 task_id = 1;
+  uint64 user_id = 2;
+  string status = 3;
+}
+
+message SubmitFeedbackRequest {
+  uint64 task_id = 1;
+  uint64 user_id = 2;
+  string content = 3;
+  int32 difficulty_rating = 4;
+  int32 confidence_rating = 5;
+}
+
+message FeedbackResponse {
+  uint64 id = 1;
+  string diagnosis = 2;
+  repeated string suggestions = 3;
+}
+
+message CompanionChatRequest {
+  uint64 user_id = 1;
+  string message = 2;
+  string context_type = 3;
+}
+
+message CompanionChatResponse {
+  string reply = 1;
+  string emotion = 2;
+  repeated string suggestions = 3;
+}
