@@ -1,0 +1,53 @@
+syntax = "proto3";
+package makejob.coderunner.v1;
+option go_package = "makejob/api/makejob/coderunner/v1;coderunnerv1";
+
+service CodeRunnerService {
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  rpc ListLanguages(ListLanguagesRequest) returns (ListLanguagesResponse);
+}
+
+message ExecuteRequest {
+  string language = 1;
+  string code = 2;
+  string stdin = 3;
+  repeated TestCase test_cases = 4;
+  int32 timeout_ms = 5;
+}
+
+message TestCase {
+  string input = 1;
+  string expected_output = 2;
+}
+
+message ExecuteResponse {
+  bool success = 1;
+  string stdout = 2;
+  string stderr = 3;
+  int32 exit_code = 4;
+  int64 execution_time_ms = 5;
+  repeated TestResult test_results = 6;
+  int32 passed_count = 7;
+  int32 total_count = 8;
+  // FIX: 添加spec要求的error字段
+  string error = 9;
+}
+
+message TestResult {
+  string input = 1;
+  string expected_output = 2;
+  string actual_output = 3;
+  bool passed = 4;
+  int64 execution_time_ms = 5;
+}
+
+message ListLanguagesRequest {}
+
+message ListLanguagesResponse {
+  repeated LanguageInfo languages = 1;
+}
+
+message LanguageInfo {
+  string name = 1;
+  string version = 2;
+}

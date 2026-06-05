@@ -1,0 +1,30 @@
+package data
+
+import (
+	"context"
+
+	"gorm.io/gorm"
+
+	"makejob/app/realtime/internal/biz"
+)
+
+type realtimeRepo struct {
+	db *gorm.DB
+}
+
+// NewRealtimeRepo 创建实时会话仓库实现
+func NewRealtimeRepo(db *gorm.DB) biz.RealtimeRepo {
+	return &realtimeRepo{db: db}
+}
+
+func (r *realtimeRepo) CreateSession(ctx context.Context, session *biz.Session) error {
+	return r.db.WithContext(ctx).Create(session).Error
+}
+
+func (r *realtimeRepo) GetSession(ctx context.Context, sessionID string) (*biz.Session, error) {
+	var session biz.Session
+	if err := r.db.WithContext(ctx).Where("id = ?", sessionID).First(&session).Error; err != nil {
+		return nil, err
+	}
+	return &session, nil
+}

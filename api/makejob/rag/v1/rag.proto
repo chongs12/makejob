@@ -1,0 +1,102 @@
+syntax = "proto3";
+package makejob.rag.v1;
+option go_package = "makejob/api/makejob/rag/v1;ragv1";
+
+import "google/protobuf/timestamp.proto";
+
+service RAGService {
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
+  rpc IndexQuestions(IndexQuestionsRequest) returns (IndexQuestionsResponse);
+  rpc IndexDocuments(IndexDocumentsRequest) returns (IndexDocumentsResponse);
+  rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse);
+  rpc GetConfig(GetConfigRequest) returns (RAGConfig);
+  rpc UpdateConfig(UpdateConfigRequest) returns (RAGConfig);
+  rpc TestConnection(TestConnectionRequest) returns (TestConnectionResponse);
+  rpc GetDocumentStats(GetDocumentStatsRequest) returns (DocumentStats);
+}
+
+message RetrieveRequest {
+  string query = 1;
+  int32 top_k = 2;
+  map<string, string> filters = 3;
+}
+
+message RetrieveResponse {
+  repeated Document documents = 1;
+}
+
+message Document {
+  string id = 1;
+  string content = 2;
+  float score = 3;
+  map<string, string> metadata = 4;
+}
+
+message IndexQuestionsRequest {
+  repeated IndexItem items = 1;
+}
+
+// FIX: 重命名为IndexItem以对齐spec
+message IndexItem {
+  uint64 question_id = 1;
+  string content = 2;
+  map<string, string> metadata = 3;
+}
+
+message IndexQuestionsResponse {
+  int32 indexed_count = 1;
+  repeated string failed_ids = 2;
+}
+
+message IndexDocumentsRequest {
+  repeated DocumentIndexItem items = 1;
+}
+
+message DocumentIndexItem {
+  string id = 1;
+  string content = 2;
+  string source = 3;
+  map<string, string> metadata = 4;
+}
+
+message IndexDocumentsResponse {
+  int32 indexed_count = 1;
+  repeated string failed_ids = 2;
+}
+
+message DeleteIndexRequest {
+  repeated string ids = 1;
+}
+
+message DeleteIndexResponse {
+  int32 deleted_count = 1;
+}
+
+message GetConfigRequest {}
+
+message RAGConfig {
+  string collection_name = 1;
+  int32 embedding_dimension = 2;
+  string embedding_model = 3;
+}
+
+message UpdateConfigRequest {
+  string collection_name = 1;
+  int32 embedding_dimension = 2;
+  string embedding_model = 3;
+}
+
+message TestConnectionRequest {}
+
+message TestConnectionResponse {
+  bool connected = 1;
+  string message = 2;
+}
+
+message GetDocumentStatsRequest {}
+
+message DocumentStats {
+  int64 total_documents = 1;
+  int64 total_questions = 2;
+  google.protobuf.Timestamp last_indexed_at = 3;
+}

@@ -43,7 +43,8 @@
       "Bash(cp -r backend/internal/common pkg/common)",
       "Bash(cp -r backend/internal/executor pkg/executor)",
       "Bash(python3 *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(go vet *)"
     ]
   }
 }

@@ -20,11 +20,9 @@ import (
 
 var flagConf string
 
-func init() {
-	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path, eg: -conf configs/config.yaml")
-}
-
 func main() {
+	// FIX: 将init()中的flag注册移到main()开头（禁止使用init()函数）
+	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path, eg: -conf configs/config.yaml")
 	flag.Parse()
 
 	// 初始化日志

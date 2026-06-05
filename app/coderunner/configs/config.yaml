@@ -1,0 +1,26 @@
+server:
+  http:
+    addr: 0.0.0.0:8009
+    timeout: 30s
+  grpc:
+    # FIX: 端口对齐spec要求的9013
+    addr: 0.0.0.0:9013
+    timeout: 30s
+
+data:
+  database:
+    driver: postgres
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_coderunner sslmode=disable"
+  redis:
+    addr: localhost:6384
+    password: ""
+    db: 7
+
+jwt:
+  secret: "makejob-secret-key-change-in-production"
+  expire_hours: 168
+  service_secret: "makejob-internal-service-secret"
+
+piston:
+  endpoint: "http://localhost:2000"
+  timeout_ms: 10000

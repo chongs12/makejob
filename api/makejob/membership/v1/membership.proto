@@ -1,0 +1,93 @@
+syntax = "proto3";
+package makejob.membership.v1;
+option go_package = "makejob/api/makejob/membership/v1;membershipv1";
+
+import "google/protobuf/timestamp.proto";
+
+service MembershipService {
+  rpc GetMembershipStatus(UserIDRequest) returns (MembershipStatus);
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (OrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc HandlePaymentCallback(PaymentCallbackRequest) returns (OrderResponse);
+  rpc CheckFeatureAccess(CheckFeatureRequest) returns (CheckFeatureResponse);
+  rpc UpgradeMembership(UpgradeRequest) returns (MembershipStatus);
+}
+
+message UserIDRequest {
+  uint64 user_id = 1;
+}
+
+message MembershipStatus {
+  string level = 1;           // "free" or "pro"
+  google.protobuf.Timestamp expire_at = 2;
+  bool is_active = 3;
+}
+
+message MembershipPlan {
+  string plan_type = 1;       // monthly/quarterly/yearly
+  string name = 2;
+  double price = 3;
+  int32 duration_days = 4;
+  repeated string features = 5;
+}
+
+message ListPlansRequest {}
+message ListPlansResponse {
+  repeated MembershipPlan plans = 1;
+}
+
+message CreateOrderRequest {
+  uint64 user_id = 1;
+  string plan_type = 2;       // monthly/quarterly/yearly
+}
+
+message OrderResponse {
+  uint64 id = 1;
+  string order_no = 2;
+  string plan_type = 3;
+  double amount = 4;
+  string status = 5;          // pending/paid/cancelled/refunded
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp paid_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+}
+
+message GetOrderRequest {
+  uint64 user_id = 1;
+  uint64 order_id = 2;
+}
+
+message ListOrdersRequest {
+  uint64 user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListOrdersResponse {
+  repeated OrderResponse orders = 1;
+  int64 total = 2;
+}
+
+message PaymentCallbackRequest {
+  string order_no = 1;
+  string channel = 2;
+  string transaction_id = 3;
+}
+
+message CheckFeatureRequest {
+  uint64 user_id = 1;
+  string feature = 2;         // "unlimited_practice", "unlimited_interview"
+}
+
+message CheckFeatureResponse {
+  bool allowed = 1;
+  string reason = 2;
+}
+
+message UpgradeRequest {
+  uint64 user_id = 1;
+  string level = 2;
+  int32 duration_days = 3;
+}

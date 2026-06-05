@@ -1,0 +1,43 @@
+syntax = "proto3";
+package makejob.companion.v1;
+option go_package = "makejob/api/makejob/companion/v1;companionv1";
+
+import "google/protobuf/timestamp.proto";
+
+service CompanionService {
+  rpc Chat(CompanionChatRequest) returns (CompanionChatResponse);
+  rpc GetCompanionState(GetCompanionStateRequest) returns (CompanionState);
+  rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
+}
+
+message CompanionChatRequest {
+  uint64 user_id = 1;
+  string message = 2;
+  string context_type = 3;
+}
+
+message CompanionChatResponse {
+  string reply = 1;
+  string emotion = 2;
+  repeated string suggestions = 3;
+}
+
+message GetCompanionStateRequest {
+  uint64 user_id = 1;
+}
+
+message CompanionState {
+  string emotion = 1;
+  string last_topic = 2;
+  google.protobuf.Timestamp last_active_at = 3;
+}
+
+message SynthesizeSpeechRequest {
+  string text = 1;
+  string voice = 2;
+}
+
+message SynthesizeSpeechResponse {
+  bytes audio_data = 1;
+  string audio_url = 2;
+}

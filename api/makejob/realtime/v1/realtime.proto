@@ -1,0 +1,52 @@
+syntax = "proto3";
+package makejob.realtime.v1;
+option go_package = "makejob/api/makejob/realtime/v1;realtimev1";
+
+import "google/protobuf/timestamp.proto";
+
+service RealtimeService {
+  rpc InitSession(InitSessionRequest) returns (SessionResponse);
+  rpc GetSessionStatus(GetSessionStatusRequest) returns (SessionResponse);
+  rpc InjectRAGContext(InjectRAGContextRequest) returns (InjectRAGContextResponse);
+  rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message InitSessionRequest {
+  uint64 interview_id = 1;
+  uint64 user_id = 2;
+}
+
+message SessionResponse {
+  string session_id = 1;
+  string status = 2;
+  string ws_url = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message GetSessionStatusRequest {
+  string session_id = 1;
+}
+
+message InjectRAGContextRequest {
+  string session_id = 1;
+  string context = 2;
+}
+
+message InjectRAGContextResponse {
+  bool success = 1;
+}
+
+message EndSessionRequest {
+  string session_id = 1;
+}
+
+message EndSessionResponse {
+  bool success = 1;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+}

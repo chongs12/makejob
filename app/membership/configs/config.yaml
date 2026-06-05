@@ -1,0 +1,21 @@
+server:
+  http:
+    addr: 0.0.0.0:8005
+    timeout: 10s
+  grpc:
+    addr: 0.0.0.0:9005
+    timeout: 10s
+
+data:
+  database:
+    driver: postgres
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_membership sslmode=disable"
+  redis:
+    addr: localhost:6384
+    password: ""
+    db: 3
+
+jwt:
+  secret: "makejob-secret-key-change-in-production"
+  expire_hours: 168
+  service_secret: "makejob-internal-service-secret"

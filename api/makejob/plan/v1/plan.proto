@@ -1,0 +1,106 @@
+syntax = "proto3";
+package makejob.plan.v1;
+option go_package = "makejob/api/makejob/plan/v1;planv1";
+
+import "google/protobuf/timestamp.proto";
+
+service PlanService {
+  rpc CreatePlan(CreatePlanRequest) returns (PlanResponse);
+  rpc GetPlan(GetPlanRequest) returns (PlanDetail);
+  rpc GetCurrentPlan(GetCurrentPlanRequest) returns (PlanDetail);
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDetail);
+  rpc SubmitTaskFeedback(SubmitFeedbackRequest) returns (FeedbackResponse);
+  rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
+}
+
+message CreatePlanRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  string goal = 3;
+  int32 daily_hours = 4;
+}
+
+message PlanResponse {
+  uint64 id = 1;
+  string status = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message GetPlanRequest {
+  uint64 plan_id = 1;
+  uint64 user_id = 2;
+}
+
+message GetCurrentPlanRequest {
+  uint64 user_id = 1;
+}
+
+message PlanDetail {
+  uint64 id = 1;
+  uint64 user_id = 2;
+  string industry_code = 3;
+  string goal = 4;
+  string status = 5;
+  repeated TaskDetail tasks = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message TaskDetail {
+  uint64 id = 1;
+  uint64 plan_id = 2;
+  string title = 3;
+  string description = 4;
+  string status = 5;
+  string phase = 6;
+  int32 order_index = 7;
+}
+
+message ListPlansRequest {
+  uint64 user_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListPlansResponse {
+  repeated PlanSummary plans = 1;
+  int64 total = 2;
+}
+
+message PlanSummary {
+  uint64 id = 1;
+  string industry_code = 2;
+  string goal = 3;
+  string status = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message UpdateTaskStatusRequest {
+  uint64 task_id = 1;
+  uint64 user_id = 2;
+  string status = 3;
+}
+
+message SubmitFeedbackRequest {
+  uint64 task_id = 1;
+  uint64 user_id = 2;
+  string content = 3;
+  int32 difficulty_rating = 4;
+  int32 confidence_rating = 5;
+}
+
+message FeedbackResponse {
+  uint64 id = 1;
+  string diagnosis = 2;
+  repeated string suggestions = 3;
+}
+
+message AdjustPlanRequest {
+  uint64 plan_id = 1;
+  uint64 user_id = 2;
+}
+
+message AdjustPlanResponse {
+  string status = 1;
+  repeated TaskDetail updated_tasks = 2;
+}

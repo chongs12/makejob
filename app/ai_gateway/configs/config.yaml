@@ -1,0 +1,26 @@
+server:
+  http:
+    addr: 0.0.0.0:8011
+    timeout: 60s
+  grpc:
+    addr: 0.0.0.0:9011
+    timeout: 60s
+
+data:
+  database:
+    driver: postgres
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_ai_gateway sslmode=disable"
+  redis:
+    addr: localhost:6384
+    password: ""
+    db: 9
+
+jwt:
+  secret: "makejob-secret-key-change-in-production"
+  expire_hours: 168
+  service_secret: "makejob-internal-service-secret"
+
+ark:
+  api_key: "your-ark-api-key"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "your-model-endpoint-id"
