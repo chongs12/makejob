@@ -15,11 +15,16 @@ service CommunityService {
   rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse);
   rpc CreateComment(CreateCommentRequest) returns (Comment);
   rpc ToggleLike(ToggleLikeRequest) returns (LikeResponse);
+  rpc ListMyPosts(ListMyPostsRequest) returns (ListMyPostsResponse);
 }
 
 message ListPostsRequest {
   makejob.shared.v1.PageParam page = 1;
   string category = 2;
+  string post_type = 3;  // FIX B5: discussion/article/question
+  string keyword = 4;    // FIX B5: 搜索标题/内容
+  string tag = 5;        // FIX B5: 标签过滤
+  string sort_by = 6;    // FIX B5: latest/popular/most_liked
 }
 
 message ListPostsResponse {
@@ -54,6 +59,7 @@ message PostDetail {
   int32 comment_count = 9;
   bool is_liked = 10;
   google.protobuf.Timestamp created_at = 11;
+  int32 view_count = 12; // FIX B5: 浏览量字段
 }
 
 message CreatePostRequest {
@@ -61,6 +67,8 @@ message CreatePostRequest {
   string title = 2;
   string content = 3;
   string category = 4;
+  string post_type = 5; // FIX B5: discussion/article/question
+  string tags = 6;      // FIX B5: 逗号分隔的标签
 }
 
 message Post {
@@ -74,6 +82,7 @@ message UpdatePostRequest {
   uint64 author_id = 2;
   string title = 3;
   string content = 4;
+  string tags = 5;
 }
 
 message DeletePostRequest {
@@ -114,4 +123,14 @@ message ToggleLikeRequest {
 message LikeResponse {
   bool liked = 1;
   int32 like_count = 2;
+}
+
+message ListMyPostsRequest {
+  uint64 author_id = 1;
+  makejob.shared.v1.PageParam page = 2;
+}
+
+message ListMyPostsResponse {
+  repeated PostSummary posts = 1;
+  makejob.shared.v1.PageResult page_result = 2;
 }

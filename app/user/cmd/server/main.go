@@ -58,6 +58,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
+	// data 层：Redis 客户端
+	rdb := data.NewRedisClient(bc.Data.Redis)
+	tokenBlacklist := data.NewTokenBlacklist(rdb)
+
 	// data 层：仓库实现
 	userRepo := data.NewUserRepo(db)
 
@@ -65,10 +69,13 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	userUseCase := biz.NewUserUseCase(userRepo)
 
 	// service 层：gRPC 服务实现
-	userService := service.NewUserService(userUseCase, bc.JWT)
+	userService := service.NewUserService(userUseCase, bc.JWT, tokenBlacklist, logger)
 
-	// auth 拦截器
-	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
+	// auth 拦截器（FIX B1: 注入黑名单检查器）
+	authInterceptor := auth.NewInterceptor(bc.JWT.Secret,
+		auth.WithBlacklistChecker(tokenBlacklist),
+		auth.WithLogger(logger),
+	)
 
 	// server 层：gRPC 服务器
 	gs := server.NewGRPCServer(bc.Server, userService, authInterceptor, logger)
@@ -82,7 +89,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	)
 
 	cleanup := func() {
-		// 清理资源
+		if err := rdb.Close(); err != nil {
+			log.Errorf("failed to close redis: %v", err)
+		}
 	}
 
 	return app, cleanup, nil

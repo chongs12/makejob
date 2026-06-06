@@ -710,6 +710,94 @@ func (x *UpgradeRequest) GetPlan() string {
 	return ""
 }
 
+type LogoutRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutRequest) Reset() {
+	*x = LogoutRequest{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutRequest) ProtoMessage() {}
+
+func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
+func (*LogoutRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *LogoutRequest) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *LogoutRequest) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+type LogoutResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutResponse) Reset() {
+	*x = LogoutResponse{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutResponse) ProtoMessage() {}
+
+func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutResponse.ProtoReflect.Descriptor instead.
+func (*LogoutResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{13}
+}
+
 var File_makejob_user_v1_user_proto protoreflect.FileDescriptor
 
 const file_makejob_user_v1_user_proto_rawDesc = "" +
@@ -761,7 +849,11 @@ const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\tis_active\x18\x03 \x01(\bR\bisActive\"=\n" +
 	"\x0eUpgradeRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x12\n" +
-	"\x04plan\x18\x02 \x01(\tR\x04plan2\xf9\x05\n" +
+	"\x04plan\x18\x02 \x01(\tR\x04plan\"W\n" +
+	"\rLogoutRequest\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"\x10\n" +
+	"\x0eLogoutResponse2\xf9\x05\n" +
 	"\vUserService\x12K\n" +
 	"\bRegister\x12 .makejob.user.v1.RegisterRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12E\n" +
 	"\x05Login\x12\x1d.makejob.user.v1.LoginRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12T\n" +
@@ -786,7 +878,7 @@ func file_makejob_user_v1_user_proto_rawDescGZIP() []byte {
 	return file_makejob_user_v1_user_proto_rawDescData
 }
 
-var file_makejob_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_makejob_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_makejob_user_v1_user_proto_goTypes = []any{
 	(*UserIDRequest)(nil),         // 0: makejob.user.v1.UserIDRequest
 	(*RegisterRequest)(nil),       // 1: makejob.user.v1.RegisterRequest
@@ -800,14 +892,16 @@ var file_makejob_user_v1_user_proto_goTypes = []any{
 	(*BatchGetUsersResponse)(nil), // 9: makejob.user.v1.BatchGetUsersResponse
 	(*MembershipStatus)(nil),      // 10: makejob.user.v1.MembershipStatus
 	(*UpgradeRequest)(nil),        // 11: makejob.user.v1.UpgradeRequest
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(*LogoutRequest)(nil),         // 12: makejob.user.v1.LogoutRequest
+	(*LogoutResponse)(nil),        // 13: makejob.user.v1.LogoutResponse
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
 var file_makejob_user_v1_user_proto_depIdxs = []int32{
 	6,  // 0: makejob.user.v1.AuthResponse.user:type_name -> makejob.user.v1.UserProfile
-	12, // 1: makejob.user.v1.UserProfile.membership_expire_at:type_name -> google.protobuf.Timestamp
-	12, // 2: makejob.user.v1.UserProfile.created_at:type_name -> google.protobuf.Timestamp
+	14, // 1: makejob.user.v1.UserProfile.membership_expire_at:type_name -> google.protobuf.Timestamp
+	14, // 2: makejob.user.v1.UserProfile.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 3: makejob.user.v1.BatchGetUsersResponse.users:type_name -> makejob.user.v1.UserProfile
-	12, // 4: makejob.user.v1.MembershipStatus.expire_at:type_name -> google.protobuf.Timestamp
+	14, // 4: makejob.user.v1.MembershipStatus.expire_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: makejob.user.v1.UserService.Register:input_type -> makejob.user.v1.RegisterRequest
 	2,  // 6: makejob.user.v1.UserService.Login:input_type -> makejob.user.v1.LoginRequest
 	4,  // 7: makejob.user.v1.UserService.RefreshToken:input_type -> makejob.user.v1.RefreshTokenRequest
@@ -844,7 +938,7 @@ func file_makejob_user_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_user_v1_user_proto_rawDesc), len(file_makejob_user_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

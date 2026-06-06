@@ -17,6 +17,14 @@ type UserRepo interface {
 	Update(ctx context.Context, user *User) error
 }
 
+// TokenBlacklist token 黑名单接口，用于登出和 token 吊销
+type TokenBlacklist interface {
+	// Add 将指定 JTI 加入黑名单并设置 TTL
+	Add(ctx context.Context, tokenJTI string, ttl time.Duration) error
+	// IsBlacklisted 检查指定 JTI 是否已在黑名单中
+	IsBlacklisted(ctx context.Context, tokenJTI string) (bool, error)
+}
+
 // --- 领域实体 ---
 
 type User struct {

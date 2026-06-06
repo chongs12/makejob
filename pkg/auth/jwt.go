@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Claims JWT 声明
@@ -16,13 +17,14 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateToken 生成 JWT token
+// GenerateToken 生成带 JTI 的 JWT token
 func GenerateToken(userID uint64, email, role, secret string, expireDuration time.Duration) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.New().String(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expireDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Issuer:    "makejob",

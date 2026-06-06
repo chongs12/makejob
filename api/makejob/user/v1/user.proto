@@ -14,6 +14,7 @@ service UserService {
   rpc BatchGetUsers(BatchGetUsersRequest) returns (BatchGetUsersResponse);
   rpc GetMembershipStatus(UserIDRequest) returns (MembershipStatus);
   rpc UpgradeMembership(UpgradeRequest) returns (MembershipStatus);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
 
 message UserIDRequest {
@@ -83,3 +84,11 @@ message UpgradeRequest {
   uint64 user_id = 1;
   string plan = 2;
 }
+
+message LogoutRequest {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message LogoutResponse {}
+

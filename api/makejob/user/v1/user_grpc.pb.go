@@ -28,6 +28,7 @@ const (
 	UserService_BatchGetUsers_FullMethodName       = "/makejob.user.v1.UserService/BatchGetUsers"
 	UserService_GetMembershipStatus_FullMethodName = "/makejob.user.v1.UserService/GetMembershipStatus"
 	UserService_UpgradeMembership_FullMethodName   = "/makejob.user.v1.UserService/UpgradeMembership"
+	UserService_Logout_FullMethodName              = "/makejob.user.v1.UserService/Logout"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -43,6 +44,7 @@ type UserServiceClient interface {
 	BatchGetUsers(ctx context.Context, in *BatchGetUsersRequest, opts ...grpc.CallOption) (*BatchGetUsersResponse, error)
 	GetMembershipStatus(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*MembershipStatus, error)
 	UpgradeMembership(ctx context.Context, in *UpgradeRequest, opts ...grpc.CallOption) (*MembershipStatus, error)
+	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
 }
 
 type userServiceClient struct {
@@ -143,6 +145,16 @@ func (c *userServiceClient) UpgradeMembership(ctx context.Context, in *UpgradeRe
 	return out, nil
 }
 
+func (c *userServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LogoutResponse)
+	err := c.cc.Invoke(ctx, UserService_Logout_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -156,6 +168,7 @@ type UserServiceServer interface {
 	BatchGetUsers(context.Context, *BatchGetUsersRequest) (*BatchGetUsersResponse, error)
 	GetMembershipStatus(context.Context, *UserIDRequest) (*MembershipStatus, error)
 	UpgradeMembership(context.Context, *UpgradeRequest) (*MembershipStatus, error)
+	Logout(context.Context, *LogoutRequest) (*LogoutResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -192,6 +205,9 @@ func (UnimplementedUserServiceServer) GetMembershipStatus(context.Context, *User
 }
 func (UnimplementedUserServiceServer) UpgradeMembership(context.Context, *UpgradeRequest) (*MembershipStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpgradeMembership not implemented")
+}
+func (UnimplementedUserServiceServer) Logout(context.Context, *LogoutRequest) (*LogoutResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -376,6 +392,24 @@ func _UserService_UpgradeMembership_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_Logout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogoutRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).Logout(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_Logout_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).Logout(ctx, req.(*LogoutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -418,6 +452,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpgradeMembership",
 			Handler:    _UserService_UpgradeMembership_Handler,
+		},
+		{
+			MethodName: "Logout",
+			Handler:    _UserService_Logout_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

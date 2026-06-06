@@ -28,6 +28,7 @@ const (
 	CommunityService_ListComments_FullMethodName  = "/makejob.community.v1.CommunityService/ListComments"
 	CommunityService_CreateComment_FullMethodName = "/makejob.community.v1.CommunityService/CreateComment"
 	CommunityService_ToggleLike_FullMethodName    = "/makejob.community.v1.CommunityService/ToggleLike"
+	CommunityService_ListMyPosts_FullMethodName   = "/makejob.community.v1.CommunityService/ListMyPosts"
 )
 
 // CommunityServiceClient is the client API for CommunityService service.
@@ -42,6 +43,7 @@ type CommunityServiceClient interface {
 	ListComments(ctx context.Context, in *ListCommentsRequest, opts ...grpc.CallOption) (*ListCommentsResponse, error)
 	CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*Comment, error)
 	ToggleLike(ctx context.Context, in *ToggleLikeRequest, opts ...grpc.CallOption) (*LikeResponse, error)
+	ListMyPosts(ctx context.Context, in *ListMyPostsRequest, opts ...grpc.CallOption) (*ListMyPostsResponse, error)
 }
 
 type communityServiceClient struct {
@@ -132,6 +134,16 @@ func (c *communityServiceClient) ToggleLike(ctx context.Context, in *ToggleLikeR
 	return out, nil
 }
 
+func (c *communityServiceClient) ListMyPosts(ctx context.Context, in *ListMyPostsRequest, opts ...grpc.CallOption) (*ListMyPostsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMyPostsResponse)
+	err := c.cc.Invoke(ctx, CommunityService_ListMyPosts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CommunityServiceServer is the server API for CommunityService service.
 // All implementations must embed UnimplementedCommunityServiceServer
 // for forward compatibility.
@@ -144,6 +156,7 @@ type CommunityServiceServer interface {
 	ListComments(context.Context, *ListCommentsRequest) (*ListCommentsResponse, error)
 	CreateComment(context.Context, *CreateCommentRequest) (*Comment, error)
 	ToggleLike(context.Context, *ToggleLikeRequest) (*LikeResponse, error)
+	ListMyPosts(context.Context, *ListMyPostsRequest) (*ListMyPostsResponse, error)
 	mustEmbedUnimplementedCommunityServiceServer()
 }
 
@@ -177,6 +190,9 @@ func (UnimplementedCommunityServiceServer) CreateComment(context.Context, *Creat
 }
 func (UnimplementedCommunityServiceServer) ToggleLike(context.Context, *ToggleLikeRequest) (*LikeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ToggleLike not implemented")
+}
+func (UnimplementedCommunityServiceServer) ListMyPosts(context.Context, *ListMyPostsRequest) (*ListMyPostsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMyPosts not implemented")
 }
 func (UnimplementedCommunityServiceServer) mustEmbedUnimplementedCommunityServiceServer() {}
 func (UnimplementedCommunityServiceServer) testEmbeddedByValue()                          {}
@@ -343,6 +359,24 @@ func _CommunityService_ToggleLike_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CommunityService_ListMyPosts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMyPostsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommunityServiceServer).ListMyPosts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommunityService_ListMyPosts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommunityServiceServer).ListMyPosts(ctx, req.(*ListMyPostsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CommunityService_ServiceDesc is the grpc.ServiceDesc for CommunityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -381,6 +415,10 @@ var CommunityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ToggleLike",
 			Handler:    _CommunityService_ToggleLike_Handler,
+		},
+		{
+			MethodName: "ListMyPosts",
+			Handler:    _CommunityService_ListMyPosts_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

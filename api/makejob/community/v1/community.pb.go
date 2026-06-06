@@ -28,6 +28,10 @@ type ListPostsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Page          *v1.PageParam          `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
 	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	PostType      string                 `protobuf:"bytes,3,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5
+	Keyword       string                 `protobuf:"bytes,4,opt,name=keyword,proto3" json:"keyword,omitempty"`                   // FIX B5
+	Tag           string                 `protobuf:"bytes,5,opt,name=tag,proto3" json:"tag,omitempty"`                           // FIX B5
+	SortBy        string                 `protobuf:"bytes,6,opt,name=sort_by,json=sortBy,proto3" json:"sort_by,omitempty"`       // FIX B5
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -72,6 +76,34 @@ func (x *ListPostsRequest) GetPage() *v1.PageParam {
 func (x *ListPostsRequest) GetCategory() string {
 	if x != nil {
 		return x.Category
+	}
+	return ""
+}
+
+func (x *ListPostsRequest) GetPostType() string { // FIX B5
+	if x != nil {
+		return x.PostType
+	}
+	return ""
+}
+
+func (x *ListPostsRequest) GetKeyword() string { // FIX B5
+	if x != nil {
+		return x.Keyword
+	}
+	return ""
+}
+
+func (x *ListPostsRequest) GetTag() string { // FIX B5
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *ListPostsRequest) GetSortBy() string { // FIX B5
+	if x != nil {
+		return x.SortBy
 	}
 	return ""
 }
@@ -285,6 +317,7 @@ type PostDetail struct {
 	CommentCount  int32                  `protobuf:"varint,9,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
 	IsLiked       bool                   `protobuf:"varint,10,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ViewCount     int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"` // FIX B5
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,12 +429,21 @@ func (x *PostDetail) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PostDetail) GetViewCount() int32 { // FIX B5
+	if x != nil {
+		return x.ViewCount
+	}
+	return 0
+}
+
 type CreatePostRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AuthorId      uint64                 `protobuf:"varint,1,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
 	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
 	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	PostType      string                 `protobuf:"bytes,5,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5
+	Tags          string                 `protobuf:"bytes,6,opt,name=tags,proto3" json:"tags,omitempty"`                         // FIX B5
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -460,6 +502,20 @@ func (x *CreatePostRequest) GetContent() string {
 func (x *CreatePostRequest) GetCategory() string {
 	if x != nil {
 		return x.Category
+	}
+	return ""
+}
+
+func (x *CreatePostRequest) GetPostType() string { // FIX B5
+	if x != nil {
+		return x.PostType
+	}
+	return ""
+}
+
+func (x *CreatePostRequest) GetTags() string { // FIX B5
+	if x != nil {
+		return x.Tags
 	}
 	return ""
 }
@@ -530,6 +586,7 @@ type UpdatePostRequest struct {
 	AuthorId      uint64                 `protobuf:"varint,2,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
 	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
 	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	Tags          string                 `protobuf:"bytes,5,opt,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -588,6 +645,13 @@ func (x *UpdatePostRequest) GetTitle() string {
 func (x *UpdatePostRequest) GetContent() string {
 	if x != nil {
 		return x.Content
+	}
+	return ""
+}
+
+func (x *UpdatePostRequest) GetTags() string {
+	if x != nil {
+		return x.Tags
 	}
 	return ""
 }
@@ -996,6 +1060,110 @@ func (x *LikeResponse) GetLikeCount() int32 {
 	return 0
 }
 
+type ListMyPostsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AuthorId      uint64                 `protobuf:"varint,1,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	Page          *v1.PageParam          `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyPostsRequest) Reset() {
+	*x = ListMyPostsRequest{}
+	mi := &file_makejob_community_v1_community_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyPostsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyPostsRequest) ProtoMessage() {}
+
+func (x *ListMyPostsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_community_v1_community_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyPostsRequest.ProtoReflect.Descriptor instead.
+func (*ListMyPostsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_community_v1_community_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListMyPostsRequest) GetAuthorId() uint64 {
+	if x != nil {
+		return x.AuthorId
+	}
+	return 0
+}
+
+func (x *ListMyPostsRequest) GetPage() *v1.PageParam {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+type ListMyPostsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Posts         []*PostSummary         `protobuf:"bytes,1,rep,name=posts,proto3" json:"posts,omitempty"`
+	PageResult    *v1.PageResult         `protobuf:"bytes,2,opt,name=page_result,json=pageResult,proto3" json:"page_result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyPostsResponse) Reset() {
+	*x = ListMyPostsResponse{}
+	mi := &file_makejob_community_v1_community_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyPostsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyPostsResponse) ProtoMessage() {}
+
+func (x *ListMyPostsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_community_v1_community_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyPostsResponse.ProtoReflect.Descriptor instead.
+func (*ListMyPostsResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_community_v1_community_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListMyPostsResponse) GetPosts() []*PostSummary {
+	if x != nil {
+		return x.Posts
+	}
+	return nil
+}
+
+func (x *ListMyPostsResponse) GetPageResult() *v1.PageResult {
+	if x != nil {
+		return x.PageResult
+	}
+	return nil
+}
+
 var File_makejob_community_v1_community_proto protoreflect.FileDescriptor
 
 const file_makejob_community_v1_community_proto_rawDesc = "" +
@@ -1048,12 +1216,13 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"p\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x84\x01\n" +
 	"\x11UpdatePostRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tauthor_id\x18\x02 \x01(\x04R\bauthorId\x12\x14\n" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\tR\acontent\"@\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x12\x12\n" +
+	"\x04tags\x18\x05 \x01(\tR\x04tags\"@\n" +
 	"\x11DeletePostRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tauthor_id\x18\x02 \x01(\x04R\bauthorId\"`\n" +
@@ -1083,7 +1252,14 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\fLikeResponse\x12\x14\n" +
 	"\x05liked\x18\x01 \x01(\bR\x05liked\x12\x1d\n" +
 	"\n" +
-	"like_count\x18\x02 \x01(\x05R\tlikeCount2\xd6\x05\n" +
+	"like_count\x18\x02 \x01(\x05R\tlikeCount\"c\n" +
+	"\x12ListMyPostsRequest\x12\x1b\n" +
+	"\tauthor_id\x18\x01 \x01(\x04R\bauthorId\x120\n" +
+	"\x04page\x18\x02 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\"\x8e\x01\n" +
+	"\x13ListMyPostsResponse\x127\n" +
+	"\x05posts\x18\x01 \x03(\v2!.makejob.community.v1.PostSummaryR\x05posts\x12>\n" +
+	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
+	"pageResult2\xba\x06\n" +
 	"\x10CommunityService\x12\\\n" +
 	"\tListPosts\x12&.makejob.community.v1.ListPostsRequest\x1a'.makejob.community.v1.ListPostsResponse\x12Q\n" +
 	"\aGetPost\x12$.makejob.community.v1.GetPostRequest\x1a .makejob.community.v1.PostDetail\x12Q\n" +
@@ -1096,7 +1272,8 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\fListComments\x12).makejob.community.v1.ListCommentsRequest\x1a*.makejob.community.v1.ListCommentsResponse\x12Z\n" +
 	"\rCreateComment\x12*.makejob.community.v1.CreateCommentRequest\x1a\x1d.makejob.community.v1.Comment\x12Y\n" +
 	"\n" +
-	"ToggleLike\x12'.makejob.community.v1.ToggleLikeRequest\x1a\".makejob.community.v1.LikeResponseB.Z,makejob/api/makejob/community/v1;communityv1b\x06proto3"
+	"ToggleLike\x12'.makejob.community.v1.ToggleLikeRequest\x1a\".makejob.community.v1.LikeResponse\x12b\n" +
+	"\vListMyPosts\x12(.makejob.community.v1.ListMyPostsRequest\x1a).makejob.community.v1.ListMyPostsResponseB.Z,makejob/api/makejob/community/v1;communityv1b\x06proto3"
 
 var (
 	file_makejob_community_v1_community_proto_rawDescOnce sync.Once
@@ -1110,7 +1287,7 @@ func file_makejob_community_v1_community_proto_rawDescGZIP() []byte {
 	return file_makejob_community_v1_community_proto_rawDescData
 }
 
-var file_makejob_community_v1_community_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_makejob_community_v1_community_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_makejob_community_v1_community_proto_goTypes = []any{
 	(*ListPostsRequest)(nil),      // 0: makejob.community.v1.ListPostsRequest
 	(*ListPostsResponse)(nil),     // 1: makejob.community.v1.ListPostsResponse
@@ -1127,43 +1304,50 @@ var file_makejob_community_v1_community_proto_goTypes = []any{
 	(*CreateCommentRequest)(nil),  // 12: makejob.community.v1.CreateCommentRequest
 	(*ToggleLikeRequest)(nil),     // 13: makejob.community.v1.ToggleLikeRequest
 	(*LikeResponse)(nil),          // 14: makejob.community.v1.LikeResponse
-	(*v1.PageParam)(nil),          // 15: makejob.shared.v1.PageParam
-	(*v1.PageResult)(nil),         // 16: makejob.shared.v1.PageResult
-	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 18: google.protobuf.Empty
+	(*ListMyPostsRequest)(nil),    // 15: makejob.community.v1.ListMyPostsRequest
+	(*ListMyPostsResponse)(nil),   // 16: makejob.community.v1.ListMyPostsResponse
+	(*v1.PageParam)(nil),          // 17: makejob.shared.v1.PageParam
+	(*v1.PageResult)(nil),         // 18: makejob.shared.v1.PageResult
+	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 20: google.protobuf.Empty
 }
 var file_makejob_community_v1_community_proto_depIdxs = []int32{
-	15, // 0: makejob.community.v1.ListPostsRequest.page:type_name -> makejob.shared.v1.PageParam
+	17, // 0: makejob.community.v1.ListPostsRequest.page:type_name -> makejob.shared.v1.PageParam
 	2,  // 1: makejob.community.v1.ListPostsResponse.posts:type_name -> makejob.community.v1.PostSummary
-	16, // 2: makejob.community.v1.ListPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	17, // 3: makejob.community.v1.PostSummary.created_at:type_name -> google.protobuf.Timestamp
-	17, // 4: makejob.community.v1.PostDetail.created_at:type_name -> google.protobuf.Timestamp
-	17, // 5: makejob.community.v1.Post.created_at:type_name -> google.protobuf.Timestamp
-	15, // 6: makejob.community.v1.ListCommentsRequest.page:type_name -> makejob.shared.v1.PageParam
+	18, // 2: makejob.community.v1.ListPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	19, // 3: makejob.community.v1.PostSummary.created_at:type_name -> google.protobuf.Timestamp
+	19, // 4: makejob.community.v1.PostDetail.created_at:type_name -> google.protobuf.Timestamp
+	19, // 5: makejob.community.v1.Post.created_at:type_name -> google.protobuf.Timestamp
+	17, // 6: makejob.community.v1.ListCommentsRequest.page:type_name -> makejob.shared.v1.PageParam
 	11, // 7: makejob.community.v1.ListCommentsResponse.comments:type_name -> makejob.community.v1.Comment
-	16, // 8: makejob.community.v1.ListCommentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	17, // 9: makejob.community.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 10: makejob.community.v1.CommunityService.ListPosts:input_type -> makejob.community.v1.ListPostsRequest
-	3,  // 11: makejob.community.v1.CommunityService.GetPost:input_type -> makejob.community.v1.GetPostRequest
-	5,  // 12: makejob.community.v1.CommunityService.CreatePost:input_type -> makejob.community.v1.CreatePostRequest
-	7,  // 13: makejob.community.v1.CommunityService.UpdatePost:input_type -> makejob.community.v1.UpdatePostRequest
-	8,  // 14: makejob.community.v1.CommunityService.DeletePost:input_type -> makejob.community.v1.DeletePostRequest
-	9,  // 15: makejob.community.v1.CommunityService.ListComments:input_type -> makejob.community.v1.ListCommentsRequest
-	12, // 16: makejob.community.v1.CommunityService.CreateComment:input_type -> makejob.community.v1.CreateCommentRequest
-	13, // 17: makejob.community.v1.CommunityService.ToggleLike:input_type -> makejob.community.v1.ToggleLikeRequest
-	1,  // 18: makejob.community.v1.CommunityService.ListPosts:output_type -> makejob.community.v1.ListPostsResponse
-	4,  // 19: makejob.community.v1.CommunityService.GetPost:output_type -> makejob.community.v1.PostDetail
-	6,  // 20: makejob.community.v1.CommunityService.CreatePost:output_type -> makejob.community.v1.Post
-	6,  // 21: makejob.community.v1.CommunityService.UpdatePost:output_type -> makejob.community.v1.Post
-	18, // 22: makejob.community.v1.CommunityService.DeletePost:output_type -> google.protobuf.Empty
-	10, // 23: makejob.community.v1.CommunityService.ListComments:output_type -> makejob.community.v1.ListCommentsResponse
-	11, // 24: makejob.community.v1.CommunityService.CreateComment:output_type -> makejob.community.v1.Comment
-	14, // 25: makejob.community.v1.CommunityService.ToggleLike:output_type -> makejob.community.v1.LikeResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	18, // 8: makejob.community.v1.ListCommentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	19, // 9: makejob.community.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
+	17, // 10: makejob.community.v1.ListMyPostsRequest.page:type_name -> makejob.shared.v1.PageParam
+	2,  // 11: makejob.community.v1.ListMyPostsResponse.posts:type_name -> makejob.community.v1.PostSummary
+	18, // 12: makejob.community.v1.ListMyPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	0,  // 13: makejob.community.v1.CommunityService.ListPosts:input_type -> makejob.community.v1.ListPostsRequest
+	3,  // 14: makejob.community.v1.CommunityService.GetPost:input_type -> makejob.community.v1.GetPostRequest
+	5,  // 15: makejob.community.v1.CommunityService.CreatePost:input_type -> makejob.community.v1.CreatePostRequest
+	7,  // 16: makejob.community.v1.CommunityService.UpdatePost:input_type -> makejob.community.v1.UpdatePostRequest
+	8,  // 17: makejob.community.v1.CommunityService.DeletePost:input_type -> makejob.community.v1.DeletePostRequest
+	9,  // 18: makejob.community.v1.CommunityService.ListComments:input_type -> makejob.community.v1.ListCommentsRequest
+	12, // 19: makejob.community.v1.CommunityService.CreateComment:input_type -> makejob.community.v1.CreateCommentRequest
+	13, // 20: makejob.community.v1.CommunityService.ToggleLike:input_type -> makejob.community.v1.ToggleLikeRequest
+	15, // 21: makejob.community.v1.CommunityService.ListMyPosts:input_type -> makejob.community.v1.ListMyPostsRequest
+	1,  // 22: makejob.community.v1.CommunityService.ListPosts:output_type -> makejob.community.v1.ListPostsResponse
+	4,  // 23: makejob.community.v1.CommunityService.GetPost:output_type -> makejob.community.v1.PostDetail
+	6,  // 24: makejob.community.v1.CommunityService.CreatePost:output_type -> makejob.community.v1.Post
+	6,  // 25: makejob.community.v1.CommunityService.UpdatePost:output_type -> makejob.community.v1.Post
+	20, // 26: makejob.community.v1.CommunityService.DeletePost:output_type -> google.protobuf.Empty
+	10, // 27: makejob.community.v1.CommunityService.ListComments:output_type -> makejob.community.v1.ListCommentsResponse
+	11, // 28: makejob.community.v1.CommunityService.CreateComment:output_type -> makejob.community.v1.Comment
+	14, // 29: makejob.community.v1.CommunityService.ToggleLike:output_type -> makejob.community.v1.LikeResponse
+	16, // 30: makejob.community.v1.CommunityService.ListMyPosts:output_type -> makejob.community.v1.ListMyPostsResponse
+	22, // [22:31] is the sub-list for method output_type
+	13, // [13:22] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_makejob_community_v1_community_proto_init() }
@@ -1177,7 +1361,7 @@ func file_makejob_community_v1_community_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_community_v1_community_proto_rawDesc), len(file_makejob_community_v1_community_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

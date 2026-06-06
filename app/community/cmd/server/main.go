@@ -60,9 +60,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// data 层：仓库实现
 	communityRepo := data.NewCommunityRepo(db)
+	likeRepo := data.NewLikeRepo(db)
 
 	// biz 层：业务用例
-	communityUseCase := biz.NewCommunityUseCase(communityRepo)
+	communityUseCase := biz.NewCommunityUseCase(communityRepo, likeRepo)
 
 	// service 层：gRPC 服务实现
 	communityService := service.NewCommunityService(communityUseCase)
