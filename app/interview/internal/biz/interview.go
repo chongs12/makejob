@@ -13,8 +13,12 @@ type InterviewRepo interface {
 	Update(ctx context.Context, interview *Interview) error
 	CreateMessage(ctx context.Context, msg *InterviewMessage) error
 	ListMessages(ctx context.Context, interviewID uint64) ([]*InterviewMessage, error)
+	ListMessagesLimited(ctx context.Context, interviewID uint64, limit int32) ([]*InterviewMessage, error)
 	CreateCodingAttempt(ctx context.Context, attempt *CodingAttempt) error
 	UpdateCodingAttempt(ctx context.Context, attempt *CodingAttempt) error
+	ListCodingAttempts(ctx context.Context, interviewID uint64) ([]*CodingAttempt, error)
+	BindRealtimeDialog(ctx context.Context, interviewID uint64, dialogID string) error
+	AppendMessageAndBumpIndex(ctx context.Context, msg *InterviewMessage) error
 }
 
 // AIServiceClient AI 服务的 gRPC 客户端接口
@@ -35,23 +39,59 @@ type IndustryClient interface {
 	GetIndustry(ctx context.Context, code string) (*Industry, error)
 }
 
+// RAGClient RAG 检索服务的 gRPC 客户端接口
+type RAGClient interface {
+	Retrieve(ctx context.Context, query string, topK int32) ([]*RAGDocument, error)
+}
+
+// CodeRunnerClient 代码执行服务客户端接口
+type CodeRunnerClient interface {
+	Execute(ctx context.Context, language, code string, testCases []CodeTestCase) (*CodeRunnerResult, error)
+}
+
+// CodeTestCase 代码执行测试用例
+type CodeTestCase struct {
+	Input          string
+	ExpectedOutput string
+}
+
+// CodeRunnerResult 代码执行结果
+type CodeRunnerResult struct {
+	Success         bool
+	Stdout          string
+	Stderr          string
+	PassedCount     int32
+	TotalCount      int32
+	ExecutionTimeMs int64
+}
+
+// RAGDocument RAG 检索返回的文档
+type RAGDocument struct {
+	ID      string
+	Content string
+	Score   float64
+}
+
 // --- 领域实体 ---
 
 type Interview struct {
-	ID             uint64
-	UserID         uint64
-	IndustryCode   string
-	Difficulty     string
-	Status         string // created, in_progress, completed
-	InterviewMode  string // standard, realtime_voice, coding
-	QuestionCount  int32
-	CurrentIndex   int32
-	OverallScore   float64
-	ResumeText     string
-	JobDescription string
-	Live2DModelKey string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID               uint64
+	UserID           uint64
+	IndustryCode     string
+	Difficulty       string
+	Status           string // created, in_progress, ongoing, report_generating, report_failed, completed
+	InterviewMode    string // standard, realtime_voice, coding
+	QuestionCount    int32
+	CurrentIndex     int32
+	OverallScore     float64
+	ResumeText       string
+	ResumeParsedJSON string // AI 解析简历后的结构化 JSON
+	JobDescription   string
+	Live2DModelKey   string
+	RealtimeDialogID string
+	FinishedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type InterviewMessage struct {
@@ -75,6 +115,8 @@ type CodingAttempt struct {
 	TotalTestCases  int32
 	Output          string
 	ErrorMsg        string
+	AIScore         float64
+	AIFeedback      string
 	CreatedAt       time.Time
 }
 
@@ -89,6 +131,7 @@ type InterviewAgentRequest struct {
 	QuestionIndex int32
 	ResumeText    string
 	JobDesc       string
+	Mode          string // "question", "report", "evaluate"
 }
 
 type InterviewAgentResponse struct {
@@ -187,4 +230,31 @@ type CreateInterviewRequest struct {
 	ResumeText     string
 	JobDescription string
 	Live2DModelKey string
+}
+
+// InterviewReport 面试报告实体
+type InterviewReport struct {
+	ID                    uint64
+	InterviewID           uint64
+	OverallScore          float64
+	DimensionScoresJSON   string
+	StrengthsJSON         string
+	WeaknessesJSON        string
+	SuggestionsJSON       string
+	Summary               string
+	CodingDiagnosticsJSON string
+	CreatedAt             time.Time
+}
+
+// ReportRepo 面试报告仓库接口
+type ReportRepo interface {
+	Create(ctx context.Context, report *InterviewReport) error
+	GetByInterviewID(ctx context.Context, interviewID uint64) (*InterviewReport, error)
+}
+
+// MQPublisher MQ 消息发布接口
+type MQPublisher interface {
+	PublishInterviewResumeParse(ctx context.Context, interviewID, userID uint64, resumeText string) error
+	PublishInterviewReportGenerate(ctx context.Context, interviewID, userID uint64) error
+	PublishInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error
 }

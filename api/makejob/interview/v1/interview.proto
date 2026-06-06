@@ -159,6 +159,7 @@ message InterviewReport {
   repeated string suggestions = 8;
   string summary = 9;
   repeated CodingDiagnosis coding_diagnostics = 10;
+  string status = 11;  // "generating" | "completed" | "failed"
 }
 
 message CodingDiagnosis {

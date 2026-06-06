@@ -1100,6 +1100,7 @@ type InterviewReport struct {
 	Suggestions       []string               `protobuf:"bytes,8,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
 	Summary           string                 `protobuf:"bytes,9,opt,name=summary,proto3" json:"summary,omitempty"`
 	CodingDiagnostics []*CodingDiagnosis     `protobuf:"bytes,10,rep,name=coding_diagnostics,json=codingDiagnostics,proto3" json:"coding_diagnostics,omitempty"`
+	Status            string                 `protobuf:"bytes,11,opt,name=status,proto3" json:"status,omitempty"` // "generating" | "completed" | "failed"
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1202,6 +1203,13 @@ func (x *InterviewReport) GetCodingDiagnostics() []*CodingDiagnosis {
 		return x.CodingDiagnostics
 	}
 	return nil
+}
+
+func (x *InterviewReport) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
 }
 
 type CodingDiagnosis struct {
@@ -2285,7 +2293,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\ais_last\x18\x02 \x01(\bR\x06isLast\"T\n" +
 	"\x16FinishInterviewRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xa2\x04\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xba\x04\n" +
 	"\x0fInterviewReport\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\roverall_score\x18\x02 \x01(\x01R\foverallScore\x12'\n" +
@@ -2299,7 +2307,8 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\vsuggestions\x18\b \x03(\tR\vsuggestions\x12\x18\n" +
 	"\asummary\x18\t \x01(\tR\asummary\x12T\n" +
 	"\x12coding_diagnostics\x18\n" +
-	" \x03(\v2%.makejob.interview.v1.CodingDiagnosisR\x11codingDiagnostics\x1aB\n" +
+	" \x03(\v2%.makejob.interview.v1.CodingDiagnosisR\x11codingDiagnostics\x12\x16\n" +
+	"\x06status\x18\v \x01(\tR\x06status\x1aB\n" +
 	"\x14DimensionScoresEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\x95\x02\n" +

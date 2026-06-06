@@ -114,6 +114,7 @@ func (i *Interceptor) UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 		ctx = context.WithValue(ctx, ContextKeyUserID, claims.UserID)
 		ctx = context.WithValue(ctx, ContextKeyRole, claims.Role)
 		ctx = context.WithValue(ctx, ContextKeyEmail, claims.Email)
+		ctx = WithAccessToken(ctx, tokenString)
 
 		return handler(ctx, req)
 	}

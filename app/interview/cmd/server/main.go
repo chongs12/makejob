@@ -60,6 +60,13 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// data 层：各仓库实现
 	interviewRepo := data.NewInterviewRepo(db)
+	reportRepo := data.NewReportRepo(db)
+
+	// data 层：MQ 发布者
+	publisher, err := data.NewMQPublisher(bc.MQ)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ publisher: %w", err)
+	}
 
 	// data 层：gRPC 客户端
 	aiClient, err := data.NewAIServiceClient(bc.AI)
@@ -77,12 +84,27 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create Industry client: %w", err)
 	}
 
+	ragClient, err := data.NewRAGClient(bc.RAG)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create RAG client: %w", err)
+	}
+
+	codeRunnerClient, err := data.NewCodeRunnerClient(bc.CodeRunner)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CodeRunner client: %w", err)
+	}
+
 	// biz 层：业务用例
 	interviewUseCase := biz.NewInterviewUseCase(
 		interviewRepo,
 		aiClient,
 		archiveClient,
 		industryClient,
+		ragClient,
+		codeRunnerClient,
+		reportRepo,
+		publisher,
+		logger,
 	)
 
 	// service 层：gRPC 服务实现
@@ -118,6 +140,15 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		closers = append(closers, c)
 	}
 	if c, ok := industryClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := ragClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := codeRunnerClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := publisher.(closer); ok {
 		closers = append(closers, c)
 	}
 

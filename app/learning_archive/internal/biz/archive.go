@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"time"
+
+	"github.com/go-kratos/kratos/v2/log"
 )
 
 // ArchiveRepo data 层接口
@@ -43,11 +45,17 @@ type FocusSignal struct {
 
 // ArchiveUseCase 学习档案业务用例
 type ArchiveUseCase struct {
-	repo ArchiveRepo
+	repo      ArchiveRepo
+	publisher MQPublisher
 }
 
-func NewArchiveUseCase(repo ArchiveRepo) *ArchiveUseCase {
-	return &ArchiveUseCase{repo: repo}
+// MQPublisher MQ 消息发布接口
+type MQPublisher interface {
+	PublishArchiveWritten(ctx context.Context, userID uint64, source string, sourceID uint64, weakTopicsAdded, strengthTopicsAdded []string) error
+}
+
+func NewArchiveUseCase(repo ArchiveRepo, publisher MQPublisher) *ArchiveUseCase {
+	return &ArchiveUseCase{repo: repo, publisher: publisher}
 }
 
 // WriteEntry 写入学习档案条目
@@ -84,4 +92,58 @@ func (uc *ArchiveUseCase) GetWeakTopics(ctx context.Context, userID uint64) ([]s
 // GetFocusSignals 获取用户聚焦信号
 func (uc *ArchiveUseCase) GetFocusSignals(ctx context.Context, userID uint64) ([]*FocusSignal, error) {
 	return uc.repo.GetFocusSignals(ctx, userID)
+}
+
+// HandleInterviewFinished 处理面试完成事件：将薄弱/优势知识点写入学习档案，并发布档案写入事件
+func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error {
+	logger := log.NewHelper(log.DefaultLogger)
+
+	if userID == 0 {
+		logger.Warn("interview.finished 事件 user_id 为 0，丢弃消息")
+		return nil
+	}
+
+	now := time.Now()
+
+	// 为每个薄弱知识点创建档案条目
+	weakEntries := make([]*ArchiveEntry, 0, len(weakTopics))
+	for _, topic := range weakTopics {
+		weakEntries = append(weakEntries, &ArchiveEntry{
+			UserID:      userID,
+			SourceType:  "interview_weak",
+			SourceRef:   topic,
+			InterviewID: interviewID,
+			MistakeTags: []string{topic},
+			OccurredAt:  now,
+		})
+	}
+
+	// 为每个优势知识点创建档案条目
+	strengthEntries := make([]*ArchiveEntry, 0, len(strengthTopics))
+	for _, topic := range strengthTopics {
+		strengthEntries = append(strengthEntries, &ArchiveEntry{
+			UserID:       userID,
+			SourceType:   "interview_strength",
+			SourceRef:    topic,
+			InterviewID:  interviewID,
+			StrengthTags: []string{topic},
+			OccurredAt:   now,
+		})
+	}
+
+	allEntries := append(weakEntries, strengthEntries...)
+
+	// 批量写入数据库
+	if len(allEntries) > 0 {
+		if _, err := uc.repo.BatchCreate(ctx, allEntries); err != nil {
+			return err
+		}
+	}
+
+	// 发布档案写入事件（发布失败仅记录日志，不重试主流程）
+	if err := uc.publisher.PublishArchiveWritten(ctx, userID, "interview", interviewID, weakTopics, strengthTopics); err != nil {
+		logger.Errorf("发布 archive.written 事件失败: %v", err)
+	}
+
+	return nil
 }

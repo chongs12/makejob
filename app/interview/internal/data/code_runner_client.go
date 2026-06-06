@@ -1,0 +1,72 @@
+package data
+
+import (
+	"context"
+	"fmt"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	coderunnerv1 "makejob/api/makejob/coderunner/v1"
+	"makejob/app/interview/internal/biz"
+	"makejob/app/interview/internal/conf"
+)
+
+// codeRunnerClient 实现 biz.CodeRunnerClient 接口，通过 gRPC 调用代码执行服务
+type codeRunnerClient struct {
+	client coderunnerv1.CodeRunnerServiceClient
+	conn   *grpc.ClientConn
+}
+
+// NewCodeRunnerClient 创建代码执行服务客户端
+func NewCodeRunnerClient(cfg *conf.CodeRunner) (biz.CodeRunnerClient, error) {
+	conn, err := grpc.NewClient(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to CodeRunner service at %s: %w", cfg.ServiceAddr, err)
+	}
+	return &codeRunnerClient{
+		client: coderunnerv1.NewCodeRunnerServiceClient(conn),
+		conn:   conn,
+	}, nil
+}
+
+// Close 关闭 gRPC 连接
+func (c *codeRunnerClient) Close() error {
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
+}
+
+// Execute 提交代码并执行测试用例
+func (c *codeRunnerClient) Execute(ctx context.Context, language, code string, testCases []biz.CodeTestCase) (*biz.CodeRunnerResult, error) {
+	// 转换测试用例格式
+	tc := make([]*coderunnerv1.TestCase, len(testCases))
+	for i, t := range testCases {
+		tc[i] = &coderunnerv1.TestCase{
+			Input:          t.Input,
+			ExpectedOutput: t.ExpectedOutput,
+		}
+	}
+
+	req := &coderunnerv1.ExecuteRequest{
+		Language:  language,
+		Code:      code,
+		TestCases: tc,
+		TimeoutMs: 10000,
+	}
+
+	resp, err := c.client.Execute(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("CodeRunner gRPC call failed: %w", err)
+	}
+
+	return &biz.CodeRunnerResult{
+		Success:        resp.Success,
+		Stdout:         resp.Stdout,
+		Stderr:         resp.Stderr,
+		PassedCount:    resp.PassedCount,
+		TotalCount:     resp.TotalCount,
+		ExecutionTimeMs: resp.ExecutionTimeMs,
+	}, nil
+}

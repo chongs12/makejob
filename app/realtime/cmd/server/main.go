@@ -50,7 +50,7 @@ func main() {
 	}
 }
 
-// wireApp 手动组装依赖
+// wireApp 手动组装所有依赖
 func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error) {
 	// data 层：数据库连接
 	db, err := data.NewData(bc.Data)
@@ -61,11 +61,33 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// data 层：仓库实现
 	realtimeRepo := data.NewRealtimeRepo(db)
 
-	// biz 层：业务用例
-	realtimeUseCase := biz.NewRealtimeUseCase(realtimeRepo)
+	// data 层：下游服务客户端
+	interviewClient, interviewCloser, err := data.NewInterviewClient(bc.DependentServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create interview client: %w", err)
+	}
+
+	ragClient, ragCloser, err := data.NewRAGClient(bc.DependentServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create RAG client: %w", err)
+	}
+
+	// data 层：火山引擎连接工厂
+	volcFactory := data.NewVolcEngineFactory(bc.Volcengine)
+
+	// biz 层：会话管理器和业务用例
+	sessionManager := biz.NewSessionManager()
+	realtimeUseCase := biz.NewRealtimeUseCase(
+		realtimeRepo,
+		interviewClient,
+		ragClient,
+		sessionManager,
+		volcFactory,
+		logger,
+	)
 
 	// service 层：gRPC 服务实现
-	realtimeService := service.NewRealtimeService(realtimeUseCase)
+	realtimeService := service.NewRealtimeService(realtimeUseCase, "ws", bc.Server.HTTP.Addr)
 
 	// auth 拦截器
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
@@ -73,16 +95,27 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// server 层：gRPC 服务器
 	gs := server.NewGRPCServer(bc.Server, realtimeService, authInterceptor, logger)
 
+	// server 层：HTTP/WebSocket 服务器
+	hs := server.NewHTTPServer(bc.Server, realtimeUseCase, bc.JWT.Secret, logger)
+
 	// 组装 Kratos app
 	app := kratos.New(
 		kratos.Name("makejob.realtime"),
 		kratos.Version("1.0.0"),
 		kratos.Logger(logger),
-		kratos.Server(gs),
+		kratos.Server(gs, hs),
 	)
 
 	cleanup := func() {
-		// 清理资源
+		if interviewCloser != nil {
+			_ = interviewCloser.Close()
+		}
+		if ragCloser != nil {
+			_ = ragCloser.Close()
+		}
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
 	}
 
 	return app, cleanup, nil

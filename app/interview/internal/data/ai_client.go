@@ -41,6 +41,7 @@ func (c *aiServiceClient) Close() error {
 	return nil
 }
 
+// InterviewAgent 调用 AI Gateway 生成下一题或评估当前回答。
 func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.InterviewAgentRequest) (*biz.InterviewAgentResponse, error) {
 	// 转换 biz 历史消息为 proto 消息
 	history := make([]*aiv1.Message, 0, len(req.History))
@@ -65,27 +66,35 @@ func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.Interview
 		return nil, fmt.Errorf("InterviewAgent gRPC call failed: %w", err)
 	}
 
-	return &biz.InterviewAgentResponse{
-		Question: &biz.InterviewQuestion{
-			Question:   resp.Question,
-			Topic:      resp.Topic,
-			Difficulty: resp.Difficulty,
-			Type:       resp.Type,
-			Hints:      resp.Hints,
-		},
-		Feedback: &biz.AnswerFeedback{
-			Score:     resp.Score,
-			Feedback:  resp.Feedback,
-			IsCorrect: resp.Score > correctThreshold,
-		},
+	result := &biz.InterviewAgentResponse{
 		ShouldEnd: resp.ShouldEnd,
 		Live2DDirective: &biz.Live2DDirective{
 			Emotion: resp.Live2DEmotion,
 			Action:  resp.Live2DAction,
 		},
-	}, nil
+	}
+	if resp.Question != "" {
+		result.Question = &biz.InterviewQuestion{
+			Question:   resp.Question,
+			Topic:      resp.Topic,
+			Difficulty: resp.Difficulty,
+			Type:       resp.Type,
+			Hints:      resp.Hints,
+		}
+	}
+	if resp.Feedback != "" || resp.Score > 0 {
+		result.Feedback = &biz.AnswerFeedback{
+			Score:       resp.Score,
+			Feedback:    resp.Feedback,
+			IsCorrect:   resp.Score > correctThreshold,
+			KeyPoints:   nil,
+			Suggestions: "",
+		}
+	}
+	return result, nil
 }
 
+// QuizAnalyzer 调用 AI Gateway 评估问答或代码答案。
 func (c *aiServiceClient) QuizAnalyzer(ctx context.Context, req *biz.QuizAnalyzerRequest) (*biz.QuizAnalyzerResponse, error) {
 	resp, err := c.client.QuizAnalyzer(ctx, &aiv1.QuizAnalyzerRequest{
 		Question:   req.Question,
@@ -107,6 +116,7 @@ func (c *aiServiceClient) QuizAnalyzer(ctx context.Context, req *biz.QuizAnalyze
 	}, nil
 }
 
+// ResumeParser 调用 AI Gateway 解析简历文本。
 func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParserRequest) (*biz.ResumeParserResponse, error) {
 	resp, err := c.client.ResumeParser(ctx, &aiv1.ResumeParserRequest{
 		ResumeText: req.ResumeText,

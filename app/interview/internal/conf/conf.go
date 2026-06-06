@@ -8,13 +8,15 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server   *Server   `yaml:"server"`
-	Data     *Data     `yaml:"data"`
-	AI       *AI       `yaml:"ai"`
-	Industry *Industry `yaml:"industry"`
-	Archive  *Archive  `yaml:"archive"`
-	MQ       *MQ       `yaml:"mq"`
-	JWT      *JWT      `yaml:"jwt"`
+	Server     *Server     `yaml:"server"`
+	Data       *Data       `yaml:"data"`
+	AI         *AI         `yaml:"ai"`
+	Industry   *Industry   `yaml:"industry"`
+	Archive    *Archive    `yaml:"archive"`
+	MQ         *MQ         `yaml:"mq"`
+	JWT        *JWT        `yaml:"jwt"`
+	RAG        *RAG        `yaml:"rag"`
+	CodeRunner *CodeRunner `yaml:"code_runner"`
 }
 
 type Server struct {
@@ -69,6 +71,15 @@ type JWT struct {
 	Secret        string `yaml:"secret"`
 	ExpireHours   int    `yaml:"expire_hours"`
 	ServiceSecret string `yaml:"service_secret"`
+}
+
+type RAG struct {
+	ServiceAddr string `yaml:"service_addr"`
+}
+
+// CodeRunner 代码执行服务配置
+type CodeRunner struct {
+	ServiceAddr string `yaml:"service_addr"`
 }
 
 // Load 从 YAML 文件加载配置
@@ -128,6 +139,12 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT.ExpireHours == 0 {
 		bc.JWT.ExpireHours = 168
+	}
+	if bc.RAG == nil {
+		bc.RAG = &RAG{}
+	}
+	if bc.CodeRunner == nil {
+		bc.CodeRunner = &CodeRunner{}
 	}
 
 	return &bc, nil

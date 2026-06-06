@@ -8,9 +8,11 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
+	Server             *Server             `yaml:"server"`
+	Data               *Data               `yaml:"data"`
+	JWT                *JWT                `yaml:"jwt"`
+	Volcengine         *Volcengine         `yaml:"volcengine"`
+	DependentServices  *DependentServices  `yaml:"dependent_services"`
 }
 
 type Server struct {
@@ -46,6 +48,19 @@ type JWT struct {
 	ServiceSecret string `yaml:"service_secret"`
 }
 
+// Volcengine 火山引擎语音服务配置
+type Volcengine struct {
+	AppID string `yaml:"app_id"`
+	Token string `yaml:"token"`
+	WSUrl string `yaml:"ws_url"`
+}
+
+// DependentServices 下游依赖服务地址配置
+type DependentServices struct {
+	InterviewAddr string `yaml:"interview_addr"`
+	RAGAddr       string `yaml:"rag_addr"`
+}
+
 // Load 从 YAML 文件加载配置
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
@@ -73,6 +88,12 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT == nil {
 		bc.JWT = &JWT{}
+	}
+	if bc.Volcengine == nil {
+		bc.Volcengine = &Volcengine{}
+	}
+	if bc.DependentServices == nil {
+		bc.DependentServices = &DependentServices{}
 	}
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"

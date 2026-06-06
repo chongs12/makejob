@@ -18,6 +18,9 @@ data:
 ai:
   service_addr: "localhost:9014"
 
+rag:
+  service_addr: "localhost:9010"
+
 industry:
   service_addr: "localhost:9011"
 

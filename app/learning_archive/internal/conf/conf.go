@@ -9,6 +9,7 @@ import (
 type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	Data   *Data   `yaml:"data"`
+	MQ     *MQ     `yaml:"mq"`
 	JWT    *JWT    `yaml:"jwt"`
 }
 
@@ -25,6 +26,12 @@ type Data struct {
 type Data_Database struct {
 	Driver string `yaml:"driver"`
 	Source string `yaml:"source"`
+}
+
+// MQ RabbitMQ 消息队列配置
+type MQ struct {
+	URL      string `yaml:"url"`
+	Exchange string `yaml:"exchange"`
 }
 
 type JWT struct{ Secret string `yaml:"secret"` }
@@ -52,6 +59,12 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.Data.Database == nil {
 		bc.Data.Database = &Data_Database{}
+	}
+	if bc.MQ == nil {
+		bc.MQ = &MQ{}
+	}
+	if bc.MQ.Exchange == "" {
+		bc.MQ.Exchange = "makejob.events"
 	}
 	if bc.JWT == nil {
 		bc.JWT = &JWT{}

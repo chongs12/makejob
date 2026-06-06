@@ -51,19 +51,36 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
+	// data 层：MQ 发布者
+	publisher, err := data.NewMQPublisher(bc.MQ)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ publisher: %w", err)
+	}
+
 	repo := data.NewArchiveRepo(db)
-	uc := biz.NewArchiveUseCase(repo)
+	uc := biz.NewArchiveUseCase(repo, publisher)
 	svc := service.NewArchiveService(uc)
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
+
+	// server 层：MQ 消费者
+	mqConsumer, err := server.NewMQConsumer(bc.MQ, uc, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ consumer: %w", err)
+	}
 
 	app := kratos.New(
 		kratos.Name("makejob.learning_archive"),
 		kratos.Version("1.0.0"),
 		kratos.Logger(logger),
-		kratos.Server(gs),
+		kratos.Server(gs, mqConsumer),
 	)
 	cleanup := func() {
+		if c, ok := publisher.(interface{ Close() error }); ok {
+			if err := c.Close(); err != nil {
+				log.Errorf("failed to close MQ publisher: %v", err)
+			}
+		}
 		if sqlDB, err := db.DB(); err == nil {
 			sqlDB.Close()
 		}
