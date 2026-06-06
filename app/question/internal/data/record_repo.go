@@ -128,3 +128,43 @@ func (r *recordRepo) GetWrongQuestions(ctx context.Context, userID uint64, page,
 	}
 	return items, total, nil
 }
+
+// GetMistakeTopics 聚合查询用户各分类的错误统计
+func (r *recordRepo) GetMistakeTopics(ctx context.Context, userID uint64) ([]*biz.MistakeTopic, error) {
+	var rows []struct {
+		CategoryID   uint64
+		CategoryName string
+		WrongCount   int32
+		TotalCount   int32
+	}
+
+	err := r.db.WithContext(ctx).
+		Table("user_question_records AS uqr").
+		Select("COALESCE(q.category_id, 0) AS category_id, COALESCE(c.name, '未分类') AS category_name, "+
+			"SUM(CASE WHEN uqr.is_correct = false THEN 1 ELSE 0 END) AS wrong_count, COUNT(*) AS total_count").
+		Joins("LEFT JOIN questions q ON q.id = uqr.question_id").
+		Joins("LEFT JOIN categories c ON c.id = q.category_id").
+		Where("uqr.user_id = ?", userID).
+		Group("q.category_id, c.name").
+		Having("SUM(CASE WHEN uqr.is_correct = false THEN 1 ELSE 0 END) > 0").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	topics := make([]*biz.MistakeTopic, len(rows))
+	for i, row := range rows {
+		accuracy := float64(0)
+		if row.TotalCount > 0 {
+			accuracy = float64(row.TotalCount-row.WrongCount) / float64(row.TotalCount)
+		}
+		topics[i] = &biz.MistakeTopic{
+			CategoryID:   row.CategoryID,
+			CategoryName: row.CategoryName,
+			WrongCount:   row.WrongCount,
+			TotalCount:   row.TotalCount,
+			Accuracy:     accuracy,
+		}
+	}
+	return topics, nil
+}

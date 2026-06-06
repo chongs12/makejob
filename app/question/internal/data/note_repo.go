@@ -65,3 +65,26 @@ func (r *noteRepo) ListByUser(ctx context.Context, userID uint64, questionID uin
 	}
 	return items, total, nil
 }
+
+// GetByID 按 ID 获取笔记
+func (r *noteRepo) GetByID(ctx context.Context, id uint64) (*biz.UserNote, error) {
+	var m model.UserNote
+	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
+		return nil, err
+	}
+	return &biz.UserNote{
+		ID:         uint64(m.ID),
+		UserID:     m.UserID,
+		QuestionID: m.QuestionID,
+		Content:    m.Content,
+		CreatedAt:  m.CreatedAt,
+		UpdatedAt:  m.UpdatedAt,
+	}, nil
+}
+
+// Delete 删除指定笔记（需校验归属）
+func (r *noteRepo) Delete(ctx context.Context, id, userID uint64) error {
+	return r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", id, userID).
+		Delete(&model.UserNote{}).Error
+}

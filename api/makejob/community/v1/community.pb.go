@@ -28,10 +28,10 @@ type ListPostsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Page          *v1.PageParam          `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
 	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	PostType      string                 `protobuf:"bytes,3,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5
-	Keyword       string                 `protobuf:"bytes,4,opt,name=keyword,proto3" json:"keyword,omitempty"`                   // FIX B5
-	Tag           string                 `protobuf:"bytes,5,opt,name=tag,proto3" json:"tag,omitempty"`                           // FIX B5
-	SortBy        string                 `protobuf:"bytes,6,opt,name=sort_by,json=sortBy,proto3" json:"sort_by,omitempty"`       // FIX B5
+	PostType      string                 `protobuf:"bytes,3,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5: discussion/article/question
+	Keyword       string                 `protobuf:"bytes,4,opt,name=keyword,proto3" json:"keyword,omitempty"`                   // FIX B5: 搜索标题/内容
+	Tag           string                 `protobuf:"bytes,5,opt,name=tag,proto3" json:"tag,omitempty"`                           // FIX B5: 标签过滤
+	SortBy        string                 `protobuf:"bytes,6,opt,name=sort_by,json=sortBy,proto3" json:"sort_by,omitempty"`       // FIX B5: latest/popular/most_liked
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -80,28 +80,28 @@ func (x *ListPostsRequest) GetCategory() string {
 	return ""
 }
 
-func (x *ListPostsRequest) GetPostType() string { // FIX B5
+func (x *ListPostsRequest) GetPostType() string {
 	if x != nil {
 		return x.PostType
 	}
 	return ""
 }
 
-func (x *ListPostsRequest) GetKeyword() string { // FIX B5
+func (x *ListPostsRequest) GetKeyword() string {
 	if x != nil {
 		return x.Keyword
 	}
 	return ""
 }
 
-func (x *ListPostsRequest) GetTag() string { // FIX B5
+func (x *ListPostsRequest) GetTag() string {
 	if x != nil {
 		return x.Tag
 	}
 	return ""
 }
 
-func (x *ListPostsRequest) GetSortBy() string { // FIX B5
+func (x *ListPostsRequest) GetSortBy() string {
 	if x != nil {
 		return x.SortBy
 	}
@@ -317,7 +317,7 @@ type PostDetail struct {
 	CommentCount  int32                  `protobuf:"varint,9,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
 	IsLiked       bool                   `protobuf:"varint,10,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ViewCount     int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"` // FIX B5
+	ViewCount     int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"` // FIX B5: 浏览量字段
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -429,7 +429,7 @@ func (x *PostDetail) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *PostDetail) GetViewCount() int32 { // FIX B5
+func (x *PostDetail) GetViewCount() int32 {
 	if x != nil {
 		return x.ViewCount
 	}
@@ -442,8 +442,8 @@ type CreatePostRequest struct {
 	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
 	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
-	PostType      string                 `protobuf:"bytes,5,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5
-	Tags          string                 `protobuf:"bytes,6,opt,name=tags,proto3" json:"tags,omitempty"`                         // FIX B5
+	PostType      string                 `protobuf:"bytes,5,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"` // FIX B5: discussion/article/question
+	Tags          string                 `protobuf:"bytes,6,opt,name=tags,proto3" json:"tags,omitempty"`                         // FIX B5: 逗号分隔的标签
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -506,14 +506,14 @@ func (x *CreatePostRequest) GetCategory() string {
 	return ""
 }
 
-func (x *CreatePostRequest) GetPostType() string { // FIX B5
+func (x *CreatePostRequest) GetPostType() string {
 	if x != nil {
 		return x.PostType
 	}
 	return ""
 }
 
-func (x *CreatePostRequest) GetTags() string { // FIX B5
+func (x *CreatePostRequest) GetTags() string {
 	if x != nil {
 		return x.Tags
 	}
@@ -1168,10 +1168,14 @@ var File_makejob_community_v1_community_proto protoreflect.FileDescriptor
 
 const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\n" +
-	"$makejob/community/v1/community.proto\x12\x14makejob.community.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\"makejob/shared/v1/pagination.proto\"`\n" +
+	"$makejob/community/v1/community.proto\x12\x14makejob.community.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\"makejob/shared/v1/pagination.proto\"\xc2\x01\n" +
 	"\x10ListPostsRequest\x120\n" +
 	"\x04page\x18\x01 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\x12\x1a\n" +
-	"\bcategory\x18\x02 \x01(\tR\bcategory\"\x8c\x01\n" +
+	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x1b\n" +
+	"\tpost_type\x18\x03 \x01(\tR\bpostType\x12\x18\n" +
+	"\akeyword\x18\x04 \x01(\tR\akeyword\x12\x10\n" +
+	"\x03tag\x18\x05 \x01(\tR\x03tag\x12\x17\n" +
+	"\asort_by\x18\x06 \x01(\tR\x06sortBy\"\x8c\x01\n" +
 	"\x11ListPostsResponse\x127\n" +
 	"\x05posts\x18\x01 \x03(\v2!.makejob.community.v1.PostSummaryR\x05posts\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
@@ -1189,7 +1193,7 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\" \n" +
 	"\x0eGetPostRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\xe5\x02\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\x84\x03\n" +
 	"\n" +
 	"PostDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
@@ -1206,12 +1210,16 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\bis_liked\x18\n" +
 	" \x01(\bR\aisLiked\x129\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"|\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"view_count\x18\f \x01(\x05R\tviewCount\"\xad\x01\n" +
 	"\x11CreatePostRequest\x12\x1b\n" +
 	"\tauthor_id\x18\x01 \x01(\x04R\bauthorId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12\x1a\n" +
-	"\bcategory\x18\x04 \x01(\tR\bcategory\"g\n" +
+	"\bcategory\x18\x04 \x01(\tR\bcategory\x12\x1b\n" +
+	"\tpost_type\x18\x05 \x01(\tR\bpostType\x12\x12\n" +
+	"\x04tags\x18\x06 \x01(\tR\x04tags\"g\n" +
 	"\x04Post\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x129\n" +

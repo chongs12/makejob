@@ -58,12 +58,27 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	noteRepo := data.NewNoteRepo(db)
 	categoryRepo := data.NewCategoryRepo(db)
 	industryRepo := data.NewIndustryRepo(db)
+
 	quizAnalyzer, err := data.NewQuizAnalyzerClient(bc.AI)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create AI client: %w", err)
 	}
 
-	uc := biz.NewQuestionUseCase(questionRepo, recordRepo, favoriteRepo, noteRepo, categoryRepo, industryRepo, quizAnalyzer)
+	// 创建 CodeRunner gRPC 客户端
+	codeRunner, err := data.NewCodeRunnerClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CodeRunner client: %w", err)
+	}
+
+	// 创建考试和题集仓储
+	examRepo := data.NewExamRepo(db)
+	questionSetRepo := data.NewQuestionSetRepo(db)
+
+	uc := biz.NewQuestionUseCase(
+		questionRepo, recordRepo, favoriteRepo, noteRepo,
+		categoryRepo, industryRepo, quizAnalyzer,
+		codeRunner, examRepo, questionSetRepo,
+	)
 	svc := service.NewQuestionService(uc)
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
@@ -79,6 +94,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	type closer interface{ Close() error }
 	var closers []closer
 	if c, ok := quizAnalyzer.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := codeRunner.(closer); ok {
 		closers = append(closers, c)
 	}
 

@@ -853,7 +853,7 @@ const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\rLogoutRequest\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"\x10\n" +
-	"\x0eLogoutResponse2\xf9\x05\n" +
+	"\x0eLogoutResponse2\xc4\x06\n" +
 	"\vUserService\x12K\n" +
 	"\bRegister\x12 .makejob.user.v1.RegisterRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12E\n" +
 	"\x05Login\x12\x1d.makejob.user.v1.LoginRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12T\n" +
@@ -864,7 +864,8 @@ const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\vGetUserByID\x12\x1e.makejob.user.v1.UserIDRequest\x1a\x1c.makejob.user.v1.UserProfile\x12^\n" +
 	"\rBatchGetUsers\x12%.makejob.user.v1.BatchGetUsersRequest\x1a&.makejob.user.v1.BatchGetUsersResponse\x12X\n" +
 	"\x13GetMembershipStatus\x12\x1e.makejob.user.v1.UserIDRequest\x1a!.makejob.user.v1.MembershipStatus\x12W\n" +
-	"\x11UpgradeMembership\x12\x1f.makejob.user.v1.UpgradeRequest\x1a!.makejob.user.v1.MembershipStatusB$Z\"makejob/api/makejob/user/v1;userv1b\x06proto3"
+	"\x11UpgradeMembership\x12\x1f.makejob.user.v1.UpgradeRequest\x1a!.makejob.user.v1.MembershipStatus\x12I\n" +
+	"\x06Logout\x12\x1e.makejob.user.v1.LogoutRequest\x1a\x1f.makejob.user.v1.LogoutResponseB$Z\"makejob/api/makejob/user/v1;userv1b\x06proto3"
 
 var (
 	file_makejob_user_v1_user_proto_rawDescOnce sync.Once
@@ -911,17 +912,19 @@ var file_makejob_user_v1_user_proto_depIdxs = []int32{
 	8,  // 11: makejob.user.v1.UserService.BatchGetUsers:input_type -> makejob.user.v1.BatchGetUsersRequest
 	0,  // 12: makejob.user.v1.UserService.GetMembershipStatus:input_type -> makejob.user.v1.UserIDRequest
 	11, // 13: makejob.user.v1.UserService.UpgradeMembership:input_type -> makejob.user.v1.UpgradeRequest
-	3,  // 14: makejob.user.v1.UserService.Register:output_type -> makejob.user.v1.AuthResponse
-	3,  // 15: makejob.user.v1.UserService.Login:output_type -> makejob.user.v1.AuthResponse
-	5,  // 16: makejob.user.v1.UserService.RefreshToken:output_type -> makejob.user.v1.TokenResponse
-	6,  // 17: makejob.user.v1.UserService.GetProfile:output_type -> makejob.user.v1.UserProfile
-	6,  // 18: makejob.user.v1.UserService.UpdateProfile:output_type -> makejob.user.v1.UserProfile
-	6,  // 19: makejob.user.v1.UserService.GetUserByID:output_type -> makejob.user.v1.UserProfile
-	9,  // 20: makejob.user.v1.UserService.BatchGetUsers:output_type -> makejob.user.v1.BatchGetUsersResponse
-	10, // 21: makejob.user.v1.UserService.GetMembershipStatus:output_type -> makejob.user.v1.MembershipStatus
-	10, // 22: makejob.user.v1.UserService.UpgradeMembership:output_type -> makejob.user.v1.MembershipStatus
-	14, // [14:23] is the sub-list for method output_type
-	5,  // [5:14] is the sub-list for method input_type
+	12, // 14: makejob.user.v1.UserService.Logout:input_type -> makejob.user.v1.LogoutRequest
+	3,  // 15: makejob.user.v1.UserService.Register:output_type -> makejob.user.v1.AuthResponse
+	3,  // 16: makejob.user.v1.UserService.Login:output_type -> makejob.user.v1.AuthResponse
+	5,  // 17: makejob.user.v1.UserService.RefreshToken:output_type -> makejob.user.v1.TokenResponse
+	6,  // 18: makejob.user.v1.UserService.GetProfile:output_type -> makejob.user.v1.UserProfile
+	6,  // 19: makejob.user.v1.UserService.UpdateProfile:output_type -> makejob.user.v1.UserProfile
+	6,  // 20: makejob.user.v1.UserService.GetUserByID:output_type -> makejob.user.v1.UserProfile
+	9,  // 21: makejob.user.v1.UserService.BatchGetUsers:output_type -> makejob.user.v1.BatchGetUsersResponse
+	10, // 22: makejob.user.v1.UserService.GetMembershipStatus:output_type -> makejob.user.v1.MembershipStatus
+	10, // 23: makejob.user.v1.UserService.UpgradeMembership:output_type -> makejob.user.v1.MembershipStatus
+	13, // 24: makejob.user.v1.UserService.Logout:output_type -> makejob.user.v1.LogoutResponse
+	15, // [15:25] is the sub-list for method output_type
+	5,  // [5:15] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name

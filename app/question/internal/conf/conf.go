@@ -28,7 +28,11 @@ type Data_Database struct {
 	Source string `yaml:"source"`
 }
 
-type AI struct{ ServiceAddr string `yaml:"service_addr"` }
+type AI struct {
+	ServiceAddr    string `yaml:"service_addr"`
+	CodeRunnerAddr string `yaml:"coderunner_addr"`
+	AIGatewayAddr  string `yaml:"ai_gateway_addr"`
+}
 type JWT struct{ Secret string `yaml:"secret"` }
 
 func Load(path string) (*Bootstrap, error) {

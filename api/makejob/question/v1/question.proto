@@ -32,6 +32,18 @@ service QuestionService {
 
   // --- 模拟考试 ---
   rpc GetRandomExam(RandomExamRequest) returns (ExamResponse);
+  rpc GenerateTimedExam(GenerateTimedExamRequest) returns (GenerateTimedExamResponse);
+  rpc SubmitExam(SubmitExamRequest) returns (SubmitExamResponse);
+
+  // --- 笔记删除 ---
+  rpc DeleteNote(DeleteNoteRequest) returns (google.protobuf.Empty);
+
+  // --- 题目集 ---
+  rpc ListQuestionSets(ListQuestionSetsRequest) returns (ListQuestionSetsResponse);
+  rpc GetQuestionSetDetail(GetQuestionSetDetailRequest) returns (QuestionSetDetail);
+
+  // --- 错题主题 ---
+  rpc ListMistakeTopics(ListMistakeTopicsRequest) returns (ListMistakeTopicsResponse);
 }
 
 // === 题库浏览 ===
@@ -269,4 +281,105 @@ message RandomExamRequest {
 message ExamResponse {
   repeated QuestionDetail questions = 1;
   int32 time_limit_minutes = 2;
+}
+
+// === 限时考试 ===
+
+message GenerateTimedExamRequest {
+  uint64 user_id = 1;
+  string industry_code = 2;
+  int32 question_count = 3;
+  int32 time_limit_minutes = 4;
+}
+
+message GenerateTimedExamResponse {
+  uint64 exam_id = 1;
+  repeated QuestionDetail questions = 2;
+  int32 time_limit_minutes = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message SubmitExamRequest {
+  uint64 exam_id = 1;
+  uint64 user_id = 2;
+  map<uint64, string> answers = 3;
+}
+
+message SubmitExamResponse {
+  uint64 exam_id = 1;
+  double total_score = 2;
+  int32 correct_count = 3;
+  int32 total_count = 4;
+  repeated QuestionResult question_results = 5;
+}
+
+message QuestionResult {
+  uint64 question_id = 1;
+  bool is_correct = 2;
+  double score = 3;
+  string feedback = 4;
+  repeated string mistake_tags = 5;
+}
+
+// === 笔记删除 ===
+
+message DeleteNoteRequest {
+  uint64 note_id = 1;
+  uint64 user_id = 2;
+}
+
+// === 题目集 ===
+
+message ListQuestionSetsRequest {
+  string industry_code = 1;
+  makejob.shared.v1.PageParam page = 2;
+}
+
+message ListQuestionSetsResponse {
+  repeated QuestionSetSummary items = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message QuestionSetSummary {
+  uint64 id = 1;
+  string title = 2;
+  string description = 3;
+  int32 question_count = 4;
+  string difficulty = 5;
+}
+
+message GetQuestionSetDetailRequest {
+  uint64 set_id = 1;
+}
+
+message QuestionSetDetail {
+  QuestionSetSummary info = 1;
+  repeated QuestionSummary questions = 2;
+}
+
+// === 错题主题 ===
+
+message ListMistakeTopicsRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;
+}
+
+message ListMistakeTopicsResponse {
+  repeated MistakeTopic topics = 1;
+}
+
+message MistakeTopic {
+  string topic = 1;
+  int32 error_count = 2;
+  int32 total_attempts = 3;
+  double error_rate = 4;
+  repeated MistakeQuestion recent_wrong_questions = 5;
+}
+
+message MistakeQuestion {
+  uint64 question_id = 1;
+  string title = 2;
+  string difficulty = 3;
+  google.protobuf.Timestamp last_wrong_at = 4;
 }

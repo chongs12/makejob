@@ -36,6 +36,12 @@ const (
 	QuestionService_GetWrongQuestions_FullMethodName          = "/makejob.question.v1.QuestionService/GetWrongQuestions"
 	QuestionService_GetUserPracticeStats_FullMethodName       = "/makejob.question.v1.QuestionService/GetUserPracticeStats"
 	QuestionService_GetRandomExam_FullMethodName              = "/makejob.question.v1.QuestionService/GetRandomExam"
+	QuestionService_GenerateTimedExam_FullMethodName          = "/makejob.question.v1.QuestionService/GenerateTimedExam"
+	QuestionService_SubmitExam_FullMethodName                 = "/makejob.question.v1.QuestionService/SubmitExam"
+	QuestionService_DeleteNote_FullMethodName                 = "/makejob.question.v1.QuestionService/DeleteNote"
+	QuestionService_ListQuestionSets_FullMethodName           = "/makejob.question.v1.QuestionService/ListQuestionSets"
+	QuestionService_GetQuestionSetDetail_FullMethodName       = "/makejob.question.v1.QuestionService/GetQuestionSetDetail"
+	QuestionService_ListMistakeTopics_FullMethodName          = "/makejob.question.v1.QuestionService/ListMistakeTopics"
 )
 
 // QuestionServiceClient is the client API for QuestionService service.
@@ -63,6 +69,15 @@ type QuestionServiceClient interface {
 	GetUserPracticeStats(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*UserPracticeStats, error)
 	// --- 模拟考试 ---
 	GetRandomExam(ctx context.Context, in *RandomExamRequest, opts ...grpc.CallOption) (*ExamResponse, error)
+	GenerateTimedExam(ctx context.Context, in *GenerateTimedExamRequest, opts ...grpc.CallOption) (*GenerateTimedExamResponse, error)
+	SubmitExam(ctx context.Context, in *SubmitExamRequest, opts ...grpc.CallOption) (*SubmitExamResponse, error)
+	// --- 笔记删除 ---
+	DeleteNote(ctx context.Context, in *DeleteNoteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// --- 题目集 ---
+	ListQuestionSets(ctx context.Context, in *ListQuestionSetsRequest, opts ...grpc.CallOption) (*ListQuestionSetsResponse, error)
+	GetQuestionSetDetail(ctx context.Context, in *GetQuestionSetDetailRequest, opts ...grpc.CallOption) (*QuestionSetDetail, error)
+	// --- 错题主题 ---
+	ListMistakeTopics(ctx context.Context, in *ListMistakeTopicsRequest, opts ...grpc.CallOption) (*ListMistakeTopicsResponse, error)
 }
 
 type questionServiceClient struct {
@@ -233,6 +248,66 @@ func (c *questionServiceClient) GetRandomExam(ctx context.Context, in *RandomExa
 	return out, nil
 }
 
+func (c *questionServiceClient) GenerateTimedExam(ctx context.Context, in *GenerateTimedExamRequest, opts ...grpc.CallOption) (*GenerateTimedExamResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateTimedExamResponse)
+	err := c.cc.Invoke(ctx, QuestionService_GenerateTimedExam_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) SubmitExam(ctx context.Context, in *SubmitExamRequest, opts ...grpc.CallOption) (*SubmitExamResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitExamResponse)
+	err := c.cc.Invoke(ctx, QuestionService_SubmitExam_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) DeleteNote(ctx context.Context, in *DeleteNoteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, QuestionService_DeleteNote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) ListQuestionSets(ctx context.Context, in *ListQuestionSetsRequest, opts ...grpc.CallOption) (*ListQuestionSetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQuestionSetsResponse)
+	err := c.cc.Invoke(ctx, QuestionService_ListQuestionSets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) GetQuestionSetDetail(ctx context.Context, in *GetQuestionSetDetailRequest, opts ...grpc.CallOption) (*QuestionSetDetail, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuestionSetDetail)
+	err := c.cc.Invoke(ctx, QuestionService_GetQuestionSetDetail_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) ListMistakeTopics(ctx context.Context, in *ListMistakeTopicsRequest, opts ...grpc.CallOption) (*ListMistakeTopicsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMistakeTopicsResponse)
+	err := c.cc.Invoke(ctx, QuestionService_ListMistakeTopics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QuestionServiceServer is the server API for QuestionService service.
 // All implementations must embed UnimplementedQuestionServiceServer
 // for forward compatibility.
@@ -258,6 +333,15 @@ type QuestionServiceServer interface {
 	GetUserPracticeStats(context.Context, *UserIDRequest) (*UserPracticeStats, error)
 	// --- 模拟考试 ---
 	GetRandomExam(context.Context, *RandomExamRequest) (*ExamResponse, error)
+	GenerateTimedExam(context.Context, *GenerateTimedExamRequest) (*GenerateTimedExamResponse, error)
+	SubmitExam(context.Context, *SubmitExamRequest) (*SubmitExamResponse, error)
+	// --- 笔记删除 ---
+	DeleteNote(context.Context, *DeleteNoteRequest) (*emptypb.Empty, error)
+	// --- 题目集 ---
+	ListQuestionSets(context.Context, *ListQuestionSetsRequest) (*ListQuestionSetsResponse, error)
+	GetQuestionSetDetail(context.Context, *GetQuestionSetDetailRequest) (*QuestionSetDetail, error)
+	// --- 错题主题 ---
+	ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error)
 	mustEmbedUnimplementedQuestionServiceServer()
 }
 
@@ -315,6 +399,24 @@ func (UnimplementedQuestionServiceServer) GetUserPracticeStats(context.Context, 
 }
 func (UnimplementedQuestionServiceServer) GetRandomExam(context.Context, *RandomExamRequest) (*ExamResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRandomExam not implemented")
+}
+func (UnimplementedQuestionServiceServer) GenerateTimedExam(context.Context, *GenerateTimedExamRequest) (*GenerateTimedExamResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateTimedExam not implemented")
+}
+func (UnimplementedQuestionServiceServer) SubmitExam(context.Context, *SubmitExamRequest) (*SubmitExamResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitExam not implemented")
+}
+func (UnimplementedQuestionServiceServer) DeleteNote(context.Context, *DeleteNoteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNote not implemented")
+}
+func (UnimplementedQuestionServiceServer) ListQuestionSets(context.Context, *ListQuestionSetsRequest) (*ListQuestionSetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQuestionSets not implemented")
+}
+func (UnimplementedQuestionServiceServer) GetQuestionSetDetail(context.Context, *GetQuestionSetDetailRequest) (*QuestionSetDetail, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQuestionSetDetail not implemented")
+}
+func (UnimplementedQuestionServiceServer) ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMistakeTopics not implemented")
 }
 func (UnimplementedQuestionServiceServer) mustEmbedUnimplementedQuestionServiceServer() {}
 func (UnimplementedQuestionServiceServer) testEmbeddedByValue()                         {}
@@ -625,6 +727,114 @@ func _QuestionService_GetRandomExam_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QuestionService_GenerateTimedExam_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateTimedExamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).GenerateTimedExam(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_GenerateTimedExam_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).GenerateTimedExam(ctx, req.(*GenerateTimedExamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_SubmitExam_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitExamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).SubmitExam(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_SubmitExam_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).SubmitExam(ctx, req.(*SubmitExamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_DeleteNote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).DeleteNote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_DeleteNote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).DeleteNote(ctx, req.(*DeleteNoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_ListQuestionSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQuestionSetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).ListQuestionSets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_ListQuestionSets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).ListQuestionSets(ctx, req.(*ListQuestionSetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_GetQuestionSetDetail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQuestionSetDetailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).GetQuestionSetDetail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_GetQuestionSetDetail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).GetQuestionSetDetail(ctx, req.(*GetQuestionSetDetailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_ListMistakeTopics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMistakeTopicsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).ListMistakeTopics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_ListMistakeTopics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).ListMistakeTopics(ctx, req.(*ListMistakeTopicsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QuestionService_ServiceDesc is the grpc.ServiceDesc for QuestionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -695,6 +905,30 @@ var QuestionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRandomExam",
 			Handler:    _QuestionService_GetRandomExam_Handler,
+		},
+		{
+			MethodName: "GenerateTimedExam",
+			Handler:    _QuestionService_GenerateTimedExam_Handler,
+		},
+		{
+			MethodName: "SubmitExam",
+			Handler:    _QuestionService_SubmitExam_Handler,
+		},
+		{
+			MethodName: "DeleteNote",
+			Handler:    _QuestionService_DeleteNote_Handler,
+		},
+		{
+			MethodName: "ListQuestionSets",
+			Handler:    _QuestionService_ListQuestionSets_Handler,
+		},
+		{
+			MethodName: "GetQuestionSetDetail",
+			Handler:    _QuestionService_GetQuestionSetDetail_Handler,
+		},
+		{
+			MethodName: "ListMistakeTopics",
+			Handler:    _QuestionService_ListMistakeTopics_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
