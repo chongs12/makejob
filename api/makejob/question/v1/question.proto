@@ -26,7 +26,7 @@ service QuestionService {
   rpc ListNotes(ListNotesRequest) returns (NoteListResponse);
 
   // --- 智能推荐 ---
-  rpc GetPracticeRecommendations(UserIDRequest) returns (PracticeRecommendationResponse);
+  rpc GetPracticeRecommendations(PracticeRecommendationRequest) returns (PracticeRecommendationResponse);
   rpc GetWrongQuestions(WrongQuestionRequest) returns (WrongQuestionListResponse);
   rpc GetUserPracticeStats(UserIDRequest) returns (UserPracticeStats);
 
@@ -221,6 +221,12 @@ message NoteListResponse {
 }
 
 // === 智能推荐 ===
+
+// FIX Q4: 新增请求类型，支持 interview_id 面试驱动推荐
+message PracticeRecommendationRequest {
+  uint64 user_id = 1;
+  uint64 interview_id = 2;  // 可选，>0 时启用面试驱动推荐
+}
 
 message PracticeRecommendationResponse {
   repeated RecommendedQuestion questions = 1;

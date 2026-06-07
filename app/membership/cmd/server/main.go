@@ -61,9 +61,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// data 层：仓库实现
 	orderRepo := data.NewOrderRepo(db)
 	membershipRepo := data.NewMembershipRepo(db)
+	txRepo := data.NewTxRepo(db)
 
 	// biz 层：业务用例
-	membershipUseCase := biz.NewMembershipUseCase(orderRepo, membershipRepo)
+	membershipUseCase := biz.NewMembershipUseCase(orderRepo, membershipRepo, txRepo)
 
 	// service 层：gRPC 服务实现
 	membershipService := service.NewMembershipService(membershipUseCase)

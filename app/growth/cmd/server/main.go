@@ -61,8 +61,33 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// data 层：仓库实现
 	growthRepo := data.NewGrowthRepo(db)
 
+	// data 层：下游服务客户端（返回 biz 接口类型）
+	questionClient, err := data.NewQuestionClient(bc.DepServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create question client: %w", err)
+	}
+	planClient, err := data.NewPlanClient(bc.DepServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create plan client: %w", err)
+	}
+	archiveClient, err := data.NewArchiveClient(bc.DepServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create archive client: %w", err)
+	}
+	interviewClient, err := data.NewInterviewClient(bc.DepServices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create interview client: %w", err)
+	}
+
 	// biz 层：业务用例
-	growthUseCase := biz.NewGrowthUseCase(growthRepo)
+	growthUseCase := biz.NewGrowthUseCase(
+		growthRepo,
+		questionClient,
+		planClient,
+		archiveClient,
+		interviewClient,
+		logger,
+	)
 
 	// service 层：gRPC 服务实现
 	growthService := service.NewGrowthService(growthUseCase)
@@ -81,8 +106,31 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		kratos.Server(gs),
 	)
 
+	// 收集所有可关闭资源
+	type closer interface{ Close() error }
+	var closers []closer
+	if c, ok := questionClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := planClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := archiveClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := interviewClient.(closer); ok {
+		closers = append(closers, c)
+	}
+
 	cleanup := func() {
-		// 清理资源
+		for _, c := range closers {
+			if err := c.Close(); err != nil {
+				log.Errorf("failed to close resource: %v", err)
+			}
+		}
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
 	}
 
 	return app, cleanup, nil

@@ -31,6 +31,7 @@ type QuestionUseCase struct {
 	codeRunner      CodeRunnerClient
 	examRepo        ExamRepo
 	questionSetRepo QuestionSetRepo
+	generator       QuestionGeneratorClient
 }
 
 // NewQuestionUseCase 创建题库业务用例
@@ -45,6 +46,7 @@ func NewQuestionUseCase(
 	codeRunner CodeRunnerClient,
 	examRepo ExamRepo,
 	questionSetRepo QuestionSetRepo,
+	generator QuestionGeneratorClient,
 ) *QuestionUseCase {
 	return &QuestionUseCase{
 		questionRepo:    questionRepo,
@@ -57,6 +59,7 @@ func NewQuestionUseCase(
 		codeRunner:      codeRunner,
 		examRepo:        examRepo,
 		questionSetRepo: questionSetRepo,
+		generator:       generator,
 	}
 }
 
@@ -420,10 +423,12 @@ func (uc *QuestionUseCase) SubmitExam(ctx context.Context, examID, userID uint64
 	result.TotalScore = totalScore
 	result.CorrectCount = correctCount
 
-	// 更新考试状态
+	// FIX Q5: 更新考试状态，检查错误
 	exam.Status = "completed"
 	exam.TotalScore = totalScore
-	_ = uc.examRepo.Update(ctx, exam)
+	if err := uc.examRepo.Update(ctx, exam); err != nil {
+		return nil, kratosErr.InternalServer("EXAM_UPDATE_FAILED", "更新考试状态失败").WithCause(err)
+	}
 
 	return result, nil
 }
@@ -472,12 +477,22 @@ func (uc *QuestionUseCase) ListMistakeTopics(ctx context.Context, userID uint64)
 	return topics, nil
 }
 
-// ImportQuestions 从 scraper 导入题目（批量创建）
+// ImportQuestions 从 scraper 导入题目（批量创建，FIX Q3: 幂等去重）
 func (uc *QuestionUseCase) ImportQuestions(ctx context.Context, questions []*Question) (int, error) {
 	var imported int
 	for _, q := range questions {
 		// 基本校验
 		if q.Title == "" || q.Content == "" {
+			continue
+		}
+
+		// FIX Q3: 检查同名同行业题目是否已存在，避免重复导入
+		exists, err := uc.questionRepo.ExistsByTitleAndIndustry(ctx, q.Title, q.IndustryCode)
+		if err != nil {
+			fmt.Printf("去重检查失败: title=%s, err=%v\n", q.Title, err)
+			continue
+		}
+		if exists {
 			continue
 		}
 
@@ -489,4 +504,37 @@ func (uc *QuestionUseCase) ImportQuestions(ctx context.Context, questions []*Que
 		imported++
 	}
 	return imported, nil
+}
+
+// PipelineGenerateQuestions 流水线生成题目：调用 AI 生成并写入题库
+func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *GenerateQuestionsRequest) (int, error) {
+	if uc.generator == nil {
+		return 0, kratosErr.ServiceUnavailable("GENERATOR_NOT_CONFIGURED", "题目生成服务未配置")
+	}
+
+	// 1. 调用 AI 生成题目
+	questions, err := uc.generator.GenerateQuestions(ctx, req)
+	if err != nil {
+		return 0, kratosErr.InternalServer("GENERATE_FAILED", "AI 生成题目失败").WithCause(err)
+	}
+
+	if len(questions) == 0 {
+		return 0, nil
+	}
+
+	// 2. 逐个写入题库
+	var created int
+	for _, q := range questions {
+		if q.Title == "" || q.Content == "" {
+			continue
+		}
+		if err := uc.questionRepo.Create(ctx, q); err != nil {
+			// 单条失败不中断整体，记录后继续
+			fmt.Printf("pipeline 创建题目失败: title=%s, err=%v\n", q.Title, err)
+			continue
+		}
+		created++
+	}
+
+	return created, nil
 }

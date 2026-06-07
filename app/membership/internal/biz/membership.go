@@ -61,6 +61,11 @@ type MembershipRepo interface {
 	Upsert(ctx context.Context, membership *UserMembership) error
 }
 
+// TransactionRepo 支持事务操作的仓库接口
+type TransactionRepo interface {
+	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
+}
+
 // MembershipPlan 套餐定义
 type MembershipPlan struct {
 	PlanType     string
@@ -82,6 +87,7 @@ var (
 type MembershipUseCase struct {
 	orderRepo      OrderRepo
 	membershipRepo MembershipRepo
+	txRepo         TransactionRepo
 	rng            *rand.Rand       // FIX I7: 使用显式种子的随机数生成器
 	plans          []MembershipPlan // FIX I8: 套餐列表
 	priceMap       map[string]float64
@@ -89,7 +95,7 @@ type MembershipUseCase struct {
 }
 
 // NewMembershipUseCase 创建会员业务用例
-func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo) *MembershipUseCase {
+func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo, txRepo TransactionRepo) *MembershipUseCase {
 	plans := []MembershipPlan{
 		{PlanType: "monthly", Name: "月度会员", Price: 29.9, DurationDays: 30, Features: []string{"unlimited_practice", "unlimited_interview", "advanced_ai"}},
 		{PlanType: "quarterly", Name: "季度会员", Price: 79.9, DurationDays: 90, Features: []string{"unlimited_practice", "unlimited_interview", "advanced_ai"}},
@@ -108,6 +114,7 @@ func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo) *M
 	return &MembershipUseCase{
 		orderRepo:      orderRepo,
 		membershipRepo: membershipRepo,
+		txRepo:         txRepo,
 		rng:            rand.New(rand.NewSource(time.Now().UnixNano())), // FIX I7
 		plans:          plans,
 		priceMap:       priceMap,
@@ -139,6 +146,7 @@ func (uc *MembershipUseCase) CreateOrder(ctx context.Context, userID uint64, pla
 
 // HandlePaymentCallback 处理支付回调：验证订单状态、更新为已支付、更新用户会员信息
 // FIX I2: 已支付订单重复回调时返回成功（幂等）
+// FIX M1: 使用事务保证订单状态更新和会员信息更新的原子性
 func (uc *MembershipUseCase) HandlePaymentCallback(ctx context.Context, orderNo string, transactionID string) (*MembershipOrder, error) {
 	order, err := uc.orderRepo.GetByOrderNo(ctx, orderNo)
 	if err != nil {
@@ -151,20 +159,29 @@ func (uc *MembershipUseCase) HandlePaymentCallback(ctx context.Context, orderNo 
 	if order.Status != "pending" {
 		return nil, ErrOrderNotPending
 	}
+
 	now := time.Now()
-	if err := uc.orderRepo.UpdateStatus(ctx, orderNo, "paid", &now, transactionID); err != nil {
-		return nil, err
-	}
 	days := uc.daysMap[order.PlanID]
 	expiresAt := now.AddDate(0, 0, days)
-	membership := &UserMembership{
-		UserID:    order.UserID,
-		Level:     order.PlanID,
-		ExpiresAt: expiresAt,
-	}
-	if err := uc.membershipRepo.Upsert(ctx, membership); err != nil {
+
+	// FIX M1: 在事务中完成订单状态更新和会员信息更新
+	if err := uc.txRepo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.orderRepo.UpdateStatus(txCtx, orderNo, "paid", &now, transactionID); err != nil {
+			return kratosErr.InternalServer("ORDER_UPDATE_FAILED", "更新订单状态失败").WithCause(err)
+		}
+		membership := &UserMembership{
+			UserID:    order.UserID,
+			Level:     order.PlanID,
+			ExpiresAt: expiresAt,
+		}
+		if err := uc.membershipRepo.Upsert(txCtx, membership); err != nil {
+			return kratosErr.InternalServer("MEMBERSHIP_UPSERT_FAILED", "更新会员信息失败").WithCause(err)
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
+
 	order.Status = "paid"
 	order.PaidAt = &now
 	order.TransactionID = transactionID

@@ -147,4 +147,13 @@ func (r *questionRepo) RandomSelect(ctx context.Context, filter *biz.QuestionFil
 	return questions, nil
 }
 
+// ExistsByTitleAndIndustry 检查题目是否已存在（FIX Q3: 幂等去重）
+func (r *questionRepo) ExistsByTitleAndIndustry(ctx context.Context, title, industryCode string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&QuestionModel{}).
+		Where("title = ? AND industry_code = ?", title, industryCode).
+		Count(&count).Error
+	return count > 0, err
+}
+
 func (QuestionModel) TableName() string { return "questions" }

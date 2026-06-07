@@ -70,6 +70,18 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create CodeRunner client: %w", err)
 	}
 
+	// 创建 RAG gRPC 客户端
+	ragClient, err := data.NewRAGClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create RAG client: %w", err)
+	}
+
+	// 创建题目生成 AI 客户端
+	questionGenerator, err := data.NewQuestionGeneratorClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create question generator client: %w", err)
+	}
+
 	// 创建考试和题集仓储
 	examRepo := data.NewExamRepo(db)
 	questionSetRepo := data.NewQuestionSetRepo(db)
@@ -77,17 +89,23 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	uc := biz.NewQuestionUseCase(
 		questionRepo, recordRepo, favoriteRepo, noteRepo,
 		categoryRepo, industryRepo, quizAnalyzer,
-		codeRunner, examRepo, questionSetRepo,
+		codeRunner, examRepo, questionSetRepo, questionGenerator,
 	)
 	svc := service.NewQuestionService(uc)
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
 
+	// MQ 消费者（注入 RAG 客户端用于题目索引同步）
+	mqConsumer, err := server.NewMQConsumer(bc.MQ.URL, uc, ragClient, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ consumer: %w", err)
+	}
+
 	app := kratos.New(
 		kratos.Name("makejob.question"),
 		kratos.Version("1.0.0"),
 		kratos.Logger(logger),
-		kratos.Server(gs),
+		kratos.Server(gs, mqConsumer),
 	)
 
 	// Collect closable resources
@@ -97,6 +115,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		closers = append(closers, c)
 	}
 	if c, ok := codeRunner.(closer); ok {
+		closers = append(closers, c)
+	}
+	closers = append(closers, ragClient)
+	if c, ok := questionGenerator.(closer); ok {
 		closers = append(closers, c)
 	}
 

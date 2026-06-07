@@ -268,9 +268,9 @@ func (s *QuestionService) ListNotes(ctx context.Context, req *questionv1.ListNot
 	}, nil
 }
 
-func (s *QuestionService) GetPracticeRecommendations(ctx context.Context, req *questionv1.UserIDRequest) (*questionv1.PracticeRecommendationResponse, error) {
-	// 面试 ID 暂不可用（proto 未扩展），传 0 表示无面试驱动
-	questions, reason, err := s.uc.GetPracticeRecommendations(ctx, req.UserId, 0)
+func (s *QuestionService) GetPracticeRecommendations(ctx context.Context, req *questionv1.PracticeRecommendationRequest) (*questionv1.PracticeRecommendationResponse, error) {
+	// FIX Q4: 从 request 读取 interview_id，支持面试驱动推荐
+	questions, reason, err := s.uc.GetPracticeRecommendations(ctx, req.GetUserId(), req.GetInterviewId())
 	if err != nil {
 		return nil, err
 	}

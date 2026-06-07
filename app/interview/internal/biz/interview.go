@@ -19,6 +19,10 @@ type InterviewRepo interface {
 	ListCodingAttempts(ctx context.Context, interviewID uint64) ([]*CodingAttempt, error)
 	BindRealtimeDialog(ctx context.Context, interviewID uint64, dialogID string) error
 	AppendMessageAndBumpIndex(ctx context.Context, msg *InterviewMessage) error
+	// Transaction 在事务中执行操作（FIX I1）
+	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
+	// GetStats SQL 聚合查询面试统计（FIX I3）
+	GetStats(ctx context.Context, userID uint64) (*InterviewStats, error)
 }
 
 // AIServiceClient AI 服务的 gRPC 客户端接口

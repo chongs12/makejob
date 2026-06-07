@@ -19,3 +19,10 @@ jwt:
   secret: "makejob-secret-key-change-in-production"
   expire_hours: 168
   service_secret: "makejob-internal-service-secret"
+
+ai:
+  service_addr: "localhost:9000"
+
+tts:
+  api_key: ""
+  voice: "zh_female_shuangkuaisisi_moon_bigtts"

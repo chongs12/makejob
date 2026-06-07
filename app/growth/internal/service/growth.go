@@ -20,6 +20,7 @@ func NewGrowthService(uc *biz.GrowthUseCase) *GrowthService {
 	return &GrowthService{uc: uc}
 }
 
+// GetGrowthSummary 获取用户成长摘要
 func (s *GrowthService) GetGrowthSummary(ctx context.Context, req *growthv1.UserIDRequest) (*growthv1.GrowthSummary, error) {
 	summary, err := s.uc.GetGrowthSummary(ctx, req.UserId)
 	if err != nil {
@@ -53,13 +54,14 @@ func (s *GrowthService) GetGrowthSummary(ctx context.Context, req *growthv1.User
 	}, nil
 }
 
+// GetWeeklyFocus 获取本周学习重点
 func (s *GrowthService) GetWeeklyFocus(ctx context.Context, req *growthv1.UserIDRequest) (*growthv1.WeeklyFocus, error) {
-	focusItems, err := s.uc.GetWeeklyFocus(ctx, req.UserId)
+	resp, err := s.uc.GetWeeklyFocus(ctx, req.UserId)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]*growthv1.FocusItem, len(focusItems))
-	for i, fi := range focusItems {
+	items := make([]*growthv1.FocusItem, len(resp.Items))
+	for i, fi := range resp.Items {
 		items[i] = &growthv1.FocusItem{
 			Topic:      fi.Topic,
 			Source:     fi.Source,
@@ -68,20 +70,32 @@ func (s *GrowthService) GetWeeklyFocus(ctx context.Context, req *growthv1.UserID
 		}
 	}
 	return &growthv1.WeeklyFocus{
-		Items: items,
+		Items:   items,
+		Summary: resp.Summary,
 	}, nil
 }
 
+// SyncStudyLog 同步学习记录
 func (s *GrowthService) SyncStudyLog(ctx context.Context, req *growthv1.SyncStudyLogRequest) (*growthv1.StudyLog, error) {
-	log, err := s.uc.SyncStudyLog(ctx, req.UserId, req.Action, req.RefId, req.DurationSeconds)
+	// FIX G1: proto 字段为秒，biz 字段为分钟，需做单位转换
+	durationSeconds := req.GetDurationSeconds()
+	durationMinutes := durationSeconds / 60
+
+	log := &biz.StudyLog{
+		UserID:          req.GetUserId(),
+		Action:          req.GetAction(),
+		RefID:           req.GetRefId(),
+		DurationMinutes: durationMinutes,
+	}
+	saved, err := s.uc.SyncStudyLog(ctx, log)
 	if err != nil {
 		return nil, err
 	}
 	return &growthv1.StudyLog{
-		Id:        log.ID,
-		UserId:    log.UserID,
-		Action:    log.Action,
-		RefId:     log.RefID,
-		CreatedAt: timestamppb.New(log.CreatedAt),
+		Id:        saved.ID,
+		UserId:    saved.UserID,
+		Action:    saved.Action,
+		RefId:     saved.RefID,
+		CreatedAt: timestamppb.New(saved.CreatedAt),
 	}, nil
 }

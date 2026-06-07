@@ -3,13 +3,17 @@ package service
 import (
 	"context"
 
+	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	communityv1 "makejob/api/makejob/community/v1"
 	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/app/community/internal/biz"
+	"makejob/pkg/auth"
 )
+
+var ErrUnauthorized = kratosErr.Unauthorized("UNAUTHORIZED", "未授权")
 
 // CommunityService 实现 gRPC CommunityServiceServer
 type CommunityService struct {
@@ -62,7 +66,12 @@ func (s *CommunityService) ListPosts(ctx context.Context, req *communityv1.ListP
 }
 
 func (s *CommunityService) CreatePost(ctx context.Context, req *communityv1.CreatePostRequest) (*communityv1.Post, error) {
-	post, err := s.uc.CreatePost(ctx, req.AuthorId, req.Title, req.Content, req.PostType, req.Category, req.Tags)
+	// FIX C3: 从认证上下文获取用户 ID，禁止从请求体获取身份
+	authorID := auth.GetUserIDFromContext(ctx)
+	if authorID == 0 {
+		return nil, ErrUnauthorized
+	}
+	post, err := s.uc.CreatePost(ctx, authorID, req.Title, req.Content, req.PostType, req.Category, req.Tags)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +101,12 @@ func (s *CommunityService) GetPost(ctx context.Context, req *communityv1.GetPost
 }
 
 func (s *CommunityService) DeletePost(ctx context.Context, req *communityv1.DeletePostRequest) (*emptypb.Empty, error) {
-	if err := s.uc.DeletePost(ctx, req.Id, req.AuthorId); err != nil {
+	// FIX C2: 从认证上下文获取用户 ID，禁止从请求体获取身份
+	authorID := auth.GetUserIDFromContext(ctx)
+	if authorID == 0 {
+		return nil, ErrUnauthorized
+	}
+	if err := s.uc.DeletePost(ctx, req.Id, authorID); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil

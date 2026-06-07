@@ -11,6 +11,11 @@ type Bootstrap struct {
 	Data   *Data   `yaml:"data"`
 	AI     *AI     `yaml:"ai"`
 	JWT    *JWT    `yaml:"jwt"`
+	MQ     *MQ     `yaml:"mq"`
+}
+
+type MQ struct {
+	URL string `yaml:"url"`
 }
 
 type Server struct {
@@ -32,6 +37,7 @@ type AI struct {
 	ServiceAddr    string `yaml:"service_addr"`
 	CodeRunnerAddr string `yaml:"coderunner_addr"`
 	AIGatewayAddr  string `yaml:"ai_gateway_addr"`
+	RAGAddr        string `yaml:"rag_addr"`
 }
 type JWT struct{ Secret string `yaml:"secret"` }
 
@@ -64,6 +70,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT == nil {
 		bc.JWT = &JWT{}
+	}
+	if bc.MQ == nil {
+		bc.MQ = &MQ{URL: "amqp://guest:guest@localhost:5672/"}
 	}
 	return &bc, nil
 }

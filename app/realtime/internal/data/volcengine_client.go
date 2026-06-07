@@ -2,10 +2,12 @@ package data
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -270,9 +272,18 @@ func (c *volcengineClient) ReadEvent() (*biz.VolcEvent, error) {
 	}
 
 	payload := data[frameHeaderSize:]
+	// FIX R1: 实现 gzip 解压
 	if hdr.Compression == compressionGzip {
-		// 预留 gzip 解压逻辑
-		return nil, fmt.Errorf("暂不支持 gzip 压缩")
+		gr, err := gzip.NewReader(bytes.NewReader(payload))
+		if err != nil {
+			return nil, fmt.Errorf("创建 gzip reader 失败: %w", err)
+		}
+		defer gr.Close()
+		decompressed, err := io.ReadAll(gr)
+		if err != nil {
+			return nil, fmt.Errorf("gzip 解压失败: %w", err)
+		}
+		payload = decompressed
 	}
 
 	return &biz.VolcEvent{

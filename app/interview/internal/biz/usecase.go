@@ -199,17 +199,20 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		return nil, nil, kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
 	}
 
-	// 6. 同步写入学习档案（使用请求 context，随请求生命周期取消）
-	// 归档失败不影响主流程，显式忽略
-	_ = uc.archive.WriteEntry(ctx, &ArchiveEntry{
-		UserID:          interview.UserID,
-		SourceType:      "interview_answer",
-		InterviewID:     interviewID,
-		QuestionIndex:   index,
-		IndustryCode:    interview.IndustryCode,
-		EvidenceSummary: feedbackText,
-		OccurredAt:      time.Now(),
-	})
+	// FIX I4: 异步写入学习档案，使用独立超时 context，不阻塞答题响应
+	go func() {
+		archiveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = uc.archive.WriteEntry(archiveCtx, &ArchiveEntry{
+			UserID:          interview.UserID,
+			SourceType:      "interview_answer",
+			InterviewID:     interviewID,
+			QuestionIndex:   index,
+			IndustryCode:    interview.IndustryCode,
+			EvidenceSummary: feedbackText,
+			OccurredAt:      time.Now(),
+		})
+	}()
 
 	return feedback, aiResp.Question, nil
 }
@@ -319,25 +322,9 @@ func (uc *InterviewUseCase) ListInterviews(ctx context.Context, userID uint64, p
 	return uc.repo.ListByUser(ctx, userID, page, pageSize)
 }
 
-// GetInterviewStats 供 growth 服务调用的聚合接口
-// TODO: 后续优化为 SQL 聚合查询（SELECT COUNT(*), AVG(overall_score)），避免全量加载
+// GetInterviewStats 供 growth 服务调用的聚合接口（FIX I3: 使用 SQL 聚合避免全量加载）
 func (uc *InterviewUseCase) GetInterviewStats(ctx context.Context, userID uint64) (*InterviewStats, error) {
-	interviews, total, err := uc.repo.ListByUser(ctx, userID, 1, 1000)
-	if err != nil {
-		return nil, err
-	}
-
-	stats := &InterviewStats{
-		TotalInterviews: int32(total),
-	}
-	var totalScore float64
-	for _, iv := range interviews {
-		totalScore += iv.OverallScore
-	}
-	if total > 0 {
-		stats.AvgScore = totalScore / float64(total)
-	}
-	return stats, nil
+	return uc.repo.GetStats(ctx, userID)
 }
 
 // ProcessResumeParse MQ 消费者：解析简历并持久化解析结果
@@ -454,15 +441,16 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 		Summary:               summary,
 		CodingDiagnosticsJSON: marshalJSON(codingDiagnostics),
 	}
-	if err := uc.reportRepo.Create(ctx, report); err != nil {
-		interview.Status = "report_failed"
-		_ = uc.repo.Update(ctx, interview)
-		return err
-	}
 
-	interview.Status = "completed"
-	interview.OverallScore = overallScore
-	if err := uc.repo.Update(ctx, interview); err != nil {
+	// FIX I1+I2: 在事务中完成报告创建和面试状态更新，reportRepo.Create 已使用 ON CONFLICT 保证幂等
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.reportRepo.Create(txCtx, report); err != nil {
+			return err
+		}
+		interview.Status = "completed"
+		interview.OverallScore = overallScore
+		return uc.repo.Update(txCtx, interview)
+	}); err != nil {
 		interview.Status = "report_failed"
 		_ = uc.repo.Update(ctx, interview)
 		return err

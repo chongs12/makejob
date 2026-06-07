@@ -7,7 +7,9 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 
+	ragv1 "makejob/api/makejob/rag/v1"
 	"makejob/app/question/internal/biz"
+	"makejob/app/question/internal/data"
 	"makejob/pkg/mq"
 )
 
@@ -15,11 +17,12 @@ import (
 type MQConsumer struct {
 	consumer *mq.Consumer
 	uc       *biz.QuestionUseCase
+	rag      data.RAGClient
 	logger   *log.Helper
 }
 
 // NewMQConsumer creates a new MQ consumer for question-related queues.
-func NewMQConsumer(url string, uc *biz.QuestionUseCase, logger log.Logger) (*MQConsumer, error) {
+func NewMQConsumer(url string, uc *biz.QuestionUseCase, rag data.RAGClient, logger log.Logger) (*MQConsumer, error) {
 	consumer, err := mq.NewConsumer(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mq consumer: %w", err)
@@ -28,6 +31,7 @@ func NewMQConsumer(url string, uc *biz.QuestionUseCase, logger log.Logger) (*MQC
 	mc := &MQConsumer{
 		consumer: consumer,
 		uc:       uc,
+		rag:      rag,
 		logger:   log.NewHelper(logger),
 	}
 
@@ -51,35 +55,108 @@ func (c *MQConsumer) Stop(ctx context.Context) error {
 	return c.consumer.Stop(ctx)
 }
 
-// handleRAGSyncQuestion handles RAG sync question messages.
-func (c *MQConsumer) handleRAGSyncQuestion(ctx context.Context, msg mq.TaskMessage) error {
-	c.logger.Infof("processing RAG sync question message: entity_type=%s, entity_id=%d", msg.EntityType, msg.EntityID)
+// ragSyncPayload RAG 同步题目消息负载
+type ragSyncPayload struct {
+	QuestionID uint64            `json:"question_id"`
+	Action     string            `json:"action"` // create | update | delete
+	Content    string            `json:"content"`
+	Metadata   map[string]string `json:"metadata"`
+}
 
-	var payload map[string]interface{}
+// handleRAGSyncQuestion 处理 RAG 同步题目消息
+// create/update → 调用 RAG.IndexQuestions 索引题目
+// delete → 调用 RAG.DeleteIndex 删除索引
+func (c *MQConsumer) handleRAGSyncQuestion(ctx context.Context, msg mq.TaskMessage) error {
+	c.logger.Infof("processing RAG sync question: entity_id=%d", msg.EntityID)
+
+	var payload ragSyncPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal RAG sync payload: %w", err)
 	}
 
-	c.logger.Infof("RAG sync question completed: entity_id=%d", msg.EntityID)
+	// 使用 entity_id 作为 fallback
+	if payload.QuestionID == 0 {
+		payload.QuestionID = msg.EntityID
+	}
+
+	if c.rag == nil {
+		c.logger.Warnf("RAG client not configured, skipping sync for question_id=%d", payload.QuestionID)
+		return nil
+	}
+
+	switch payload.Action {
+	case "create", "update":
+		if payload.Content == "" {
+			c.logger.Warnf("RAG sync: content empty for question_id=%d, skipping", payload.QuestionID)
+			return nil
+		}
+		items := []*ragv1.IndexItem{
+			{
+				QuestionId: payload.QuestionID,
+				Content:    payload.Content,
+				Metadata:   payload.Metadata,
+			},
+		}
+		indexed, err := c.rag.IndexQuestions(ctx, items)
+		if err != nil {
+			return fmt.Errorf("RAG index failed for question_id=%d: %w", payload.QuestionID, err)
+		}
+		c.logger.Infof("RAG sync: indexed question_id=%d, count=%d", payload.QuestionID, indexed)
+
+	case "delete":
+		ids := []string{fmt.Sprintf("%d", payload.QuestionID)}
+		deleted, err := c.rag.DeleteIndex(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("RAG delete failed for question_id=%d: %w", payload.QuestionID, err)
+		}
+		c.logger.Infof("RAG sync: deleted question_id=%d, count=%d", payload.QuestionID, deleted)
+
+	default:
+		c.logger.Warnf("RAG sync: unknown action=%s for question_id=%d, skipping", payload.Action, payload.QuestionID)
+		return nil
+	}
+
 	return nil
 }
 
 // handlePipelineBuild 处理题目 pipeline 构建消息
-// 当管理员触发题目生成 pipeline 时，消费此消息执行构建逻辑
+// 调用 AI Gateway 生成题目并写入题库
 func (c *MQConsumer) handlePipelineBuild(ctx context.Context, msg mq.TaskMessage) error {
-	c.logger.Infof("processing pipeline build message: entity_type=%s, entity_id=%d", msg.EntityType, msg.EntityID)
+	c.logger.Infof("processing pipeline build message: entity_id=%d", msg.EntityID)
 
-	// 解析 pipeline 配置
-	var payload struct {
-		PipelineID uint64 `json:"pipeline_id"`
-		Source     string `json:"source"`
-		Config     string `json:"config"`
-	}
+	var payload mq.PipelineBuildPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal pipeline build payload: %w", err)
 	}
 
-	c.logger.Infof("pipeline build started: pipeline_id=%d, source=%s", payload.PipelineID, payload.Source)
+	if payload.IndustryCode == "" {
+		return fmt.Errorf("pipeline build: industry_code is required")
+	}
+
+	// 设置默认值
+	if payload.Count <= 0 {
+		payload.Count = 5
+	}
+	if payload.Difficulty == "" {
+		payload.Difficulty = "medium"
+	}
+
+	c.logger.Infof("pipeline build: industry=%s, difficulty=%s, count=%d",
+		payload.IndustryCode, payload.Difficulty, payload.Count)
+
+	// 调用 biz 层生成题目
+	created, err := c.uc.PipelineGenerateQuestions(ctx, &biz.GenerateQuestionsRequest{
+		IndustryCode: payload.IndustryCode,
+		Difficulty:   payload.Difficulty,
+		Count:        payload.Count,
+		Topics:       payload.Topics,
+	})
+	if err != nil {
+		return fmt.Errorf("pipeline build failed: %w", err)
+	}
+
+	c.logger.Infof("pipeline build completed: pipeline_id=%d, created=%d/%d",
+		payload.PipelineID, created, payload.Count)
 	return nil
 }
 
@@ -90,12 +167,12 @@ func (c *MQConsumer) handleScraperImport(ctx context.Context, msg mq.TaskMessage
 
 	// 解析导入数据
 	var payload struct {
-		Source      string `json:"source"`
+		Source       string `json:"source"`
 		IndustryCode string `json:"industry_code"`
-		Questions   []struct {
-			Title    string `json:"title"`
-			Content  string `json:"content"`
-			Type     string `json:"type"`
+		Questions    []struct {
+			Title      string `json:"title"`
+			Content    string `json:"content"`
+			Type       string `json:"type"`
 			Difficulty string `json:"difficulty"`
 		} `json:"questions"`
 	}

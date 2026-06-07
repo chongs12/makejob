@@ -3399,7 +3399,7 @@ message CreatePlanResponse {
 ### 任务 P5-2: Plan Service - GetPlan, GetCurrentPlan, ListPlans
 
 **目标**：实现计划的查询接口。
-
+   
 **文件路径**：
 - `app/plan/internal/biz/plan.go` (修改)
 - `app/plan/internal/data/plan_repo.go` (修改)

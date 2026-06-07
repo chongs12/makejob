@@ -29,6 +29,12 @@ func NewPublisher(url, exchange string) (*Publisher, error) {
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
 
+	if err := ch.ExchangeDeclare(exchange, "topic", true, false, false, false, nil); err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to declare exchange: %w", err)
+	}
+
 	// 启用 publisher confirms
 	if err := ch.Confirm(false); err != nil {
 		ch.Close()

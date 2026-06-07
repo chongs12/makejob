@@ -6,7 +6,16 @@ import (
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
+
+// BaseModel 所有实体公共基础字段（FIX U1: 符合全局规范 1.4，支持软删除）
+type BaseModel struct {
+	ID        uint           `gorm:"primaryKey;autoIncrement"`
+	CreatedAt time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
 
 // UserRepo data 层必须实现的接口
 type UserRepo interface {
@@ -27,16 +36,15 @@ type TokenBlacklist interface {
 
 // --- 领域实体 ---
 
+// User 用户实体（FIX U1: 嵌入 BaseModel 支持软删除）
 type User struct {
-	ID                uint64     `gorm:"primaryKey"`
+	BaseModel
 	Username          string     `gorm:"size:100;not null;uniqueIndex"`
 	Password          string     `gorm:"column:password_hash;size:255;not null"`
 	Email             string     `gorm:"size:200;not null;uniqueIndex"`
 	Role              string     `gorm:"size:20;not null;default:'user'"`
 	MembershipLevel   string     `gorm:"size:20;not null;default:'free'"`
 	MembershipExpireAt *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
 }
 
 func (User) TableName() string { return "users" }

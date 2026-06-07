@@ -19,7 +19,15 @@ func NewReportRepo(db *gorm.DB) biz.ReportRepo {
 	return &reportRepo{db: db}
 }
 
-// Create 创建面试报告记录
+// getDB 从 context 获取事务 DB，若无则返回默认 DB（FIX I1）
+func (r *reportRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx, ok := ctx.Value(txContextKey{}).(*gorm.DB); ok {
+		return tx
+	}
+	return r.db
+}
+
+// Create 创建面试报告记录（幂等：interview_id 冲突时更新）
 func (r *reportRepo) Create(ctx context.Context, report *biz.InterviewReport) error {
 	m := &model.InterviewReport{
 		InterviewID:           report.InterviewID,
@@ -31,7 +39,7 @@ func (r *reportRepo) Create(ctx context.Context, report *biz.InterviewReport) er
 		Summary:               report.Summary,
 		CodingDiagnosticsJSON: report.CodingDiagnosticsJSON,
 	}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return r.getDB(ctx).WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "interview_id"}},
 		DoUpdates: clause.Assignments(map[string]interface{}{
 			"overall_score":           m.OverallScore,
@@ -48,7 +56,7 @@ func (r *reportRepo) Create(ctx context.Context, report *biz.InterviewReport) er
 // GetByInterviewID 根据面试 ID 获取报告
 func (r *reportRepo) GetByInterviewID(ctx context.Context, interviewID uint64) (*biz.InterviewReport, error) {
 	var m model.InterviewReport
-	if err := r.db.WithContext(ctx).Where("interview_id = ?", interviewID).First(&m).Error; err != nil {
+	if err := r.getDB(ctx).WithContext(ctx).Where("interview_id = ?", interviewID).First(&m).Error; err != nil {
 		return nil, err
 	}
 	return &biz.InterviewReport{

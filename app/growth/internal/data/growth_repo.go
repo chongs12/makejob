@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"makejob/app/growth/internal/biz"
 	"makejob/app/growth/internal/data/model"
@@ -19,41 +20,22 @@ func NewGrowthRepo(db *gorm.DB) biz.GrowthRepo {
 	return &growthRepo{db: db}
 }
 
-func (r *growthRepo) GetUserGrowthSummary(ctx context.Context, userID uint64) (*biz.GrowthSummary, error) {
-	return r.GetStudyLogStats(ctx, userID)
-}
-
-func (r *growthRepo) CreateStudyLog(ctx context.Context, log *biz.StudyLog) error {
-	m := &model.StudyLog{
-		UserID:   log.UserID,
-		Action:   log.Action,
-		RefID:    log.RefID,
-		Duration: log.Duration,
-	}
-	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
-		return err
-	}
-	log.ID = uint64(m.ID)
-	log.CreatedAt = m.CreatedAt
-	return nil
-}
-
 func (r *growthRepo) GetStudyLogStats(ctx context.Context, userID uint64) (*biz.GrowthSummary, error) {
 	base := r.db.WithContext(ctx).Model(&model.StudyLog{}).Where("user_id = ?", userID)
 
-	// Count distinct study days
+	// 统计学习天数
 	var totalDays int64
-	base.Distinct("DATE(created_at)").Count(&totalDays)
+	base.Distinct("date_key").Count(&totalDays)
 
-	// Count questions (action = "practice" or "question")
+	// 统计题目数量
 	var totalQuestions int64
 	base.Where("action IN ?", []string{"practice", "question"}).Count(&totalQuestions)
 
-	// Count interviews (action = "interview")
+	// 统计面试数量
 	var totalInterviews int64
 	base.Where("action = ?", "interview").Count(&totalInterviews)
 
-	// Calculate current streak: consecutive days with at least one log
+	// 计算连续学习天数
 	streak := r.calculateStreak(ctx, userID)
 
 	return &biz.GrowthSummary{
@@ -67,24 +49,24 @@ func (r *growthRepo) GetStudyLogStats(ctx context.Context, userID uint64) (*biz.
 	}, nil
 }
 
-// calculateStreak calculates consecutive study days ending today
+// calculateStreak 计算连续学习天数（从今天往前）
 func (r *growthRepo) calculateStreak(ctx context.Context, userID uint64) int32 {
 	var dates []string
 	r.db.WithContext(ctx).
 		Model(&model.StudyLog{}).
 		Where("user_id = ?", userID).
-		Select("DISTINCT DATE(created_at)").
-		Order("DATE(created_at) DESC").
+		Select("DISTINCT date_key").
+		Order("date_key DESC").
 		Limit(60).
-		Pluck("DATE(created_at)", &dates)
+		Pluck("date_key", &dates)
 
 	if len(dates) == 0 {
 		return 0
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	streak := int32(0)
-	expected := time.Now().UTC()
+	expected := time.Now()
 
 	for _, d := range dates {
 		expectedStr := expected.Format("2006-01-02")
@@ -92,7 +74,6 @@ func (r *growthRepo) calculateStreak(ctx context.Context, userID uint64) int32 {
 			streak++
 			expected = expected.AddDate(0, 0, -1)
 		} else if d == today {
-			// today counts even if partial
 			continue
 		} else {
 			break
@@ -101,38 +82,71 @@ func (r *growthRepo) calculateStreak(ctx context.Context, userID uint64) int32 {
 	return streak
 }
 
+// UpsertStudyLog 插入或更新学习记录，基于 (user_id, date_key, action, ref_id) 唯一键
+func (r *growthRepo) UpsertStudyLog(ctx context.Context, log *biz.StudyLog) error {
+	m := &model.StudyLog{
+		UserID:          log.UserID,
+		DateKey:         log.DateKey,
+		PlanID:          log.PlanID,
+		Summary:         log.Summary,
+		Action:          log.Action,
+		RefID:           log.RefID,
+		RefType:         log.RefType,
+		DurationMinutes: log.DurationMinutes,
+		Source:          log.Source,
+	}
+
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "user_id"},
+				{Name: "date_key"},
+				{Name: "action"},
+				{Name: "ref_id"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{"duration_minutes", "summary", "updated_at"}),
+		}).
+		Create(m).Error
+	if err != nil {
+		return err
+	}
+
+	log.ID = uint64(m.ID)
+	log.CreatedAt = m.CreatedAt
+	return nil
+}
+
 func (r *growthRepo) GetWeeklyFocusItems(ctx context.Context, userID uint64) ([]*biz.FocusItem, error) {
-	// Get action distribution from the past 7 days
 	type actionCount struct {
 		Action string
 		Count  int64
 	}
 	var results []actionCount
-	weekAgo := time.Now().UTC().AddDate(0, 0, -7)
+	weekAgo := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
 
 	r.db.WithContext(ctx).
 		Model(&model.StudyLog{}).
-		Where("user_id = ? AND created_at >= ?", userID, weekAgo).
+		Where("user_id = ? AND date_key >= ?", userID, weekAgo).
 		Select("action, COUNT(*) as count").
 		Group("action").
 		Order("count DESC").
 		Scan(&results)
 
 	items := make([]*biz.FocusItem, 0, len(results))
-	for _, r := range results {
+	for _, res := range results {
 		suggestion := ""
-		switch r.Action {
+		switch res.Action {
 		case "practice", "question":
-			suggestion = "continue practicing to improve accuracy"
+			suggestion = "继续刷题以提高正确率"
 		case "interview":
-			suggestion = "practice more mock interviews"
+			suggestion = "多练习模拟面试"
 		default:
-			suggestion = "keep up the good work"
+			suggestion = "保持当前学习节奏"
 		}
 		items = append(items, &biz.FocusItem{
-			Topic:      r.Action,
+			Topic:      res.Action,
 			Source:     "study_logs",
-			Weight:     float64(r.Count),
+			Weight:     float64(res.Count),
 			Suggestion: suggestion,
 		})
 	}

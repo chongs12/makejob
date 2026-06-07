@@ -42,12 +42,12 @@ func (s *UserService) Register(ctx context.Context, req *userv1.RegisterRequest)
 		return nil, err
 	}
 
-	accessToken, err := auth.GenerateToken(user.ID, user.Email, user.Role, s.jwtSecret, 2*time.Hour)
+	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 2*time.Hour)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := auth.GenerateToken(user.ID, user.Email, user.Role, s.jwtSecret, 7*24*time.Hour)
+	refreshToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 7*24*time.Hour)
 	if err != nil {
 		return nil, err
 	}
@@ -67,12 +67,12 @@ func (s *UserService) Login(ctx context.Context, req *userv1.LoginRequest) (*use
 		return nil, err
 	}
 
-	accessToken, err := auth.GenerateToken(user.ID, user.Email, user.Role, s.jwtSecret, 2*time.Hour)
+	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 2*time.Hour)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := auth.GenerateToken(user.ID, user.Email, user.Role, s.jwtSecret, 7*24*time.Hour)
+	refreshToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 7*24*time.Hour)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,16 @@ func (s *UserService) GetProfile(ctx context.Context, req *userv1.UserIDRequest)
 }
 
 func (s *UserService) UpdateProfile(ctx context.Context, req *userv1.UpdateProfileRequest) (*userv1.UserProfile, error) {
-	user, err := s.uc.UpdateProfile(ctx, req.UserId, req.Username, req.Avatar)
+	// FIX U3: 校验当前登录用户与目标用户一致，禁止修改他人资料
+	currentUserID := auth.GetUserIDFromContext(ctx)
+	if currentUserID == 0 {
+		return nil, errors.Unauthorized("UNAUTHORIZED", "未授权")
+	}
+	if req.UserId != 0 && req.UserId != currentUserID {
+		return nil, errors.Forbidden("FORBIDDEN", "无权修改他人资料")
+	}
+
+	user, err := s.uc.UpdateProfile(ctx, currentUserID, req.Username, req.Avatar)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +209,7 @@ func (s *UserService) UpgradeMembership(ctx context.Context, req *userv1.Upgrade
 
 func toProtoUser(u *biz.User) *userv1.UserProfile {
 	pb := &userv1.UserProfile{
-		Id:              u.ID,
+		Id:              uint64(u.ID),
 		Username:        u.Username,
 		Email:           u.Email,
 		Role:            u.Role,

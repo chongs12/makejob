@@ -44,7 +44,9 @@
       "Bash(cp -r backend/internal/executor pkg/executor)",
       "Bash(python3 *)",
       "Bash(python *)",
-      "Bash(go vet *)"
+      "Bash(go vet *)",
+      "Bash(protoc --go_out=paths=source_relative:./api/makejob/question/v1 --go-grpc_out=paths=source_relative:./api/makejob/question/v1 api/makejob/question/v1/question.proto)",
+      "Bash(protoc --proto_path=./api --go_out=paths=source_relative:./api/makejob/question/v1 --go-grpc_out=paths=source_relative:./api/makejob/question/v1 api/makejob/question/v1/question.proto)"
     ]
   }
 }

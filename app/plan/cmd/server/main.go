@@ -20,7 +20,6 @@ import (
 var flagConf string
 
 func main() {
-	// FIX: 将init()中的flag注册移到main()开头（禁止使用init()函数）
 	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path, eg: -conf configs/config.yaml")
 	flag.Parse()
 
@@ -60,9 +59,30 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// data 层：仓库实现
 	planRepo := data.NewPlanRepo(db)
+	taskRepo := data.NewTaskRepo(db)
+	feedbackRepo := data.NewTaskFeedbackRepo(db)
+	adjustmentRepo := data.NewPlanAdjustmentRepo(db)
+
+	// data 层：MQ 发布者
+	publisher, err := data.NewMQPublisher(bc.MQ)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ publisher: %w", err)
+	}
+
+	// data 层：AI 服务客户端
+	aiClient, err := data.NewPlanAgentClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create AI client: %w", err)
+	}
+
+	// data 层：诊断分析客户端
+	diagClient, err := data.NewDiagnosisClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create diagnosis client: %w", err)
+	}
 
 	// biz 层：业务用例
-	planUseCase := biz.NewPlanUseCase(planRepo)
+	planUseCase := biz.NewPlanUseCase(planRepo, taskRepo, feedbackRepo, adjustmentRepo, aiClient, diagClient, publisher, logger)
 
 	// service 层：gRPC 服务实现
 	planService := service.NewPlanService(planUseCase)
@@ -73,16 +93,42 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// server 层：gRPC 服务器
 	gs := server.NewGRPCServer(bc.Server, planService, authInterceptor, logger)
 
+	// server 层：MQ 消费者
+	mqConsumer, err := server.NewMQConsumer(bc.MQ, planUseCase)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ consumer: %w", err)
+	}
+
 	// 组装 Kratos app
 	app := kratos.New(
 		kratos.Name("makejob.plan"),
 		kratos.Version("1.0.0"),
 		kratos.Logger(logger),
-		kratos.Server(gs),
+		kratos.Server(gs, mqConsumer),
 	)
 
+	// 收集可关闭资源
+	type closer interface{ Close() error }
+	var closers []closer
+	if c, ok := aiClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := diagClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := publisher.(closer); ok {
+		closers = append(closers, c)
+	}
+
 	cleanup := func() {
-		// 清理资源
+		for _, c := range closers {
+			if err := c.Close(); err != nil {
+				log.Errorf("failed to close resource: %v", err)
+			}
+		}
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
 	}
 
 	return app, cleanup, nil

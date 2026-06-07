@@ -46,8 +46,10 @@ const (
 const (
 	RoutingKeyInterviewResumeParse    = "interview.resume.parse"
 	RoutingKeyInterviewReportGenerate = "interview.report.generate"
-	RoutingKeyInterviewFinished = "interview.finished"
-	RoutingKeyArchiveWritten    = "archive.written"
+	RoutingKeyInterviewFinished       = "interview.finished"
+	RoutingKeyArchiveWritten          = "archive.written"
+	RoutingKeyPlanGenerate            = "plan.generate"
+	RoutingKeyPlanFeedbackDiagnosis   = "plan.feedback.diagnosis"
 )
 
 // Interview 服务发布到 LearningArchive 消费的队列（统一队列名）
@@ -83,6 +85,30 @@ type InterviewFinishedPayload struct {
 	StrengthTopics []string `json:"strength_topics"`
 }
 
+// PlanGeneratePayload 计划生成负载
+type PlanGeneratePayload struct {
+	PlanID            uint64   `json:"plan_id"`
+	UserID            uint64   `json:"user_id"`
+	IndustryCode      string   `json:"industry_code"`
+	Goal              string   `json:"goal"`
+	DailyHours        int32    `json:"daily_hours"`
+	WeakTopics        []string `json:"weak_topics"`
+	Level             string   `json:"level"`
+	DurationDays      int32    `json:"duration_days"`
+	DailyStudyMinutes int32    `json:"daily_study_minutes"`
+}
+
+// FeedbackDiagnosisPayload 反馈诊断负载
+type FeedbackDiagnosisPayload struct {
+	FeedbackID        uint64   `json:"feedback_id"`
+	PlanID            uint64   `json:"plan_id"`
+	TaskID            uint64   `json:"task_id"`
+	UserID            uint64   `json:"user_id"`
+	FeedbackText      string   `json:"feedback_text"`
+	DifficultyFeeling string   `json:"difficulty_feeling"`
+	ProblemAreas      []string `json:"problem_areas"`
+}
+
 // ArchiveWrittenPayload 学习档案写入事件负载（由 learning_archive 服务发布）
 type ArchiveWrittenPayload struct {
 	UserID              uint64   `json:"user_id"`
@@ -90,4 +116,13 @@ type ArchiveWrittenPayload struct {
 	SourceID            uint64   `json:"source_id"`
 	WeakTopicsAdded     []string `json:"weak_topics_added"`
 	StrengthTopicsAdded []string `json:"strength_topics_added"`
+}
+
+// PipelineBuildPayload 题目生成流水线负载（由 admin 服务发布，question 消费）
+type PipelineBuildPayload struct {
+	PipelineID   uint64   `json:"pipeline_id"`
+	IndustryCode string   `json:"industry_code"`
+	Difficulty   string   `json:"difficulty"`
+	Count        int32    `json:"count"`
+	Topics       []string `json:"topics"`
 }

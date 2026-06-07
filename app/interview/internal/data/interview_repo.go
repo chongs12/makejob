@@ -9,6 +9,9 @@ import (
 	"makejob/app/interview/internal/data/model"
 )
 
+// txContextKey 用于在 context 中透传事务 DB（FIX I1）
+type txContextKey struct{}
+
 type interviewRepo struct {
 	db *gorm.DB
 }
@@ -16,6 +19,22 @@ type interviewRepo struct {
 // NewInterviewRepo 创建面试仓库（由 Wire 调用）
 func NewInterviewRepo(db *gorm.DB) biz.InterviewRepo {
 	return &interviewRepo{db: db}
+}
+
+// getDB 从 context 获取事务 DB，若无则返回默认 DB
+func (r *interviewRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx, ok := ctx.Value(txContextKey{}).(*gorm.DB); ok {
+		return tx
+	}
+	return r.db
+}
+
+// Transaction 在事务中执行操作，将 tx 注入 context（FIX I1）
+func (r *interviewRepo) Transaction(ctx context.Context, fn func(txCtx context.Context) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txCtx := context.WithValue(ctx, txContextKey{}, tx)
+		return fn(txCtx)
+	})
 }
 
 // Create 创建面试记录并回填数据库生成的主键与时间字段。
@@ -60,7 +79,7 @@ func (r *interviewRepo) ListByUser(ctx context.Context, userID uint64, page, pag
 
 func (r *interviewRepo) Update(ctx context.Context, interview *biz.Interview) error {
 	m := toModel(interview)
-	return r.db.WithContext(ctx).Save(m).Error
+	return r.getDB(ctx).WithContext(ctx).Save(m).Error
 }
 
 func (r *interviewRepo) CreateMessage(ctx context.Context, msg *biz.InterviewMessage) error {
@@ -252,4 +271,22 @@ func toBiz(m *model.MockInterview) *biz.Interview {
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
+}
+
+// GetStats SQL 聚合查询面试统计（FIX I3: 避免全量加载）
+func (r *interviewRepo) GetStats(ctx context.Context, userID uint64) (*biz.InterviewStats, error) {
+	var stats struct {
+		Total int64
+		Avg   float64
+	}
+	if err := r.db.WithContext(ctx).Model(&model.MockInterview{}).
+		Where("user_id = ?", userID).
+		Select("COUNT(*) as total, COALESCE(AVG(overall_score), 0) as avg").
+		Scan(&stats).Error; err != nil {
+		return nil, err
+	}
+	return &biz.InterviewStats{
+		TotalInterviews: int32(stats.Total),
+		AvgScore:        stats.Avg,
+	}, nil
 }

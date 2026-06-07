@@ -1,4 +1,5 @@
 syntax = "proto3";
+
 package makejob.plan.v1;
 option go_package = "makejob/api/makejob/plan/v1;planv1";
 
@@ -9,20 +10,23 @@ service PlanService {
   rpc GetPlan(GetPlanRequest) returns (PlanDetail);
   rpc GetCurrentPlan(GetCurrentPlanRequest) returns (PlanDetail);
   rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
-  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDetail);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse);
   rpc SubmitTaskFeedback(SubmitFeedbackRequest) returns (FeedbackResponse);
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
 }
 
 message CreatePlanRequest {
-  uint64 user_id = 1;
-  string industry_code = 2;
-  string goal = 3;
-  int32 daily_hours = 4;
+  repeated string weak_topics = 1;
+  string level = 2;
+  int32 duration_days = 3;
+  string industry = 4;
+  int32 daily_study_minutes = 5;
+  string goal_description = 6;
+  uint64 user_id = 7;
 }
 
 message PlanResponse {
-  uint64 id = 1;
+  uint64 plan_id = 1;
   string status = 2;
   google.protobuf.Timestamp created_at = 3;
 }
@@ -38,12 +42,19 @@ message GetCurrentPlanRequest {
 
 message PlanDetail {
   uint64 id = 1;
-  uint64 user_id = 2;
-  string industry_code = 3;
-  string goal = 4;
-  string status = 5;
-  repeated TaskDetail tasks = 6;
-  google.protobuf.Timestamp created_at = 7;
+  string title = 2;
+  string description = 3;
+  string status = 4;
+  int32 duration_days = 5;
+  int32 completed_tasks = 6;
+  int32 total_tasks = 7;
+  float progress = 8;
+  repeated TaskDetail tasks = 9;
+  google.protobuf.Timestamp created_at = 10;
+  string industry = 11;
+  string level = 12;
+  int32 daily_study_minutes = 13;
+  string goal_description = 14;
 }
 
 message TaskDetail {
@@ -51,9 +62,14 @@ message TaskDetail {
   uint64 plan_id = 2;
   string title = 3;
   string description = 4;
-  string status = 5;
+  string task_type = 5;
   string phase = 6;
-  int32 order_index = 7;
+  int32 day_number = 7;
+  int32 duration_minutes = 8;
+  string priority = 9;
+  string status = 10;
+  google.protobuf.Timestamp completed_at = 11;
+  int32 order_index = 12;
 }
 
 message ListPlansRequest {
@@ -63,44 +79,61 @@ message ListPlansRequest {
 }
 
 message ListPlansResponse {
-  repeated PlanSummary plans = 1;
+  repeated PlanSummary items = 1;
   int64 total = 2;
 }
 
 message PlanSummary {
   uint64 id = 1;
-  string industry_code = 2;
-  string goal = 3;
-  string status = 4;
+  string title = 2;
+  string status = 3;
+  float progress = 4;
   google.protobuf.Timestamp created_at = 5;
+  string industry = 6;
 }
 
 message UpdateTaskStatusRequest {
-  uint64 task_id = 1;
-  uint64 user_id = 2;
-  string status = 3;
+  uint64 plan_id = 1;
+  uint64 task_id = 2;
+  uint64 user_id = 3;
+  string status = 4;
+}
+
+message UpdateTaskStatusResponse {
+  string task_status = 1;
+  string plan_status = 2;
+  int32 completed_tasks = 3;
+  int32 total_tasks = 4;
+  float progress = 5;
 }
 
 message SubmitFeedbackRequest {
-  uint64 task_id = 1;
-  uint64 user_id = 2;
-  string content = 3;
-  int32 difficulty_rating = 4;
-  int32 confidence_rating = 5;
+  uint64 plan_id = 1;
+  uint64 task_id = 2;
+  string difficulty_feeling = 3;
+  string feedback_text = 4;
+  int32 actual_duration_minutes = 5;
+  repeated string problem_areas = 6;
+  uint64 user_id = 7;
 }
 
 message FeedbackResponse {
-  uint64 id = 1;
-  string diagnosis = 2;
-  repeated string suggestions = 3;
+  uint64 feedback_id = 1;
+  string status = 2;
+  string diagnosis = 3;
+  repeated string suggestions = 4;
 }
 
 message AdjustPlanRequest {
   uint64 plan_id = 1;
-  uint64 user_id = 2;
+  string reason = 2;
+  uint64 user_id = 3;
 }
 
 message AdjustPlanResponse {
-  string status = 1;
-  repeated TaskDetail updated_tasks = 2;
+  int32 tasks_added = 1;
+  int32 tasks_removed = 2;
+  int32 tasks_reordered = 3;
+  string adjustment_summary = 4;
+  repeated TaskDetail updated_tasks = 5;
 }

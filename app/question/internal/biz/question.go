@@ -11,6 +11,8 @@ type QuestionRepo interface {
 	GetByID(ctx context.Context, id uint64) (*Question, error)
 	Create(ctx context.Context, question *Question) error
 	RandomSelect(ctx context.Context, filter *QuestionFilter, count int32) ([]*Question, error)
+	// ExistsByTitleAndIndustry 检查题目是否已存在（FIX Q3: 幂等去重）
+	ExistsByTitleAndIndustry(ctx context.Context, title, industryCode string) (bool, error)
 }
 
 type RecordRepo interface {
@@ -55,6 +57,19 @@ type QuizAnalyzerClient interface {
 // CodeRunnerClient 代码运行服务客户端接口
 type CodeRunnerClient interface {
 	Execute(ctx context.Context, req *CodeRunnerRequest) (*CodeRunnerResponse, error)
+}
+
+// QuestionGeneratorClient AI 题目生成客户端接口
+type QuestionGeneratorClient interface {
+	GenerateQuestions(ctx context.Context, req *GenerateQuestionsRequest) ([]*Question, error)
+}
+
+// GenerateQuestionsRequest AI 题目生成请求
+type GenerateQuestionsRequest struct {
+	IndustryCode string
+	Difficulty   string
+	Count        int32
+	Topics       []string
 }
 
 // ExamRepo 考试记录仓储接口

@@ -1,10 +1,8 @@
 package model
 
-import "gorm.io/gorm"
-
-// CommunityComment 社区评论 GORM model
+// CommunityComment 社区评论 GORM model（FIX C1: 使用 BaseModel 替代 gorm.Model）
 type CommunityComment struct {
-	gorm.Model
+	BaseModel
 	PostID   uint64 `gorm:"index;not null"`
 	AuthorID uint64 `gorm:"index;not null"`
 	Content  string `gorm:"type:text;not null"`

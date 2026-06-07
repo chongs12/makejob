@@ -11,6 +11,8 @@ type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	Data   *Data   `yaml:"data"`
 	JWT    *JWT    `yaml:"jwt"`
+	MQ     *MQ     `yaml:"mq"`
+	AI     *AI     `yaml:"ai"`
 }
 
 type Server struct {
@@ -46,6 +48,17 @@ type JWT struct {
 	ServiceSecret string `yaml:"service_secret"`
 }
 
+// MQ 消息队列配置
+type MQ struct {
+	URL      string `yaml:"url"`
+	Exchange string `yaml:"exchange"`
+}
+
+// AI AI 服务配置
+type AI struct {
+	ServiceAddr string `yaml:"service_addr"`
+}
+
 // Load 从 YAML 文件加载配置
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
@@ -73,6 +86,15 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT == nil {
 		bc.JWT = &JWT{}
+	}
+	if bc.MQ == nil {
+		bc.MQ = &MQ{}
+	}
+	if bc.MQ.Exchange == "" {
+		bc.MQ.Exchange = "makejob.async"
+	}
+	if bc.AI == nil {
+		bc.AI = &AI{}
 	}
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"

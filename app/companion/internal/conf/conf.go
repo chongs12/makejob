@@ -11,6 +11,19 @@ type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	Data   *Data   `yaml:"data"`
 	JWT    *JWT    `yaml:"jwt"`
+	AI     *AI     `yaml:"ai"`
+	TTS    *TTS    `yaml:"tts"`
+}
+
+// AI AI 服务配置
+type AI struct {
+	ServiceAddr string `yaml:"service_addr"`
+}
+
+// TTS 语音合成服务配置
+type TTS struct {
+	APIKey string `yaml:"api_key"`
+	Voice  string `yaml:"voice"`
 }
 
 type Server struct {
@@ -73,6 +86,12 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT == nil {
 		bc.JWT = &JWT{}
+	}
+	if bc.AI == nil {
+		bc.AI = &AI{}
+	}
+	if bc.TTS == nil {
+		bc.TTS = &TTS{}
 	}
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"

@@ -61,8 +61,21 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// data 层：仓库实现
 	companionRepo := data.NewCompanionRepo(db)
 
+	// data 层：AI 客户端
+	aiClient, err := data.NewCompanionAIClient(bc.AI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create AI client: %w", err)
+	}
+
+	// data 层：TTS 客户端
+	ttsClient := data.NewTTsClient(bc.TTS)
+
 	// biz 层：业务用例
-	companionUseCase := biz.NewCompanionUseCase(companionRepo)
+	ttsVoice := ""
+	if bc.TTS != nil {
+		ttsVoice = bc.TTS.Voice
+	}
+	companionUseCase := biz.NewCompanionUseCase(companionRepo, aiClient, ttsClient, ttsVoice)
 
 	// service 层：gRPC 服务实现
 	companionService := service.NewCompanionService(companionUseCase)
@@ -82,7 +95,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	)
 
 	cleanup := func() {
-		// 清理资源
+		if closer, ok := aiClient.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
 	}
 
 	return app, cleanup, nil

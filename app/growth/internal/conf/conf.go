@@ -8,9 +8,18 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
+	Server      *Server            `yaml:"server"`
+	Data        *Data              `yaml:"data"`
+	JWT         *JWT               `yaml:"jwt"`
+	DepServices *DependentServices `yaml:"dependent_services"`
+}
+
+// DependentServices 下游微服务地址配置
+type DependentServices struct {
+	QuestionAddr        string `yaml:"question_addr"`
+	PlanAddr            string `yaml:"plan_addr"`
+	LearningArchiveAddr string `yaml:"learning_archive_addr"`
+	InterviewAddr       string `yaml:"interview_addr"`
 }
 
 type Server struct {
@@ -62,7 +71,29 @@ func Load(path string) (*Bootstrap, error) {
 		return nil, err
 	}
 
-	// 设置默认值
+	// FIX G4: 设置默认值前做 nil 检查，避免 YAML 缺少配置段时 panic
+	if bc.Server == nil {
+		bc.Server = &Server{}
+	}
+	if bc.Server.HTTP == nil {
+		bc.Server.HTTP = &Server_HTTP{}
+	}
+	if bc.Server.GRPC == nil {
+		bc.Server.GRPC = &Server_GRPC{}
+	}
+	if bc.Data == nil {
+		bc.Data = &Data{}
+	}
+	if bc.Data.Database == nil {
+		bc.Data.Database = &Data_Database{}
+	}
+	if bc.JWT == nil {
+		bc.JWT = &JWT{}
+	}
+	if bc.DepServices == nil {
+		bc.DepServices = &DependentServices{}
+	}
+
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"
 	}
