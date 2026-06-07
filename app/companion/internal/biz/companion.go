@@ -48,8 +48,8 @@ type CompanionClient interface {
 
 // TTSClient 语音合成客户端接口
 type TTSClient interface {
-	// Synthesize 调用 TTS 服务合成语音，返回音频 URL
-	Synthesize(ctx context.Context, text, voice string) (string, error)
+	// Synthesize 调用 TTS 服务合成语音，返回结构化音频结果
+	Synthesize(ctx context.Context, text, voice string) (*TTSAudio, error)
 }
 
 // ---------- 领域实体 ----------
@@ -112,6 +112,12 @@ type ChatResult struct {
 	Action      string
 	Suggestions []string
 	AudioURL    string
+}
+
+// TTSAudio 表示语音合成结果，兼容二进制音频和过渡 URL 两种返回形式
+type TTSAudio struct {
+	AudioData []byte
+	AudioURL  string
 }
 
 // ---------- 业务用例 ----------
@@ -189,7 +195,10 @@ func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, co
 		if voice == "" {
 			voice = "zh_female_shuangkuaisisi_moon_bigtts"
 		}
-		audioURL, _ = uc.ttsClient.Synthesize(ctx, aiResp.Reply, voice)
+		audioResult, synthErr := uc.ttsClient.Synthesize(ctx, aiResp.Reply, voice)
+		if synthErr == nil && audioResult != nil {
+			audioURL = audioResult.AudioURL
+		}
 	}
 
 	// 6. 更新 session
@@ -224,17 +233,17 @@ func (uc *CompanionUseCase) GetCompanionState(ctx context.Context, userID uint64
 	return session, nil
 }
 
-// SynthesizeSpeech 语音合成
-func (uc *CompanionUseCase) SynthesizeSpeech(ctx context.Context, text, voice string) (string, error) {
+// SynthesizeSpeech 执行语音合成并返回结构化音频结果
+func (uc *CompanionUseCase) SynthesizeSpeech(ctx context.Context, text, voice string) (*TTSAudio, error) {
 	if uc.ttsClient == nil {
-		return "", kratosErr.InternalServer("TTS_NOT_CONFIGURED", "语音合成服务未配置")
+		return nil, kratosErr.InternalServer("TTS_NOT_CONFIGURED", "语音合成服务未配置")
 	}
 	if voice == "" {
 		voice = uc.ttsVoice
 	}
-	audioURL, err := uc.ttsClient.Synthesize(ctx, text, voice)
+	audioResult, err := uc.ttsClient.Synthesize(ctx, text, voice)
 	if err != nil {
-		return "", kratosErr.InternalServer("TTS_SYNTHESIS_FAILED", "语音合成失败").WithCause(err)
+		return nil, kratosErr.InternalServer("TTS_SYNTHESIS_FAILED", "语音合成失败").WithCause(err)
 	}
-	return audioURL, nil
+	return audioResult, nil
 }

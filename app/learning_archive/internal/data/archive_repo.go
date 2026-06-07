@@ -63,11 +63,11 @@ func (r *archiveRepo) GetWeakTopics(ctx context.Context, userID uint64) ([]strin
 		Count int
 	}
 
-	// 从 mistake_tags JSON 数组中提取标签
+	// Raw SQL 不会自动继承 GORM 软删除条件，这里显式过滤 deleted_at。
 	rows, err := r.db.WithContext(ctx).
 		Raw(`SELECT jsonb_array_elements_text(mistake_tags::jsonb) as tag, COUNT(*) as count
 			 FROM learning_archive_entries
-			 WHERE user_id = ? AND mistake_tags IS NOT NULL AND mistake_tags != ''
+			 WHERE user_id = ? AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
 			 GROUP BY tag ORDER BY count DESC LIMIT 10`, userID).
 		Rows()
 	if err != nil {

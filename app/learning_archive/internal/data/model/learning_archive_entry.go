@@ -6,17 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// TODO L1: 当前使用 gorm.Model，gorm.Model 包含 DeletedAt 支持软删除。
-// 需验证 GetWeakTopics 的 jsonb_array_elements_text 聚合查询是否受 GORM default scope 影响。
-// GORM 默认 scope 会添加 WHERE deleted_at IS NULL，但 jsonb_array_elements_text
-// 在已软删除记录上可能仍参与聚合。建议添加集成测试验证：软删除一条记录后，
-// GetWeakTopics 是否仍返回该记录的 mistake_tags。
+// LearningArchiveEntry 学习档案实体，使用 gorm.Model 承载软删除字段。
+// 注意：若使用 Raw SQL 聚合 mistake_tags，必须显式补 deleted_at IS NULL 过滤条件。
 type LearningArchiveEntry struct {
 	gorm.Model
-	UserID          uint64    `gorm:"index;not null"`
-	SourceType      string    `gorm:"size:50;not null;index"`
-	SourceRef       string    `gorm:"size:100"`
-	InterviewID     uint64    `gorm:"index"`
+	UserID          uint64 `gorm:"index;not null"`
+	SourceType      string `gorm:"size:50;not null;index"`
+	SourceRef       string `gorm:"size:100"`
+	InterviewID     uint64 `gorm:"index"`
 	QuestionIndex   int32
 	IndustryCode    string    `gorm:"size:50;index"`
 	PlanPhase       string    `gorm:"size:50"`
@@ -29,6 +26,7 @@ type LearningArchiveEntry struct {
 	OccurredAt      time.Time `gorm:"index"`
 }
 
+// TableName 返回学习档案表名。
 func (LearningArchiveEntry) TableName() string {
 	return "learning_archive_entries"
 }

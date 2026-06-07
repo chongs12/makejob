@@ -67,13 +67,14 @@ func (s *CompanionService) GetCompanionState(ctx context.Context, req *companion
 
 // SynthesizeSpeech 语音合成
 func (s *CompanionService) SynthesizeSpeech(ctx context.Context, req *companionv1.SynthesizeSpeechRequest) (*companionv1.SynthesizeSpeechResponse, error) {
-	audioURL, err := s.uc.SynthesizeSpeech(ctx, req.GetText(), req.GetVoice())
+	audioResult, err := s.uc.SynthesizeSpeech(ctx, req.GetText(), req.GetVoice())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
 	return &companionv1.SynthesizeSpeechResponse{
-		AudioUrl: audioURL,
+		AudioData: audioResult.AudioData,
+		AudioUrl:  audioResult.AudioURL,
 	}, nil
 }
 
