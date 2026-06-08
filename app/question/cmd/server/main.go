@@ -19,6 +19,7 @@ import (
 	"makejob/app/question/internal/service"
 	"makejob/pkg/auth"
 	mlog "makejob/pkg/logger"
+	"makejob/pkg/mq"
 )
 
 var flagConf string
@@ -75,12 +76,6 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create CodeRunner client: %w", err)
 	}
 
-	// 创建 RAG gRPC 客户端
-	ragClient, err := data.NewRAGClient(bc.AI)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create RAG client: %w", err)
-	}
-
 	// 创建题目生成 AI 客户端
 	questionGenerator, err := data.NewQuestionGeneratorClient(bc.AI)
 	if err != nil {
@@ -105,12 +100,21 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		categoryRepo, industryRepo, quizAnalyzer,
 		codeRunner, examRepo, questionSetRepo, questionGenerator,
 	)
+
+	// 创建 MQ 发布器用于 RAG 同步
+	mqPublisher, err := mq.NewPublisher(bc.MQ.URL, bc.MQ.Exchange)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ publisher: %w", err)
+	}
+	ragSyncPub := data.NewRAGSyncPublisher(mqPublisher)
+	uc.SetRAGSyncPublisher(ragSyncPub)
+
 	svc := service.NewQuestionService(uc)
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
 
-	// MQ 消费者（注入 RAG 客户端用于题目索引同步）
-	mqConsumer, err := server.NewMQConsumer(bc.MQ.URL, uc, ragClient, adminClient, adminAccessToken, logger)
+	// MQ 消费者（处理题目流水线和 scraper 导入任务）
+	mqConsumer, err := server.NewMQConsumer(bc.MQ.URL, uc, adminClient, adminAccessToken, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create MQ consumer: %w", err)
 	}
@@ -131,11 +135,11 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	if c, ok := codeRunner.(closer); ok {
 		closers = append(closers, c)
 	}
-	closers = append(closers, ragClient)
 	if c, ok := questionGenerator.(closer); ok {
 		closers = append(closers, c)
 	}
 	closers = append(closers, adminConn)
+	closers = append(closers, mqPublisher)
 
 	cleanup := func() {
 		for _, c := range closers {

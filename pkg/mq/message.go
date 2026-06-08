@@ -130,3 +130,26 @@ type PipelineBuildPayload struct {
 	IncludeGenerated bool     `json:"include_generated"`
 	Sources          []string `json:"sources"`
 }
+
+// ScraperImportPayload 爬虫导入题目负载（由 admin 服务发布，question 消费）
+type ScraperImportPayload struct {
+	TaskID       uint64                  `json:"task_id,omitempty"`
+	Source       string                  `json:"source"`
+	SourceURL    string                  `json:"source_url,omitempty"`
+	SourceTitle  string                  `json:"source_title,omitempty"`
+	IndustryCode string                  `json:"industry_code"`
+	Questions    []ScraperImportQuestion `json:"questions"`
+}
+
+// ScraperImportQuestion 爬虫导入的单道题目
+type ScraperImportQuestion struct {
+	CategoryName string `json:"category_name,omitempty"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Type         string `json:"type"`
+	Difficulty   string `json:"difficulty"`
+	OptionsJSON  string `json:"options_json,omitempty"`
+	Answer       string `json:"answer,omitempty"`
+	Explanation  string `json:"explanation,omitempty"`
+	Tags         string `json:"tags,omitempty"`
+}

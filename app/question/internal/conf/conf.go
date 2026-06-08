@@ -15,7 +15,8 @@ type Bootstrap struct {
 }
 
 type MQ struct {
-	URL string `yaml:"url"`
+	URL      string `yaml:"url"`
+	Exchange string `yaml:"exchange"`
 }
 
 type Server struct {
@@ -80,6 +81,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.MQ == nil {
 		bc.MQ = &MQ{URL: "amqp://guest:guest@localhost:5672/"}
+	}
+	if bc.MQ.Exchange == "" {
+		bc.MQ.Exchange = "makejob.async"
 	}
 	return &bc, nil
 }

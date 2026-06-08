@@ -29,3 +29,4 @@ dependent_services:
   question_addr: "127.0.0.1:9003"
   interview_addr: "127.0.0.1:9004"
   ai_gateway_addr: "127.0.0.1:9012"
+  rag_addr: "127.0.0.1:9010"

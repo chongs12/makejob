@@ -21,6 +21,7 @@ type DependentServices struct {
 	QuestionAddr  string `yaml:"question_addr"`
 	InterviewAddr string `yaml:"interview_addr"`
 	AIGatewayAddr string `yaml:"ai_gateway_addr"`
+	RAGAddr       string `yaml:"rag_addr"`
 }
 
 type Server struct {

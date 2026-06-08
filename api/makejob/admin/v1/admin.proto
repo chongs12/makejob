@@ -481,6 +481,7 @@ message TestRenderPromptResponse {
   string response = 2;
   string model = 3;
   int64 latency_ms = 4;
+  map<string, string> resolved_variables = 5;
 }
 
 // ============================================================
@@ -561,6 +562,7 @@ message DebugAIRequest {
   string agent_type = 1;
   string prompt = 2;
   map<string, string> params = 3;
+  string model_override = 4;
 }
 
 message DebugAIResponse {
@@ -568,6 +570,10 @@ message DebugAIResponse {
   string model = 2;
   int32 tokens_used = 3;
   int64 latency_ms = 4;
+  string rendered_prompt = 5;
+  int32 input_tokens = 6;
+  int32 output_tokens = 7;
+  string error = 8;
 }
 
 message ListAICallLogsRequest {
@@ -789,6 +795,7 @@ message IndexResult {
   int32 indexed = 1;
   int32 deleted = 2;
   string error = 3;
+  int32 failed = 4;
 }
 
 message SearchRAGQuestionsRequest {
@@ -920,6 +927,7 @@ message ScraperSearchRequest {
 
 message ScraperSearchResponse {
   repeated ScraperSearchResult results = 1;
+  int32 total = 2;
 }
 
 message ScraperSearchResult {

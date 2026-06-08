@@ -1006,6 +1006,16 @@ func (r *adminRepo) UpdateScraperTask(ctx context.Context, task *biz.ScraperTask
 	}).Error
 }
 
+// ListScraperSources 返回可用的爬虫数据源列表。
+// 当前使用硬编码源配置，与单体 HTTPProvider 保持一致。
+func (r *adminRepo) ListScraperSources(_ context.Context) ([]*biz.ScraperSourceRecord, error) {
+	return []*biz.ScraperSourceRecord{
+		{Name: "niuke", Label: "牛客网", BaseURL: "https://www.nowcoder.com", IsActive: true},
+		{Name: "leetcode", Label: "LeetCode", BaseURL: "https://leetcode.cn", IsActive: true},
+		{Name: "juejin", Label: "掘金", BaseURL: "https://juejin.cn", IsActive: true},
+	}, nil
+}
+
 // ==================== RAG 文档管理 ====================
 
 func (r *adminRepo) ListRAGDocuments(ctx context.Context, page, pageSize int32, collection, docType, keyword, syncStatus string) ([]*biz.RAGDocumentRecord, int64, error) {

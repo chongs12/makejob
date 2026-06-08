@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,11 +23,13 @@ import (
 type AdminService struct {
 	adminv1.UnimplementedAdminServiceServer
 	uc                *biz.AdminUseCase
-	pipelinePublisher questionPipelinePublisher
+	pipelinePublisher asyncTaskPublisher
 }
 
-type questionPipelinePublisher interface {
+// asyncTaskPublisher 抽象 Admin 侧需要投递的异步任务发布能力。
+type asyncTaskPublisher interface {
 	PublishQuestionPipelineBuild(ctx context.Context, taskID uint64, req *adminv1.GenerateQuestionPipelineRequest) error
+	PublishScraperImport(ctx context.Context, taskID uint64, payload []byte) error
 }
 
 const (
@@ -35,8 +38,8 @@ const (
 	questionPipelineSource    = "admin"
 )
 
-// NewAdminService 创建管理后台服务，并注入题目流水线异步发布器。
-func NewAdminService(uc *biz.AdminUseCase, pipelinePublisher questionPipelinePublisher) *AdminService {
+// NewAdminService 创建管理后台服务，并注入异步任务发布器。
+func NewAdminService(uc *biz.AdminUseCase, pipelinePublisher asyncTaskPublisher) *AdminService {
 	return &AdminService{uc: uc, pipelinePublisher: pipelinePublisher}
 }
 
@@ -264,9 +267,60 @@ func (s *AdminService) GetQuestionTagTaxonomy(ctx context.Context, _ *emptypb.Em
 
 // ==================== 题目流水线（简化实现） ====================
 
-// GenerateQuestionPipeline 明确返回同步题目流水线尚未接入，避免用伪成功掩盖下游缺失。
+// GenerateQuestionPipeline 同步生成题目候选，委托 AI Gateway 的 GenerateQuestionCandidates RPC。
 func (s *AdminService) GenerateQuestionPipeline(ctx context.Context, req *adminv1.GenerateQuestionPipelineRequest) (*adminv1.GenerateQuestionPipelineResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "题目流水线同步生成待 AI Gateway 微服务实现后接入")
+	if s.uc.AIGatewayClient() == nil {
+		return nil, kratoserr.ServiceUnavailable("AI_GATEWAY_NOT_CONFIGURED", "AI 网关客户端未配置")
+	}
+
+	normalized, err := normalizeQuestionPipelineRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.uc.AIGatewayClient().GenerateQuestionCandidates(
+		ctx,
+		normalized.GetIndustryCode(),
+		normalized.GetRequirement(),
+		normalized.GetAgentPrompt(),
+		normalized.GetCandidateCount(),
+		normalized.GetGenerationMode(),
+		normalized.GetIncludeScraped(),
+		normalized.GetIncludeGenerated(),
+		normalized.GetSources(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	cards := make([]*adminv1.PipelineCard, 0, len(result.Candidates))
+	for _, c := range result.Candidates {
+		cards = append(cards, &adminv1.PipelineCard{
+			Title:       c.Title,
+			Content:     c.Content,
+			Type:        c.Type,
+			Difficulty:  c.Difficulty,
+			Category:    c.Category,
+			Answer:      c.Answer,
+			Explanation: c.Explanation,
+			Tags:        c.Tags,
+			SourceType:  c.SourceType,
+			Confidence:  c.Confidence,
+			Solution:    c.Solution,
+			JudgeConfig: c.JudgeConfig,
+			SourceLabel: c.SourceLabel,
+			SourceTitle: c.SourceTitle,
+			SourceUrl:   c.SourceURL,
+		})
+	}
+
+	return &adminv1.GenerateQuestionPipelineResponse{
+		IndustryCode:   result.IndustryCode,
+		Requirement:    result.Requirement,
+		GenerationMode: normalized.GetGenerationMode(),
+		Cards:          cards,
+		Warnings:       result.Warnings,
+	}, nil
 }
 
 // GenerateQuestionPipelineAsync 创建异步题目流水线任务并投递到 question 服务消费队列。
@@ -543,9 +597,30 @@ func (s *AdminService) DeletePrompt(ctx context.Context, req *adminv1.DeleteProm
 	return &emptypb.Empty{}, nil
 }
 
-// TestRenderPrompt UNIMPLEMENTED: 提示词渲染调试，待 AI Gateway 微服务实现后接入
+// TestRenderPrompt 委托 AI Gateway 渲染 Prompt 模板预览。
 func (s *AdminService) TestRenderPrompt(ctx context.Context, req *adminv1.TestRenderPromptRequest) (*adminv1.TestRenderPromptResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "提示词渲染调试待 AI Gateway 微服务实现后接入")
+	if s.uc.AIGatewayClient() == nil {
+		return nil, kratoserr.ServiceUnavailable("AI_GATEWAY_NOT_CONFIGURED", "AI 网关客户端未配置")
+	}
+
+	result, err := s.uc.AIGatewayClient().RenderPrompt(
+		ctx,
+		req.GetAgentType(),
+		req.GetPrompt(),
+		req.GetParams(),
+		true, // 默认调用 LLM 试跑
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &adminv1.TestRenderPromptResponse{
+		RenderedPrompt:    result.RenderedPrompt,
+		Response:          result.LLMResponse,
+		Model:             result.Model,
+		LatencyMs:         result.LatencyMs,
+		ResolvedVariables: result.ResolvedVariables,
+	}, nil
 }
 
 // ==================== AI 配置 ====================
@@ -706,9 +781,34 @@ func (s *AdminService) ApplyAIPreset(ctx context.Context, req *adminv1.ApplyAIPr
 
 // ==================== AI 调试 & 日志 ====================
 
-// DebugAI UNIMPLEMENTED: AI 调试，待 AI Gateway 微服务实现后接入
+// DebugAI 委托 AI Gateway 执行 AI 调试调用。
+// DebugAI 委托 AI Gateway 执行 AI 调试调用（FIX C5: 透传所有调试字段，FIX L2: 透传 model_override）
 func (s *AdminService) DebugAI(ctx context.Context, req *adminv1.DebugAIRequest) (*adminv1.DebugAIResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "AI 调试待 AI Gateway 微服务实现后接入")
+	if s.uc.AIGatewayClient() == nil {
+		return nil, kratoserr.ServiceUnavailable("AI_GATEWAY_NOT_CONFIGURED", "AI 网关客户端未配置")
+	}
+
+	result, err := s.uc.AIGatewayClient().DebugAI(
+		ctx,
+		req.GetAgentType(),
+		req.GetPrompt(),
+		req.GetParams(),
+		req.GetModelOverride(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &adminv1.DebugAIResponse{
+		Response:       result.Response,
+		Model:          result.Model,
+		TokensUsed:     int32(result.InputTokens + result.OutputTokens),
+		LatencyMs:      result.LatencyMs,
+		RenderedPrompt: result.RenderedPrompt,
+		InputTokens:    int32(result.InputTokens),
+		OutputTokens:   int32(result.OutputTokens),
+		Error:          result.Error,
+	}, nil
 }
 
 // ListAICallLogs 按单体后台相同的筛选条件查询 AI 调用日志列表。
@@ -943,62 +1043,159 @@ func (s *AdminService) UpdateTTSSceneDefaults(ctx context.Context, req *adminv1.
 
 // ==================== RAG 配置 ====================
 
-func (s *AdminService) GetRAGConfigs(ctx context.Context, _ *emptypb.Empty) (*adminv1.GetRAGConfigsResponse, error) {
-	configs, err := s.uc.ListAdminConfigs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	configMap := make(map[string]string)
-	items := make([]*adminv1.AdminConfigItem, 0)
-	for _, c := range configs {
-		if len(c.Key) >= 4 && c.Key[:4] == "rag_" {
-			configMap[c.Key] = c.Value
-			items = append(items, &adminv1.AdminConfigItem{
-				Key:         c.Key,
-				Value:       c.Value,
-				ConfigType:  c.ConfigType,
-				Description: c.Description,
-			})
+// extractRAGRuntimeConfig 从后台配置表单中提取 RAG 运行时需要的关键字段。
+func extractRAGRuntimeConfig(configs map[string]string) (collectionName string, embedModel string, embedDim int32, err error) {
+	collectionName = strings.TrimSpace(configs["rag_collection_name"])
+	embedModel = strings.TrimSpace(configs["rag_embedding_model"])
+	if embedDimRaw := strings.TrimSpace(configs["rag_embedding_dimension"]); embedDimRaw != "" {
+		parsed, parseErr := strconv.ParseInt(embedDimRaw, 10, 32)
+		if parseErr != nil {
+			return "", "", 0, kratoserr.BadRequest("INVALID_RAG_EMBEDDING_DIMENSION", "rag_embedding_dimension 必须是整数")
 		}
+		embedDim = int32(parsed)
 	}
+	return collectionName, embedModel, embedDim, nil
+}
+
+func (s *AdminService) GetRAGConfigs(ctx context.Context, _ *emptypb.Empty) (*adminv1.GetRAGConfigsResponse, error) {
+	collectionName, embedModel, configErr := s.uc.GetRAGConfig(ctx)
+	configMap := map[string]string{
+		"rag_collection_name": collectionName,
+		"rag_embedding_model": embedModel,
+	}
+	items := []*adminv1.AdminConfigItem{
+		{
+			Key:         "rag_collection_name",
+			Value:       collectionName,
+			ConfigType:  "string",
+			Description: "RAG 向量集合名称",
+		},
+		{
+			Key:         "rag_embedding_model",
+			Value:       embedModel,
+			ConfigType:  "string",
+			Description: "RAG Embedding 模型名称",
+		},
+	}
+
+	// 从 RAG 服务获取系统状态
+	status := &adminv1.RAGSystemStatus{Enabled: true}
+	if configErr == nil {
+		status.Collection = collectionName
+		status.EmbedModel = embedModel
+	} else {
+		status.Enabled = false
+	}
+	milvusOk, _, connErr := s.uc.TestRAGConnection(ctx)
+	status.MilvusConnected = milvusOk
+	if connErr != nil {
+		status.Enabled = false
+	}
+
 	return &adminv1.GetRAGConfigsResponse{
 		Configs: configMap,
 		Items:   items,
+		Status:  status,
 	}, nil
 }
 
+// UpdateRAGConfigs 将管理后台提交的配置委托给 RAG 服务，并同步持久化权威快照。
 func (s *AdminService) UpdateRAGConfigs(ctx context.Context, req *adminv1.UpdateRAGConfigsRequest) (*emptypb.Empty, error) {
-	if err := s.uc.BatchUpsertConfigs(ctx, req.Configs); err != nil {
+	collectionName, embedModel, embedDim, err := extractRAGRuntimeConfig(req.GetConfigs())
+	if err != nil {
+		return nil, err
+	}
+	updatedCollection, updatedDim, updatedModel, err := s.uc.UpdateRAGConfig(ctx, collectionName, embedDim, embedModel)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.BatchUpsertConfigs(ctx, map[string]string{
+		"rag_collection_name":     updatedCollection,
+		"rag_embedding_model":     updatedModel,
+		"rag_embedding_dimension": strconv.FormatInt(int64(updatedDim), 10),
+	}); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
 
-// TestRAGConnection UNIMPLEMENTED: RAG 连接测试，待 RAG 微服务实现后接入
+// TestRAGConnection 委托 RAG 服务测试连接
 func (s *AdminService) TestRAGConnection(ctx context.Context, _ *emptypb.Empty) (*adminv1.TestRAGConnectionResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "RAG 连接测试待 RAG 微服务实现后接入")
+	milvusOk, embeddingOk, err := s.uc.TestRAGConnection(ctx)
+	if err != nil {
+		return &adminv1.TestRAGConnectionResponse{
+			MilvusOk:    false,
+			EmbeddingOk: false,
+			Error:       err.Error(),
+		}, nil
+	}
+	return &adminv1.TestRAGConnectionResponse{
+		MilvusOk:    milvusOk,
+		EmbeddingOk: embeddingOk,
+	}, nil
 }
 
 // ==================== RAG 索引管理 ====================
 
-// IndexAllQuestions UNIMPLEMENTED: 全量 RAG 索引，待 RAG 微服务实现后接入
+// IndexAllQuestions 全量索引题目到 RAG（FIX C4: 返回 failed 计数）
 func (s *AdminService) IndexAllQuestions(ctx context.Context, req *adminv1.IndexAllQuestionsRequest) (*adminv1.IndexResult, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "全量 RAG 索引待 RAG 微服务实现后接入")
+	indexed, failed, err := s.uc.IndexAllQuestions(ctx, req.IndustryId)
+	if err != nil {
+		return &adminv1.IndexResult{Error: err.Error()}, nil
+	}
+	return &adminv1.IndexResult{
+		Indexed: indexed,
+		Failed:  failed,
+	}, nil
 }
 
-// IndexQuestions UNIMPLEMENTED: 指定题目 RAG 索引，待 RAG 微服务实现后接入
+// IndexQuestions 索引指定题目到 RAG（FIX H1: 用 failed 字段而非 deleted）
 func (s *AdminService) IndexQuestions(ctx context.Context, req *adminv1.IndexQuestionsRequest) (*adminv1.IndexResult, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "指定题目 RAG 索引待 RAG 微服务实现后接入")
+	indexed, failed, err := s.uc.IndexQuestions(ctx, req.QuestionIds)
+	if err != nil {
+		return &adminv1.IndexResult{Error: err.Error()}, nil
+	}
+	return &adminv1.IndexResult{
+		Indexed: indexed,
+		Failed:  failed,
+	}, nil
 }
 
-// DeleteRAGIndex UNIMPLEMENTED: 删除向量索引，待 RAG 微服务实现后接入
+// DeleteRAGIndex 删除 RAG 向量索引
 func (s *AdminService) DeleteRAGIndex(ctx context.Context, req *adminv1.DeleteRAGIndexRequest) (*adminv1.IndexResult, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "删除向量索引待 RAG 微服务实现后接入")
+	deleted, err := s.uc.DeleteRAGIndex(ctx, req.QuestionIds)
+	if err != nil {
+		return &adminv1.IndexResult{Error: err.Error()}, nil
+	}
+	return &adminv1.IndexResult{
+		Deleted: deleted,
+	}, nil
 }
 
-// SearchRAGQuestions UNIMPLEMENTED: RAG 检索，待 RAG 微服务实现后接入
+// SearchRAGQuestions RAG 语义检索
 func (s *AdminService) SearchRAGQuestions(ctx context.Context, req *adminv1.SearchRAGQuestionsRequest) (*adminv1.SearchRAGQuestionsResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "RAG 检索待 RAG 微服务实现后接入")
+	topK := req.TopK
+	if topK <= 0 {
+		topK = 10
+	}
+	results, err := s.uc.SearchRAGQuestions(ctx, req.Query, topK)
+	if err != nil {
+		return nil, err
+	}
+
+	protoResults := make([]*adminv1.RAGSearchResult, len(results))
+	for i, r := range results {
+		protoResults[i] = &adminv1.RAGSearchResult{
+			DocId:   r.DocID,
+			Title:   r.Title,
+			Content: r.Content,
+			Score:   r.Score,
+		}
+	}
+	return &adminv1.SearchRAGQuestionsResponse{
+		Query:   req.Query,
+		Results: protoResults,
+	}, nil
 }
 
 // ==================== RAG 文档管理 ====================
@@ -1141,46 +1338,176 @@ func (s *AdminService) BatchImportRAGDocuments(ctx context.Context, req *adminv1
 	}, nil
 }
 
-// SyncRAGDocumentsToVectorDB UNIMPLEMENTED: 文档向量同步，待 RAG 微服务实现后接入
+// SyncRAGDocumentsToVectorDB 同步指定文档到向量库
 func (s *AdminService) SyncRAGDocumentsToVectorDB(ctx context.Context, req *adminv1.SyncRAGDocumentsRequest) (*emptypb.Empty, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "文档向量同步待 RAG 微服务实现后接入")
+	if err := s.uc.SyncRAGDocumentsToVectorDB(ctx, req.Ids); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
-// SyncAllPendingRAGDocuments UNIMPLEMENTED: 全量待处理文档同步，待 RAG 微服务实现后接入
+// SyncAllPendingRAGDocuments 同步所有待处理文档到向量库
 func (s *AdminService) SyncAllPendingRAGDocuments(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "全量待处理文档同步待 RAG 微服务实现后接入")
+	if err := s.uc.SyncAllPendingRAGDocuments(ctx); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // ==================== 面经爬虫 ====================
 
-// GetScraperSources UNIMPLEMENTED: 爬虫源配置，待 Scraper 微服务实现后接入
+// GetScraperSources 返回可用的爬虫数据源列表。
 func (s *AdminService) GetScraperSources(ctx context.Context, _ *emptypb.Empty) (*adminv1.GetScraperSourcesResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫源配置待 Scraper 微服务实现后接入")
+	sources, err := s.uc.GetScraperSources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*adminv1.ScraperSource, len(sources))
+	for i, src := range sources {
+		items[i] = &adminv1.ScraperSource{
+			Name:     src.Name,
+			Label:    src.Label,
+			BaseUrl:  src.BaseURL,
+			IsActive: src.IsActive,
+		}
+	}
+	return &adminv1.GetScraperSourcesResponse{Sources: items}, nil
 }
 
-// ScraperSearch UNIMPLEMENTED: 爬虫搜索，待 Scraper 微服务实现后接入
+// ScraperSearch 在指定数据源中搜索面经内容。
 func (s *AdminService) ScraperSearch(ctx context.Context, req *adminv1.ScraperSearchRequest) (*adminv1.ScraperSearchResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫搜索待 Scraper 微服务实现后接入")
+	if strings.TrimSpace(req.GetKeyword()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_KEYWORD", "搜索关键词不能为空")
+	}
+	if strings.TrimSpace(req.GetSource()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_SOURCE", "数据源不能为空")
+	}
+	results, total, err := s.uc.ScraperSearch(ctx, req.GetSource(), req.GetKeyword(), req.GetPage(), req.GetPageSize())
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*adminv1.ScraperSearchResult, len(results))
+	for i, r := range results {
+		items[i] = &adminv1.ScraperSearchResult{
+			Title:   r.Title,
+			Url:     r.URL,
+			Source:  r.Source,
+			Snippet: r.Snippet,
+		}
+	}
+	return &adminv1.ScraperSearchResponse{Results: items, Total: total}, nil
 }
 
-// ScraperFetch UNIMPLEMENTED: 爬虫抓取，待 Scraper 微服务实现后接入
+// ScraperFetch 抓取指定 URL 的面经内容并留痕。
 func (s *AdminService) ScraperFetch(ctx context.Context, req *adminv1.ScraperFetchRequest) (*adminv1.ScraperFetchResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫抓取待 Scraper 微服务实现后接入")
+	if strings.TrimSpace(req.GetUrl()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_URL", "抓取 URL 不能为空")
+	}
+	if strings.TrimSpace(req.GetSource()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_SOURCE", "数据源不能为空")
+	}
+	result, err := s.uc.ScraperFetch(ctx, req.GetSource(), req.GetUrl())
+	if err != nil {
+		return nil, err
+	}
+	return &adminv1.ScraperFetchResponse{
+		Title:   result.Title,
+		Content: result.Content,
+		Source:  result.Source,
+		Url:     result.URL,
+	}, nil
 }
 
-// ScraperClean UNIMPLEMENTED: 爬虫清洗，待 Scraper 微服务实现后接入
+// ScraperClean 清洗面经内容，提取结构化题目。
 func (s *AdminService) ScraperClean(ctx context.Context, req *adminv1.ScraperCleanRequest) (*adminv1.ScraperCleanResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫清洗待 Scraper 微服务实现后接入")
+	if strings.TrimSpace(req.GetContent()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_CONTENT", "清洗内容不能为空")
+	}
+	questions, total := s.uc.ScraperClean(ctx, req.GetContent(), req.GetIndustryCode(), req.GetSource(), req.GetSourceUrl())
+	items := make([]*adminv1.ScraperCleanedQuestion, len(questions))
+	for i, q := range questions {
+		items[i] = &adminv1.ScraperCleanedQuestion{
+			CategoryName: q.CategoryName,
+			Type:         q.Type,
+			Difficulty:   q.Difficulty,
+			Title:        q.Title,
+			Content:      q.Content,
+			OptionsJson:  q.OptionsJSON,
+			Answer:       q.Answer,
+			Explanation:  q.Explanation,
+			Tags:         q.Tags,
+		}
+	}
+	return &adminv1.ScraperCleanResponse{
+		Questions:      items,
+		TotalExtracted: int32(total),
+	}, nil
 }
 
-// ScraperImport UNIMPLEMENTED: 爬虫导入，待 Scraper 微服务实现后接入
+// ScraperImport 同步导入清洗后的题目到题库。
 func (s *AdminService) ScraperImport(ctx context.Context, req *adminv1.ScraperImportRequest) (*adminv1.ScraperImportResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫导入待 Scraper 微服务实现后接入")
+	if strings.TrimSpace(req.GetIndustryCode()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_INDUSTRY_CODE", "行业编码不能为空")
+	}
+	if len(req.GetQuestions()) == 0 {
+		return nil, kratoserr.BadRequest("INVALID_QUESTIONS", "至少需要一题才能导入")
+	}
+	questions := make([]*biz.ScraperCleanedQuestionRecord, len(req.GetQuestions()))
+	for i, q := range req.GetQuestions() {
+		questions[i] = &biz.ScraperCleanedQuestionRecord{
+			CategoryName: q.GetCategoryName(),
+			Type:         q.GetType(),
+			Difficulty:   q.GetDifficulty(),
+			Title:        q.GetTitle(),
+			Content:      q.GetContent(),
+			OptionsJSON:  q.GetOptionsJson(),
+			Answer:       q.GetAnswer(),
+			Explanation:  q.GetExplanation(),
+			Tags:         q.GetTags(),
+		}
+	}
+	result, err := s.uc.ScraperImport(ctx, req.GetIndustryCode(), questions)
+	if err != nil {
+		return nil, err
+	}
+	return &adminv1.ScraperImportResponse{
+		TotalCount:   int32(result.TotalCount),
+		SuccessCount: int32(result.SuccessCount),
+		FailCount:    int32(result.FailCount),
+		Errors:       result.Errors,
+	}, nil
 }
 
-// ScraperImportAsync UNIMPLEMENTED: 爬虫异步导入，待 Scraper 微服务实现后接入
+// ScraperImportAsync 异步导入清洗后的题目，创建任务记录并投递 MQ。
 func (s *AdminService) ScraperImportAsync(ctx context.Context, req *adminv1.ScraperImportRequest) (*adminv1.ScraperTaskInfo, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "爬虫异步导入待 Scraper 微服务实现后接入")
+	if strings.TrimSpace(req.GetIndustryCode()) == "" {
+		return nil, kratoserr.BadRequest("INVALID_INDUSTRY_CODE", "行业编码不能为空")
+	}
+	if len(req.GetQuestions()) == 0 {
+		return nil, kratoserr.BadRequest("INVALID_QUESTIONS", "至少需要一题才能创建导入任务")
+	}
+	questions := make([]*biz.ScraperCleanedQuestionRecord, len(req.GetQuestions()))
+	for i, q := range req.GetQuestions() {
+		questions[i] = &biz.ScraperCleanedQuestionRecord{
+			CategoryName: q.GetCategoryName(),
+			Type:         q.GetType(),
+			Difficulty:   q.GetDifficulty(),
+			Title:        q.GetTitle(),
+			Content:      q.GetContent(),
+			OptionsJSON:  q.GetOptionsJson(),
+			Answer:       q.GetAnswer(),
+			Explanation:  q.GetExplanation(),
+			Tags:         q.GetTags(),
+		}
+	}
+	task, err := s.uc.ScraperImportAsync(ctx, "admin", req.GetIndustryCode(), req.GetSourceUrl(), req.GetSourceTitle(), questions)
+	if err != nil {
+		return nil, err
+	}
+	return &adminv1.ScraperTaskInfo{
+		TaskId: task.ID,
+		Status: task.Status,
+	}, nil
 }
 
 // ListScraperTasks 分页返回 scraper_tasks 列表，供后台任务中心与轮询页面展示。
@@ -1217,7 +1544,7 @@ func (s *AdminService) GetScraperTask(ctx context.Context, req *adminv1.GetScrap
 	return buildScraperTaskDetail(t), nil
 }
 
-// UpdateQuestionPipelineTask 接收 question 服务的任务状态回写，并在终态后拒绝重复覆盖。
+// UpdateQuestionPipelineTask 接收 question 服务的异步任务状态回写，并在终态后拒绝重复覆盖。
 func (s *AdminService) UpdateQuestionPipelineTask(ctx context.Context, req *adminv1.UpdateQuestionPipelineTaskRequest) (*adminv1.UpdateQuestionPipelineTaskResponse, error) {
 	if req.GetTaskId() == 0 {
 		return nil, kratoserr.BadRequest("INVALID_TASK_ID", "task_id is required")
@@ -1226,10 +1553,10 @@ func (s *AdminService) UpdateQuestionPipelineTask(ctx context.Context, req *admi
 	if err != nil {
 		return nil, err
 	}
-	if task.TaskType != questionPipelineTaskType {
-		return nil, status.Error(codes.FailedPrecondition, "任务类型不是题目流水线")
+	if !isManagedAsyncTaskType(task.TaskType) {
+		return nil, status.Error(codes.FailedPrecondition, "任务类型不支持状态回写")
 	}
-	if isQuestionPipelineTerminalStatus(task.Status) {
+	if isManagedAsyncTaskTerminalStatus(task.Status) {
 		return &adminv1.UpdateQuestionPipelineTaskResponse{
 			Applied: false,
 			Task:    buildScraperTaskDetail(task),
@@ -1268,7 +1595,7 @@ func (s *AdminService) UpdateQuestionPipelineTask(ctx context.Context, req *admi
 	}, nil
 }
 
-// RetryScraperTask 将失败任务重置为 pending，并在题目流水线场景下重新投递 MQ。
+// RetryScraperTask 将失败任务重置为 pending，并重新投递对应的异步任务。
 func (s *AdminService) RetryScraperTask(ctx context.Context, req *adminv1.RetryScraperTaskRequest) (*adminv1.ScraperTaskInfo, error) {
 	task, err := s.uc.GetScraperTask(ctx, req.Id)
 	if err != nil {
@@ -1284,10 +1611,11 @@ func (s *AdminService) RetryScraperTask(ctx context.Context, req *adminv1.RetryS
 	if err := s.uc.UpdateScraperTask(ctx, task); err != nil {
 		return nil, err
 	}
-	if task.TaskType == questionPipelineTaskType {
-		if s.pipelinePublisher == nil {
-			return nil, kratoserr.ServiceUnavailable("MQ_UNAVAILABLE", "题目流水线消息发布器未配置")
-		}
+	if s.pipelinePublisher == nil {
+		return nil, kratoserr.ServiceUnavailable("MQ_UNAVAILABLE", "异步消息发布器未配置")
+	}
+	switch task.TaskType {
+	case questionPipelineTaskType:
 		pipelineReq := &adminv1.GenerateQuestionPipelineRequest{}
 		if err := json.Unmarshal([]byte(task.PayloadJSON), pipelineReq); err != nil {
 			return nil, kratoserr.InternalServer("PIPELINE_PAYLOAD_DECODE_FAILED", "题目流水线任务载荷解析失败")
@@ -1300,6 +1628,17 @@ func (s *AdminService) RetryScraperTask(ctx context.Context, req *adminv1.RetryS
 			_ = s.uc.UpdateScraperTask(ctx, task)
 			return nil, kratoserr.InternalServer("PIPELINE_TASK_RETRY_FAILED", "题目流水线重试投递失败")
 		}
+	case "import_questions":
+		if err := s.pipelinePublisher.PublishScraperImport(ctx, task.ID, []byte(task.PayloadJSON)); err != nil {
+			task.Status = "failed"
+			task.ErrorMsg = err.Error()
+			finishedAt := time.Now()
+			task.FinishedAt = &finishedAt
+			_ = s.uc.UpdateScraperTask(ctx, task)
+			return nil, kratoserr.InternalServer("SCRAPER_IMPORT_RETRY_FAILED", "爬虫导入任务重试投递失败")
+		}
+	default:
+		return nil, status.Error(codes.FailedPrecondition, "任务类型不支持重试")
 	}
 	return &adminv1.ScraperTaskInfo{TaskId: task.ID, Status: "pending"}, nil
 }
@@ -1383,8 +1722,18 @@ func buildQuestionPipelineTaskTitle(requirement string) string {
 	return string(runes[:24]) + "..."
 }
 
-// isQuestionPipelineTerminalStatus 判断当前任务是否已经进入不可覆盖的终态。
-func isQuestionPipelineTerminalStatus(statusText string) bool {
+// isManagedAsyncTaskType 判断任务是否属于当前允许由 question 服务回写的异步任务类型。
+func isManagedAsyncTaskType(taskType string) bool {
+	switch strings.TrimSpace(taskType) {
+	case questionPipelineTaskType, "import_questions":
+		return true
+	default:
+		return false
+	}
+}
+
+// isManagedAsyncTaskTerminalStatus 判断当前任务是否已经进入不可覆盖的终态。
+func isManagedAsyncTaskTerminalStatus(statusText string) bool {
 	switch strings.TrimSpace(statusText) {
 	case "completed", "failed":
 		return true

@@ -66,7 +66,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	syncHandler := biz.NewSyncHandler(milvusCli, milvusCli, bc.RAG.CollectionName, logger)
 
 	// service 层：gRPC 服务实现
-	ragService := service.NewRAGService(retrieveUC, indexUC)
+	ragService := service.NewRAGService(retrieveUC, indexUC, syncHandler, milvusCli, bc.RAG.CollectionName, bc.RAG.EmbedModel)
 
 	// server 层：gRPC 服务器
 	gs := server.NewGRPCServer(bc.Server, ragService, logger)

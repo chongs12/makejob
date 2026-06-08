@@ -19,12 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AIService_InterviewAgent_FullMethodName = "/makejob.ai.v1.AIService/InterviewAgent"
-	AIService_PlanAgent_FullMethodName      = "/makejob.ai.v1.AIService/PlanAgent"
-	AIService_CompanionAgent_FullMethodName = "/makejob.ai.v1.AIService/CompanionAgent"
-	AIService_QuizAnalyzer_FullMethodName   = "/makejob.ai.v1.AIService/QuizAnalyzer"
-	AIService_ResumeParser_FullMethodName   = "/makejob.ai.v1.AIService/ResumeParser"
-	AIService_Live2DDirector_FullMethodName = "/makejob.ai.v1.AIService/Live2DDirector"
+	AIService_InterviewAgent_FullMethodName             = "/makejob.ai.v1.AIService/InterviewAgent"
+	AIService_PlanAgent_FullMethodName                  = "/makejob.ai.v1.AIService/PlanAgent"
+	AIService_CompanionAgent_FullMethodName             = "/makejob.ai.v1.AIService/CompanionAgent"
+	AIService_QuizAnalyzer_FullMethodName               = "/makejob.ai.v1.AIService/QuizAnalyzer"
+	AIService_ResumeParser_FullMethodName               = "/makejob.ai.v1.AIService/ResumeParser"
+	AIService_Live2DDirector_FullMethodName             = "/makejob.ai.v1.AIService/Live2DDirector"
+	AIService_RenderPrompt_FullMethodName               = "/makejob.ai.v1.AIService/RenderPrompt"
+	AIService_DebugAI_FullMethodName                    = "/makejob.ai.v1.AIService/DebugAI"
+	AIService_GenerateQuestionCandidates_FullMethodName = "/makejob.ai.v1.AIService/GenerateQuestionCandidates"
 )
 
 // AIServiceClient is the client API for AIService service.
@@ -37,6 +40,10 @@ type AIServiceClient interface {
 	QuizAnalyzer(ctx context.Context, in *QuizAnalyzerRequest, opts ...grpc.CallOption) (*QuizAnalyzerResponse, error)
 	ResumeParser(ctx context.Context, in *ResumeParserRequest, opts ...grpc.CallOption) (*ResumeParserResponse, error)
 	Live2DDirector(ctx context.Context, in *Live2DDirectiveRequest, opts ...grpc.CallOption) (*Live2DDirectiveResponse, error)
+	// === Admin 调试 RPC ===
+	RenderPrompt(ctx context.Context, in *RenderPromptRequest, opts ...grpc.CallOption) (*RenderPromptResponse, error)
+	DebugAI(ctx context.Context, in *DebugAIRequest, opts ...grpc.CallOption) (*DebugAIResponse, error)
+	GenerateQuestionCandidates(ctx context.Context, in *GenerateQuestionCandidatesRequest, opts ...grpc.CallOption) (*GenerateQuestionCandidatesResponse, error)
 }
 
 type aIServiceClient struct {
@@ -107,6 +114,36 @@ func (c *aIServiceClient) Live2DDirector(ctx context.Context, in *Live2DDirectiv
 	return out, nil
 }
 
+func (c *aIServiceClient) RenderPrompt(ctx context.Context, in *RenderPromptRequest, opts ...grpc.CallOption) (*RenderPromptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenderPromptResponse)
+	err := c.cc.Invoke(ctx, AIService_RenderPrompt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) DebugAI(ctx context.Context, in *DebugAIRequest, opts ...grpc.CallOption) (*DebugAIResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DebugAIResponse)
+	err := c.cc.Invoke(ctx, AIService_DebugAI_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GenerateQuestionCandidates(ctx context.Context, in *GenerateQuestionCandidatesRequest, opts ...grpc.CallOption) (*GenerateQuestionCandidatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateQuestionCandidatesResponse)
+	err := c.cc.Invoke(ctx, AIService_GenerateQuestionCandidates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AIServiceServer is the server API for AIService service.
 // All implementations must embed UnimplementedAIServiceServer
 // for forward compatibility.
@@ -117,6 +154,10 @@ type AIServiceServer interface {
 	QuizAnalyzer(context.Context, *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error)
 	ResumeParser(context.Context, *ResumeParserRequest) (*ResumeParserResponse, error)
 	Live2DDirector(context.Context, *Live2DDirectiveRequest) (*Live2DDirectiveResponse, error)
+	// === Admin 调试 RPC ===
+	RenderPrompt(context.Context, *RenderPromptRequest) (*RenderPromptResponse, error)
+	DebugAI(context.Context, *DebugAIRequest) (*DebugAIResponse, error)
+	GenerateQuestionCandidates(context.Context, *GenerateQuestionCandidatesRequest) (*GenerateQuestionCandidatesResponse, error)
 	mustEmbedUnimplementedAIServiceServer()
 }
 
@@ -144,6 +185,15 @@ func (UnimplementedAIServiceServer) ResumeParser(context.Context, *ResumeParserR
 }
 func (UnimplementedAIServiceServer) Live2DDirector(context.Context, *Live2DDirectiveRequest) (*Live2DDirectiveResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Live2DDirector not implemented")
+}
+func (UnimplementedAIServiceServer) RenderPrompt(context.Context, *RenderPromptRequest) (*RenderPromptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenderPrompt not implemented")
+}
+func (UnimplementedAIServiceServer) DebugAI(context.Context, *DebugAIRequest) (*DebugAIResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DebugAI not implemented")
+}
+func (UnimplementedAIServiceServer) GenerateQuestionCandidates(context.Context, *GenerateQuestionCandidatesRequest) (*GenerateQuestionCandidatesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateQuestionCandidates not implemented")
 }
 func (UnimplementedAIServiceServer) mustEmbedUnimplementedAIServiceServer() {}
 func (UnimplementedAIServiceServer) testEmbeddedByValue()                   {}
@@ -274,6 +324,60 @@ func _AIService_Live2DDirector_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIService_RenderPrompt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenderPromptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).RenderPrompt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_RenderPrompt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).RenderPrompt(ctx, req.(*RenderPromptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_DebugAI_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DebugAIRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).DebugAI(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_DebugAI_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).DebugAI(ctx, req.(*DebugAIRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GenerateQuestionCandidates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateQuestionCandidatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GenerateQuestionCandidates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GenerateQuestionCandidates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GenerateQuestionCandidates(ctx, req.(*GenerateQuestionCandidatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AIService_ServiceDesc is the grpc.ServiceDesc for AIService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -304,6 +408,18 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Live2DDirector",
 			Handler:    _AIService_Live2DDirector_Handler,
+		},
+		{
+			MethodName: "RenderPrompt",
+			Handler:    _AIService_RenderPrompt_Handler,
+		},
+		{
+			MethodName: "DebugAI",
+			Handler:    _AIService_DebugAI_Handler,
+		},
+		{
+			MethodName: "GenerateQuestionCandidates",
+			Handler:    _AIService_GenerateQuestionCandidates_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -11,6 +11,11 @@ service AIService {
   rpc QuizAnalyzer(QuizAnalyzerRequest) returns (QuizAnalyzerResponse);
   rpc ResumeParser(ResumeParserRequest) returns (ResumeParserResponse);
   rpc Live2DDirector(Live2DDirectiveRequest) returns (Live2DDirectiveResponse);
+
+  // === Admin 调试 RPC ===
+  rpc RenderPrompt(RenderPromptRequest) returns (RenderPromptResponse);
+  rpc DebugAI(DebugAIRequest) returns (DebugAIResponse);
+  rpc GenerateQuestionCandidates(GenerateQuestionCandidatesRequest) returns (GenerateQuestionCandidatesResponse);
 }
 
 message InterviewAgentRequest {
@@ -120,4 +125,76 @@ message Live2DDirectiveResponse {
   string motion_key = 4;
   string motion_group = 5;
   int32 duration_ms = 6;
+}
+
+// ============================================================
+// Admin 调试 RPC 消息
+// ============================================================
+
+message RenderPromptRequest {
+  string scene = 1;                    // 场景标识，如 interview_agent
+  string template_text = 2;           // 模板原文（可选，为空时从DB加载）
+  map<string, string> variables = 3;   // 变量键值对
+  bool run_with_llm = 4;              // 是否用渲染后的 prompt 调用 LLM
+}
+
+message RenderPromptResponse {
+  string rendered_prompt = 1;          // 渲染后的 prompt
+  map<string, string> resolved_variables = 2; // 解析后的变量明细
+  string llm_response = 3;            // LLM 响应（仅 run_with_llm=true 时有值）
+  string model = 4;                    // 使用的模型
+  int64 latency_ms = 5;               // LLM 调用耗时（仅 run_with_llm=true）
+}
+
+message DebugAIRequest {
+  string scene = 1;                    // 场景标识
+  string prompt = 2;                   // 直接传入 prompt 文本
+  map<string, string> params = 3;      // 变量参数
+  string model_override = 4;           // 模型覆盖（可选）
+}
+
+message DebugAIResponse {
+  string rendered_prompt = 1;          // 渲染后的 prompt
+  string response = 2;                 // LLM 原始响应
+  string model = 3;                    // 使用的模型
+  int32 input_tokens = 4;             // 输入 token 数
+  int32 output_tokens = 5;            // 输出 token 数
+  int64 latency_ms = 6;               // 调用耗时
+  string error = 7;                    // 错误信息（如有）
+}
+
+message GenerateQuestionCandidatesRequest {
+  string industry_code = 1;            // 行业编码
+  string requirement = 2;              // 生成需求描述
+  int32 candidate_count = 3;           // 候选题数量
+  string generation_mode = 4;          // 生成模式
+  repeated string sources = 5;         // 数据源
+  string agent_prompt = 6;             // 自定义 agent prompt
+  bool include_scraped = 7;            // 是否包含爬虫数据
+  bool include_generated = 8;          // 是否包含 AI 生成数据
+}
+
+message GenerateQuestionCandidatesResponse {
+  string industry_code = 1;
+  string requirement = 2;
+  repeated QuestionCandidate candidates = 3;
+  repeated string warnings = 4;
+}
+
+message QuestionCandidate {
+  string title = 1;
+  string content = 2;
+  string type = 3;
+  string difficulty = 4;
+  string category = 5;
+  string answer = 6;
+  string explanation = 7;
+  repeated string tags = 8;
+  string source_type = 9;
+  double confidence = 10;
+  string solution = 11;
+  string judge_config = 12;
+  string source_label = 13;
+  string source_title = 14;
+  string source_url = 15;
 }

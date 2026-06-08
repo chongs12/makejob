@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
+	"github.com/go-kratos/kratos/v2/log"
 )
 
 var (
@@ -19,6 +20,11 @@ var (
 	ErrQuestionSetNotFound  = kratosErr.NotFound("QUESTION_SET_NOT_FOUND", "题集不存在")
 	ErrExamAlreadyCompleted = kratosErr.Conflict("EXAM_COMPLETED", "考试已完成")
 )
+
+// RAGSyncPublisher 题目变更后发布 RAG 同步事件的接口
+type RAGSyncPublisher interface {
+	PublishQuestionChanged(ctx context.Context, questionID uint64, action string, content string, metadata map[string]string) error
+}
 
 type QuestionUseCase struct {
 	questionRepo    QuestionRepo
@@ -32,6 +38,7 @@ type QuestionUseCase struct {
 	examRepo        ExamRepo
 	questionSetRepo QuestionSetRepo
 	generator       QuestionGeneratorClient
+	ragSyncPub      RAGSyncPublisher
 }
 
 // NewQuestionUseCase 创建题库业务用例
@@ -63,6 +70,11 @@ func NewQuestionUseCase(
 	}
 }
 
+// SetRAGSyncPublisher 注入 RAG 同步事件发布器
+func (uc *QuestionUseCase) SetRAGSyncPublisher(pub RAGSyncPublisher) {
+	uc.ragSyncPub = pub
+}
+
 func (uc *QuestionUseCase) ListQuestions(ctx context.Context, filter *QuestionFilter, page, pageSize int32) ([]*Question, int64, error) {
 	return uc.questionRepo.List(ctx, filter, page, pageSize)
 }
@@ -79,7 +91,14 @@ func (uc *QuestionUseCase) CreateQuestion(ctx context.Context, question *Questio
 			question.IndustryCode = category.IndustryCode
 		}
 	}
-	return uc.questionRepo.Create(ctx, question)
+	if err := uc.questionRepo.Create(ctx, question); err != nil {
+		return err
+	}
+
+	// 发布 RAG 同步事件
+	uc.publishRAGSync(ctx, question.ID, "create", question.Title+"\n"+question.Content, buildRAGSyncMetadata(question))
+
+	return nil
 }
 
 // UpdateQuestion 管理后台更新题目，并在有分类时同步分类与行业冗余字段。
@@ -94,12 +113,48 @@ func (uc *QuestionUseCase) UpdateQuestion(ctx context.Context, question *Questio
 			question.IndustryCode = category.IndustryCode
 		}
 	}
-	return uc.questionRepo.Update(ctx, question)
+	if err := uc.questionRepo.Update(ctx, question); err != nil {
+		return err
+	}
+
+	// 发布 RAG 同步事件
+	uc.publishRAGSync(ctx, question.ID, "update", question.Title+"\n"+question.Content, buildRAGSyncMetadata(question))
+
+	return nil
 }
 
 // DeleteQuestion 管理后台删除题目。
 func (uc *QuestionUseCase) DeleteQuestion(ctx context.Context, id uint64) error {
-	return uc.questionRepo.Delete(ctx, id)
+	if err := uc.questionRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// 发布 RAG 同步事件（删除）
+	uc.publishRAGSync(ctx, id, "delete", "", nil)
+
+	return nil
+}
+
+// buildRAGSyncMetadata 构造题目同步到 RAG 时需要的最小元数据集合。
+func buildRAGSyncMetadata(question *Question) map[string]string {
+	if question == nil {
+		return nil
+	}
+	return map[string]string{
+		"title":      question.Title,
+		"type":       question.Type,
+		"difficulty": question.Difficulty,
+	}
+}
+
+// publishRAGSync 发布 RAG 同步事件（FIX C6: 使用结构化日志，不静默吞错）
+func (uc *QuestionUseCase) publishRAGSync(ctx context.Context, questionID uint64, action string, content string, metadata map[string]string) {
+	if uc.ragSyncPub == nil {
+		return
+	}
+	if err := uc.ragSyncPub.PublishQuestionChanged(ctx, questionID, action, content, metadata); err != nil {
+		log.Errorf("RAG sync publish failed: question_id=%d, action=%s, err=%v", questionID, action, err)
+	}
 }
 
 // GetAdminQuestionStats 返回管理后台需要的题目总数。
@@ -141,7 +196,9 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		Language:   language,
 		Score:      resp.Score,
 	}
-	_ = uc.recordRepo.Create(ctx, record)
+	if err := uc.recordRepo.Create(ctx, record); err != nil {
+		log.Errorf("保存答题记录失败: question_id=%d, user_id=%d, err=%v", questionID, userID, err)
+	}
 
 	return resp, nil
 }
@@ -456,7 +513,7 @@ func (uc *QuestionUseCase) SubmitExam(ctx context.Context, examID, userID uint64
 			Score:      aiResp.Score,
 		}); err != nil {
 			// 记录保存失败不影响整体流程，但需要记录日志
-			fmt.Printf("保存答题记录失败: question_id=%d, err=%v\n", qID, err)
+			log.Errorf("保存答题记录失败: question_id=%d, err=%v", qID, err)
 		}
 	}
 
@@ -529,7 +586,7 @@ func (uc *QuestionUseCase) ImportQuestions(ctx context.Context, questions []*Que
 		// FIX Q3: 检查同名同行业题目是否已存在，避免重复导入
 		exists, err := uc.questionRepo.ExistsByTitleAndIndustry(ctx, q.Title, q.IndustryCode)
 		if err != nil {
-			fmt.Printf("去重检查失败: title=%s, err=%v\n", q.Title, err)
+			log.Errorf("去重检查失败: title=%s, err=%v", q.Title, err)
 			continue
 		}
 		if exists {
@@ -538,9 +595,10 @@ func (uc *QuestionUseCase) ImportQuestions(ctx context.Context, questions []*Que
 
 		// 调用 repo 创建题目
 		if err := uc.questionRepo.Create(ctx, q); err != nil {
-			fmt.Printf("导入题目失败: title=%s, err=%v\n", q.Title, err)
+			log.Errorf("导入题目失败: title=%s, err=%v", q.Title, err)
 			continue
 		}
+		uc.publishRAGSync(ctx, q.ID, "create", q.Title+"\n"+q.Content, buildRAGSyncMetadata(q))
 		imported++
 	}
 	return imported, nil
@@ -570,9 +628,10 @@ func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *G
 		}
 		if err := uc.questionRepo.Create(ctx, q); err != nil {
 			// 单条失败不中断整体，记录后继续
-			fmt.Printf("pipeline 创建题目失败: title=%s, err=%v\n", q.Title, err)
+			log.Errorf("pipeline 创建题目失败: title=%s, err=%v", q.Title, err)
 			continue
 		}
+		uc.publishRAGSync(ctx, q.ID, "create", q.Title+"\n"+q.Content, buildRAGSyncMetadata(q))
 		created++
 		if onProgress != nil {
 			if err := onProgress(created, q); err != nil {

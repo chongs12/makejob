@@ -4,15 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 	adminv1 "makejob/api/makejob/admin/v1"
-	ragv1 "makejob/api/makejob/rag/v1"
 	"makejob/app/question/internal/biz"
-	"makejob/app/question/internal/data"
 	"makejob/pkg/auth"
 	"makejob/pkg/mq"
 )
@@ -21,14 +20,13 @@ import (
 type MQConsumer struct {
 	consumer         *mq.Consumer
 	uc               *biz.QuestionUseCase
-	rag              data.RAGClient
 	adminClient      adminv1.AdminServiceClient
 	adminAccessToken string
 	logger           *log.Helper
 }
 
 // NewMQConsumer 创建题目服务的 MQ 消费者，并注入 Admin 回写所需的服务令牌。
-func NewMQConsumer(url string, uc *biz.QuestionUseCase, rag data.RAGClient, adminClient adminv1.AdminServiceClient, adminAccessToken string, logger log.Logger) (*MQConsumer, error) {
+func NewMQConsumer(url string, uc *biz.QuestionUseCase, adminClient adminv1.AdminServiceClient, adminAccessToken string, logger log.Logger) (*MQConsumer, error) {
 	consumer, err := mq.NewConsumer(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mq consumer: %w", err)
@@ -37,18 +35,15 @@ func NewMQConsumer(url string, uc *biz.QuestionUseCase, rag data.RAGClient, admi
 	mc := &MQConsumer{
 		consumer:         consumer,
 		uc:               uc,
-		rag:              rag,
 		adminClient:      adminClient,
 		adminAccessToken: adminAccessToken,
 		logger:           log.NewHelper(logger),
 	}
 
-	// 注册 RAG 同步题目处理器
-	consumer.Register(mq.QueueRAGSyncQuestion, mq.TaskHandlerFunc(mc.handleRAGSyncQuestion))
 	// 注册题目 pipeline 构建处理器
 	consumer.Register(mq.QueueAdminQuestionPipeline, pipelineBuildTaskHandler{consumer: mc})
 	// 注册 scraper 导入题目处理器
-	consumer.Register(mq.QueueScraperImport, mq.TaskHandlerFunc(mc.handleScraperImport))
+	consumer.Register(mq.QueueScraperImport, scraperImportTaskHandler{consumer: mc})
 
 	return mc, nil
 }
@@ -63,70 +58,6 @@ func (c *MQConsumer) Stop(ctx context.Context) error {
 	return c.consumer.Stop(ctx)
 }
 
-// ragSyncPayload RAG 同步题目消息负载
-type ragSyncPayload struct {
-	QuestionID uint64            `json:"question_id"`
-	Action     string            `json:"action"` // create | update | delete
-	Content    string            `json:"content"`
-	Metadata   map[string]string `json:"metadata"`
-}
-
-// handleRAGSyncQuestion 处理 RAG 同步题目消息
-// create/update → 调用 RAG.IndexQuestions 索引题目
-// delete → 调用 RAG.DeleteIndex 删除索引
-func (c *MQConsumer) handleRAGSyncQuestion(ctx context.Context, msg mq.TaskMessage) error {
-	c.logger.Infof("processing RAG sync question: entity_id=%d", msg.EntityID)
-
-	var payload ragSyncPayload
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal RAG sync payload: %w", err)
-	}
-
-	// 使用 entity_id 作为 fallback
-	if payload.QuestionID == 0 {
-		payload.QuestionID = msg.EntityID
-	}
-
-	if c.rag == nil {
-		c.logger.Warnf("RAG client not configured, skipping sync for question_id=%d", payload.QuestionID)
-		return nil
-	}
-
-	switch payload.Action {
-	case "create", "update":
-		if payload.Content == "" {
-			c.logger.Warnf("RAG sync: content empty for question_id=%d, skipping", payload.QuestionID)
-			return nil
-		}
-		items := []*ragv1.IndexItem{
-			{
-				QuestionId: payload.QuestionID,
-				Content:    payload.Content,
-				Metadata:   payload.Metadata,
-			},
-		}
-		indexed, err := c.rag.IndexQuestions(ctx, items)
-		if err != nil {
-			return fmt.Errorf("RAG index failed for question_id=%d: %w", payload.QuestionID, err)
-		}
-		c.logger.Infof("RAG sync: indexed question_id=%d, count=%d", payload.QuestionID, indexed)
-
-	case "delete":
-		ids := []string{fmt.Sprintf("%d", payload.QuestionID)}
-		deleted, err := c.rag.DeleteIndex(ctx, ids)
-		if err != nil {
-			return fmt.Errorf("RAG delete failed for question_id=%d: %w", payload.QuestionID, err)
-		}
-		c.logger.Infof("RAG sync: deleted question_id=%d, count=%d", payload.QuestionID, deleted)
-
-	default:
-		c.logger.Warnf("RAG sync: unknown action=%s for question_id=%d, skipping", payload.Action, payload.QuestionID)
-		return nil
-	}
-
-	return nil
-}
-
 type pipelineBuildTaskHandler struct {
 	consumer *MQConsumer
 }
@@ -139,6 +70,21 @@ func (h pipelineBuildTaskHandler) Handle(ctx context.Context, msg mq.TaskMessage
 // HandleFinalFailure 在 MQ 重试耗尽后统一回写题目流水线失败状态。
 func (h pipelineBuildTaskHandler) HandleFinalFailure(ctx context.Context, msg mq.TaskMessage, lastErr error) error {
 	return h.consumer.handlePipelineBuildFinalFailure(ctx, msg, lastErr)
+}
+
+// scraperImportTaskHandler 包装 scraper 导入任务处理，并在最终失败时统一回写任务状态。
+type scraperImportTaskHandler struct {
+	consumer *MQConsumer
+}
+
+// Handle 执行 scraper 导入任务的单次消费。
+func (h scraperImportTaskHandler) Handle(ctx context.Context, msg mq.TaskMessage) error {
+	return h.consumer.handleScraperImport(ctx, msg)
+}
+
+// HandleFinalFailure 在 scraper 导入消息重试耗尽后统一标记任务失败。
+func (h scraperImportTaskHandler) HandleFinalFailure(ctx context.Context, msg mq.TaskMessage, lastErr error) error {
+	return h.consumer.handleScraperImportFinalFailure(ctx, msg, lastErr)
 }
 
 // handlePipelineBuild 处理题目 pipeline 构建消息
@@ -266,30 +212,47 @@ func (c *MQConsumer) handlePipelineBuildFinalFailure(ctx context.Context, msg mq
 func (c *MQConsumer) handleScraperImport(ctx context.Context, msg mq.TaskMessage) error {
 	c.logger.Infof("processing scraper import message: entity_type=%s, entity_id=%d", msg.EntityType, msg.EntityID)
 
-	// 解析导入数据
-	var payload struct {
-		Source       string `json:"source"`
-		IndustryCode string `json:"industry_code"`
-		Questions    []struct {
-			Title      string `json:"title"`
-			Content    string `json:"content"`
-			Type       string `json:"type"`
-			Difficulty string `json:"difficulty"`
-		} `json:"questions"`
-	}
+	var payload mq.ScraperImportPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal scraper import payload: %w", err)
+	}
+	if payload.TaskID == 0 {
+		payload.TaskID = msg.EntityID
+	}
+	if payload.TaskID == 0 {
+		return fmt.Errorf("scraper import: task_id is required")
+	}
+	startedAt := time.Now()
+	startResp, err := c.updateQuestionPipelineTask(ctx, &adminv1.UpdateQuestionPipelineTaskRequest{
+		TaskId:        payload.TaskID,
+		Status:        "running",
+		QuestionCount: int32(len(payload.Questions)),
+		ImportedCount: 0,
+		StartedAt:     timestamppb.New(startedAt),
+	})
+	if err != nil {
+		return fmt.Errorf("scraper import start update failed: %w", err)
+	}
+	if startResp != nil && !startResp.GetApplied() {
+		c.logger.Infof("scraper import skipped because task is already terminal: task_id=%d status=%s", payload.TaskID, startResp.GetTask().GetStatus())
+		return nil
 	}
 
 	// 转换为领域实体并导入
 	questions := make([]*biz.Question, len(payload.Questions))
 	for i, q := range payload.Questions {
 		questions[i] = &biz.Question{
-			Title:        q.Title,
-			Content:      q.Content,
-			Type:         q.Type,
-			Difficulty:   q.Difficulty,
-			IndustryCode: payload.IndustryCode,
+			Title:           q.Title,
+			Content:         q.Content,
+			Type:            q.Type,
+			Difficulty:      q.Difficulty,
+			IndustryCode:    payload.IndustryCode,
+			CategoryName:    q.CategoryName,
+			OptionsJSON:     q.OptionsJSON,
+			Answer:          q.Answer,
+			ReferenceAnswer: q.Answer,
+			Explanation:     q.Explanation,
+			Tags:            splitScraperImportTags(q.Tags),
 		}
 	}
 
@@ -297,9 +260,56 @@ func (c *MQConsumer) handleScraperImport(ctx context.Context, msg mq.TaskMessage
 	if err != nil {
 		return fmt.Errorf("failed to import questions: %w", err)
 	}
+	resultBytes, err := json.Marshal(map[string]interface{}{
+		"task_id":         payload.TaskID,
+		"source":          payload.Source,
+		"source_url":      payload.SourceURL,
+		"source_title":    payload.SourceTitle,
+		"industry_code":   payload.IndustryCode,
+		"requested_count": len(payload.Questions),
+		"imported_count":  imported,
+		"completed_at":    time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		return fmt.Errorf("scraper import result encode failed: %w", err)
+	}
+	finishedAt := time.Now()
+	if _, err := c.updateQuestionPipelineTask(ctx, &adminv1.UpdateQuestionPipelineTaskRequest{
+		TaskId:        payload.TaskID,
+		Status:        "completed",
+		QuestionCount: int32(len(payload.Questions)),
+		ImportedCount: int32(imported),
+		ResultJson:    string(resultBytes),
+		FinishedAt:    timestamppb.New(finishedAt),
+	}); err != nil {
+		return fmt.Errorf("scraper import completion update failed: %w", err)
+	}
 
 	c.logger.Infof("scraper import completed: source=%s, imported=%d/%d", payload.Source, imported, len(questions))
 	return nil
+}
+
+// handleScraperImportFinalFailure 在 scraper 导入任务最终失败后统一回写失败状态。
+func (c *MQConsumer) handleScraperImportFinalFailure(ctx context.Context, msg mq.TaskMessage, lastErr error) error {
+	var payload mq.ScraperImportPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return err
+	}
+	if payload.TaskID == 0 {
+		payload.TaskID = msg.EntityID
+	}
+	if payload.TaskID == 0 {
+		return nil
+	}
+	finishedAt := time.Now()
+	_, err := c.updateQuestionPipelineTask(ctx, &adminv1.UpdateQuestionPipelineTaskRequest{
+		TaskId:        payload.TaskID,
+		Status:        "failed",
+		QuestionCount: int32(len(payload.Questions)),
+		ErrorMsg:      lastErr.Error(),
+		FinishedAt:    timestamppb.New(finishedAt),
+	})
+	return err
 }
 
 // updateQuestionPipelineTask 调用 Admin 服务回写题目流水线任务状态。
@@ -320,6 +330,25 @@ func (c *MQConsumer) adminRequestContext(ctx context.Context) context.Context {
 		return auth.WithOutgoingAccessToken(ctx, token)
 	}
 	return auth.WithOutgoingAccessToken(ctx, c.adminAccessToken)
+}
+
+// splitScraperImportTags 将 MQ 里的逗号标签字符串还原为领域切片。
+func splitScraperImportTags(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
 }
 
 // maxInt32 返回两个 int32 中的较大值，供结果统计字段复用。

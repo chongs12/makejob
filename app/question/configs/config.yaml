@@ -17,3 +17,7 @@ ai:
 
 jwt:
   secret: "makejob-secret-key-change-in-production"
+
+mq:
+  url: "amqp://guest:guest@localhost:5672/"
+  exchange: "makejob.async"

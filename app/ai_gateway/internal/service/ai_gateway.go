@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/ai_gateway/internal/biz"
 )
@@ -16,6 +19,7 @@ type AIGatewayService struct {
 	quizUC       *biz.QuizAnalyzerUseCase
 	resumeUC     *biz.ResumeParserUseCase
 	live2dUC     *biz.Live2DDirectorUseCase
+	adminUC      *biz.AdminUseCase
 }
 
 // NewAIGatewayService 创建 AI 网关 gRPC 服务
@@ -26,6 +30,7 @@ func NewAIGatewayService(
 	quizUC *biz.QuizAnalyzerUseCase,
 	resumeUC *biz.ResumeParserUseCase,
 	live2dUC *biz.Live2DDirectorUseCase,
+	adminUC *biz.AdminUseCase,
 ) *AIGatewayService {
 	return &AIGatewayService{
 		interviewUC: interviewUC,
@@ -34,6 +39,7 @@ func NewAIGatewayService(
 		quizUC:      quizUC,
 		resumeUC:    resumeUC,
 		live2dUC:    live2dUC,
+		adminUC:     adminUC,
 	}
 }
 
@@ -186,4 +192,113 @@ func toProtoPlanTasks(tasks []biz.PlanTask) []*aiv1.PlanTask {
 		})
 	}
 	return result
+}
+
+// ==================== Admin 调试 RPC ====================
+
+// RenderPrompt Prompt 渲染预览 handler
+func (s *AIGatewayService) RenderPrompt(ctx context.Context, req *aiv1.RenderPromptRequest) (*aiv1.RenderPromptResponse, error) {
+	if s.adminUC == nil {
+		return nil, status.Error(codes.Unimplemented, "Admin 调试用例未配置")
+	}
+
+	variables := req.GetVariables()
+	if variables == nil {
+		variables = make(map[string]string)
+	}
+
+	result, err := s.adminUC.RenderPrompt(ctx, req.GetScene(), req.GetTemplateText(), variables, req.GetRunWithLlm())
+	if err != nil {
+		return nil, err
+	}
+
+	return &aiv1.RenderPromptResponse{
+		RenderedPrompt:    result.RenderedPrompt,
+		ResolvedVariables: result.ResolvedVariables,
+		LlmResponse:       result.LLMResponse,
+		Model:             result.Model,
+		LatencyMs:         result.LatencyMs,
+	}, nil
+}
+
+// DebugAI AI 调试 handler
+func (s *AIGatewayService) DebugAI(ctx context.Context, req *aiv1.DebugAIRequest) (*aiv1.DebugAIResponse, error) {
+	if s.adminUC == nil {
+		return nil, status.Error(codes.Unimplemented, "Admin 调试用例未配置")
+	}
+
+	params := req.GetParams()
+	if params == nil {
+		params = make(map[string]string)
+	}
+
+	result, err := s.adminUC.DebugAI(ctx, req.GetScene(), req.GetPrompt(), params, req.GetModelOverride())
+	if err != nil {
+		return nil, err
+	}
+
+	return &aiv1.DebugAIResponse{
+		RenderedPrompt: result.RenderedPrompt,
+		Response:       result.Response,
+		Model:          result.Model,
+		InputTokens:    int32(result.InputTokens),
+		OutputTokens:   int32(result.OutputTokens),
+		LatencyMs:      result.LatencyMs,
+		Error:          result.Error,
+	}, nil
+}
+
+// GenerateQuestionCandidates 同步题目候选生成 handler
+func (s *AIGatewayService) GenerateQuestionCandidates(ctx context.Context, req *aiv1.GenerateQuestionCandidatesRequest) (*aiv1.GenerateQuestionCandidatesResponse, error) {
+	if s.adminUC == nil {
+		return nil, status.Error(codes.Unimplemented, "Admin 调试用例未配置")
+	}
+
+	candidateCount := req.GetCandidateCount()
+	if candidateCount <= 0 {
+		candidateCount = 5
+	}
+
+	result, err := s.adminUC.GenerateQuestionCandidates(
+		ctx,
+		req.GetIndustryCode(),
+		req.GetRequirement(),
+		req.GetAgentPrompt(),
+		candidateCount,
+		req.GetGenerationMode(),
+		req.GetIncludeScraped(),
+		req.GetIncludeGenerated(),
+		req.GetSources(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates := make([]*aiv1.QuestionCandidate, 0, len(result.Candidates))
+	for _, c := range result.Candidates {
+		candidates = append(candidates, &aiv1.QuestionCandidate{
+			Title:       c.Title,
+			Content:     c.Content,
+			Type:        c.Type,
+			Difficulty:  c.Difficulty,
+			Category:    c.Category,
+			Answer:      c.Answer,
+			Explanation: c.Explanation,
+			Tags:        c.Tags,
+			SourceType:  c.SourceType,
+			Confidence:  c.Confidence,
+			Solution:    c.Solution,
+			JudgeConfig: c.JudgeConfig,
+			SourceLabel: c.SourceLabel,
+			SourceTitle: c.SourceTitle,
+			SourceUrl:   c.SourceURL,
+		})
+	}
+
+	return &aiv1.GenerateQuestionCandidatesResponse{
+		IndustryCode: result.IndustryCode,
+		Requirement:  result.Requirement,
+		Candidates:   candidates,
+		Warnings:     result.Warnings,
+	}, nil
 }

@@ -1,0 +1,255 @@
+package biz
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/go-kratos/kratos/v2/log"
+)
+
+// AdminUseCase AI Gateway 管理调试用例
+type AdminUseCase struct {
+	configRepo  AIConfigRepo
+	promptRepo  PromptRepo
+	callLogRepo CallLogRepo
+	llm         LLMClient
+	logger      log.Logger
+}
+
+// NewAdminUseCase 创建管理调试用例
+func NewAdminUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, callLogRepo CallLogRepo, llm LLMClient, logger log.Logger) *AdminUseCase {
+	return &AdminUseCase{
+		configRepo:  configRepo,
+		promptRepo:  promptRepo,
+		callLogRepo: callLogRepo,
+		llm:         llm,
+		logger:      logger,
+	}
+}
+
+// RenderPromptResult Prompt 渲染结果
+type RenderPromptResult struct {
+	RenderedPrompt    string
+	ResolvedVariables map[string]string
+	LLMResponse       string
+	Model             string
+	LatencyMs         int64
+}
+
+// RenderPrompt 渲染 Prompt 模板，可选调用 LLM
+func (uc *AdminUseCase) RenderPrompt(ctx context.Context, scene, templateText string, variables map[string]string, runWithLLM bool) (*RenderPromptResult, error) {
+	// 如果没有传入模板文本，从 DB 加载
+	if strings.TrimSpace(templateText) == "" {
+		if scene == "" {
+			return nil, ErrPromptRenderFailed
+		}
+		tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+		if err != nil {
+			return nil, ErrPromptRenderFailed.WithCause(err)
+		}
+		templateText = tpl.TemplateText
+	}
+
+	// 渲染 prompt
+	renderedPrompt := RenderPrompt(templateText, variables)
+
+	result := &RenderPromptResult{
+		RenderedPrompt:    renderedPrompt,
+		ResolvedVariables: variables,
+	}
+
+	// 如果需要调用 LLM
+	if runWithLLM {
+		cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+		if err != nil {
+			cfg = &AIConfig{Model: "default"}
+		}
+
+		messages := []Message{{Role: "user", Content: renderedPrompt}}
+		start := time.Now()
+		resp, err := uc.llm.Chat(ctx, messages, cfg)
+		latencyMs := time.Since(start).Milliseconds()
+
+		if err != nil {
+			uc.saveLog(ctx, scene, cfg.Model, nil, err, latencyMs)
+			return nil, ErrLLMCallFailed.WithCause(err)
+		}
+
+		result.LLMResponse = resp.Content
+		result.Model = cfg.Model
+		result.LatencyMs = latencyMs
+	}
+
+	return result, nil
+}
+
+// DebugAIResult AI 调试结果
+type DebugAIResult struct {
+	RenderedPrompt string
+	Response       string
+	Model          string
+	InputTokens    int
+	OutputTokens   int
+	LatencyMs      int64
+	Error          string
+}
+
+// DebugAI 执行 AI 调试调用
+func (uc *AdminUseCase) DebugAI(ctx context.Context, scene, prompt string, params map[string]string, modelOverride string) (*DebugAIResult, error) {
+	// 获取配置
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		cfg = &AIConfig{Model: "default", Temperature: 0.7, MaxTokens: 2048}
+	}
+
+	// 模型覆盖
+	if modelOverride != "" {
+		cfg.Model = modelOverride
+	}
+
+	// 渲染 prompt
+	renderedPrompt := prompt
+	if len(params) > 0 {
+		renderedPrompt = RenderPrompt(prompt, params)
+	}
+
+	// 调用 LLM
+	messages := []Message{{Role: "user", Content: renderedPrompt}}
+	start := time.Now()
+	resp, callErr := uc.llm.Chat(ctx, messages, cfg)
+	latencyMs := time.Since(start).Milliseconds()
+
+	result := &DebugAIResult{
+		RenderedPrompt: renderedPrompt,
+		Model:          cfg.Model,
+		LatencyMs:      latencyMs,
+	}
+
+	if callErr != nil {
+		result.Error = callErr.Error()
+		// 记录日志
+		uc.saveLog(ctx, scene, cfg.Model, nil, callErr, latencyMs)
+		return result, nil
+	}
+
+	result.Response = resp.Content
+	result.InputTokens = resp.InputTokens
+	result.OutputTokens = resp.OutputTokens
+
+	// 记录日志
+	uc.saveLog(ctx, scene, cfg.Model, resp, nil, latencyMs)
+
+	return result, nil
+}
+
+// QuestionCandidate 题目候选（FIX H6: 补齐与 PipelineCard 对齐的字段）
+type QuestionCandidate struct {
+	Title       string   `json:"title"`
+	Content     string   `json:"content"`
+	Type        string   `json:"type"`
+	Difficulty  string   `json:"difficulty"`
+	Category    string   `json:"category"`
+	Answer      string   `json:"answer"`
+	Explanation string   `json:"explanation"`
+	Tags        []string `json:"tags"`
+	SourceType  string   `json:"source_type"`
+	Confidence  float64  `json:"confidence"`
+	Solution    string   `json:"solution,omitempty"`
+	JudgeConfig string   `json:"judge_config,omitempty"`
+	SourceLabel string   `json:"source_label,omitempty"`
+	SourceTitle string   `json:"source_title,omitempty"`
+	SourceURL   string   `json:"source_url,omitempty"`
+}
+
+// GenerateQuestionCandidatesResult 同步候选题生成结果
+type GenerateQuestionCandidatesResult struct {
+	IndustryCode string
+	Requirement  string
+	Candidates   []*QuestionCandidate
+	Warnings     []string
+}
+
+// GenerateQuestionCandidates 同步生成题目候选（调试/预览用途）（FIX H5: 透传 agent_prompt/include_scraped/include_generated）
+func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error) {
+	const scene = "question_generator"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return nil, ErrPromptRenderFailed
+	}
+
+	// 如果有自定义 agent_prompt，使用它替换模板
+	promptTemplate := tpl.TemplateText
+	if agentPrompt != "" {
+		promptTemplate = agentPrompt
+	}
+
+	promptText := RenderPrompt(promptTemplate, map[string]string{
+		"industry_code":     industryCode,
+		"requirement":       requirement,
+		"candidate_count":   fmt.Sprintf("%d", candidateCount),
+		"generation_mode":   generationMode,
+		"sources":           joinStrings(sources),
+		"include_scraped":   fmt.Sprintf("%v", includeScraped),
+		"include_generated": fmt.Sprintf("%v", includeGenerated),
+	})
+
+	messages := []Message{{Role: "user", Content: promptText}}
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, ErrLLMCallFailed
+	}
+
+	// 解析响应
+	var candidates []*QuestionCandidate
+	if err := json.Unmarshal([]byte(resp.Content), &candidates); err != nil {
+		// 尝试解析为包装格式
+		var wrapped struct {
+			Questions  []*QuestionCandidate `json:"questions"`
+			Candidates []*QuestionCandidate `json:"candidates"`
+		}
+		if err2 := json.Unmarshal([]byte(resp.Content), &wrapped); err2 != nil {
+			return nil, ErrParseFailed
+		}
+		if wrapped.Questions != nil {
+			candidates = wrapped.Questions
+		} else {
+			candidates = wrapped.Candidates
+		}
+	}
+
+	return &GenerateQuestionCandidatesResult{
+		IndustryCode: industryCode,
+		Requirement:  requirement,
+		Candidates:   candidates,
+		Warnings:     []string{},
+	}, nil
+}
+
+// saveLog 记录 LLM 调用日志
+func (uc *AdminUseCase) saveLog(ctx context.Context, scene, model string, resp *LLMResponse, callErr error, latencyMs int64) {
+	logEntry := &AICallLog{Scene: scene, Model: model, LatencyMs: latencyMs}
+	if resp != nil {
+		logEntry.InputTokens = resp.InputTokens
+		logEntry.OutputTokens = resp.OutputTokens
+	}
+	if callErr != nil {
+		logEntry.Status = "error"
+		logEntry.ErrorMsg = callErr.Error()
+	} else {
+		logEntry.Status = "success"
+	}
+	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+		log.Warnf("写入AI调用日志失败: %v", err)
+	}
+}

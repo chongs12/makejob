@@ -18,13 +18,15 @@ func (m *mockEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]fl
 
 // mockVectorStore 模拟向量存储
 type mockVectorStore struct {
-	searchFunc func(ctx context.Context, vector []float32, topK int, collection string) ([]Document, error)
-	upsertFunc func(ctx context.Context, collection string, docs []VectorDocument) error
-	deleteFunc func(ctx context.Context, collection string, ids []string) error
+	searchFunc             func(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]Document, error)
+	upsertFunc             func(ctx context.Context, collection string, docs []VectorDocument) error
+	deleteFunc             func(ctx context.Context, collection string, ids []string) error
+	testConnectionFunc     func(ctx context.Context) error
+	getCollectionStatsFunc func(ctx context.Context, collection string) (int64, error)
 }
 
-func (m *mockVectorStore) Search(ctx context.Context, vector []float32, topK int, collection string) ([]Document, error) {
-	return m.searchFunc(ctx, vector, topK, collection)
+func (m *mockVectorStore) Search(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]Document, error) {
+	return m.searchFunc(ctx, vector, topK, collection, filters)
 }
 
 func (m *mockVectorStore) Upsert(ctx context.Context, collection string, docs []VectorDocument) error {
@@ -35,6 +37,20 @@ func (m *mockVectorStore) Delete(ctx context.Context, collection string, ids []s
 	return m.deleteFunc(ctx, collection, ids)
 }
 
+func (m *mockVectorStore) TestConnection(ctx context.Context) error {
+	if m.testConnectionFunc != nil {
+		return m.testConnectionFunc(ctx)
+	}
+	return nil
+}
+
+func (m *mockVectorStore) GetCollectionStats(ctx context.Context, collection string) (int64, error) {
+	if m.getCollectionStatsFunc != nil {
+		return m.getCollectionStatsFunc(ctx, collection)
+	}
+	return 0, nil
+}
+
 func TestRetrieveUseCase_Retrieve_Success(t *testing.T) {
 	embedder := &mockEmbedder{
 		embedFunc: func(ctx context.Context, texts []string) ([][]float64, error) {
@@ -42,7 +58,7 @@ func TestRetrieveUseCase_Retrieve_Success(t *testing.T) {
 		},
 	}
 	store := &mockVectorStore{
-		searchFunc: func(ctx context.Context, vector []float32, topK int, collection string) ([]Document, error) {
+		searchFunc: func(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]Document, error) {
 			return []Document{
 				{ID: "1", Content: "Go并发编程", Score: 0.95},
 				{ID: "2", Content: "Go基础语法", Score: 0.85},
@@ -51,7 +67,7 @@ func TestRetrieveUseCase_Retrieve_Success(t *testing.T) {
 	}
 	uc := NewRetrieveUseCase(embedder, store, "test_collection", 5, log.DefaultLogger)
 
-	docs, err := uc.Retrieve(context.Background(), "Go并发", 2)
+	docs, err := uc.Retrieve(context.Background(), "Go并发", 2, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -72,7 +88,7 @@ func TestRetrieveUseCase_Retrieve_EmbeddingFailed(t *testing.T) {
 	store := &mockVectorStore{}
 	uc := NewRetrieveUseCase(embedder, store, "test_collection", 5, log.DefaultLogger)
 
-	_, err := uc.Retrieve(context.Background(), "query", 5)
+	_, err := uc.Retrieve(context.Background(), "query", 5, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -85,13 +101,13 @@ func TestRetrieveUseCase_Retrieve_NoResults(t *testing.T) {
 		},
 	}
 	store := &mockVectorStore{
-		searchFunc: func(ctx context.Context, vector []float32, topK int, collection string) ([]Document, error) {
+		searchFunc: func(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]Document, error) {
 			return nil, nil
 		},
 	}
 	uc := NewRetrieveUseCase(embedder, store, "test_collection", 5, log.DefaultLogger)
 
-	_, err := uc.Retrieve(context.Background(), "query", 5)
+	_, err := uc.Retrieve(context.Background(), "query", 5, nil)
 	if err != ErrNoResults {
 		t.Errorf("expected ErrNoResults, got %v", err)
 	}

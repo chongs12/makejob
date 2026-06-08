@@ -46,7 +46,9 @@
       "Bash(python *)",
       "Bash(go vet *)",
       "Bash(protoc --go_out=paths=source_relative:./api/makejob/question/v1 --go-grpc_out=paths=source_relative:./api/makejob/question/v1 api/makejob/question/v1/question.proto)",
-      "Bash(protoc --proto_path=./api --go_out=paths=source_relative:./api/makejob/question/v1 --go-grpc_out=paths=source_relative:./api/makejob/question/v1 api/makejob/question/v1/question.proto)"
+      "Bash(protoc --proto_path=./api --go_out=paths=source_relative:./api/makejob/question/v1 --go-grpc_out=paths=source_relative:./api/makejob/question/v1 api/makejob/question/v1/question.proto)",
+      "Bash(head -50 Makefile)",
+      "Bash(head -50 makefile)"
     ]
   }
 }

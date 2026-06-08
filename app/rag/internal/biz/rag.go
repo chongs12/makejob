@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -30,9 +31,11 @@ type Embedder interface {
 
 // VectorStore 向量存储接口，data 层实现
 type VectorStore interface {
-	Search(ctx context.Context, vector []float32, topK int, collection string) ([]Document, error)
+	Search(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]Document, error)
 	Upsert(ctx context.Context, collection string, docs []VectorDocument) error
 	Delete(ctx context.Context, collection string, ids []string) error
+	TestConnection(ctx context.Context) error
+	GetCollectionStats(ctx context.Context, collection string) (totalDocuments int64, err error)
 }
 
 // RetrieveUseCase 语义检索业务用例
@@ -42,6 +45,7 @@ type RetrieveUseCase struct {
 	collection  string
 	defaultTopK int
 	logger      *log.Helper
+	mu          sync.RWMutex
 }
 
 // NewRetrieveUseCase 创建语义检索用例
@@ -55,8 +59,8 @@ func NewRetrieveUseCase(embedder Embedder, store VectorStore, collection string,
 	}
 }
 
-// Retrieve 将查询文本向量化后在 Milvus 中检索最相似的文档
-func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int) ([]Document, error) {
+// Retrieve 将查询文本向量化后在 Milvus 中检索最相似的文档（FIX C7: 透传 filters）
+func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int, filters map[string]string) ([]Document, error) {
 	if topK <= 0 {
 		topK = uc.defaultTopK
 	}
@@ -78,7 +82,7 @@ func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int)
 	}
 
 	// 在向量库中搜索
-	docs, err := uc.vectorStore.Search(ctx, vec32, topK, uc.collection)
+	docs, err := uc.vectorStore.Search(ctx, vec32, topK, uc.CollectionName(), filters)
 	if err != nil {
 		return nil, ErrRAGConnectionFailed.WithCause(err)
 	}
@@ -89,12 +93,27 @@ func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int)
 	return docs, nil
 }
 
+// UpdateCollectionName 更新检索用例使用的集合名，供运行时配置变更复用。
+func (uc *RetrieveUseCase) UpdateCollectionName(collection string) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	uc.collection = collection
+}
+
+// CollectionName 返回当前检索用例使用的集合名。
+func (uc *RetrieveUseCase) CollectionName() string {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+	return uc.collection
+}
+
 // IndexUseCase 批量索引业务用例
 type IndexUseCase struct {
 	embedder    Embedder
 	vectorStore VectorStore
 	collection  string
 	logger      *log.Helper
+	mu          sync.RWMutex
 }
 
 // IndexItem 索引条目
@@ -162,7 +181,7 @@ func (uc *IndexUseCase) IndexQuestions(ctx context.Context, items []IndexItem) (
 		}
 
 		// 写入向量库
-		if err := uc.vectorStore.Upsert(ctx, uc.collection, docs); err != nil {
+		if err := uc.vectorStore.Upsert(ctx, uc.CollectionName(), docs); err != nil {
 			uc.logger.Errorf("批量写入向量库失败 (batch %d-%d): %v", i, end, err)
 			for _, item := range batch {
 				failedIDs = append(failedIDs, item.ID)
@@ -177,12 +196,27 @@ func (uc *IndexUseCase) IndexQuestions(ctx context.Context, items []IndexItem) (
 	return indexed, failed, failedIDs
 }
 
+// UpdateCollectionName 更新索引用例使用的集合名，供运行时配置变更复用。
+func (uc *IndexUseCase) UpdateCollectionName(collection string) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	uc.collection = collection
+}
+
+// CollectionName 返回当前索引用例使用的集合名。
+func (uc *IndexUseCase) CollectionName() string {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+	return uc.collection
+}
+
 // SyncHandler 消息同步处理器，处理题目变更事件
 type SyncHandler struct {
 	embedder    Embedder
 	vectorStore VectorStore
 	collection  string
 	logger      *log.Helper
+	mu          sync.RWMutex
 }
 
 // NewSyncHandler 创建同步处理器
@@ -223,13 +257,13 @@ func (h *SyncHandler) HandleQuestionChanged(ctx context.Context, questionID uint
 			Metadata: metadata,
 		}}
 
-		if err := h.vectorStore.Upsert(ctx, h.collection, docs); err != nil {
+		if err := h.vectorStore.Upsert(ctx, h.CollectionName(), docs); err != nil {
 			return ErrRAGConnectionFailed.WithCause(err)
 		}
 		h.logger.Infof("题目 %s 同步成功 (action=%s)", docID, action)
 
 	case "delete":
-		if err := h.vectorStore.Delete(ctx, h.collection, []string{docID}); err != nil {
+		if err := h.vectorStore.Delete(ctx, h.CollectionName(), []string{docID}); err != nil {
 			return ErrRAGConnectionFailed.WithCause(err)
 		}
 		h.logger.Infof("题目 %s 已从向量库删除", docID)
@@ -239,4 +273,18 @@ func (h *SyncHandler) HandleQuestionChanged(ctx context.Context, questionID uint
 	}
 
 	return nil
+}
+
+// UpdateCollectionName 更新同步处理器使用的集合名，供运行时配置变更复用。
+func (h *SyncHandler) UpdateCollectionName(collection string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.collection = collection
+}
+
+// CollectionName 返回当前同步处理器使用的集合名。
+func (h *SyncHandler) CollectionName() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.collection
 }

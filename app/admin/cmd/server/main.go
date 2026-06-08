@@ -68,7 +68,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	// 创建下游服务 gRPC 连接
-	var userConn, questionConn, interviewConn *grpc.ClientConn
+	var userConn, questionConn, interviewConn, aiGatewayConn *grpc.ClientConn
 	cleanupFns := make([]func(), 0)
 
 	if bc.DependentServices != nil && bc.DependentServices.UserAddr != "" {
@@ -101,6 +101,16 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		cleanupFns = append(cleanupFns, func() { interviewConn.Close() })
 	}
 
+	if bc.DependentServices != nil && bc.DependentServices.AIGatewayAddr != "" {
+		aiGatewayConn, err = grpc.NewClient(bc.DependentServices.AIGatewayAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect AI gateway service: %w", err)
+		}
+		cleanupFns = append(cleanupFns, func() { aiGatewayConn.Close() })
+	}
+
 	// data 层：创建下游服务客户端
 	var userClient biz.UserClient
 	if userConn != nil {
@@ -123,10 +133,39 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("interview service address is required (dependent_services.interview_addr)")
 	}
 
-	aiGatewayClient := data.NewAIGatewayClient()
+	// AI Gateway 客户端（可选，但调试功能需要）
+	var aiGatewayClient biz.AIGatewayClient
+	if aiGatewayConn != nil {
+		aiGatewayClient = data.NewAIGatewayClient(aiGatewayConn, logger)
+	} else {
+		aiGatewayClient = data.NewAIGatewayClientNoop()
+	}
+
+	// RAG 服务客户端（可选）
+	var ragConn *grpc.ClientConn
+	if bc.DependentServices != nil && bc.DependentServices.RAGAddr != "" {
+		ragConn, err = grpc.NewClient(bc.DependentServices.RAGAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect RAG service: %w", err)
+		}
+		cleanupFns = append(cleanupFns, func() { ragConn.Close() })
+	}
 
 	// biz 层：业务用例
 	adminUseCase := biz.NewAdminUseCase(adminRepo, userClient, questionClient, interviewClient, aiGatewayClient)
+
+	// 注入 RAG 客户端
+	if ragConn != nil {
+		ragClient := data.NewRAGClient(ragConn, logger)
+		adminUseCase.SetRAGClient(ragClient)
+	}
+
+	// 注入爬虫依赖（Admin 自有能力）
+	scraperProvider := data.NewScraperProvider()
+	scraperCleaner := data.NewScraperCleaner()
+	adminUseCase.SetScraperDeps(scraperProvider, scraperCleaner, publisher)
 
 	// service 层：gRPC 服务实现
 	adminService := service.NewAdminService(adminUseCase, publisher)

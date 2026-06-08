@@ -3126,13 +3126,14 @@ func (x *TestRenderPromptRequest) GetParams() map[string]string {
 }
 
 type TestRenderPromptResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RenderedPrompt string                 `protobuf:"bytes,1,opt,name=rendered_prompt,json=renderedPrompt,proto3" json:"rendered_prompt,omitempty"`
-	Response       string                 `protobuf:"bytes,2,opt,name=response,proto3" json:"response,omitempty"`
-	Model          string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
-	LatencyMs      int64                  `protobuf:"varint,4,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RenderedPrompt    string                 `protobuf:"bytes,1,opt,name=rendered_prompt,json=renderedPrompt,proto3" json:"rendered_prompt,omitempty"`
+	Response          string                 `protobuf:"bytes,2,opt,name=response,proto3" json:"response,omitempty"`
+	Model             string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	LatencyMs         int64                  `protobuf:"varint,4,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	ResolvedVariables map[string]string      `protobuf:"bytes,5,rep,name=resolved_variables,json=resolvedVariables,proto3" json:"resolved_variables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *TestRenderPromptResponse) Reset() {
@@ -3191,6 +3192,13 @@ func (x *TestRenderPromptResponse) GetLatencyMs() int64 {
 		return x.LatencyMs
 	}
 	return 0
+}
+
+func (x *TestRenderPromptResponse) GetResolvedVariables() map[string]string {
+	if x != nil {
+		return x.ResolvedVariables
+	}
+	return nil
 }
 
 type GetAIConfigsResponse struct {
@@ -3814,6 +3822,7 @@ type DebugAIRequest struct {
 	AgentType     string                 `protobuf:"bytes,1,opt,name=agent_type,json=agentType,proto3" json:"agent_type,omitempty"`
 	Prompt        string                 `protobuf:"bytes,2,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	Params        map[string]string      `protobuf:"bytes,3,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ModelOverride string                 `protobuf:"bytes,4,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3869,14 +3878,25 @@ func (x *DebugAIRequest) GetParams() map[string]string {
 	return nil
 }
 
+func (x *DebugAIRequest) GetModelOverride() string {
+	if x != nil {
+		return x.ModelOverride
+	}
+	return ""
+}
+
 type DebugAIResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Response      string                 `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
-	Model         string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
-	TokensUsed    int32                  `protobuf:"varint,3,opt,name=tokens_used,json=tokensUsed,proto3" json:"tokens_used,omitempty"`
-	LatencyMs     int64                  `protobuf:"varint,4,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Response       string                 `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	Model          string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	TokensUsed     int32                  `protobuf:"varint,3,opt,name=tokens_used,json=tokensUsed,proto3" json:"tokens_used,omitempty"`
+	LatencyMs      int64                  `protobuf:"varint,4,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	RenderedPrompt string                 `protobuf:"bytes,5,opt,name=rendered_prompt,json=renderedPrompt,proto3" json:"rendered_prompt,omitempty"`
+	InputTokens    int32                  `protobuf:"varint,6,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
+	OutputTokens   int32                  `protobuf:"varint,7,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	Error          string                 `protobuf:"bytes,8,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DebugAIResponse) Reset() {
@@ -3935,6 +3955,34 @@ func (x *DebugAIResponse) GetLatencyMs() int64 {
 		return x.LatencyMs
 	}
 	return 0
+}
+
+func (x *DebugAIResponse) GetRenderedPrompt() string {
+	if x != nil {
+		return x.RenderedPrompt
+	}
+	return ""
+}
+
+func (x *DebugAIResponse) GetInputTokens() int32 {
+	if x != nil {
+		return x.InputTokens
+	}
+	return 0
+}
+
+func (x *DebugAIResponse) GetOutputTokens() int32 {
+	if x != nil {
+		return x.OutputTokens
+	}
+	return 0
+}
+
+func (x *DebugAIResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 type ListAICallLogsRequest struct {
@@ -5858,6 +5906,7 @@ type IndexResult struct {
 	Indexed       int32                  `protobuf:"varint,1,opt,name=indexed,proto3" json:"indexed,omitempty"`
 	Deleted       int32                  `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
 	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Failed        int32                  `protobuf:"varint,4,opt,name=failed,proto3" json:"failed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5911,6 +5960,13 @@ func (x *IndexResult) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *IndexResult) GetFailed() int32 {
+	if x != nil {
+		return x.Failed
+	}
+	return 0
 }
 
 type SearchRAGQuestionsRequest struct {
@@ -7096,6 +7152,7 @@ func (x *ScraperSearchRequest) GetPageSize() int32 {
 type ScraperSearchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Results       []*ScraperSearchResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7135,6 +7192,13 @@ func (x *ScraperSearchResponse) GetResults() []*ScraperSearchResult {
 		return x.Results
 	}
 	return nil
+}
+
+func (x *ScraperSearchResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
 }
 
 type ScraperSearchResult struct {
@@ -8719,13 +8783,17 @@ const file_makejob_admin_v1_admin_proto_rawDesc = "" +
 	"\x06params\x18\x03 \x03(\v25.makejob.admin.v1.TestRenderPromptRequest.ParamsEntryR\x06params\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x94\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x02\n" +
 	"\x18TestRenderPromptResponse\x12'\n" +
 	"\x0frendered_prompt\x18\x01 \x01(\tR\x0erenderedPrompt\x12\x1a\n" +
 	"\bresponse\x18\x02 \x01(\tR\bresponse\x12\x14\n" +
 	"\x05model\x18\x03 \x01(\tR\x05model\x12\x1d\n" +
 	"\n" +
-	"latency_ms\x18\x04 \x01(\x03R\tlatencyMs\"\xba\x02\n" +
+	"latency_ms\x18\x04 \x01(\x03R\tlatencyMs\x12p\n" +
+	"\x12resolved_variables\x18\x05 \x03(\v2A.makejob.admin.v1.TestRenderPromptResponse.ResolvedVariablesEntryR\x11resolvedVariables\x1aD\n" +
+	"\x16ResolvedVariablesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\x02\n" +
 	"\x14GetAIConfigsResponse\x12M\n" +
 	"\aconfigs\x18\x01 \x03(\v23.makejob.admin.v1.GetAIConfigsResponse.ConfigsEntryR\aconfigs\x127\n" +
 	"\x05items\x18\x02 \x03(\v2!.makejob.admin.v1.AdminConfigItemR\x05items\x124\n" +
@@ -8792,22 +8860,27 @@ const file_makejob_admin_v1_admin_proto_rawDesc = "" +
 	"\x15DeleteAIPresetRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"&\n" +
 	"\x14ApplyAIPresetRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\xc8\x01\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\xef\x01\n" +
 	"\x0eDebugAIRequest\x12\x1d\n" +
 	"\n" +
 	"agent_type\x18\x01 \x01(\tR\tagentType\x12\x16\n" +
 	"\x06prompt\x18\x02 \x01(\tR\x06prompt\x12D\n" +
-	"\x06params\x18\x03 \x03(\v2,.makejob.admin.v1.DebugAIRequest.ParamsEntryR\x06params\x1a9\n" +
+	"\x06params\x18\x03 \x03(\v2,.makejob.admin.v1.DebugAIRequest.ParamsEntryR\x06params\x12%\n" +
+	"\x0emodel_override\x18\x04 \x01(\tR\rmodelOverride\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x83\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8a\x02\n" +
 	"\x0fDebugAIResponse\x12\x1a\n" +
 	"\bresponse\x18\x01 \x01(\tR\bresponse\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12\x1f\n" +
 	"\vtokens_used\x18\x03 \x01(\x05R\n" +
 	"tokensUsed\x12\x1d\n" +
 	"\n" +
-	"latency_ms\x18\x04 \x01(\x03R\tlatencyMs\"\xe2\x01\n" +
+	"latency_ms\x18\x04 \x01(\x03R\tlatencyMs\x12'\n" +
+	"\x0frendered_prompt\x18\x05 \x01(\tR\x0erenderedPrompt\x12!\n" +
+	"\finput_tokens\x18\x06 \x01(\x05R\vinputTokens\x12#\n" +
+	"\routput_tokens\x18\a \x01(\x05R\foutputTokens\x12\x14\n" +
+	"\x05error\x18\b \x01(\tR\x05error\"\xe2\x01\n" +
 	"\x15ListAICallLogsRequest\x120\n" +
 	"\x04page\x18\x01 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\x12\x1d\n" +
 	"\n" +
@@ -8996,11 +9069,12 @@ const file_makejob_admin_v1_admin_proto_rawDesc = "" +
 	"\x15IndexQuestionsRequest\x12!\n" +
 	"\fquestion_ids\x18\x01 \x03(\x04R\vquestionIds\":\n" +
 	"\x15DeleteRAGIndexRequest\x12!\n" +
-	"\fquestion_ids\x18\x01 \x03(\x04R\vquestionIds\"W\n" +
+	"\fquestion_ids\x18\x01 \x03(\x04R\vquestionIds\"o\n" +
 	"\vIndexResult\x12\x18\n" +
 	"\aindexed\x18\x01 \x01(\x05R\aindexed\x12\x18\n" +
 	"\adeleted\x18\x02 \x01(\x05R\adeleted\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"F\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x16\n" +
+	"\x06failed\x18\x04 \x01(\x05R\x06failed\"F\n" +
 	"\x19SearchRAGQuestionsRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x13\n" +
 	"\x05top_k\x18\x02 \x01(\x05R\x04topK\"o\n" +
@@ -9114,9 +9188,10 @@ const file_makejob_admin_v1_admin_proto_rawDesc = "" +
 	"\akeyword\x18\x01 \x01(\tR\akeyword\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"X\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"n\n" +
 	"\x15ScraperSearchResponse\x12?\n" +
-	"\aresults\x18\x01 \x03(\v2%.makejob.admin.v1.ScraperSearchResultR\aresults\"o\n" +
+	"\aresults\x18\x01 \x03(\v2%.makejob.admin.v1.ScraperSearchResultR\aresults\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"o\n" +
 	"\x13ScraperSearchResult\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +
@@ -9316,7 +9391,7 @@ func file_makejob_admin_v1_admin_proto_rawDescGZIP() []byte {
 	return file_makejob_admin_v1_admin_proto_rawDescData
 }
 
-var file_makejob_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 135)
+var file_makejob_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 136)
 var file_makejob_admin_v1_admin_proto_goTypes = []any{
 	(*DashboardResponse)(nil),                  // 0: makejob.admin.v1.DashboardResponse
 	(*ListUsersRequest)(nil),                   // 1: makejob.admin.v1.ListUsersRequest
@@ -9438,260 +9513,262 @@ var file_makejob_admin_v1_admin_proto_goTypes = []any{
 	(*AdminConfigValue)(nil),                   // 117: makejob.admin.v1.AdminConfigValue
 	(*SetAdminConfigRequest)(nil),              // 118: makejob.admin.v1.SetAdminConfigRequest
 	nil,                                        // 119: makejob.admin.v1.TestRenderPromptRequest.ParamsEntry
-	nil,                                        // 120: makejob.admin.v1.GetAIConfigsResponse.ConfigsEntry
-	nil,                                        // 121: makejob.admin.v1.UpdateAIConfigsRequest.ConfigsEntry
-	nil,                                        // 122: makejob.admin.v1.AIPreset.ParamsEntry
-	nil,                                        // 123: makejob.admin.v1.AIPreset.ConfigsEntry
-	nil,                                        // 124: makejob.admin.v1.SaveAIPresetRequest.ParamsEntry
-	nil,                                        // 125: makejob.admin.v1.CreateAIPresetRequest.ConfigsEntry
-	nil,                                        // 126: makejob.admin.v1.UpdateAIPresetRequest.ConfigsEntry
-	nil,                                        // 127: makejob.admin.v1.DebugAIRequest.ParamsEntry
-	nil,                                        // 128: makejob.admin.v1.UpdateTTSSceneDefaultsRequest.DefaultBindingsEntry
-	nil,                                        // 129: makejob.admin.v1.GetRAGConfigsResponse.ConfigsEntry
-	nil,                                        // 130: makejob.admin.v1.UpdateRAGConfigsRequest.ConfigsEntry
-	nil,                                        // 131: makejob.admin.v1.RAGDocumentStatsResponse.StatsEntry
-	nil,                                        // 132: makejob.admin.v1.CreateRAGDocumentRequest.MetadataEntry
-	nil,                                        // 133: makejob.admin.v1.UpdateRAGDocumentRequest.MetadataEntry
-	nil,                                        // 134: makejob.admin.v1.BatchImportDocItem.MetadataEntry
-	(*v1.PageParam)(nil),                       // 135: makejob.shared.v1.PageParam
-	(*v1.PageResult)(nil),                      // 136: makejob.shared.v1.PageResult
-	(*timestamppb.Timestamp)(nil),              // 137: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                    // 138: google.protobuf.Struct
-	(*emptypb.Empty)(nil),                      // 139: google.protobuf.Empty
+	nil,                                        // 120: makejob.admin.v1.TestRenderPromptResponse.ResolvedVariablesEntry
+	nil,                                        // 121: makejob.admin.v1.GetAIConfigsResponse.ConfigsEntry
+	nil,                                        // 122: makejob.admin.v1.UpdateAIConfigsRequest.ConfigsEntry
+	nil,                                        // 123: makejob.admin.v1.AIPreset.ParamsEntry
+	nil,                                        // 124: makejob.admin.v1.AIPreset.ConfigsEntry
+	nil,                                        // 125: makejob.admin.v1.SaveAIPresetRequest.ParamsEntry
+	nil,                                        // 126: makejob.admin.v1.CreateAIPresetRequest.ConfigsEntry
+	nil,                                        // 127: makejob.admin.v1.UpdateAIPresetRequest.ConfigsEntry
+	nil,                                        // 128: makejob.admin.v1.DebugAIRequest.ParamsEntry
+	nil,                                        // 129: makejob.admin.v1.UpdateTTSSceneDefaultsRequest.DefaultBindingsEntry
+	nil,                                        // 130: makejob.admin.v1.GetRAGConfigsResponse.ConfigsEntry
+	nil,                                        // 131: makejob.admin.v1.UpdateRAGConfigsRequest.ConfigsEntry
+	nil,                                        // 132: makejob.admin.v1.RAGDocumentStatsResponse.StatsEntry
+	nil,                                        // 133: makejob.admin.v1.CreateRAGDocumentRequest.MetadataEntry
+	nil,                                        // 134: makejob.admin.v1.UpdateRAGDocumentRequest.MetadataEntry
+	nil,                                        // 135: makejob.admin.v1.BatchImportDocItem.MetadataEntry
+	(*v1.PageParam)(nil),                       // 136: makejob.shared.v1.PageParam
+	(*v1.PageResult)(nil),                      // 137: makejob.shared.v1.PageResult
+	(*timestamppb.Timestamp)(nil),              // 138: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                    // 139: google.protobuf.Struct
+	(*emptypb.Empty)(nil),                      // 140: google.protobuf.Empty
 }
 var file_makejob_admin_v1_admin_proto_depIdxs = []int32{
-	135, // 0: makejob.admin.v1.ListUsersRequest.page:type_name -> makejob.shared.v1.PageParam
+	136, // 0: makejob.admin.v1.ListUsersRequest.page:type_name -> makejob.shared.v1.PageParam
 	3,   // 1: makejob.admin.v1.ListUsersResponse.users:type_name -> makejob.admin.v1.AdminUserInfo
-	136, // 2: makejob.admin.v1.ListUsersResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	137, // 3: makejob.admin.v1.AdminUserInfo.created_at:type_name -> google.protobuf.Timestamp
-	137, // 4: makejob.admin.v1.AdminUserInfo.membership_expire_at:type_name -> google.protobuf.Timestamp
-	135, // 5: makejob.admin.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
+	137, // 2: makejob.admin.v1.ListUsersResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	138, // 3: makejob.admin.v1.AdminUserInfo.created_at:type_name -> google.protobuf.Timestamp
+	138, // 4: makejob.admin.v1.AdminUserInfo.membership_expire_at:type_name -> google.protobuf.Timestamp
+	136, // 5: makejob.admin.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
 	8,   // 6: makejob.admin.v1.AdminListQuestionsResponse.questions:type_name -> makejob.admin.v1.QuestionInfo
-	136, // 7: makejob.admin.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	137, // 8: makejob.admin.v1.QuestionInfo.created_at:type_name -> google.protobuf.Timestamp
-	137, // 9: makejob.admin.v1.QuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
+	137, // 7: makejob.admin.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	138, // 8: makejob.admin.v1.QuestionInfo.created_at:type_name -> google.protobuf.Timestamp
+	138, // 9: makejob.admin.v1.QuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
 	13,  // 10: makejob.admin.v1.BatchImportQuestionsRequest.questions:type_name -> makejob.admin.v1.ImportQuestionItem
 	16,  // 11: makejob.admin.v1.QuestionTagTaxonomyResponse.groups:type_name -> makejob.admin.v1.TagTaxonomyGroup
 	19,  // 12: makejob.admin.v1.GenerateQuestionPipelineResponse.cards:type_name -> makejob.admin.v1.PipelineCard
-	138, // 13: makejob.admin.v1.GenerateQuestionPipelineResponse.stats:type_name -> google.protobuf.Struct
+	139, // 13: makejob.admin.v1.GenerateQuestionPipelineResponse.stats:type_name -> google.protobuf.Struct
 	19,  // 14: makejob.admin.v1.ImportQuestionPipelineRequest.cards:type_name -> makejob.admin.v1.PipelineCard
 	23,  // 15: makejob.admin.v1.AdminListCategoriesResponse.categories:type_name -> makejob.admin.v1.CategoryInfo
-	137, // 16: makejob.admin.v1.CategoryInfo.created_at:type_name -> google.protobuf.Timestamp
+	138, // 16: makejob.admin.v1.CategoryInfo.created_at:type_name -> google.protobuf.Timestamp
 	23,  // 17: makejob.admin.v1.CategoryInfo.children:type_name -> makejob.admin.v1.CategoryInfo
 	28,  // 18: makejob.admin.v1.AdminListIndustriesResponse.industries:type_name -> makejob.admin.v1.IndustryInfo
-	137, // 19: makejob.admin.v1.IndustryInfo.created_at:type_name -> google.protobuf.Timestamp
+	138, // 19: makejob.admin.v1.IndustryInfo.created_at:type_name -> google.protobuf.Timestamp
 	33,  // 20: makejob.admin.v1.ListPromptTemplatesResponse.templates:type_name -> makejob.admin.v1.PromptTemplate
-	137, // 21: makejob.admin.v1.PromptTemplate.updated_at:type_name -> google.protobuf.Timestamp
+	138, // 21: makejob.admin.v1.PromptTemplate.updated_at:type_name -> google.protobuf.Timestamp
 	119, // 22: makejob.admin.v1.TestRenderPromptRequest.params:type_name -> makejob.admin.v1.TestRenderPromptRequest.ParamsEntry
-	120, // 23: makejob.admin.v1.GetAIConfigsResponse.configs:type_name -> makejob.admin.v1.GetAIConfigsResponse.ConfigsEntry
-	41,  // 24: makejob.admin.v1.GetAIConfigsResponse.items:type_name -> makejob.admin.v1.AdminConfigItem
-	44,  // 25: makejob.admin.v1.GetAIConfigsResponse.presets:type_name -> makejob.admin.v1.AIPreset
-	121, // 26: makejob.admin.v1.UpdateAIConfigsRequest.configs:type_name -> makejob.admin.v1.UpdateAIConfigsRequest.ConfigsEntry
-	44,  // 27: makejob.admin.v1.ListAIPresetsResponse.presets:type_name -> makejob.admin.v1.AIPreset
-	122, // 28: makejob.admin.v1.AIPreset.params:type_name -> makejob.admin.v1.AIPreset.ParamsEntry
-	123, // 29: makejob.admin.v1.AIPreset.configs:type_name -> makejob.admin.v1.AIPreset.ConfigsEntry
-	137, // 30: makejob.admin.v1.AIPreset.updated_at:type_name -> google.protobuf.Timestamp
-	124, // 31: makejob.admin.v1.SaveAIPresetRequest.params:type_name -> makejob.admin.v1.SaveAIPresetRequest.ParamsEntry
-	125, // 32: makejob.admin.v1.CreateAIPresetRequest.configs:type_name -> makejob.admin.v1.CreateAIPresetRequest.ConfigsEntry
-	126, // 33: makejob.admin.v1.UpdateAIPresetRequest.configs:type_name -> makejob.admin.v1.UpdateAIPresetRequest.ConfigsEntry
-	127, // 34: makejob.admin.v1.DebugAIRequest.params:type_name -> makejob.admin.v1.DebugAIRequest.ParamsEntry
-	135, // 35: makejob.admin.v1.ListAICallLogsRequest.page:type_name -> makejob.shared.v1.PageParam
-	54,  // 36: makejob.admin.v1.ListAICallLogsResponse.logs:type_name -> makejob.admin.v1.AICallLog
-	136, // 37: makejob.admin.v1.ListAICallLogsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	137, // 38: makejob.admin.v1.AICallLog.created_at:type_name -> google.protobuf.Timestamp
-	137, // 39: makejob.admin.v1.AICallLogDetail.created_at:type_name -> google.protobuf.Timestamp
-	58,  // 40: makejob.admin.v1.ListLive2DModelsResponse.models:type_name -> makejob.admin.v1.Live2DModelInfo
-	137, // 41: makejob.admin.v1.Live2DModelInfo.created_at:type_name -> google.protobuf.Timestamp
-	67,  // 42: makejob.admin.v1.ListTTSConfigsResponse.configs:type_name -> makejob.admin.v1.TTSConfigInfo
-	137, // 43: makejob.admin.v1.TTSConfigInfo.created_at:type_name -> google.protobuf.Timestamp
-	128, // 44: makejob.admin.v1.UpdateTTSSceneDefaultsRequest.default_bindings:type_name -> makejob.admin.v1.UpdateTTSSceneDefaultsRequest.DefaultBindingsEntry
-	129, // 45: makejob.admin.v1.GetRAGConfigsResponse.configs:type_name -> makejob.admin.v1.GetRAGConfigsResponse.ConfigsEntry
-	41,  // 46: makejob.admin.v1.GetRAGConfigsResponse.items:type_name -> makejob.admin.v1.AdminConfigItem
-	73,  // 47: makejob.admin.v1.GetRAGConfigsResponse.status:type_name -> makejob.admin.v1.RAGSystemStatus
-	130, // 48: makejob.admin.v1.UpdateRAGConfigsRequest.configs:type_name -> makejob.admin.v1.UpdateRAGConfigsRequest.ConfigsEntry
-	82,  // 49: makejob.admin.v1.SearchRAGQuestionsResponse.results:type_name -> makejob.admin.v1.RAGSearchResult
-	138, // 50: makejob.admin.v1.RAGSearchResult.metadata:type_name -> google.protobuf.Struct
-	135, // 51: makejob.admin.v1.ListRAGDocumentsRequest.page:type_name -> makejob.shared.v1.PageParam
-	88,  // 52: makejob.admin.v1.ListRAGDocumentsResponse.documents:type_name -> makejob.admin.v1.RAGDocumentDetail
-	136, // 53: makejob.admin.v1.ListRAGDocumentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	131, // 54: makejob.admin.v1.RAGDocumentStatsResponse.stats:type_name -> makejob.admin.v1.RAGDocumentStatsResponse.StatsEntry
-	137, // 55: makejob.admin.v1.RAGDocumentDetail.created_at:type_name -> google.protobuf.Timestamp
-	137, // 56: makejob.admin.v1.RAGDocumentDetail.updated_at:type_name -> google.protobuf.Timestamp
-	132, // 57: makejob.admin.v1.CreateRAGDocumentRequest.metadata:type_name -> makejob.admin.v1.CreateRAGDocumentRequest.MetadataEntry
-	133, // 58: makejob.admin.v1.UpdateRAGDocumentRequest.metadata:type_name -> makejob.admin.v1.UpdateRAGDocumentRequest.MetadataEntry
-	93,  // 59: makejob.admin.v1.BatchImportRAGDocumentsRequest.documents:type_name -> makejob.admin.v1.BatchImportDocItem
-	134, // 60: makejob.admin.v1.BatchImportDocItem.metadata:type_name -> makejob.admin.v1.BatchImportDocItem.MetadataEntry
-	97,  // 61: makejob.admin.v1.GetScraperSourcesResponse.sources:type_name -> makejob.admin.v1.ScraperSource
-	100, // 62: makejob.admin.v1.ScraperSearchResponse.results:type_name -> makejob.admin.v1.ScraperSearchResult
-	105, // 63: makejob.admin.v1.ScraperCleanResponse.questions:type_name -> makejob.admin.v1.ScraperCleanedQuestion
-	105, // 64: makejob.admin.v1.ScraperImportRequest.questions:type_name -> makejob.admin.v1.ScraperCleanedQuestion
-	135, // 65: makejob.admin.v1.ListScraperTasksRequest.page:type_name -> makejob.shared.v1.PageParam
-	112, // 66: makejob.admin.v1.ListScraperTasksResponse.tasks:type_name -> makejob.admin.v1.ScraperTaskDetail
-	136, // 67: makejob.admin.v1.ListScraperTasksResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	137, // 68: makejob.admin.v1.ScraperTaskDetail.created_at:type_name -> google.protobuf.Timestamp
-	137, // 69: makejob.admin.v1.ScraperTaskDetail.updated_at:type_name -> google.protobuf.Timestamp
-	137, // 70: makejob.admin.v1.ScraperTaskDetail.started_at:type_name -> google.protobuf.Timestamp
-	137, // 71: makejob.admin.v1.ScraperTaskDetail.finished_at:type_name -> google.protobuf.Timestamp
-	137, // 72: makejob.admin.v1.UpdateQuestionPipelineTaskRequest.started_at:type_name -> google.protobuf.Timestamp
-	137, // 73: makejob.admin.v1.UpdateQuestionPipelineTaskRequest.finished_at:type_name -> google.protobuf.Timestamp
-	112, // 74: makejob.admin.v1.UpdateQuestionPipelineTaskResponse.task:type_name -> makejob.admin.v1.ScraperTaskDetail
-	139, // 75: makejob.admin.v1.AdminService.GetDashboard:input_type -> google.protobuf.Empty
-	1,   // 76: makejob.admin.v1.AdminService.ListUsers:input_type -> makejob.admin.v1.ListUsersRequest
-	4,   // 77: makejob.admin.v1.AdminService.UpdateUserRole:input_type -> makejob.admin.v1.UpdateUserRoleRequest
-	5,   // 78: makejob.admin.v1.AdminService.DisableUser:input_type -> makejob.admin.v1.DisableUserRequest
-	6,   // 79: makejob.admin.v1.AdminService.AdminListQuestions:input_type -> makejob.admin.v1.AdminListQuestionsRequest
-	9,   // 80: makejob.admin.v1.AdminService.CreateQuestion:input_type -> makejob.admin.v1.CreateQuestionRequest
-	10,  // 81: makejob.admin.v1.AdminService.UpdateQuestion:input_type -> makejob.admin.v1.UpdateQuestionRequest
-	11,  // 82: makejob.admin.v1.AdminService.DeleteQuestion:input_type -> makejob.admin.v1.DeleteQuestionRequest
-	12,  // 83: makejob.admin.v1.AdminService.BatchImportQuestions:input_type -> makejob.admin.v1.BatchImportQuestionsRequest
-	139, // 84: makejob.admin.v1.AdminService.GetQuestionTagTaxonomy:input_type -> google.protobuf.Empty
-	17,  // 85: makejob.admin.v1.AdminService.GenerateQuestionPipeline:input_type -> makejob.admin.v1.GenerateQuestionPipelineRequest
-	17,  // 86: makejob.admin.v1.AdminService.GenerateQuestionPipelineAsync:input_type -> makejob.admin.v1.GenerateQuestionPipelineRequest
-	21,  // 87: makejob.admin.v1.AdminService.ImportQuestionPipeline:input_type -> makejob.admin.v1.ImportQuestionPipelineRequest
-	139, // 88: makejob.admin.v1.AdminService.AdminListCategories:input_type -> google.protobuf.Empty
-	24,  // 89: makejob.admin.v1.AdminService.CreateCategory:input_type -> makejob.admin.v1.CreateCategoryRequest
-	25,  // 90: makejob.admin.v1.AdminService.UpdateCategory:input_type -> makejob.admin.v1.UpdateCategoryRequest
-	26,  // 91: makejob.admin.v1.AdminService.DeleteCategory:input_type -> makejob.admin.v1.DeleteCategoryRequest
-	139, // 92: makejob.admin.v1.AdminService.AdminListIndustries:input_type -> google.protobuf.Empty
-	29,  // 93: makejob.admin.v1.AdminService.CreateIndustry:input_type -> makejob.admin.v1.CreateIndustryRequest
-	30,  // 94: makejob.admin.v1.AdminService.UpdateIndustry:input_type -> makejob.admin.v1.UpdateIndustryRequest
-	31,  // 95: makejob.admin.v1.AdminService.ListPromptTemplates:input_type -> makejob.admin.v1.ListPromptTemplatesRequest
-	34,  // 96: makejob.admin.v1.AdminService.SavePromptTemplate:input_type -> makejob.admin.v1.SavePromptTemplateRequest
-	35,  // 97: makejob.admin.v1.AdminService.CreatePrompt:input_type -> makejob.admin.v1.CreatePromptRequest
-	36,  // 98: makejob.admin.v1.AdminService.UpdatePrompt:input_type -> makejob.admin.v1.UpdatePromptRequest
-	37,  // 99: makejob.admin.v1.AdminService.DeletePrompt:input_type -> makejob.admin.v1.DeletePromptRequest
-	38,  // 100: makejob.admin.v1.AdminService.TestRenderPrompt:input_type -> makejob.admin.v1.TestRenderPromptRequest
-	139, // 101: makejob.admin.v1.AdminService.GetAIConfigs:input_type -> google.protobuf.Empty
-	42,  // 102: makejob.admin.v1.AdminService.UpdateAIConfigs:input_type -> makejob.admin.v1.UpdateAIConfigsRequest
-	139, // 103: makejob.admin.v1.AdminService.ListAIPresets:input_type -> google.protobuf.Empty
-	45,  // 104: makejob.admin.v1.AdminService.SaveAIPreset:input_type -> makejob.admin.v1.SaveAIPresetRequest
-	46,  // 105: makejob.admin.v1.AdminService.CreateAIPreset:input_type -> makejob.admin.v1.CreateAIPresetRequest
-	47,  // 106: makejob.admin.v1.AdminService.UpdateAIPreset:input_type -> makejob.admin.v1.UpdateAIPresetRequest
-	48,  // 107: makejob.admin.v1.AdminService.DeleteAIPreset:input_type -> makejob.admin.v1.DeleteAIPresetRequest
-	49,  // 108: makejob.admin.v1.AdminService.ApplyAIPreset:input_type -> makejob.admin.v1.ApplyAIPresetRequest
-	50,  // 109: makejob.admin.v1.AdminService.DebugAI:input_type -> makejob.admin.v1.DebugAIRequest
-	52,  // 110: makejob.admin.v1.AdminService.ListAICallLogs:input_type -> makejob.admin.v1.ListAICallLogsRequest
-	55,  // 111: makejob.admin.v1.AdminService.GetAICallLog:input_type -> makejob.admin.v1.GetAICallLogRequest
-	139, // 112: makejob.admin.v1.AdminService.ListLive2DModels:input_type -> google.protobuf.Empty
-	59,  // 113: makejob.admin.v1.AdminService.CreateLive2DModel:input_type -> makejob.admin.v1.CreateLive2DModelRequest
-	60,  // 114: makejob.admin.v1.AdminService.UpdateLive2DModel:input_type -> makejob.admin.v1.UpdateLive2DModelRequest
-	61,  // 115: makejob.admin.v1.AdminService.DeleteLive2DModel:input_type -> makejob.admin.v1.DeleteLive2DModelRequest
-	62,  // 116: makejob.admin.v1.AdminService.ImportLive2DPackage:input_type -> makejob.admin.v1.ImportLive2DPackageRequest
-	64,  // 117: makejob.admin.v1.AdminService.ImportLive2DBackground:input_type -> makejob.admin.v1.ImportLive2DBackgroundRequest
-	139, // 118: makejob.admin.v1.AdminService.ListTTSConfigs:input_type -> google.protobuf.Empty
-	68,  // 119: makejob.admin.v1.AdminService.CreateTTSConfig:input_type -> makejob.admin.v1.CreateTTSConfigRequest
-	69,  // 120: makejob.admin.v1.AdminService.UpdateTTSConfig:input_type -> makejob.admin.v1.UpdateTTSConfigRequest
-	70,  // 121: makejob.admin.v1.AdminService.DeleteTTSConfig:input_type -> makejob.admin.v1.DeleteTTSConfigRequest
-	71,  // 122: makejob.admin.v1.AdminService.UpdateTTSSceneDefaults:input_type -> makejob.admin.v1.UpdateTTSSceneDefaultsRequest
-	139, // 123: makejob.admin.v1.AdminService.GetRAGConfigs:input_type -> google.protobuf.Empty
-	74,  // 124: makejob.admin.v1.AdminService.UpdateRAGConfigs:input_type -> makejob.admin.v1.UpdateRAGConfigsRequest
-	139, // 125: makejob.admin.v1.AdminService.TestRAGConnection:input_type -> google.protobuf.Empty
-	76,  // 126: makejob.admin.v1.AdminService.IndexAllQuestions:input_type -> makejob.admin.v1.IndexAllQuestionsRequest
-	77,  // 127: makejob.admin.v1.AdminService.IndexQuestions:input_type -> makejob.admin.v1.IndexQuestionsRequest
-	78,  // 128: makejob.admin.v1.AdminService.DeleteRAGIndex:input_type -> makejob.admin.v1.DeleteRAGIndexRequest
-	80,  // 129: makejob.admin.v1.AdminService.SearchRAGQuestions:input_type -> makejob.admin.v1.SearchRAGQuestionsRequest
-	83,  // 130: makejob.admin.v1.AdminService.ListRAGDocuments:input_type -> makejob.admin.v1.ListRAGDocumentsRequest
-	85,  // 131: makejob.admin.v1.AdminService.GetRAGDocumentStats:input_type -> makejob.admin.v1.GetRAGDocumentStatsRequest
-	87,  // 132: makejob.admin.v1.AdminService.GetRAGDocument:input_type -> makejob.admin.v1.GetRAGDocumentRequest
-	89,  // 133: makejob.admin.v1.AdminService.CreateRAGDocument:input_type -> makejob.admin.v1.CreateRAGDocumentRequest
-	90,  // 134: makejob.admin.v1.AdminService.UpdateRAGDocument:input_type -> makejob.admin.v1.UpdateRAGDocumentRequest
-	91,  // 135: makejob.admin.v1.AdminService.DeleteRAGDocument:input_type -> makejob.admin.v1.DeleteRAGDocumentRequest
-	92,  // 136: makejob.admin.v1.AdminService.BatchImportRAGDocuments:input_type -> makejob.admin.v1.BatchImportRAGDocumentsRequest
-	95,  // 137: makejob.admin.v1.AdminService.SyncRAGDocumentsToVectorDB:input_type -> makejob.admin.v1.SyncRAGDocumentsRequest
-	139, // 138: makejob.admin.v1.AdminService.SyncAllPendingRAGDocuments:input_type -> google.protobuf.Empty
-	139, // 139: makejob.admin.v1.AdminService.GetScraperSources:input_type -> google.protobuf.Empty
-	98,  // 140: makejob.admin.v1.AdminService.ScraperSearch:input_type -> makejob.admin.v1.ScraperSearchRequest
-	101, // 141: makejob.admin.v1.AdminService.ScraperFetch:input_type -> makejob.admin.v1.ScraperFetchRequest
-	103, // 142: makejob.admin.v1.AdminService.ScraperClean:input_type -> makejob.admin.v1.ScraperCleanRequest
-	106, // 143: makejob.admin.v1.AdminService.ScraperImport:input_type -> makejob.admin.v1.ScraperImportRequest
-	106, // 144: makejob.admin.v1.AdminService.ScraperImportAsync:input_type -> makejob.admin.v1.ScraperImportRequest
-	109, // 145: makejob.admin.v1.AdminService.ListScraperTasks:input_type -> makejob.admin.v1.ListScraperTasksRequest
-	111, // 146: makejob.admin.v1.AdminService.GetScraperTask:input_type -> makejob.admin.v1.GetScraperTaskRequest
-	113, // 147: makejob.admin.v1.AdminService.UpdateQuestionPipelineTask:input_type -> makejob.admin.v1.UpdateQuestionPipelineTaskRequest
-	115, // 148: makejob.admin.v1.AdminService.RetryScraperTask:input_type -> makejob.admin.v1.RetryScraperTaskRequest
-	116, // 149: makejob.admin.v1.AdminService.GetAdminConfig:input_type -> makejob.admin.v1.GetAdminConfigRequest
-	118, // 150: makejob.admin.v1.AdminService.SetAdminConfig:input_type -> makejob.admin.v1.SetAdminConfigRequest
-	0,   // 151: makejob.admin.v1.AdminService.GetDashboard:output_type -> makejob.admin.v1.DashboardResponse
-	2,   // 152: makejob.admin.v1.AdminService.ListUsers:output_type -> makejob.admin.v1.ListUsersResponse
-	139, // 153: makejob.admin.v1.AdminService.UpdateUserRole:output_type -> google.protobuf.Empty
-	139, // 154: makejob.admin.v1.AdminService.DisableUser:output_type -> google.protobuf.Empty
-	7,   // 155: makejob.admin.v1.AdminService.AdminListQuestions:output_type -> makejob.admin.v1.AdminListQuestionsResponse
-	8,   // 156: makejob.admin.v1.AdminService.CreateQuestion:output_type -> makejob.admin.v1.QuestionInfo
-	139, // 157: makejob.admin.v1.AdminService.UpdateQuestion:output_type -> google.protobuf.Empty
-	139, // 158: makejob.admin.v1.AdminService.DeleteQuestion:output_type -> google.protobuf.Empty
-	14,  // 159: makejob.admin.v1.AdminService.BatchImportQuestions:output_type -> makejob.admin.v1.BatchImportQuestionsResponse
-	15,  // 160: makejob.admin.v1.AdminService.GetQuestionTagTaxonomy:output_type -> makejob.admin.v1.QuestionTagTaxonomyResponse
-	18,  // 161: makejob.admin.v1.AdminService.GenerateQuestionPipeline:output_type -> makejob.admin.v1.GenerateQuestionPipelineResponse
-	20,  // 162: makejob.admin.v1.AdminService.GenerateQuestionPipelineAsync:output_type -> makejob.admin.v1.PipelineTaskInfo
-	14,  // 163: makejob.admin.v1.AdminService.ImportQuestionPipeline:output_type -> makejob.admin.v1.BatchImportQuestionsResponse
-	22,  // 164: makejob.admin.v1.AdminService.AdminListCategories:output_type -> makejob.admin.v1.AdminListCategoriesResponse
-	23,  // 165: makejob.admin.v1.AdminService.CreateCategory:output_type -> makejob.admin.v1.CategoryInfo
-	139, // 166: makejob.admin.v1.AdminService.UpdateCategory:output_type -> google.protobuf.Empty
-	139, // 167: makejob.admin.v1.AdminService.DeleteCategory:output_type -> google.protobuf.Empty
-	27,  // 168: makejob.admin.v1.AdminService.AdminListIndustries:output_type -> makejob.admin.v1.AdminListIndustriesResponse
-	28,  // 169: makejob.admin.v1.AdminService.CreateIndustry:output_type -> makejob.admin.v1.IndustryInfo
-	139, // 170: makejob.admin.v1.AdminService.UpdateIndustry:output_type -> google.protobuf.Empty
-	32,  // 171: makejob.admin.v1.AdminService.ListPromptTemplates:output_type -> makejob.admin.v1.ListPromptTemplatesResponse
-	33,  // 172: makejob.admin.v1.AdminService.SavePromptTemplate:output_type -> makejob.admin.v1.PromptTemplate
-	33,  // 173: makejob.admin.v1.AdminService.CreatePrompt:output_type -> makejob.admin.v1.PromptTemplate
-	139, // 174: makejob.admin.v1.AdminService.UpdatePrompt:output_type -> google.protobuf.Empty
-	139, // 175: makejob.admin.v1.AdminService.DeletePrompt:output_type -> google.protobuf.Empty
-	39,  // 176: makejob.admin.v1.AdminService.TestRenderPrompt:output_type -> makejob.admin.v1.TestRenderPromptResponse
-	40,  // 177: makejob.admin.v1.AdminService.GetAIConfigs:output_type -> makejob.admin.v1.GetAIConfigsResponse
-	139, // 178: makejob.admin.v1.AdminService.UpdateAIConfigs:output_type -> google.protobuf.Empty
-	43,  // 179: makejob.admin.v1.AdminService.ListAIPresets:output_type -> makejob.admin.v1.ListAIPresetsResponse
-	44,  // 180: makejob.admin.v1.AdminService.SaveAIPreset:output_type -> makejob.admin.v1.AIPreset
-	44,  // 181: makejob.admin.v1.AdminService.CreateAIPreset:output_type -> makejob.admin.v1.AIPreset
-	44,  // 182: makejob.admin.v1.AdminService.UpdateAIPreset:output_type -> makejob.admin.v1.AIPreset
-	139, // 183: makejob.admin.v1.AdminService.DeleteAIPreset:output_type -> google.protobuf.Empty
-	40,  // 184: makejob.admin.v1.AdminService.ApplyAIPreset:output_type -> makejob.admin.v1.GetAIConfigsResponse
-	51,  // 185: makejob.admin.v1.AdminService.DebugAI:output_type -> makejob.admin.v1.DebugAIResponse
-	53,  // 186: makejob.admin.v1.AdminService.ListAICallLogs:output_type -> makejob.admin.v1.ListAICallLogsResponse
-	56,  // 187: makejob.admin.v1.AdminService.GetAICallLog:output_type -> makejob.admin.v1.AICallLogDetail
-	57,  // 188: makejob.admin.v1.AdminService.ListLive2DModels:output_type -> makejob.admin.v1.ListLive2DModelsResponse
-	58,  // 189: makejob.admin.v1.AdminService.CreateLive2DModel:output_type -> makejob.admin.v1.Live2DModelInfo
-	139, // 190: makejob.admin.v1.AdminService.UpdateLive2DModel:output_type -> google.protobuf.Empty
-	139, // 191: makejob.admin.v1.AdminService.DeleteLive2DModel:output_type -> google.protobuf.Empty
-	63,  // 192: makejob.admin.v1.AdminService.ImportLive2DPackage:output_type -> makejob.admin.v1.ImportLive2DPackageResponse
-	65,  // 193: makejob.admin.v1.AdminService.ImportLive2DBackground:output_type -> makejob.admin.v1.ImportLive2DBackgroundResponse
-	66,  // 194: makejob.admin.v1.AdminService.ListTTSConfigs:output_type -> makejob.admin.v1.ListTTSConfigsResponse
-	67,  // 195: makejob.admin.v1.AdminService.CreateTTSConfig:output_type -> makejob.admin.v1.TTSConfigInfo
-	139, // 196: makejob.admin.v1.AdminService.UpdateTTSConfig:output_type -> google.protobuf.Empty
-	139, // 197: makejob.admin.v1.AdminService.DeleteTTSConfig:output_type -> google.protobuf.Empty
-	139, // 198: makejob.admin.v1.AdminService.UpdateTTSSceneDefaults:output_type -> google.protobuf.Empty
-	72,  // 199: makejob.admin.v1.AdminService.GetRAGConfigs:output_type -> makejob.admin.v1.GetRAGConfigsResponse
-	139, // 200: makejob.admin.v1.AdminService.UpdateRAGConfigs:output_type -> google.protobuf.Empty
-	75,  // 201: makejob.admin.v1.AdminService.TestRAGConnection:output_type -> makejob.admin.v1.TestRAGConnectionResponse
-	79,  // 202: makejob.admin.v1.AdminService.IndexAllQuestions:output_type -> makejob.admin.v1.IndexResult
-	79,  // 203: makejob.admin.v1.AdminService.IndexQuestions:output_type -> makejob.admin.v1.IndexResult
-	79,  // 204: makejob.admin.v1.AdminService.DeleteRAGIndex:output_type -> makejob.admin.v1.IndexResult
-	81,  // 205: makejob.admin.v1.AdminService.SearchRAGQuestions:output_type -> makejob.admin.v1.SearchRAGQuestionsResponse
-	84,  // 206: makejob.admin.v1.AdminService.ListRAGDocuments:output_type -> makejob.admin.v1.ListRAGDocumentsResponse
-	86,  // 207: makejob.admin.v1.AdminService.GetRAGDocumentStats:output_type -> makejob.admin.v1.RAGDocumentStatsResponse
-	88,  // 208: makejob.admin.v1.AdminService.GetRAGDocument:output_type -> makejob.admin.v1.RAGDocumentDetail
-	88,  // 209: makejob.admin.v1.AdminService.CreateRAGDocument:output_type -> makejob.admin.v1.RAGDocumentDetail
-	139, // 210: makejob.admin.v1.AdminService.UpdateRAGDocument:output_type -> google.protobuf.Empty
-	139, // 211: makejob.admin.v1.AdminService.DeleteRAGDocument:output_type -> google.protobuf.Empty
-	94,  // 212: makejob.admin.v1.AdminService.BatchImportRAGDocuments:output_type -> makejob.admin.v1.BatchImportRAGDocumentsResponse
-	139, // 213: makejob.admin.v1.AdminService.SyncRAGDocumentsToVectorDB:output_type -> google.protobuf.Empty
-	139, // 214: makejob.admin.v1.AdminService.SyncAllPendingRAGDocuments:output_type -> google.protobuf.Empty
-	96,  // 215: makejob.admin.v1.AdminService.GetScraperSources:output_type -> makejob.admin.v1.GetScraperSourcesResponse
-	99,  // 216: makejob.admin.v1.AdminService.ScraperSearch:output_type -> makejob.admin.v1.ScraperSearchResponse
-	102, // 217: makejob.admin.v1.AdminService.ScraperFetch:output_type -> makejob.admin.v1.ScraperFetchResponse
-	104, // 218: makejob.admin.v1.AdminService.ScraperClean:output_type -> makejob.admin.v1.ScraperCleanResponse
-	107, // 219: makejob.admin.v1.AdminService.ScraperImport:output_type -> makejob.admin.v1.ScraperImportResponse
-	108, // 220: makejob.admin.v1.AdminService.ScraperImportAsync:output_type -> makejob.admin.v1.ScraperTaskInfo
-	110, // 221: makejob.admin.v1.AdminService.ListScraperTasks:output_type -> makejob.admin.v1.ListScraperTasksResponse
-	112, // 222: makejob.admin.v1.AdminService.GetScraperTask:output_type -> makejob.admin.v1.ScraperTaskDetail
-	114, // 223: makejob.admin.v1.AdminService.UpdateQuestionPipelineTask:output_type -> makejob.admin.v1.UpdateQuestionPipelineTaskResponse
-	108, // 224: makejob.admin.v1.AdminService.RetryScraperTask:output_type -> makejob.admin.v1.ScraperTaskInfo
-	117, // 225: makejob.admin.v1.AdminService.GetAdminConfig:output_type -> makejob.admin.v1.AdminConfigValue
-	139, // 226: makejob.admin.v1.AdminService.SetAdminConfig:output_type -> google.protobuf.Empty
-	151, // [151:227] is the sub-list for method output_type
-	75,  // [75:151] is the sub-list for method input_type
-	75,  // [75:75] is the sub-list for extension type_name
-	75,  // [75:75] is the sub-list for extension extendee
-	0,   // [0:75] is the sub-list for field type_name
+	120, // 23: makejob.admin.v1.TestRenderPromptResponse.resolved_variables:type_name -> makejob.admin.v1.TestRenderPromptResponse.ResolvedVariablesEntry
+	121, // 24: makejob.admin.v1.GetAIConfigsResponse.configs:type_name -> makejob.admin.v1.GetAIConfigsResponse.ConfigsEntry
+	41,  // 25: makejob.admin.v1.GetAIConfigsResponse.items:type_name -> makejob.admin.v1.AdminConfigItem
+	44,  // 26: makejob.admin.v1.GetAIConfigsResponse.presets:type_name -> makejob.admin.v1.AIPreset
+	122, // 27: makejob.admin.v1.UpdateAIConfigsRequest.configs:type_name -> makejob.admin.v1.UpdateAIConfigsRequest.ConfigsEntry
+	44,  // 28: makejob.admin.v1.ListAIPresetsResponse.presets:type_name -> makejob.admin.v1.AIPreset
+	123, // 29: makejob.admin.v1.AIPreset.params:type_name -> makejob.admin.v1.AIPreset.ParamsEntry
+	124, // 30: makejob.admin.v1.AIPreset.configs:type_name -> makejob.admin.v1.AIPreset.ConfigsEntry
+	138, // 31: makejob.admin.v1.AIPreset.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 32: makejob.admin.v1.SaveAIPresetRequest.params:type_name -> makejob.admin.v1.SaveAIPresetRequest.ParamsEntry
+	126, // 33: makejob.admin.v1.CreateAIPresetRequest.configs:type_name -> makejob.admin.v1.CreateAIPresetRequest.ConfigsEntry
+	127, // 34: makejob.admin.v1.UpdateAIPresetRequest.configs:type_name -> makejob.admin.v1.UpdateAIPresetRequest.ConfigsEntry
+	128, // 35: makejob.admin.v1.DebugAIRequest.params:type_name -> makejob.admin.v1.DebugAIRequest.ParamsEntry
+	136, // 36: makejob.admin.v1.ListAICallLogsRequest.page:type_name -> makejob.shared.v1.PageParam
+	54,  // 37: makejob.admin.v1.ListAICallLogsResponse.logs:type_name -> makejob.admin.v1.AICallLog
+	137, // 38: makejob.admin.v1.ListAICallLogsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	138, // 39: makejob.admin.v1.AICallLog.created_at:type_name -> google.protobuf.Timestamp
+	138, // 40: makejob.admin.v1.AICallLogDetail.created_at:type_name -> google.protobuf.Timestamp
+	58,  // 41: makejob.admin.v1.ListLive2DModelsResponse.models:type_name -> makejob.admin.v1.Live2DModelInfo
+	138, // 42: makejob.admin.v1.Live2DModelInfo.created_at:type_name -> google.protobuf.Timestamp
+	67,  // 43: makejob.admin.v1.ListTTSConfigsResponse.configs:type_name -> makejob.admin.v1.TTSConfigInfo
+	138, // 44: makejob.admin.v1.TTSConfigInfo.created_at:type_name -> google.protobuf.Timestamp
+	129, // 45: makejob.admin.v1.UpdateTTSSceneDefaultsRequest.default_bindings:type_name -> makejob.admin.v1.UpdateTTSSceneDefaultsRequest.DefaultBindingsEntry
+	130, // 46: makejob.admin.v1.GetRAGConfigsResponse.configs:type_name -> makejob.admin.v1.GetRAGConfigsResponse.ConfigsEntry
+	41,  // 47: makejob.admin.v1.GetRAGConfigsResponse.items:type_name -> makejob.admin.v1.AdminConfigItem
+	73,  // 48: makejob.admin.v1.GetRAGConfigsResponse.status:type_name -> makejob.admin.v1.RAGSystemStatus
+	131, // 49: makejob.admin.v1.UpdateRAGConfigsRequest.configs:type_name -> makejob.admin.v1.UpdateRAGConfigsRequest.ConfigsEntry
+	82,  // 50: makejob.admin.v1.SearchRAGQuestionsResponse.results:type_name -> makejob.admin.v1.RAGSearchResult
+	139, // 51: makejob.admin.v1.RAGSearchResult.metadata:type_name -> google.protobuf.Struct
+	136, // 52: makejob.admin.v1.ListRAGDocumentsRequest.page:type_name -> makejob.shared.v1.PageParam
+	88,  // 53: makejob.admin.v1.ListRAGDocumentsResponse.documents:type_name -> makejob.admin.v1.RAGDocumentDetail
+	137, // 54: makejob.admin.v1.ListRAGDocumentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	132, // 55: makejob.admin.v1.RAGDocumentStatsResponse.stats:type_name -> makejob.admin.v1.RAGDocumentStatsResponse.StatsEntry
+	138, // 56: makejob.admin.v1.RAGDocumentDetail.created_at:type_name -> google.protobuf.Timestamp
+	138, // 57: makejob.admin.v1.RAGDocumentDetail.updated_at:type_name -> google.protobuf.Timestamp
+	133, // 58: makejob.admin.v1.CreateRAGDocumentRequest.metadata:type_name -> makejob.admin.v1.CreateRAGDocumentRequest.MetadataEntry
+	134, // 59: makejob.admin.v1.UpdateRAGDocumentRequest.metadata:type_name -> makejob.admin.v1.UpdateRAGDocumentRequest.MetadataEntry
+	93,  // 60: makejob.admin.v1.BatchImportRAGDocumentsRequest.documents:type_name -> makejob.admin.v1.BatchImportDocItem
+	135, // 61: makejob.admin.v1.BatchImportDocItem.metadata:type_name -> makejob.admin.v1.BatchImportDocItem.MetadataEntry
+	97,  // 62: makejob.admin.v1.GetScraperSourcesResponse.sources:type_name -> makejob.admin.v1.ScraperSource
+	100, // 63: makejob.admin.v1.ScraperSearchResponse.results:type_name -> makejob.admin.v1.ScraperSearchResult
+	105, // 64: makejob.admin.v1.ScraperCleanResponse.questions:type_name -> makejob.admin.v1.ScraperCleanedQuestion
+	105, // 65: makejob.admin.v1.ScraperImportRequest.questions:type_name -> makejob.admin.v1.ScraperCleanedQuestion
+	136, // 66: makejob.admin.v1.ListScraperTasksRequest.page:type_name -> makejob.shared.v1.PageParam
+	112, // 67: makejob.admin.v1.ListScraperTasksResponse.tasks:type_name -> makejob.admin.v1.ScraperTaskDetail
+	137, // 68: makejob.admin.v1.ListScraperTasksResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	138, // 69: makejob.admin.v1.ScraperTaskDetail.created_at:type_name -> google.protobuf.Timestamp
+	138, // 70: makejob.admin.v1.ScraperTaskDetail.updated_at:type_name -> google.protobuf.Timestamp
+	138, // 71: makejob.admin.v1.ScraperTaskDetail.started_at:type_name -> google.protobuf.Timestamp
+	138, // 72: makejob.admin.v1.ScraperTaskDetail.finished_at:type_name -> google.protobuf.Timestamp
+	138, // 73: makejob.admin.v1.UpdateQuestionPipelineTaskRequest.started_at:type_name -> google.protobuf.Timestamp
+	138, // 74: makejob.admin.v1.UpdateQuestionPipelineTaskRequest.finished_at:type_name -> google.protobuf.Timestamp
+	112, // 75: makejob.admin.v1.UpdateQuestionPipelineTaskResponse.task:type_name -> makejob.admin.v1.ScraperTaskDetail
+	140, // 76: makejob.admin.v1.AdminService.GetDashboard:input_type -> google.protobuf.Empty
+	1,   // 77: makejob.admin.v1.AdminService.ListUsers:input_type -> makejob.admin.v1.ListUsersRequest
+	4,   // 78: makejob.admin.v1.AdminService.UpdateUserRole:input_type -> makejob.admin.v1.UpdateUserRoleRequest
+	5,   // 79: makejob.admin.v1.AdminService.DisableUser:input_type -> makejob.admin.v1.DisableUserRequest
+	6,   // 80: makejob.admin.v1.AdminService.AdminListQuestions:input_type -> makejob.admin.v1.AdminListQuestionsRequest
+	9,   // 81: makejob.admin.v1.AdminService.CreateQuestion:input_type -> makejob.admin.v1.CreateQuestionRequest
+	10,  // 82: makejob.admin.v1.AdminService.UpdateQuestion:input_type -> makejob.admin.v1.UpdateQuestionRequest
+	11,  // 83: makejob.admin.v1.AdminService.DeleteQuestion:input_type -> makejob.admin.v1.DeleteQuestionRequest
+	12,  // 84: makejob.admin.v1.AdminService.BatchImportQuestions:input_type -> makejob.admin.v1.BatchImportQuestionsRequest
+	140, // 85: makejob.admin.v1.AdminService.GetQuestionTagTaxonomy:input_type -> google.protobuf.Empty
+	17,  // 86: makejob.admin.v1.AdminService.GenerateQuestionPipeline:input_type -> makejob.admin.v1.GenerateQuestionPipelineRequest
+	17,  // 87: makejob.admin.v1.AdminService.GenerateQuestionPipelineAsync:input_type -> makejob.admin.v1.GenerateQuestionPipelineRequest
+	21,  // 88: makejob.admin.v1.AdminService.ImportQuestionPipeline:input_type -> makejob.admin.v1.ImportQuestionPipelineRequest
+	140, // 89: makejob.admin.v1.AdminService.AdminListCategories:input_type -> google.protobuf.Empty
+	24,  // 90: makejob.admin.v1.AdminService.CreateCategory:input_type -> makejob.admin.v1.CreateCategoryRequest
+	25,  // 91: makejob.admin.v1.AdminService.UpdateCategory:input_type -> makejob.admin.v1.UpdateCategoryRequest
+	26,  // 92: makejob.admin.v1.AdminService.DeleteCategory:input_type -> makejob.admin.v1.DeleteCategoryRequest
+	140, // 93: makejob.admin.v1.AdminService.AdminListIndustries:input_type -> google.protobuf.Empty
+	29,  // 94: makejob.admin.v1.AdminService.CreateIndustry:input_type -> makejob.admin.v1.CreateIndustryRequest
+	30,  // 95: makejob.admin.v1.AdminService.UpdateIndustry:input_type -> makejob.admin.v1.UpdateIndustryRequest
+	31,  // 96: makejob.admin.v1.AdminService.ListPromptTemplates:input_type -> makejob.admin.v1.ListPromptTemplatesRequest
+	34,  // 97: makejob.admin.v1.AdminService.SavePromptTemplate:input_type -> makejob.admin.v1.SavePromptTemplateRequest
+	35,  // 98: makejob.admin.v1.AdminService.CreatePrompt:input_type -> makejob.admin.v1.CreatePromptRequest
+	36,  // 99: makejob.admin.v1.AdminService.UpdatePrompt:input_type -> makejob.admin.v1.UpdatePromptRequest
+	37,  // 100: makejob.admin.v1.AdminService.DeletePrompt:input_type -> makejob.admin.v1.DeletePromptRequest
+	38,  // 101: makejob.admin.v1.AdminService.TestRenderPrompt:input_type -> makejob.admin.v1.TestRenderPromptRequest
+	140, // 102: makejob.admin.v1.AdminService.GetAIConfigs:input_type -> google.protobuf.Empty
+	42,  // 103: makejob.admin.v1.AdminService.UpdateAIConfigs:input_type -> makejob.admin.v1.UpdateAIConfigsRequest
+	140, // 104: makejob.admin.v1.AdminService.ListAIPresets:input_type -> google.protobuf.Empty
+	45,  // 105: makejob.admin.v1.AdminService.SaveAIPreset:input_type -> makejob.admin.v1.SaveAIPresetRequest
+	46,  // 106: makejob.admin.v1.AdminService.CreateAIPreset:input_type -> makejob.admin.v1.CreateAIPresetRequest
+	47,  // 107: makejob.admin.v1.AdminService.UpdateAIPreset:input_type -> makejob.admin.v1.UpdateAIPresetRequest
+	48,  // 108: makejob.admin.v1.AdminService.DeleteAIPreset:input_type -> makejob.admin.v1.DeleteAIPresetRequest
+	49,  // 109: makejob.admin.v1.AdminService.ApplyAIPreset:input_type -> makejob.admin.v1.ApplyAIPresetRequest
+	50,  // 110: makejob.admin.v1.AdminService.DebugAI:input_type -> makejob.admin.v1.DebugAIRequest
+	52,  // 111: makejob.admin.v1.AdminService.ListAICallLogs:input_type -> makejob.admin.v1.ListAICallLogsRequest
+	55,  // 112: makejob.admin.v1.AdminService.GetAICallLog:input_type -> makejob.admin.v1.GetAICallLogRequest
+	140, // 113: makejob.admin.v1.AdminService.ListLive2DModels:input_type -> google.protobuf.Empty
+	59,  // 114: makejob.admin.v1.AdminService.CreateLive2DModel:input_type -> makejob.admin.v1.CreateLive2DModelRequest
+	60,  // 115: makejob.admin.v1.AdminService.UpdateLive2DModel:input_type -> makejob.admin.v1.UpdateLive2DModelRequest
+	61,  // 116: makejob.admin.v1.AdminService.DeleteLive2DModel:input_type -> makejob.admin.v1.DeleteLive2DModelRequest
+	62,  // 117: makejob.admin.v1.AdminService.ImportLive2DPackage:input_type -> makejob.admin.v1.ImportLive2DPackageRequest
+	64,  // 118: makejob.admin.v1.AdminService.ImportLive2DBackground:input_type -> makejob.admin.v1.ImportLive2DBackgroundRequest
+	140, // 119: makejob.admin.v1.AdminService.ListTTSConfigs:input_type -> google.protobuf.Empty
+	68,  // 120: makejob.admin.v1.AdminService.CreateTTSConfig:input_type -> makejob.admin.v1.CreateTTSConfigRequest
+	69,  // 121: makejob.admin.v1.AdminService.UpdateTTSConfig:input_type -> makejob.admin.v1.UpdateTTSConfigRequest
+	70,  // 122: makejob.admin.v1.AdminService.DeleteTTSConfig:input_type -> makejob.admin.v1.DeleteTTSConfigRequest
+	71,  // 123: makejob.admin.v1.AdminService.UpdateTTSSceneDefaults:input_type -> makejob.admin.v1.UpdateTTSSceneDefaultsRequest
+	140, // 124: makejob.admin.v1.AdminService.GetRAGConfigs:input_type -> google.protobuf.Empty
+	74,  // 125: makejob.admin.v1.AdminService.UpdateRAGConfigs:input_type -> makejob.admin.v1.UpdateRAGConfigsRequest
+	140, // 126: makejob.admin.v1.AdminService.TestRAGConnection:input_type -> google.protobuf.Empty
+	76,  // 127: makejob.admin.v1.AdminService.IndexAllQuestions:input_type -> makejob.admin.v1.IndexAllQuestionsRequest
+	77,  // 128: makejob.admin.v1.AdminService.IndexQuestions:input_type -> makejob.admin.v1.IndexQuestionsRequest
+	78,  // 129: makejob.admin.v1.AdminService.DeleteRAGIndex:input_type -> makejob.admin.v1.DeleteRAGIndexRequest
+	80,  // 130: makejob.admin.v1.AdminService.SearchRAGQuestions:input_type -> makejob.admin.v1.SearchRAGQuestionsRequest
+	83,  // 131: makejob.admin.v1.AdminService.ListRAGDocuments:input_type -> makejob.admin.v1.ListRAGDocumentsRequest
+	85,  // 132: makejob.admin.v1.AdminService.GetRAGDocumentStats:input_type -> makejob.admin.v1.GetRAGDocumentStatsRequest
+	87,  // 133: makejob.admin.v1.AdminService.GetRAGDocument:input_type -> makejob.admin.v1.GetRAGDocumentRequest
+	89,  // 134: makejob.admin.v1.AdminService.CreateRAGDocument:input_type -> makejob.admin.v1.CreateRAGDocumentRequest
+	90,  // 135: makejob.admin.v1.AdminService.UpdateRAGDocument:input_type -> makejob.admin.v1.UpdateRAGDocumentRequest
+	91,  // 136: makejob.admin.v1.AdminService.DeleteRAGDocument:input_type -> makejob.admin.v1.DeleteRAGDocumentRequest
+	92,  // 137: makejob.admin.v1.AdminService.BatchImportRAGDocuments:input_type -> makejob.admin.v1.BatchImportRAGDocumentsRequest
+	95,  // 138: makejob.admin.v1.AdminService.SyncRAGDocumentsToVectorDB:input_type -> makejob.admin.v1.SyncRAGDocumentsRequest
+	140, // 139: makejob.admin.v1.AdminService.SyncAllPendingRAGDocuments:input_type -> google.protobuf.Empty
+	140, // 140: makejob.admin.v1.AdminService.GetScraperSources:input_type -> google.protobuf.Empty
+	98,  // 141: makejob.admin.v1.AdminService.ScraperSearch:input_type -> makejob.admin.v1.ScraperSearchRequest
+	101, // 142: makejob.admin.v1.AdminService.ScraperFetch:input_type -> makejob.admin.v1.ScraperFetchRequest
+	103, // 143: makejob.admin.v1.AdminService.ScraperClean:input_type -> makejob.admin.v1.ScraperCleanRequest
+	106, // 144: makejob.admin.v1.AdminService.ScraperImport:input_type -> makejob.admin.v1.ScraperImportRequest
+	106, // 145: makejob.admin.v1.AdminService.ScraperImportAsync:input_type -> makejob.admin.v1.ScraperImportRequest
+	109, // 146: makejob.admin.v1.AdminService.ListScraperTasks:input_type -> makejob.admin.v1.ListScraperTasksRequest
+	111, // 147: makejob.admin.v1.AdminService.GetScraperTask:input_type -> makejob.admin.v1.GetScraperTaskRequest
+	113, // 148: makejob.admin.v1.AdminService.UpdateQuestionPipelineTask:input_type -> makejob.admin.v1.UpdateQuestionPipelineTaskRequest
+	115, // 149: makejob.admin.v1.AdminService.RetryScraperTask:input_type -> makejob.admin.v1.RetryScraperTaskRequest
+	116, // 150: makejob.admin.v1.AdminService.GetAdminConfig:input_type -> makejob.admin.v1.GetAdminConfigRequest
+	118, // 151: makejob.admin.v1.AdminService.SetAdminConfig:input_type -> makejob.admin.v1.SetAdminConfigRequest
+	0,   // 152: makejob.admin.v1.AdminService.GetDashboard:output_type -> makejob.admin.v1.DashboardResponse
+	2,   // 153: makejob.admin.v1.AdminService.ListUsers:output_type -> makejob.admin.v1.ListUsersResponse
+	140, // 154: makejob.admin.v1.AdminService.UpdateUserRole:output_type -> google.protobuf.Empty
+	140, // 155: makejob.admin.v1.AdminService.DisableUser:output_type -> google.protobuf.Empty
+	7,   // 156: makejob.admin.v1.AdminService.AdminListQuestions:output_type -> makejob.admin.v1.AdminListQuestionsResponse
+	8,   // 157: makejob.admin.v1.AdminService.CreateQuestion:output_type -> makejob.admin.v1.QuestionInfo
+	140, // 158: makejob.admin.v1.AdminService.UpdateQuestion:output_type -> google.protobuf.Empty
+	140, // 159: makejob.admin.v1.AdminService.DeleteQuestion:output_type -> google.protobuf.Empty
+	14,  // 160: makejob.admin.v1.AdminService.BatchImportQuestions:output_type -> makejob.admin.v1.BatchImportQuestionsResponse
+	15,  // 161: makejob.admin.v1.AdminService.GetQuestionTagTaxonomy:output_type -> makejob.admin.v1.QuestionTagTaxonomyResponse
+	18,  // 162: makejob.admin.v1.AdminService.GenerateQuestionPipeline:output_type -> makejob.admin.v1.GenerateQuestionPipelineResponse
+	20,  // 163: makejob.admin.v1.AdminService.GenerateQuestionPipelineAsync:output_type -> makejob.admin.v1.PipelineTaskInfo
+	14,  // 164: makejob.admin.v1.AdminService.ImportQuestionPipeline:output_type -> makejob.admin.v1.BatchImportQuestionsResponse
+	22,  // 165: makejob.admin.v1.AdminService.AdminListCategories:output_type -> makejob.admin.v1.AdminListCategoriesResponse
+	23,  // 166: makejob.admin.v1.AdminService.CreateCategory:output_type -> makejob.admin.v1.CategoryInfo
+	140, // 167: makejob.admin.v1.AdminService.UpdateCategory:output_type -> google.protobuf.Empty
+	140, // 168: makejob.admin.v1.AdminService.DeleteCategory:output_type -> google.protobuf.Empty
+	27,  // 169: makejob.admin.v1.AdminService.AdminListIndustries:output_type -> makejob.admin.v1.AdminListIndustriesResponse
+	28,  // 170: makejob.admin.v1.AdminService.CreateIndustry:output_type -> makejob.admin.v1.IndustryInfo
+	140, // 171: makejob.admin.v1.AdminService.UpdateIndustry:output_type -> google.protobuf.Empty
+	32,  // 172: makejob.admin.v1.AdminService.ListPromptTemplates:output_type -> makejob.admin.v1.ListPromptTemplatesResponse
+	33,  // 173: makejob.admin.v1.AdminService.SavePromptTemplate:output_type -> makejob.admin.v1.PromptTemplate
+	33,  // 174: makejob.admin.v1.AdminService.CreatePrompt:output_type -> makejob.admin.v1.PromptTemplate
+	140, // 175: makejob.admin.v1.AdminService.UpdatePrompt:output_type -> google.protobuf.Empty
+	140, // 176: makejob.admin.v1.AdminService.DeletePrompt:output_type -> google.protobuf.Empty
+	39,  // 177: makejob.admin.v1.AdminService.TestRenderPrompt:output_type -> makejob.admin.v1.TestRenderPromptResponse
+	40,  // 178: makejob.admin.v1.AdminService.GetAIConfigs:output_type -> makejob.admin.v1.GetAIConfigsResponse
+	140, // 179: makejob.admin.v1.AdminService.UpdateAIConfigs:output_type -> google.protobuf.Empty
+	43,  // 180: makejob.admin.v1.AdminService.ListAIPresets:output_type -> makejob.admin.v1.ListAIPresetsResponse
+	44,  // 181: makejob.admin.v1.AdminService.SaveAIPreset:output_type -> makejob.admin.v1.AIPreset
+	44,  // 182: makejob.admin.v1.AdminService.CreateAIPreset:output_type -> makejob.admin.v1.AIPreset
+	44,  // 183: makejob.admin.v1.AdminService.UpdateAIPreset:output_type -> makejob.admin.v1.AIPreset
+	140, // 184: makejob.admin.v1.AdminService.DeleteAIPreset:output_type -> google.protobuf.Empty
+	40,  // 185: makejob.admin.v1.AdminService.ApplyAIPreset:output_type -> makejob.admin.v1.GetAIConfigsResponse
+	51,  // 186: makejob.admin.v1.AdminService.DebugAI:output_type -> makejob.admin.v1.DebugAIResponse
+	53,  // 187: makejob.admin.v1.AdminService.ListAICallLogs:output_type -> makejob.admin.v1.ListAICallLogsResponse
+	56,  // 188: makejob.admin.v1.AdminService.GetAICallLog:output_type -> makejob.admin.v1.AICallLogDetail
+	57,  // 189: makejob.admin.v1.AdminService.ListLive2DModels:output_type -> makejob.admin.v1.ListLive2DModelsResponse
+	58,  // 190: makejob.admin.v1.AdminService.CreateLive2DModel:output_type -> makejob.admin.v1.Live2DModelInfo
+	140, // 191: makejob.admin.v1.AdminService.UpdateLive2DModel:output_type -> google.protobuf.Empty
+	140, // 192: makejob.admin.v1.AdminService.DeleteLive2DModel:output_type -> google.protobuf.Empty
+	63,  // 193: makejob.admin.v1.AdminService.ImportLive2DPackage:output_type -> makejob.admin.v1.ImportLive2DPackageResponse
+	65,  // 194: makejob.admin.v1.AdminService.ImportLive2DBackground:output_type -> makejob.admin.v1.ImportLive2DBackgroundResponse
+	66,  // 195: makejob.admin.v1.AdminService.ListTTSConfigs:output_type -> makejob.admin.v1.ListTTSConfigsResponse
+	67,  // 196: makejob.admin.v1.AdminService.CreateTTSConfig:output_type -> makejob.admin.v1.TTSConfigInfo
+	140, // 197: makejob.admin.v1.AdminService.UpdateTTSConfig:output_type -> google.protobuf.Empty
+	140, // 198: makejob.admin.v1.AdminService.DeleteTTSConfig:output_type -> google.protobuf.Empty
+	140, // 199: makejob.admin.v1.AdminService.UpdateTTSSceneDefaults:output_type -> google.protobuf.Empty
+	72,  // 200: makejob.admin.v1.AdminService.GetRAGConfigs:output_type -> makejob.admin.v1.GetRAGConfigsResponse
+	140, // 201: makejob.admin.v1.AdminService.UpdateRAGConfigs:output_type -> google.protobuf.Empty
+	75,  // 202: makejob.admin.v1.AdminService.TestRAGConnection:output_type -> makejob.admin.v1.TestRAGConnectionResponse
+	79,  // 203: makejob.admin.v1.AdminService.IndexAllQuestions:output_type -> makejob.admin.v1.IndexResult
+	79,  // 204: makejob.admin.v1.AdminService.IndexQuestions:output_type -> makejob.admin.v1.IndexResult
+	79,  // 205: makejob.admin.v1.AdminService.DeleteRAGIndex:output_type -> makejob.admin.v1.IndexResult
+	81,  // 206: makejob.admin.v1.AdminService.SearchRAGQuestions:output_type -> makejob.admin.v1.SearchRAGQuestionsResponse
+	84,  // 207: makejob.admin.v1.AdminService.ListRAGDocuments:output_type -> makejob.admin.v1.ListRAGDocumentsResponse
+	86,  // 208: makejob.admin.v1.AdminService.GetRAGDocumentStats:output_type -> makejob.admin.v1.RAGDocumentStatsResponse
+	88,  // 209: makejob.admin.v1.AdminService.GetRAGDocument:output_type -> makejob.admin.v1.RAGDocumentDetail
+	88,  // 210: makejob.admin.v1.AdminService.CreateRAGDocument:output_type -> makejob.admin.v1.RAGDocumentDetail
+	140, // 211: makejob.admin.v1.AdminService.UpdateRAGDocument:output_type -> google.protobuf.Empty
+	140, // 212: makejob.admin.v1.AdminService.DeleteRAGDocument:output_type -> google.protobuf.Empty
+	94,  // 213: makejob.admin.v1.AdminService.BatchImportRAGDocuments:output_type -> makejob.admin.v1.BatchImportRAGDocumentsResponse
+	140, // 214: makejob.admin.v1.AdminService.SyncRAGDocumentsToVectorDB:output_type -> google.protobuf.Empty
+	140, // 215: makejob.admin.v1.AdminService.SyncAllPendingRAGDocuments:output_type -> google.protobuf.Empty
+	96,  // 216: makejob.admin.v1.AdminService.GetScraperSources:output_type -> makejob.admin.v1.GetScraperSourcesResponse
+	99,  // 217: makejob.admin.v1.AdminService.ScraperSearch:output_type -> makejob.admin.v1.ScraperSearchResponse
+	102, // 218: makejob.admin.v1.AdminService.ScraperFetch:output_type -> makejob.admin.v1.ScraperFetchResponse
+	104, // 219: makejob.admin.v1.AdminService.ScraperClean:output_type -> makejob.admin.v1.ScraperCleanResponse
+	107, // 220: makejob.admin.v1.AdminService.ScraperImport:output_type -> makejob.admin.v1.ScraperImportResponse
+	108, // 221: makejob.admin.v1.AdminService.ScraperImportAsync:output_type -> makejob.admin.v1.ScraperTaskInfo
+	110, // 222: makejob.admin.v1.AdminService.ListScraperTasks:output_type -> makejob.admin.v1.ListScraperTasksResponse
+	112, // 223: makejob.admin.v1.AdminService.GetScraperTask:output_type -> makejob.admin.v1.ScraperTaskDetail
+	114, // 224: makejob.admin.v1.AdminService.UpdateQuestionPipelineTask:output_type -> makejob.admin.v1.UpdateQuestionPipelineTaskResponse
+	108, // 225: makejob.admin.v1.AdminService.RetryScraperTask:output_type -> makejob.admin.v1.ScraperTaskInfo
+	117, // 226: makejob.admin.v1.AdminService.GetAdminConfig:output_type -> makejob.admin.v1.AdminConfigValue
+	140, // 227: makejob.admin.v1.AdminService.SetAdminConfig:output_type -> google.protobuf.Empty
+	152, // [152:228] is the sub-list for method output_type
+	76,  // [76:152] is the sub-list for method input_type
+	76,  // [76:76] is the sub-list for extension type_name
+	76,  // [76:76] is the sub-list for extension extendee
+	0,   // [0:76] is the sub-list for field type_name
 }
 
 func init() { file_makejob_admin_v1_admin_proto_init() }
@@ -9711,7 +9788,7 @@ func file_makejob_admin_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_admin_v1_admin_proto_rawDesc), len(file_makejob_admin_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   135,
+			NumMessages:   136,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

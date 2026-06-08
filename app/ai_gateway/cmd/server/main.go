@@ -73,10 +73,11 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	quizUC := biz.NewQuizAnalyzerUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 	resumeUC := biz.NewResumeParserUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 	live2dUC := biz.NewLive2DDirectorUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
+	adminUC := biz.NewAdminUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 
 	// service 层：gRPC 服务实现
 	aiGatewayService := service.NewAIGatewayService(
-		interviewUC, planUC, companionUC, quizUC, resumeUC, live2dUC,
+		interviewUC, planUC, companionUC, quizUC, resumeUC, live2dUC, adminUC,
 	)
 
 	// auth 拦截器

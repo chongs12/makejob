@@ -3,14 +3,17 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	aiv1 "makejob/api/makejob/ai/v1"
 	interviewv1 "makejob/api/makejob/interview/v1"
 	questionv1 "makejob/api/makejob/question/v1"
+	ragv1 "makejob/api/makejob/rag/v1"
 	sharedv1 "makejob/api/makejob/shared/v1"
 	userv1 "makejob/api/makejob/user/v1"
 	"makejob/app/admin/internal/biz"
@@ -133,6 +136,33 @@ func (c *questionClient) ListQuestions(ctx context.Context, page, pageSize int32
 		end = len(filtered)
 	}
 	return filtered[start:end], total, nil
+}
+
+// GetQuestion 调用 question 服务的公开题目详情 RPC，供 RAG 精确索引指定题目。
+func (c *questionClient) GetQuestion(ctx context.Context, id uint64) (*biz.QuestionRecord, error) {
+	resp, err := c.client.GetQuestion(forwardServiceAuth(ctx), &questionv1.GetQuestionRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+	categoryID := uint64(0)
+	categoryName := ""
+	if resp.GetCategory() != nil {
+		categoryID = resp.GetCategory().GetId()
+		categoryName = resp.GetCategory().GetName()
+	}
+	return &biz.QuestionRecord{
+		ID:           resp.GetId(),
+		CategoryID:   categoryID,
+		Type:         resp.GetType(),
+		Difficulty:   resp.GetDifficulty(),
+		Title:        resp.GetTitle(),
+		Content:      resp.GetContent(),
+		Answer:       resp.GetReferenceAnswer(),
+		Explanation:  resp.GetExplanation(),
+		Tags:         strings.Join(resp.GetTags(), ","),
+		CreatedAt:    protoTimeToTime(resp.GetCreatedAt()),
+		CategoryName: categoryName,
+	}, nil
 }
 
 // CreateQuestion 调用 question 服务的 AdminCreateQuestion RPC 创建题目
@@ -328,14 +358,261 @@ func (c *interviewClient) GetInterviewStats(ctx context.Context) (int64, error) 
 	return resp.GetTotalInterviews(), nil
 }
 
-// ==================== AI 网关客户端（UNIMPLEMENTED） ====================
+// ==================== AI 网关 gRPC 客户端 ====================
 
-// aiGatewayClient 实现 biz.AIGatewayClient（UNIMPLEMENTED：预留，待 AI Gateway 实现 admin RPC）
-type aiGatewayClient struct{}
+// aiGatewayClient 实现 biz.AIGatewayClient，通过 gRPC 调用 AI Gateway 的 admin 调试 RPC
+type aiGatewayClient struct {
+	client aiv1.AIServiceClient
+	logger log.Logger
+}
 
-// NewAIGatewayClient 创建 AI 网关客户端占位实例
-func NewAIGatewayClient() biz.AIGatewayClient {
-	return &aiGatewayClient{}
+// NewAIGatewayClient 创建 AI 网关 gRPC 客户端
+func NewAIGatewayClient(conn *grpc.ClientConn, logger log.Logger) biz.AIGatewayClient {
+	return &aiGatewayClient{
+		client: aiv1.NewAIServiceClient(conn),
+		logger: logger,
+	}
+}
+
+// noopAIGatewayClient 当 AI Gateway 未配置时的空实现
+type noopAIGatewayClient struct{}
+
+// NewAIGatewayClientNoop 创建空实现的 AI 网关客户端
+func NewAIGatewayClientNoop() biz.AIGatewayClient {
+	return &noopAIGatewayClient{}
+}
+
+func (c *noopAIGatewayClient) RenderPrompt(_ context.Context, _, _ string, _ map[string]string, _ bool) (*biz.RenderPromptResult, error) {
+	return nil, fmt.Errorf("AI Gateway 服务未配置")
+}
+
+func (c *noopAIGatewayClient) DebugAI(_ context.Context, _, _ string, _ map[string]string, _ string) (*biz.DebugAIResult, error) {
+	return nil, fmt.Errorf("AI Gateway 服务未配置")
+}
+
+func (c *noopAIGatewayClient) GenerateQuestionCandidates(_ context.Context, _, _, _ string, _ int32, _ string, _, _ bool, _ []string) (*biz.GenerateQuestionCandidatesResult, error) {
+	return nil, fmt.Errorf("AI Gateway 服务未配置")
+}
+
+// RenderPrompt 调用 AI Gateway 的 RenderPrompt RPC
+func (c *aiGatewayClient) RenderPrompt(ctx context.Context, scene, templateText string, variables map[string]string, runWithLLM bool) (*biz.RenderPromptResult, error) {
+	resp, err := c.client.RenderPrompt(forwardServiceAuth(ctx), &aiv1.RenderPromptRequest{
+		Scene:        scene,
+		TemplateText: templateText,
+		Variables:    variables,
+		RunWithLlm:   runWithLLM,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &biz.RenderPromptResult{
+		RenderedPrompt:    resp.RenderedPrompt,
+		ResolvedVariables: resp.ResolvedVariables,
+		LLMResponse:       resp.LlmResponse,
+		Model:             resp.Model,
+		LatencyMs:         resp.LatencyMs,
+	}, nil
+}
+
+// DebugAI 调用 AI Gateway 的 DebugAI RPC
+func (c *aiGatewayClient) DebugAI(ctx context.Context, scene, prompt string, params map[string]string, modelOverride string) (*biz.DebugAIResult, error) {
+	resp, err := c.client.DebugAI(forwardServiceAuth(ctx), &aiv1.DebugAIRequest{
+		Scene:         scene,
+		Prompt:        prompt,
+		Params:        params,
+		ModelOverride: modelOverride,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &biz.DebugAIResult{
+		RenderedPrompt: resp.RenderedPrompt,
+		Response:       resp.Response,
+		Model:          resp.Model,
+		InputTokens:    int(resp.InputTokens),
+		OutputTokens:   int(resp.OutputTokens),
+		LatencyMs:      resp.LatencyMs,
+		Error:          resp.Error,
+	}, nil
+}
+
+// GenerateQuestionCandidates 调用 AI Gateway 的 GenerateQuestionCandidates RPC（FIX H5: 透传所有字段）
+func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*biz.GenerateQuestionCandidatesResult, error) {
+	resp, err := c.client.GenerateQuestionCandidates(forwardServiceAuth(ctx), &aiv1.GenerateQuestionCandidatesRequest{
+		IndustryCode:     industryCode,
+		Requirement:      requirement,
+		CandidateCount:   candidateCount,
+		GenerationMode:   generationMode,
+		Sources:          sources,
+		AgentPrompt:      agentPrompt,
+		IncludeScraped:   includeScraped,
+		IncludeGenerated: includeGenerated,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	candidates := make([]*biz.QuestionCandidate, 0, len(resp.Candidates))
+	for _, c := range resp.Candidates {
+		candidates = append(candidates, &biz.QuestionCandidate{
+			Title:       c.Title,
+			Content:     c.Content,
+			Type:        c.Type,
+			Difficulty:  c.Difficulty,
+			Category:    c.Category,
+			Answer:      c.Answer,
+			Explanation: c.Explanation,
+			Tags:        c.Tags,
+			SourceType:  c.SourceType,
+			Confidence:  c.Confidence,
+			Solution:    c.Solution,
+			JudgeConfig: c.JudgeConfig,
+			SourceLabel: c.SourceLabel,
+			SourceTitle: c.SourceTitle,
+			SourceURL:   c.SourceUrl,
+		})
+	}
+
+	return &biz.GenerateQuestionCandidatesResult{
+		IndustryCode: resp.IndustryCode,
+		Requirement:  resp.Requirement,
+		Candidates:   candidates,
+		Warnings:     resp.Warnings,
+	}, nil
+}
+
+// ==================== RAG 服务 gRPC 客户端 ====================
+
+// ragClient 实现 biz.RAGClient，通过 gRPC 调用 rag 微服务
+type ragClient struct {
+	client ragv1.RAGServiceClient
+	logger log.Logger
+}
+
+// NewRAGClient 创建 RAG 服务 gRPC 客户端
+func NewRAGClient(conn *grpc.ClientConn, logger log.Logger) biz.RAGClient {
+	return &ragClient{
+		client: ragv1.NewRAGServiceClient(conn),
+		logger: logger,
+	}
+}
+
+// TestConnection 调用 RAG 服务的 TestConnection RPC
+func (c *ragClient) TestConnection(ctx context.Context) (milvusOk bool, embeddingOk bool, err error) {
+	resp, err := c.client.TestConnection(forwardServiceAuth(ctx), &ragv1.TestConnectionRequest{})
+	if err != nil {
+		return false, false, err
+	}
+	return resp.Connected, resp.Connected, nil
+}
+
+// GetConfig 调用 RAG 服务的 GetConfig RPC
+func (c *ragClient) GetConfig(ctx context.Context) (collectionName string, embedModel string, err error) {
+	resp, err := c.client.GetConfig(forwardServiceAuth(ctx), &ragv1.GetConfigRequest{})
+	if err != nil {
+		return "", "", err
+	}
+	return resp.CollectionName, resp.EmbeddingModel, nil
+}
+
+// UpdateConfig 调用 RAG 服务的 UpdateConfig RPC 更新运行时配置。
+func (c *ragClient) UpdateConfig(ctx context.Context, collectionName string, embeddingDimension int32, embedModel string) (string, int32, string, error) {
+	resp, err := c.client.UpdateConfig(forwardServiceAuth(ctx), &ragv1.UpdateConfigRequest{
+		CollectionName:     collectionName,
+		EmbeddingDimension: embeddingDimension,
+		EmbeddingModel:     embedModel,
+	})
+	if err != nil {
+		return "", 0, "", err
+	}
+	return resp.GetCollectionName(), resp.GetEmbeddingDimension(), resp.GetEmbeddingModel(), nil
+}
+
+// IndexQuestions 调用 RAG 服务的 IndexQuestions RPC
+func (c *ragClient) IndexQuestions(ctx context.Context, items []*biz.RAGIndexItem) (int32, []string, error) {
+	protoItems := make([]*ragv1.IndexItem, len(items))
+	for i, item := range items {
+		protoItems[i] = &ragv1.IndexItem{
+			QuestionId: item.QuestionID,
+			Content:    item.Content,
+			Metadata:   item.Metadata,
+		}
+	}
+
+	resp, err := c.client.IndexQuestions(forwardServiceAuth(ctx), &ragv1.IndexQuestionsRequest{
+		Items: protoItems,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.IndexedCount, resp.FailedIds, nil
+}
+
+// DeleteIndex 调用 RAG 服务的 DeleteIndex RPC
+func (c *ragClient) DeleteIndex(ctx context.Context, ids []string) (int32, error) {
+	resp, err := c.client.DeleteIndex(forwardServiceAuth(ctx), &ragv1.DeleteIndexRequest{
+		Ids: ids,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return resp.DeletedCount, nil
+}
+
+// SearchQuestions 调用 RAG 服务的 Retrieve RPC
+func (c *ragClient) SearchQuestions(ctx context.Context, query string, topK int32) ([]*biz.RAGSearchResult, error) {
+	resp, err := c.client.Retrieve(forwardServiceAuth(ctx), &ragv1.RetrieveRequest{
+		Query: query,
+		TopK:  topK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]*biz.RAGSearchResult, len(resp.Documents))
+	for i, doc := range resp.Documents {
+		title := ""
+		if doc.Metadata != nil {
+			title = doc.Metadata["title"]
+		}
+		results[i] = &biz.RAGSearchResult{
+			DocID:   doc.Id,
+			Title:   title,
+			Content: doc.Content,
+			Score:   float64(doc.Score),
+		}
+	}
+	return results, nil
+}
+
+// GetDocumentStats 调用 RAG 服务的 GetDocumentStats RPC
+func (c *ragClient) GetDocumentStats(ctx context.Context) (totalDocuments int64, totalQuestions int64, err error) {
+	resp, err := c.client.GetDocumentStats(forwardServiceAuth(ctx), &ragv1.GetDocumentStatsRequest{})
+	if err != nil {
+		return 0, 0, err
+	}
+	return resp.TotalDocuments, resp.TotalQuestions, nil
+}
+
+// IndexDocuments 调用 RAG 服务的 IndexDocuments RPC
+func (c *ragClient) IndexDocuments(ctx context.Context, items []*biz.RAGDocumentIndexItem) (int32, []string, error) {
+	protoItems := make([]*ragv1.DocumentIndexItem, len(items))
+	for i, item := range items {
+		protoItems[i] = &ragv1.DocumentIndexItem{
+			Id:       item.ID,
+			Content:  item.Content,
+			Source:   item.Source,
+			Metadata: item.Metadata,
+		}
+	}
+
+	resp, err := c.client.IndexDocuments(forwardServiceAuth(ctx), &ragv1.IndexDocumentsRequest{
+		Items: protoItems,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.IndexedCount, resp.FailedIds, nil
 }
 
 // ==================== 辅助函数 ====================

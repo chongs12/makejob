@@ -56,6 +56,19 @@ func (p *MqPublisher) PublishQuestionPipelineBuild(ctx context.Context, taskID u
 	return p.publisher.Publish(ctx, mq.TaskTypeAdminQuestionPipeline, msg)
 }
 
+// PublishScraperImport 发布爬虫异步导入任务到 question 服务消费队列。
+func (p *MqPublisher) PublishScraperImport(ctx context.Context, taskID uint64, payload []byte) error {
+	msg := mq.TaskMessage{
+		TaskType:   mq.TaskTypeScraperImport,
+		EntityType: "scraper_task",
+		EntityID:   taskID,
+		Payload:    payload,
+		RetryCount: 3,
+		CreatedAt:  time.Now(),
+	}
+	return p.publisher.Publish(ctx, mq.TaskTypeScraperImport, msg)
+}
+
 // Close 关闭 RabbitMQ 发布器连接。
 func (p *MqPublisher) Close() error {
 	if p == nil || p.publisher == nil {
