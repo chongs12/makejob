@@ -2,29 +2,32 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 
-	"makejob-backend/bridge"
 	adminv1 "makejob/api/makejob/admin/v1"
 	communityv1 "makejob/api/makejob/community/v1"
+	companionv1 "makejob/api/makejob/companion/v1"
 	growthv1 "makejob/api/makejob/growth/v1"
 	interviewv1 "makejob/api/makejob/interview/v1"
+	membershipv1 "makejob/api/makejob/membership/v1"
+	planv1 "makejob/api/makejob/plan/v1"
 	questionv1 "makejob/api/makejob/question/v1"
 	sharedv1 "makejob/api/makejob/shared/v1"
 	userv1 "makejob/api/makejob/user/v1"
@@ -34,19 +37,21 @@ import (
 
 // Gateway HTTP → gRPC 代理
 type Gateway struct {
-	conns           []*grpc.ClientConn
-	userClient      userv1.UserServiceClient
-	questionClient  questionv1.QuestionServiceClient
-	interviewClient interviewv1.InterviewServiceClient
-	growthClient    growthv1.GrowthServiceClient
-	adminClient     adminv1.AdminServiceClient
-	communityClient communityv1.CommunityServiceClient
-	backendBridge   *bridge.Runtime
-	db              *gorm.DB
-	jwtSecret       string
+	conns            []*grpc.ClientConn
+	userClient       userv1.UserServiceClient
+	questionClient   questionv1.QuestionServiceClient
+	interviewClient  interviewv1.InterviewServiceClient
+	membershipClient membershipv1.MembershipServiceClient
+	growthClient     growthv1.GrowthServiceClient
+	planClient       planv1.PlanServiceClient
+	adminClient      adminv1.AdminServiceClient
+	companionClient  companionv1.CompanionServiceClient
+	communityClient  communityv1.CommunityServiceClient
+	realtimeWSAddr   string
+	jwtSecret        string
 }
 
-// legacyResponse 复刻原单体统一响应结构，供 bridge 模式下的鉴权错误复用。
+// legacyResponse 复刻原单体统一响应结构，供系统健康检查接口继续复用。
 type legacyResponse struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
@@ -54,27 +59,12 @@ type legacyResponse struct {
 }
 
 const (
-	legacyCodeUnauthorized = 401
-	legacyCodeTokenExpired = 4011
-	legacyCodeTokenInvalid = 4012
+	questionPipelineTaskType = "question_pipeline_build"
 )
 
 // NewGateway 创建网关实例
 func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 	gw := &Gateway{jwtSecret: cfg.JWT.Secret}
-
-	if cfg.Data != nil && cfg.Data.Database != nil && strings.TrimSpace(cfg.Data.Database.Source) != "" {
-		db, err := gorm.Open(postgres.Open(cfg.Data.Database.Source), &gorm.Config{})
-		if err != nil {
-			return nil, err
-		}
-		backendBridge, err := bridge.NewRuntime(db)
-		if err != nil {
-			return nil, err
-		}
-		gw.db = db
-		gw.backendBridge = backendBridge
-	}
 
 	type clientSetup struct {
 		name  string
@@ -108,6 +98,15 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			gw.interviewClient = interviewv1.NewInterviewServiceClient(conn)
 			return nil
 		}},
+		{"membership", func(addr string) error {
+			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return err
+			}
+			gw.conns = append(gw.conns, conn)
+			gw.membershipClient = membershipv1.NewMembershipServiceClient(conn)
+			return nil
+		}},
 		{"growth", func(addr string) error {
 			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
@@ -117,6 +116,15 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			gw.growthClient = growthv1.NewGrowthServiceClient(conn)
 			return nil
 		}},
+		{"plan", func(addr string) error {
+			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return err
+			}
+			gw.conns = append(gw.conns, conn)
+			gw.planClient = planv1.NewPlanServiceClient(conn)
+			return nil
+		}},
 		{"admin", func(addr string) error {
 			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
@@ -124,6 +132,15 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			}
 			gw.conns = append(gw.conns, conn)
 			gw.adminClient = adminv1.NewAdminServiceClient(conn)
+			return nil
+		}},
+		{"companion", func(addr string) error {
+			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return err
+			}
+			gw.conns = append(gw.conns, conn)
+			gw.companionClient = companionv1.NewCompanionServiceClient(conn)
 			return nil
 		}},
 		{"community", func(addr string) error {
@@ -145,6 +162,9 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			}
 		}
 	}
+	if svc, ok := cfg.Services["realtime"]; ok {
+		gw.realtimeWSAddr = strings.TrimSpace(svc.Addr)
+	}
 
 	return gw, nil
 }
@@ -153,11 +173,6 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 func (gw *Gateway) Close() {
 	for _, conn := range gw.conns {
 		conn.Close()
-	}
-	if gw.db != nil {
-		if sqlDB, err := gw.db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
 	}
 }
 
@@ -225,11 +240,13 @@ func grpcErr(c *gin.Context, err error) {
 // RegisterRoutes 注册 HTTP 路由（对齐 backend 单体路由）
 func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 	gw.registerSystemRoutes(r)
+	gw.registerV1Routes(r)
+	gw.registerLegacyAdminRoutes(r)
 
-	if gw.backendBridge != nil {
-		gw.backendBridge.RegisterGatewayRoutes(r, gw.LegacyOptionalJWTMiddleware(), gw.LegacyAuthMiddleware(), nil)
-		return
-	}
+	adminSSE := r.Group("/admin")
+	adminSSE.Use(gw.JWTMiddleware(), gw.AdminMiddleware())
+	adminSSE.GET("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineStream))
+	return
 
 	api := r.Group("/api")
 
@@ -296,16 +313,24 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 			protected.POST("/interviews/:id/coding", gw.handleSubmitCodingAnswer)
 		}
 
-		// --- 学习计划 & 成长 ---
-		if gw.growthClient != nil {
+		// --- 学习计划 ---
+		if gw.planClient != nil {
 			protected.POST("/plans", gw.handleCreatePlan)
 			protected.GET("/plans/current", gw.handleGetCurrentPlan)
 			protected.GET("/plans/:id", gw.handleGetPlan)
 			protected.PUT("/plans/:id/tasks/:taskId", gw.handleUpdateTaskStatus)
 			protected.POST("/plans/:id/tasks/:taskId/feedback", gw.handleSubmitTaskFeedback)
+		}
+
+		// --- 成长 ---
+		if gw.growthClient != nil {
 			protected.PUT("/user/study-logs/daily", gw.handleSyncStudyLog)
 			protected.GET("/user/growth-summary", gw.handleGetGrowthSummary)
 			protected.GET("/user/weekly-focus", gw.handleGetWeeklyFocus)
+		}
+
+		// --- 陪伴助手 ---
+		if gw.companionClient != nil {
 			protected.POST("/companion/chat", gw.handleCompanionChat)
 		}
 
@@ -342,6 +367,7 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 				// 题目流水线
 				admin.POST("/question-pipeline/generate", gw.handleAdminGenerateQuestionPipeline)
 				admin.POST("/question-pipeline/generate/async", gw.handleAdminGenerateQuestionPipelineAsync)
+				admin.GET("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineStream)
 				admin.POST("/question-pipeline/import", gw.handleAdminImportQuestionPipeline)
 
 				// 分类管理
@@ -435,6 +461,199 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
+// registerV1Routes 注册 P6-4 要求的 `/api/v1` 业务路由，并保留少量仍被页面依赖的兼容路径。
+func (gw *Gateway) registerV1Routes(r *gin.Engine) {
+	api := r.Group("/api/v1")
+
+	public := api.Group("")
+	{
+		public.POST("/auth/register", gw.requireService("user", gw.userClient != nil, gw.handleRegister))
+		public.POST("/auth/login", gw.requireService("user", gw.userClient != nil, gw.handleLogin))
+		public.POST("/auth/refresh", gw.requireService("user", gw.userClient != nil, gw.handleRefreshToken))
+		public.GET("/questions", gw.requireService("question", gw.questionClient != nil, gw.handleListQuestions))
+		public.GET("/questions/:id", gw.requireService("question", gw.questionClient != nil, gw.handleGetQuestion))
+		public.GET("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleListQuestionSets))
+		public.GET("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleGetQuestionSetDetail))
+		public.GET("/industries", gw.requireService("question", gw.questionClient != nil, gw.handleListIndustries))
+		public.GET("/categories", gw.requireService("question", gw.questionClient != nil, gw.handleListCategories))
+		public.GET("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListPosts))
+		public.GET("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleGetPost))
+		public.GET("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleListComments))
+	}
+
+	protected := api.Group("")
+	protected.Use(gw.JWTMiddleware())
+	{
+		protected.POST("/auth/logout", gw.requireService("user", gw.userClient != nil, gw.handleLogout))
+		protected.GET("/auth/me", gw.requireService("user", gw.userClient != nil, gw.handleGetProfile))
+		protected.GET("/user/profile", gw.requireService("user", gw.userClient != nil, gw.handleGetProfile))
+		protected.PUT("/user/profile", gw.requireService("user", gw.userClient != nil, gw.handleUpdateProfile))
+
+		protected.POST("/questions/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitAnswerV1))
+		protected.POST("/questions/run-code", gw.requireService("question", gw.questionClient != nil, gw.handleRunCodeV1))
+		protected.GET("/questions/recommendations", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeRecommendations))
+		protected.GET("/mistakes/topics", gw.requireService("question", gw.questionClient != nil, gw.handleListMistakeTopics))
+		protected.POST("/exams/timed", gw.requireService("question", gw.questionClient != nil, gw.handleGenerateTimedExam))
+		protected.POST("/exams/:id/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitExam))
+		protected.POST("/notes", gw.requireService("question", gw.questionClient != nil, gw.handleCreateNote))
+		protected.DELETE("/notes/:id", gw.requireService("question", gw.questionClient != nil, gw.handleDeleteNote))
+
+		protected.POST("/interviews", gw.requireService("interview", gw.interviewClient != nil, gw.handleCreateInterview))
+		protected.GET("/interviews", gw.requireService("interview", gw.interviewClient != nil, gw.handleListInterviews))
+		protected.GET("/interviews/:id", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetInterview))
+		protected.POST("/interviews/:id/next-question", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetNextQuestionV1))
+		protected.POST("/interviews/:id/finish", gw.requireService("interview", gw.interviewClient != nil, gw.handleFinishInterview))
+		protected.GET("/interviews/:id/report", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetReport))
+		protected.POST("/interviews/:id/coding", gw.requireService("interview", gw.interviewClient != nil, gw.handleSubmitCodingAnswer))
+		protected.GET("/interviews/:id/ws", gw.handleProxyRealtimeInterviewWS)
+
+		protected.POST("/plans", gw.requireService("plan", gw.planClient != nil, gw.handleCreatePlan))
+		protected.GET("/plans", gw.requireService("plan", gw.planClient != nil, gw.handleListPlans))
+		protected.GET("/plans/current", gw.requireService("plan", gw.planClient != nil, gw.handleGetCurrentPlan))
+		protected.GET("/plans/:id", gw.requireService("plan", gw.planClient != nil, gw.handleGetPlan))
+		protected.PUT("/plans/:id/tasks/:tid/status", gw.requireService("plan", gw.planClient != nil, gw.handleUpdateTaskStatusV1))
+		protected.POST("/plans/:id/tasks/:tid/feedback", gw.requireService("plan", gw.planClient != nil, gw.handleSubmitTaskFeedbackV1))
+		protected.POST("/plans/:id/adjust", gw.requireService("plan", gw.planClient != nil, gw.handleAdjustPlan))
+
+		protected.GET("/growth/summary", gw.requireService("growth", gw.growthClient != nil, gw.handleGetGrowthSummary))
+		protected.GET("/growth/weekly-focus", gw.requireService("growth", gw.growthClient != nil, gw.handleGetWeeklyFocus))
+		protected.POST("/growth/study-log", gw.requireService("growth", gw.growthClient != nil, gw.handleSyncStudyLogV1))
+
+		protected.POST("/companion/chat", gw.requireService("companion", gw.companionClient != nil, gw.handleCompanionChat))
+		protected.GET("/companion/state", gw.requireService("companion", gw.companionClient != nil, gw.handleGetCompanionState))
+		protected.POST("/companion/tts", gw.requireService("companion", gw.companionClient != nil, gw.handleSynthesizeSpeech))
+
+		protected.GET("/community/my/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListMyPosts))
+		protected.POST("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleCreatePost))
+		protected.PUT("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleUpdatePost))
+		protected.POST("/community/posts/:id/like", gw.requireService("community", gw.communityClient != nil, gw.handleToggleLike))
+
+		protected.POST("/membership/orders", gw.requireService("membership", gw.membershipClient != nil, gw.handleCreateOrder))
+		protected.GET("/membership/info", gw.requireService("membership", gw.membershipClient != nil, gw.handleMembershipInfo))
+		protected.POST("/membership/check-access", gw.requireService("membership", gw.membershipClient != nil, gw.handleCheckFeatureAccess))
+
+		protected.POST("/questions/:id/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitAnswer))
+		protected.POST("/questions/:id/run", gw.requireService("question", gw.questionClient != nil, gw.handleRunCode))
+		protected.POST("/questions/:id/favorite", gw.requireService("question", gw.questionClient != nil, gw.handleToggleFavorite))
+		protected.GET("/user/favorites", gw.requireService("question", gw.questionClient != nil, gw.handleListFavorites))
+		protected.GET("/user/wrong-questions", gw.requireService("question", gw.questionClient != nil, gw.handleGetWrongQuestions))
+		protected.GET("/user/notes", gw.requireService("question", gw.questionClient != nil, gw.handleListNotes))
+		protected.POST("/user/notes", gw.requireService("question", gw.questionClient != nil, gw.handleCreateNote))
+		protected.PUT("/user/notes/:id", gw.requireService("question", gw.questionClient != nil, gw.handleUpdateNote))
+		protected.DELETE("/user/notes/:id", gw.requireService("question", gw.questionClient != nil, gw.handleDeleteNote))
+		protected.GET("/user/practice-stats", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeStats))
+		protected.GET("/user/practice-recommendations", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeRecommendations))
+		protected.POST("/exams/random", gw.requireService("question", gw.questionClient != nil, gw.handleGetRandomExam))
+		protected.POST("/interviews/:id/answer", gw.requireService("interview", gw.interviewClient != nil, gw.handleSubmitInterviewAnswer))
+		protected.GET("/interviews/:id/next", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetNextQuestion))
+		protected.PUT("/user/study-logs/daily", gw.requireService("growth", gw.growthClient != nil, gw.handleSyncStudyLog))
+		protected.GET("/user/growth-summary", gw.requireService("growth", gw.growthClient != nil, gw.handleGetGrowthSummary))
+		protected.GET("/user/weekly-focus", gw.requireService("growth", gw.growthClient != nil, gw.handleGetWeeklyFocus))
+		protected.PUT("/plans/:id/tasks/:tid", gw.requireService("plan", gw.planClient != nil, gw.handleUpdateTaskStatusV1))
+		protected.DELETE("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleDeletePost))
+		protected.POST("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleCreateComment))
+	}
+}
+
+// requireService 在具体业务服务未接通时统一返回 503，避免将缺失能力误暴露为 404。
+func (gw *Gateway) requireService(service string, available bool, next gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !available {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":   "service unavailable",
+				"service": service,
+			})
+			return
+		}
+		next(c)
+	}
+}
+
+// registerLegacyAdminRoutes 保留现有后台管理 REST 路径，避免 P6-4 影响已接通的管理端页面。
+func (gw *Gateway) registerLegacyAdminRoutes(r *gin.Engine) {
+	admin := r.Group("/api/admin")
+	admin.Use(gw.JWTMiddleware(), gw.AdminMiddleware(), gw.requireService("admin", gw.adminClient != nil, func(c *gin.Context) {
+		c.Next()
+	}))
+	{
+		admin.GET("/dashboard", gw.handleAdminGetDashboard)
+		admin.GET("/users", gw.handleAdminListUsers)
+		admin.PUT("/users/:id/role", gw.handleAdminUpdateUserRole)
+		admin.PUT("/users/:id/disable", gw.handleAdminDisableUser)
+		admin.GET("/questions", gw.handleAdminListQuestions)
+		admin.POST("/questions", gw.handleAdminCreateQuestion)
+		admin.PUT("/questions/:id", gw.handleAdminUpdateQuestion)
+		admin.DELETE("/questions/:id", gw.handleAdminDeleteQuestion)
+		admin.POST("/questions/import", gw.handleAdminBatchImportQuestions)
+		admin.GET("/questions/tag-taxonomy", gw.handleAdminGetQuestionTagTaxonomy)
+		admin.POST("/question-pipeline/generate", gw.handleAdminGenerateQuestionPipeline)
+		admin.POST("/question-pipeline/generate/async", gw.handleAdminGenerateQuestionPipelineAsync)
+		admin.GET("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineStream)
+		admin.POST("/question-pipeline/import", gw.handleAdminImportQuestionPipeline)
+		admin.GET("/categories", gw.handleAdminListCategories)
+		admin.POST("/categories", gw.handleAdminCreateCategory)
+		admin.PUT("/categories/:id", gw.handleAdminUpdateCategory)
+		admin.DELETE("/categories/:id", gw.handleAdminDeleteCategory)
+		admin.GET("/industries", gw.handleAdminListIndustries)
+		admin.POST("/industries", gw.handleAdminCreateIndustry)
+		admin.PUT("/industries/:id", gw.handleAdminUpdateIndustry)
+		admin.GET("/prompt-templates", gw.handleAdminListPromptTemplates)
+		admin.POST("/prompt-templates", gw.handleAdminSavePromptTemplate)
+		admin.POST("/prompts", gw.handleAdminCreatePrompt)
+		admin.PUT("/prompts/:id", gw.handleAdminUpdatePrompt)
+		admin.DELETE("/prompts/:id", gw.handleAdminDeletePrompt)
+		admin.POST("/prompts/test-render", gw.handleAdminTestRenderPrompt)
+		admin.GET("/ai-configs", gw.handleAdminGetAIConfigs)
+		admin.PUT("/ai-configs", gw.handleAdminUpdateAIConfigs)
+		admin.GET("/ai-config-presets", gw.handleAdminListAIPresets)
+		admin.POST("/ai-config-presets", gw.handleAdminCreateAIPreset)
+		admin.PUT("/ai-config-presets/:id", gw.handleAdminUpdateAIPreset)
+		admin.DELETE("/ai-config-presets/:id", gw.handleAdminDeleteAIPreset)
+		admin.POST("/ai-config-presets/:id/apply", gw.handleAdminApplyAIPreset)
+		admin.POST("/ai/debug", gw.handleAdminDebugAI)
+		admin.GET("/ai-call-logs", gw.handleAdminListAICallLogs)
+		admin.GET("/ai-call-logs/:id", gw.handleAdminGetAICallLog)
+		admin.GET("/live2d-models", gw.handleAdminListLive2DModels)
+		admin.POST("/live2d-models", gw.handleAdminCreateLive2DModel)
+		admin.PUT("/live2d-models/:id", gw.handleAdminUpdateLive2DModel)
+		admin.DELETE("/live2d-models/:id", gw.handleAdminDeleteLive2DModel)
+		admin.POST("/live2d-models/import", gw.handleAdminImportLive2DPackage)
+		admin.POST("/live2d-models/backgrounds/import", gw.handleAdminImportLive2DBackground)
+		admin.GET("/tts-configs", gw.handleAdminListTTSConfigs)
+		admin.POST("/tts-configs", gw.handleAdminCreateTTSConfig)
+		admin.PUT("/tts-configs/:id", gw.handleAdminUpdateTTSConfig)
+		admin.DELETE("/tts-configs/:id", gw.handleAdminDeleteTTSConfig)
+		admin.PUT("/tts-configs/defaults", gw.handleAdminUpdateTTSSceneDefaults)
+		admin.GET("/rag-configs", gw.handleAdminGetRAGConfigs)
+		admin.PUT("/rag-configs", gw.handleAdminUpdateRAGConfigs)
+		admin.POST("/rag-configs/test", gw.handleAdminTestRAGConnection)
+		admin.POST("/rag/index-all", gw.handleAdminIndexAllQuestions)
+		admin.POST("/rag/index", gw.handleAdminIndexQuestions)
+		admin.DELETE("/rag/index", gw.handleAdminDeleteRAGIndex)
+		admin.GET("/rag/search", gw.handleAdminSearchRAGQuestions)
+		admin.GET("/rag-documents", gw.handleAdminListRAGDocuments)
+		admin.GET("/rag-documents/stats", gw.handleAdminGetRAGDocumentStats)
+		admin.GET("/rag-documents/:id", gw.handleAdminGetRAGDocument)
+		admin.POST("/rag-documents", gw.handleAdminCreateRAGDocument)
+		admin.PUT("/rag-documents/:id", gw.handleAdminUpdateRAGDocument)
+		admin.DELETE("/rag-documents/:id", gw.handleAdminDeleteRAGDocument)
+		admin.POST("/rag-documents/batch-import", gw.handleAdminBatchImportRAGDocuments)
+		admin.POST("/rag-documents/sync", gw.handleAdminSyncRAGDocuments)
+		admin.POST("/rag-documents/sync-all", gw.handleAdminSyncAllPendingRAGDocuments)
+		admin.GET("/scraper/sources", gw.handleAdminGetScraperSources)
+		admin.POST("/scraper/search", gw.handleAdminScraperSearch)
+		admin.POST("/scraper/fetch", gw.handleAdminScraperFetch)
+		admin.POST("/scraper/clean", gw.handleAdminScraperClean)
+		admin.POST("/scraper/import", gw.handleAdminScraperImport)
+		admin.POST("/scraper/import/async", gw.handleAdminScraperImportAsync)
+		admin.GET("/scraper/tasks", gw.handleAdminListScraperTasks)
+		admin.GET("/scraper/tasks/:id", gw.handleAdminGetScraperTask)
+		admin.POST("/scraper/tasks/:id/retry", gw.handleAdminRetryScraperTask)
+		admin.GET("/configs/:key", gw.handleAdminGetConfig)
+		admin.PUT("/configs/:key", gw.handleAdminSetConfig)
+	}
+}
+
 // ========== 中间件 ==========
 
 // JWTMiddleware JWT 认证中间件
@@ -461,45 +680,6 @@ func (gw *Gateway) JWTMiddleware() gin.HandlerFunc {
 
 // OptionalJWTMiddleware 在保留匿名访问的同时尽量补齐已登录用户上下文。
 func (gw *Gateway) OptionalJWTMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		tokenString, err := extractAccessToken(c.Request)
-		if err == nil && tokenString != "" {
-			if claims, parseErr := auth.ParseToken(tokenString, gw.jwtSecret); parseErr == nil {
-				injectIdentityContext(c, claims)
-			}
-		}
-		c.Next()
-	}
-}
-
-// LegacyAuthMiddleware 复用 gateway 的 JWT 配置，但保持单体鉴权失败时的响应格式。
-func (gw *Gateway) LegacyAuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		tokenString, err := extractAccessToken(c.Request)
-		if err != nil {
-			legacyUnauthorized(c, err.Error())
-			c.Abort()
-			return
-		}
-
-		claims, err := auth.ParseToken(tokenString, gw.jwtSecret)
-		if err != nil {
-			if errors.Is(err, jwt.ErrTokenExpired) {
-				legacyError(c, http.StatusOK, legacyCodeTokenExpired, "令牌已过期", nil)
-			} else {
-				legacyError(c, http.StatusOK, legacyCodeTokenInvalid, "无效的令牌", nil)
-			}
-			c.Abort()
-			return
-		}
-
-		injectIdentityContext(c, claims)
-		c.Next()
-	}
-}
-
-// LegacyOptionalJWTMiddleware 在公开接口上保留单体 OptionalAuth 的透传行为。
-func (gw *Gateway) LegacyOptionalJWTMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := extractAccessToken(c.Request)
 		if err == nil && tokenString != "" {
@@ -593,40 +773,16 @@ func (gw *Gateway) handleHealthLiveness(c *gin.Context) {
 	})
 }
 
-// handleHealthReadiness 检查 gateway 侧 bridge 复用数据库是否可达，保持与单体一致的 ready 语义。
+// handleHealthReadiness 返回 gateway 自身已完成启动的就绪状态，不再探测 bridge 数据库依赖。
 func (gw *Gateway) handleHealthReadiness(c *gin.Context) {
 	checks := map[string]string{
-		"database": "not configured",
-		"redis":    "not configured",
-	}
-
-	if gw.db != nil {
-		sqlDB, err := gw.db.DB()
-		if err != nil {
-			checks["database"] = "error: " + err.Error()
-			legacyError(c, http.StatusServiceUnavailable, http.StatusInternalServerError, "service not ready", gin.H{"checks": checks})
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
-		defer cancel()
-		if err := sqlDB.PingContext(ctx); err != nil {
-			checks["database"] = "unreachable: " + err.Error()
-			legacyError(c, http.StatusServiceUnavailable, http.StatusInternalServerError, "service not ready", gin.H{"checks": checks})
-			return
-		}
-		checks["database"] = "ok"
+		"gateway": "ok",
 	}
 
 	legacySuccess(c, map[string]any{
 		"status": "ok",
 		"checks": checks,
 	})
-}
-
-// legacyUnauthorized 以单体相同结构返回 401 未授权响应。
-func legacyUnauthorized(c *gin.Context, message string) {
-	legacyError(c, http.StatusUnauthorized, legacyCodeUnauthorized, message, nil)
 }
 
 // legacyError 以单体相同结构返回错误响应。
@@ -718,6 +874,31 @@ func (gw *Gateway) handleRefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleLogout 透传登出请求，并将当前访问令牌一并交给 UserService 做会话清理。
+func (gw *Gateway) handleLogout(c *gin.Context) {
+	accessToken, err := extractAccessToken(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
+		return
+	}
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_, err = gw.userClient.Logout(c.Request.Context(), &userv1.LogoutRequest{
+		AccessToken:  accessToken,
+		RefreshToken: strings.TrimSpace(req.RefreshToken),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "logged_out"})
+}
+
 func (gw *Gateway) handleGetProfile(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -746,6 +927,85 @@ func (gw *Gateway) handleUpdateProfile(c *gin.Context) {
 	}
 	resp, err := gw.userClient.UpdateProfile(c.Request.Context(), &userv1.UpdateProfileRequest{
 		UserId: userID, Username: req.Username, Avatar: req.Avatar,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleMembershipInfo 读取当前用户的会员状态，并明确走 MembershipService 作为会员域的事实源。
+func (gw *Gateway) handleMembershipInfo(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	resp, err := gw.membershipClient.GetMembershipStatus(c.Request.Context(), &membershipv1.UserIDRequest{UserId: userID})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleCreateOrder 创建会员订单，并兼容 `plan` 到 `plan_type` 的字段映射。
+func (gw *Gateway) handleCreateOrder(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		PlanType string `json:"plan_type"`
+		Plan     string `json:"plan"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	planType := strings.TrimSpace(req.PlanType)
+	if planType == "" {
+		planType = strings.TrimSpace(req.Plan)
+	}
+	if planType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan_type is required"})
+		return
+	}
+	resp, err := gw.membershipClient.CreateOrder(c.Request.Context(), &membershipv1.CreateOrderRequest{
+		UserId:   userID,
+		PlanType: planType,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleCheckFeatureAccess 校验会员能力开通状态，补齐 `/api/v1/membership/check-access`。
+func (gw *Gateway) handleCheckFeatureAccess(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Feature string `json:"feature"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	feature := strings.TrimSpace(req.Feature)
+	if feature == "" {
+		feature = strings.TrimSpace(c.Query("feature"))
+	}
+	if feature == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "feature is required"})
+		return
+	}
+	resp, err := gw.membershipClient.CheckFeatureAccess(c.Request.Context(), &membershipv1.CheckFeatureRequest{
+		UserId:  userID,
+		Feature: feature,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -825,6 +1085,35 @@ func (gw *Gateway) handleGetQuestion(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleListQuestionSets 转发题单列表请求，补齐 `/api/v1/question-sets` 入口。
+func (gw *Gateway) handleListQuestionSets(c *gin.Context) {
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 32)
+	resp, err := gw.questionClient.ListQuestionSets(c.Request.Context(), &questionv1.ListQuestionSetsRequest{
+		IndustryCode: c.Query("industry_code"),
+		Page:         &sharedv1.PageParam{Page: int32(page), PageSize: int32(pageSize)},
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGetQuestionSetDetail 读取指定题单详情，补齐 `/api/v1/question-sets/:id` 入口。
+func (gw *Gateway) handleGetQuestionSetDetail(c *gin.Context) {
+	setID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	resp, err := gw.questionClient.GetQuestionSetDetail(c.Request.Context(), &questionv1.GetQuestionSetDetailRequest{SetId: setID})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 func (gw *Gateway) handleListIndustries(c *gin.Context) {
 	resp, err := gw.questionClient.ListIndustries(c.Request.Context(), &emptypb.Empty{})
 	if err != nil {
@@ -887,6 +1176,65 @@ func (gw *Gateway) handleRunCode(c *gin.Context) {
 	}
 	resp, err := gw.questionClient.RunCode(c.Request.Context(), &questionv1.RunCodeRequest{
 		QuestionId: questionID, Language: req.Language, Code: req.Code,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleSubmitAnswerV1 兼容 `/api/v1/questions/submit` 的 body 传参形式。
+func (gw *Gateway) handleSubmitAnswerV1(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		QuestionID uint64 `json:"question_id"`
+		Answer     string `json:"answer"`
+		Language   string `json:"language"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.QuestionID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "question_id is required"})
+		return
+	}
+	resp, err := gw.questionClient.SubmitAnswer(c.Request.Context(), &questionv1.SubmitAnswerRequest{
+		QuestionId: req.QuestionID,
+		UserId:     userID,
+		Answer:     req.Answer,
+		Language:   req.Language,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleRunCodeV1 兼容 `/api/v1/questions/run-code` 的 body 传参形式。
+func (gw *Gateway) handleRunCodeV1(c *gin.Context) {
+	var req struct {
+		QuestionID uint64 `json:"question_id"`
+		Language   string `json:"language"`
+		Code       string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.QuestionID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "question_id is required"})
+		return
+	}
+	resp, err := gw.questionClient.RunCode(c.Request.Context(), &questionv1.RunCodeRequest{
+		QuestionId: req.QuestionID,
+		Language:   req.Language,
+		Code:       req.Code,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1036,8 +1384,25 @@ func (gw *Gateway) handleUpdateNote(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleDeleteNote 删除当前用户的指定笔记，补齐 QuestionService 的删除能力。
 func (gw *Gateway) handleDeleteNote(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "delete note not yet implemented in proto"})
+	noteID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	_, err := gw.questionClient.DeleteNote(c.Request.Context(), &questionv1.DeleteNoteRequest{
+		NoteId: noteID,
+		UserId: userID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 func (gw *Gateway) handleGetPracticeStats(c *gin.Context) {
@@ -1053,12 +1418,27 @@ func (gw *Gateway) handleGetPracticeStats(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleGetPracticeRecommendations 透传练习推荐请求，并兼容 interview_id 查询参数。
 func (gw *Gateway) handleGetPracticeRecommendations(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
-	resp, err := gw.questionClient.GetPracticeRecommendations(c.Request.Context(), &questionv1.UserIDRequest{UserId: userID})
+
+	var interviewID uint64
+	if interviewIDValue := strings.TrimSpace(c.Query("interview_id")); interviewIDValue != "" {
+		parsedInterviewID, err := strconv.ParseUint(interviewIDValue, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid interview_id"})
+			return
+		}
+		interviewID = parsedInterviewID
+	}
+
+	resp, err := gw.questionClient.GetPracticeRecommendations(c.Request.Context(), &questionv1.PracticeRecommendationRequest{
+		UserId:      userID,
+		InterviewId: interviewID,
+	})
 	if err != nil {
 		grpcErr(c, err)
 		return
@@ -1083,6 +1463,95 @@ func (gw *Gateway) handleGetRandomExam(c *gin.Context) {
 	resp, err := gw.questionClient.GetRandomExam(c.Request.Context(), &questionv1.RandomExamRequest{
 		UserId: userID, IndustryCode: req.IndustryCode,
 		QuestionCount: req.QuestionCount, Categories: req.Categories,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleListMistakeTopics 返回当前用户的错题主题聚合，补齐 `/api/v1/mistakes/topics` 入口。
+func (gw *Gateway) handleListMistakeTopics(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "10"), 10, 32)
+	resp, err := gw.questionClient.ListMistakeTopics(c.Request.Context(), &questionv1.ListMistakeTopicsRequest{
+		UserId: userID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGenerateTimedExam 补齐限时练习入口，并兼容 count 到 question_count 的别名映射。
+func (gw *Gateway) handleGenerateTimedExam(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		IndustryCode     string `json:"industry_code"`
+		QuestionCount    int32  `json:"question_count"`
+		Count            int32  `json:"count"`
+		TimeLimitMinutes int32  `json:"time_limit_minutes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	questionCount := req.QuestionCount
+	if questionCount == 0 {
+		questionCount = req.Count
+	}
+	resp, err := gw.questionClient.GenerateTimedExam(c.Request.Context(), &questionv1.GenerateTimedExamRequest{
+		UserId:           userID,
+		IndustryCode:     req.IndustryCode,
+		QuestionCount:    questionCount,
+		TimeLimitMinutes: req.TimeLimitMinutes,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleSubmitExam 提交限时练习答案，并将 JSON map 键转换为 proto 需要的 uint64 map。
+func (gw *Gateway) handleSubmitExam(c *gin.Context) {
+	examID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Answers map[string]string `json:"answers"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	answers := make(map[uint64]string, len(req.Answers))
+	for questionIDText, answer := range req.Answers {
+		questionID, err := strconv.ParseUint(questionIDText, 10, 64)
+		if err != nil || questionID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid answers question id"})
+			return
+		}
+		answers[questionID] = answer
+	}
+	resp, err := gw.questionClient.SubmitExam(c.Request.Context(), &questionv1.SubmitExamRequest{
+		ExamId:  examID,
+		UserId:  userID,
+		Answers: answers,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1209,6 +1678,35 @@ func (gw *Gateway) handleGetNextQuestion(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleGetNextQuestionV1 兼容 `/api/v1/interviews/:id/next-question` 的 POST 触发方式。
+func (gw *Gateway) handleGetNextQuestionV1(c *gin.Context) {
+	interviewID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		CurrentIndex int32 `json:"current_index"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.interviewClient.GetNextQuestion(c.Request.Context(), &interviewv1.GetNextQuestionRequest{
+		InterviewId:  interviewID,
+		UserId:       userID,
+		CurrentIndex: req.CurrentIndex,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 func (gw *Gateway) handleFinishInterview(c *gin.Context) {
 	interviewID, ok := parseID(c, "id")
 	if !ok {
@@ -1226,6 +1724,127 @@ func (gw *Gateway) handleFinishInterview(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// handleProxyRealtimeInterviewWS 校验实时面试资格后，将前端 WebSocket 透明代理到 Realtime Service。
+func (gw *Gateway) handleProxyRealtimeInterviewWS(c *gin.Context) {
+	interviewID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if gw.interviewClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service unavailable", "service": "interview"})
+		return
+	}
+	if strings.TrimSpace(gw.realtimeWSAddr) == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service unavailable", "service": "realtime"})
+		return
+	}
+	accessToken, err := extractAccessToken(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
+		return
+	}
+	realtimeCheck, err := gw.interviewClient.IsRealtimeInterview(c.Request.Context(), &interviewv1.IsRealtimeRequest{
+		InterviewId: interviewID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	if !realtimeCheck.GetIsRealtime() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "interview is not realtime"})
+		return
+	}
+	upstreamURL, err := gw.buildRealtimeInterviewWSURL(interviewID, accessToken, strings.TrimSpace(c.Query("session_id")))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid realtime target"})
+		return
+	}
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+accessToken)
+	upstreamConn, _, err := websocket.DefaultDialer.DialContext(c.Request.Context(), upstreamURL, headers)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to connect realtime service"})
+		return
+	}
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		_ = upstreamConn.Close()
+		return
+	}
+	gw.proxyWebSocketTraffic(clientConn, upstreamConn)
+}
+
+// buildRealtimeInterviewWSURL 组装 Realtime Service 的目标握手地址，并透传 token 与 session_id。
+func (gw *Gateway) buildRealtimeInterviewWSURL(interviewID uint64, accessToken string, sessionID string) (string, error) {
+	base := strings.TrimSpace(gw.realtimeWSAddr)
+	if base == "" {
+		return "", errors.New("missing realtime address")
+	}
+	if !strings.Contains(base, "://") {
+		base = "ws://" + base
+	}
+	target, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	switch target.Scheme {
+	case "http":
+		target.Scheme = "ws"
+	case "https":
+		target.Scheme = "wss"
+	case "ws", "wss":
+	default:
+		return "", errors.New("unsupported realtime scheme")
+	}
+	target.Path = strings.TrimRight(target.Path, "/") + "/ws/interview/" + strconv.FormatUint(interviewID, 10)
+	query := target.Query()
+	query.Set("token", accessToken)
+	if sessionID != "" {
+		query.Set("session_id", sessionID)
+	}
+	target.RawQuery = query.Encode()
+	return target.String(), nil
+}
+
+// proxyWebSocketTraffic 双向转发前端与 Realtime Service 的 WebSocket 帧，并在任一侧结束时清理连接。
+func (gw *Gateway) proxyWebSocketTraffic(clientConn *websocket.Conn, upstreamConn *websocket.Conn) {
+	defer clientConn.Close()
+	defer upstreamConn.Close()
+
+	var once sync.Once
+	closeBoth := func() {
+		_ = clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		_ = upstreamConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		_ = clientConn.Close()
+		_ = upstreamConn.Close()
+	}
+	errCh := make(chan struct{}, 2)
+	go pipeWebSocketMessages(clientConn, upstreamConn, &once, closeBoth, errCh)
+	go pipeWebSocketMessages(upstreamConn, clientConn, &once, closeBoth, errCh)
+	<-errCh
+	once.Do(closeBoth)
+}
+
+// pipeWebSocketMessages 按原始消息类型转发单向 WebSocket 帧，任何读写失败都触发代理结束。
+func pipeWebSocketMessages(src *websocket.Conn, dst *websocket.Conn, once *sync.Once, closeBoth func(), errCh chan<- struct{}) {
+	for {
+		messageType, payload, err := src.ReadMessage()
+		if err != nil {
+			once.Do(closeBoth)
+			errCh <- struct{}{}
+			return
+		}
+		if err := dst.WriteMessage(messageType, payload); err != nil {
+			once.Do(closeBoth)
+			errCh <- struct{}{}
+			return
+		}
+	}
 }
 
 func (gw *Gateway) handleGetReport(c *gin.Context) {
@@ -1328,22 +1947,75 @@ func (gw *Gateway) handleSyncStudyLog(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleCreatePlan 按当前 PlanService proto 组装建计划请求，并兼容旧 HTTP 字段别名。
+// handleSyncStudyLogV1 兼容 `/api/v1/growth/study-log` 的新入口，并复用既有成长日志同步逻辑。
+func (gw *Gateway) handleSyncStudyLogV1(c *gin.Context) {
+	gw.handleSyncStudyLog(c)
+}
+
 func (gw *Gateway) handleCreatePlan(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
 	var req struct {
-		IndustryCode string `json:"industry_code"`
-		Goal         string `json:"goal"`
-		DailyHours   int32  `json:"daily_hours"`
+		WeakTopics        []string `json:"weak_topics"`
+		Level             string   `json:"level"`
+		DurationDays      int32    `json:"duration_days"`
+		Industry          string   `json:"industry"`
+		IndustryCode      string   `json:"industry_code"`
+		DailyStudyMinutes int32    `json:"daily_study_minutes"`
+		DailyHours        int32    `json:"daily_hours"`
+		GoalDescription   string   `json:"goal_description"`
+		Goal              string   `json:"goal"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.growthClient.CreatePlan(c.Request.Context(), &growthv1.CreatePlanRequest{
-		UserId: userID, IndustryCode: req.IndustryCode, Goal: req.Goal, DailyHours: req.DailyHours,
+
+	industry := strings.TrimSpace(req.Industry)
+	if industry == "" {
+		industry = strings.TrimSpace(req.IndustryCode)
+	}
+	goalDescription := strings.TrimSpace(req.GoalDescription)
+	if goalDescription == "" {
+		goalDescription = strings.TrimSpace(req.Goal)
+	}
+	dailyStudyMinutes := req.DailyStudyMinutes
+	if dailyStudyMinutes == 0 && req.DailyHours > 0 {
+		dailyStudyMinutes = req.DailyHours * 60
+	}
+
+	resp, err := gw.planClient.CreatePlan(c.Request.Context(), &planv1.CreatePlanRequest{
+		UserId:            userID,
+		WeakTopics:        req.WeakTopics,
+		Level:             strings.TrimSpace(req.Level),
+		DurationDays:      req.DurationDays,
+		Industry:          industry,
+		DailyStudyMinutes: dailyStudyMinutes,
+		GoalDescription:   goalDescription,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGetCurrentPlan 查询当前用户的活跃学习计划。
+// handleListPlans 返回当前用户的计划列表，补齐 `/api/v1/plans` 查询入口。
+func (gw *Gateway) handleListPlans(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 32)
+	resp, err := gw.planClient.ListPlans(c.Request.Context(), &planv1.ListPlansRequest{
+		UserId:   userID,
+		Page:     int32(page),
+		PageSize: int32(pageSize),
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1357,9 +2029,8 @@ func (gw *Gateway) handleGetCurrentPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// GetPlan with plan_id=0 means "get current/latest plan"
-	resp, err := gw.growthClient.GetPlan(c.Request.Context(), &growthv1.GetPlanRequest{
-		PlanId: 0, UserId: userID,
+	resp, err := gw.planClient.GetCurrentPlan(c.Request.Context(), &planv1.GetCurrentPlanRequest{
+		UserId: userID,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1368,6 +2039,7 @@ func (gw *Gateway) handleGetCurrentPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleGetPlan 查询指定学习计划详情。
 func (gw *Gateway) handleGetPlan(c *gin.Context) {
 	planID, ok := parseID(c, "id")
 	if !ok {
@@ -1377,7 +2049,7 @@ func (gw *Gateway) handleGetPlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	resp, err := gw.growthClient.GetPlan(c.Request.Context(), &growthv1.GetPlanRequest{
+	resp, err := gw.planClient.GetPlan(c.Request.Context(), &planv1.GetPlanRequest{
 		PlanId: planID, UserId: userID,
 	})
 	if err != nil {
@@ -1387,7 +2059,12 @@ func (gw *Gateway) handleGetPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleUpdateTaskStatus 透传任务状态更新，并补齐 plan_id 路径参数。
 func (gw *Gateway) handleUpdateTaskStatus(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
 	taskID, ok := parseID(c, "taskId")
 	if !ok {
 		return
@@ -1403,8 +2080,8 @@ func (gw *Gateway) handleUpdateTaskStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.growthClient.UpdateTaskStatus(c.Request.Context(), &growthv1.UpdateTaskStatusRequest{
-		TaskId: taskID, UserId: userID, Status: req.Status,
+	resp, err := gw.planClient.UpdateTaskStatus(c.Request.Context(), &planv1.UpdateTaskStatusRequest{
+		PlanId: planID, TaskId: taskID, UserId: userID, Status: req.Status,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1413,7 +2090,18 @@ func (gw *Gateway) handleUpdateTaskStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleSubmitTaskFeedback 按当前 PlanService proto 提交任务反馈，并兼容旧字段别名。
+// handleUpdateTaskStatusV1 兼容 `/api/v1/plans/:id/tasks/:tid/status` 的新参数名。
+func (gw *Gateway) handleUpdateTaskStatusV1(c *gin.Context) {
+	c.Params = append(c.Params, gin.Param{Key: "taskId", Value: c.Param("tid")})
+	gw.handleUpdateTaskStatus(c)
+}
+
 func (gw *Gateway) handleSubmitTaskFeedback(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
 	taskID, ok := parseID(c, "taskId")
 	if !ok {
 		return
@@ -1423,17 +2111,66 @@ func (gw *Gateway) handleSubmitTaskFeedback(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Content          string `json:"content"`
-		DifficultyRating int32  `json:"difficulty_rating"`
-		ConfidenceRating int32  `json:"confidence_rating"`
+		DifficultyFeeling  string   `json:"difficulty_feeling"`
+		FeedbackText       string   `json:"feedback_text"`
+		ActualDurationMins int32    `json:"actual_duration_minutes"`
+		ProblemAreas       []string `json:"problem_areas"`
+		Content            string   `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.growthClient.SubmitTaskFeedback(c.Request.Context(), &growthv1.SubmitFeedbackRequest{
-		TaskId: taskID, UserId: userID, Content: req.Content,
-		DifficultyRating: req.DifficultyRating, ConfidenceRating: req.ConfidenceRating,
+
+	feedbackText := strings.TrimSpace(req.FeedbackText)
+	if feedbackText == "" {
+		feedbackText = strings.TrimSpace(req.Content)
+	}
+
+	resp, err := gw.planClient.SubmitTaskFeedback(c.Request.Context(), &planv1.SubmitFeedbackRequest{
+		PlanId:                planID,
+		TaskId:                taskID,
+		UserId:                userID,
+		DifficultyFeeling:     strings.TrimSpace(req.DifficultyFeeling),
+		FeedbackText:          feedbackText,
+		ActualDurationMinutes: req.ActualDurationMins,
+		ProblemAreas:          req.ProblemAreas,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleCompanionChat 将聊天消息转发到 CompanionService。
+// handleSubmitTaskFeedbackV1 兼容 `/api/v1/plans/:id/tasks/:tid/feedback` 的新参数名。
+func (gw *Gateway) handleSubmitTaskFeedbackV1(c *gin.Context) {
+	c.Params = append(c.Params, gin.Param{Key: "taskId", Value: c.Param("tid")})
+	gw.handleSubmitTaskFeedback(c)
+}
+
+// handleAdjustPlan 触发学习计划调整，允许前端仅提交空对象也能走默认调整流程。
+func (gw *Gateway) handleAdjustPlan(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.planClient.AdjustPlan(c.Request.Context(), &planv1.AdjustPlanRequest{
+		PlanId: planID,
+		Reason: strings.TrimSpace(req.Reason),
+		UserId: userID,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -1455,7 +2192,7 @@ func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.growthClient.Chat(c.Request.Context(), &growthv1.CompanionChatRequest{
+	resp, err := gw.companionClient.Chat(c.Request.Context(), &companionv1.CompanionChatRequest{
 		UserId: userID, Message: req.Message, ContextType: req.ContextType,
 	})
 	if err != nil {
@@ -1466,6 +2203,41 @@ func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 }
 
 // ========== Community 代理 ==========
+
+// handleGetCompanionState 读取当前用户的陪伴状态快照，补齐 `/api/v1/companion/state`。
+func (gw *Gateway) handleGetCompanionState(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	resp, err := gw.companionClient.GetCompanionState(c.Request.Context(), &companionv1.GetCompanionStateRequest{UserId: userID})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleSynthesizeSpeech 透传陪伴文案 TTS 合成请求，补齐 `/api/v1/companion/tts`。
+func (gw *Gateway) handleSynthesizeSpeech(c *gin.Context) {
+	var req struct {
+		Text  string `json:"text"`
+		Voice string `json:"voice"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.companionClient.SynthesizeSpeech(c.Request.Context(), &companionv1.SynthesizeSpeechRequest{
+		Text:  req.Text,
+		Voice: req.Voice,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
 
 func (gw *Gateway) handleListPosts(c *gin.Context) {
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
@@ -1630,6 +2402,25 @@ func (gw *Gateway) handleToggleLike(c *gin.Context) {
 }
 
 // ========== Admin 代理 ==========
+
+// handleListMyPosts 返回当前用户发布的帖子列表，补齐 `/api/v1/community/my/posts`。
+func (gw *Gateway) handleListMyPosts(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 32)
+	resp, err := gw.communityClient.ListMyPosts(c.Request.Context(), &communityv1.ListMyPostsRequest{
+		AuthorId: userID,
+		Page:     &sharedv1.PageParam{Page: int32(page), PageSize: int32(pageSize)},
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
 
 func (gw *Gateway) handleAdminListUsers(c *gin.Context) {
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
@@ -2054,6 +2845,104 @@ func (gw *Gateway) handleAdminGenerateQuestionPipelineAsync(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。
+func (gw *Gateway) handleAdminGenerateQuestionPipelineStream(c *gin.Context) {
+	taskID, err := strconv.ParseUint(strings.TrimSpace(c.Query("task_id")), 10, 64)
+	if err != nil || taskID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task_id"})
+		return
+	}
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming is not supported"})
+		return
+	}
+	task, err := gw.adminClient.GetScraperTask(c.Request.Context(), &adminv1.GetScraperTaskRequest{Id: taskID})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	if task.GetTaskType() != questionPipelineTaskType {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not a question pipeline task"})
+		return
+	}
+
+	headers := c.Writer.Header()
+	headers.Set("Content-Type", "text/event-stream; charset=utf-8")
+	headers.Set("Cache-Control", "no-cache, no-transform")
+	headers.Set("Connection", "keep-alive")
+	headers.Set("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.WriteHeaderNow()
+	if err := writeQuestionPipelineSSEPrelude(c, flusher); err != nil {
+		return
+	}
+
+	streamCtx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	lastStatus := ""
+	lastImported := int32(-1)
+	lastQuestionCount := int32(-1)
+	currentTask := task
+	for {
+		if currentTask.GetStatus() != lastStatus || currentTask.GetImportedCount() != lastImported || currentTask.GetQuestionCount() != lastQuestionCount {
+			if err := writeQuestionPipelineSSEEvent(c, flusher, "progress", gin.H{
+				"task_id": taskID,
+				"current": currentTask.GetImportedCount(),
+				"total":   currentTask.GetQuestionCount(),
+				"status":  currentTask.GetStatus(),
+			}); err != nil {
+				return
+			}
+			lastStatus = currentTask.GetStatus()
+			lastImported = currentTask.GetImportedCount()
+			lastQuestionCount = currentTask.GetQuestionCount()
+		}
+
+		switch currentTask.GetStatus() {
+		case "completed":
+			if err := writeQuestionPipelineSSEEvent(c, flusher, "complete", buildQuestionPipelineCompletePayload(taskID, currentTask)); err != nil {
+				return
+			}
+			return
+		case "failed":
+			_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{
+				"task_id": taskID,
+				"message": currentTask.GetErrorMsg(),
+				"status":  currentTask.GetStatus(),
+			})
+			return
+		}
+
+		select {
+		case <-streamCtx.Done():
+			if errors.Is(streamCtx.Err(), context.DeadlineExceeded) {
+				_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{
+					"task_id": taskID,
+					"message": "stream timeout",
+					"status":  currentTask.GetStatus(),
+				})
+			}
+			return
+		case <-c.Request.Context().Done():
+			return
+		case <-ticker.C:
+			nextTask, err := gw.adminClient.GetScraperTask(streamCtx, &adminv1.GetScraperTaskRequest{Id: taskID})
+			if err != nil {
+				_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{
+					"task_id": taskID,
+					"message": grpcErrorMessage(err),
+				})
+				return
+			}
+			currentTask = nextTask
+		}
+	}
 }
 
 func (gw *Gateway) handleAdminImportQuestionPipeline(c *gin.Context) {
@@ -3105,4 +3994,61 @@ func (gw *Gateway) handleAdminRetryScraperTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// writeQuestionPipelineSSEEvent 将题目流水线事件编码成标准 SSE 消息并立即刷新。
+func writeQuestionPipelineSSEEvent(c *gin.Context, flusher http.Flusher, event string, payload interface{}) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := c.Writer.Write([]byte("event: " + event + "\ndata: " + string(body) + "\n\n")); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+// writeQuestionPipelineSSEPrelude 先输出一段注释填充，降低代理对小块 SSE 的缓冲概率。
+func writeQuestionPipelineSSEPrelude(c *gin.Context, flusher http.Flusher) error {
+	padding := ":" + strings.Repeat(" ", 2048) + "\n\n"
+	if _, err := c.Writer.Write([]byte(padding)); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+// buildQuestionPipelineCompletePayload 组装 complete 事件载荷，并尽量透传 Admin 侧结果快照。
+func buildQuestionPipelineCompletePayload(taskID uint64, task *adminv1.ScraperTaskDetail) gin.H {
+	payload := gin.H{
+		"task_id":         taskID,
+		"total_generated": task.GetImportedCount(),
+		"total_failed":    maxInt32(task.GetQuestionCount()-task.GetImportedCount(), 0),
+		"status":          task.GetStatus(),
+	}
+	if strings.TrimSpace(task.GetResultJson()) == "" {
+		return payload
+	}
+	var result interface{}
+	if err := json.Unmarshal([]byte(task.GetResultJson()), &result); err == nil {
+		payload["result"] = result
+	}
+	return payload
+}
+
+// grpcErrorMessage 提取 gRPC 错误的可读消息，供 SSE error 事件使用。
+func grpcErrorMessage(err error) string {
+	if st, ok := status.FromError(err); ok {
+		return st.Message()
+	}
+	return "internal error"
+}
+
+// maxInt32 返回两个 int32 中较大的值，避免 complete 事件出现负数统计。
+func maxInt32(left int32, right int32) int32 {
+	if left > right {
+		return left
+	}
+	return right
 }

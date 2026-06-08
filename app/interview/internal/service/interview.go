@@ -147,6 +147,15 @@ func (s *InterviewService) GetInterviewStats(ctx context.Context, req *interview
 	}, nil
 }
 
+// GetAdminInterviewStats 管理后台获取全站面试总量。
+func (s *InterviewService) GetAdminInterviewStats(ctx context.Context, _ *interviewv1.GetAdminInterviewStatsRequest) (*interviewv1.AdminInterviewStatsResponse, error) {
+	totalInterviews, err := s.uc.GetAdminInterviewStats(ctx)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &interviewv1.AdminInterviewStatsResponse{TotalInterviews: totalInterviews}, nil
+}
+
 // GetNextQuestion 获取下一道面试题目
 func (s *InterviewService) GetNextQuestion(ctx context.Context, req *interviewv1.GetNextQuestionRequest) (*interviewv1.NextQuestionResponse, error) {
 	_, question, err := s.uc.GetNextQuestion(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))

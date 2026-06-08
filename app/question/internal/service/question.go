@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -72,8 +73,11 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		Difficulty:      q.Difficulty,
 		Type:            q.Type,
 		IndustryCode:    q.IndustryCode,
+		Category:        &questionv1.CategoryInfo{Id: q.CategoryID, Name: q.CategoryName},
+		Tags:            q.Tags,
 		ReferenceAnswer: q.ReferenceAnswer,
 		Explanation:     q.Explanation,
+		CreatedAt:       timestamppb.New(q.CreatedAt),
 	}, nil
 }
 
@@ -529,4 +533,158 @@ func (s *QuestionService) ListMistakeTopics(ctx context.Context, req *questionv1
 	return &questionv1.ListMistakeTopicsResponse{
 		Topics: items,
 	}, nil
+}
+
+// AdminListQuestions 管理后台查询题目列表，复用现有题库过滤逻辑。
+func (s *QuestionService) AdminListQuestions(ctx context.Context, req *questionv1.AdminListQuestionsRequest) (*questionv1.AdminListQuestionsResponse, error) {
+	page, pageSize := int32(1), int32(20)
+	if req.GetPage() != nil {
+		page = req.GetPage().GetPage()
+		pageSize = req.GetPage().GetPageSize()
+	}
+
+	questions, total, err := s.uc.ListQuestions(ctx, &biz.QuestionFilter{
+		Keyword:    req.GetKeyword(),
+		Difficulty: req.GetDifficulty(),
+	}, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*questionv1.AdminQuestionInfo, len(questions))
+	for i, question := range questions {
+		items[i] = toProtoAdminQuestion(question)
+	}
+
+	return &questionv1.AdminListQuestionsResponse{
+		Questions: items,
+		PageResult: &sharedv1.PageResult{
+			Total:    total,
+			Page:     page,
+			PageSize: pageSize,
+		},
+	}, nil
+}
+
+// AdminCreateQuestion 管理后台创建题目。
+func (s *QuestionService) AdminCreateQuestion(ctx context.Context, req *questionv1.AdminCreateQuestionRequest) (*questionv1.AdminCreateQuestionResponse, error) {
+	question := &biz.Question{
+		CategoryID:         req.GetCategoryId(),
+		IndustryID:         req.GetIndustryId(),
+		Type:               req.GetType(),
+		Difficulty:         req.GetDifficulty(),
+		Title:              req.GetTitle(),
+		Content:            req.GetContent(),
+		OptionsJSON:        req.GetOptionsJson(),
+		Answer:             req.GetAnswer(),
+		ReferenceAnswer:    req.GetAnswer(),
+		Explanation:        req.GetExplanation(),
+		SolutionJSON:       req.GetSolutionJson(),
+		JudgeConfigJSON:    req.GetJudgeConfigJson(),
+		AnswerTemplateJSON: req.GetAnswerTemplateJson(),
+		Tags:               splitProtoTags(req.GetTags()),
+		IsActive:           req.GetIsActive(),
+	}
+	if err := s.uc.CreateQuestion(ctx, question); err != nil {
+		return nil, err
+	}
+	return &questionv1.AdminCreateQuestionResponse{Id: question.ID}, nil
+}
+
+// AdminUpdateQuestion 管理后台更新题目。
+func (s *QuestionService) AdminUpdateQuestion(ctx context.Context, req *questionv1.AdminUpdateQuestionRequest) (*questionv1.AdminUpdateQuestionResponse, error) {
+	isActive := false
+	if req.IsActive != nil {
+		isActive = req.GetIsActive()
+	} else {
+		existing, err := s.uc.GetQuestion(ctx, req.GetId())
+		if err != nil {
+			return nil, err
+		}
+		isActive = existing.IsActive
+	}
+
+	question := &biz.Question{
+		ID:                 req.GetId(),
+		CategoryID:         req.GetCategoryId(),
+		IndustryID:         req.GetIndustryId(),
+		Type:               req.GetType(),
+		Difficulty:         req.GetDifficulty(),
+		Title:              req.GetTitle(),
+		Content:            req.GetContent(),
+		OptionsJSON:        req.GetOptionsJson(),
+		Answer:             req.GetAnswer(),
+		ReferenceAnswer:    req.GetAnswer(),
+		Explanation:        req.GetExplanation(),
+		SolutionJSON:       req.GetSolutionJson(),
+		JudgeConfigJSON:    req.GetJudgeConfigJson(),
+		AnswerTemplateJSON: req.GetAnswerTemplateJson(),
+		Tags:               splitProtoTags(req.GetTags()),
+		IsActive:           isActive,
+	}
+	if err := s.uc.UpdateQuestion(ctx, question); err != nil {
+		return nil, err
+	}
+	return &questionv1.AdminUpdateQuestionResponse{}, nil
+}
+
+// AdminDeleteQuestion 管理后台删除题目。
+func (s *QuestionService) AdminDeleteQuestion(ctx context.Context, req *questionv1.AdminDeleteQuestionRequest) (*questionv1.AdminDeleteQuestionResponse, error) {
+	if err := s.uc.DeleteQuestion(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return &questionv1.AdminDeleteQuestionResponse{}, nil
+}
+
+// GetAdminQuestionStats 管理后台读取题目总量统计。
+func (s *QuestionService) GetAdminQuestionStats(ctx context.Context, _ *questionv1.GetAdminQuestionStatsRequest) (*questionv1.AdminQuestionStatsResponse, error) {
+	totalQuestions, err := s.uc.GetAdminQuestionStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &questionv1.AdminQuestionStatsResponse{TotalQuestions: totalQuestions}, nil
+}
+
+// toProtoAdminQuestion 将题目实体转换为管理后台专用响应。
+func toProtoAdminQuestion(question *biz.Question) *questionv1.AdminQuestionInfo {
+	if question == nil {
+		return nil
+	}
+	return &questionv1.AdminQuestionInfo{
+		Id:                 question.ID,
+		CategoryId:         question.CategoryID,
+		IndustryId:         question.IndustryID,
+		Type:               question.Type,
+		Difficulty:         question.Difficulty,
+		Title:              question.Title,
+		Content:            question.Content,
+		OptionsJson:        question.OptionsJSON,
+		Answer:             question.Answer,
+		Explanation:        question.Explanation,
+		SolutionJson:       question.SolutionJSON,
+		JudgeConfigJson:    question.JudgeConfigJSON,
+		AnswerTemplateJson: question.AnswerTemplateJSON,
+		Tags:               strings.Join(question.Tags, ","),
+		IsActive:           question.IsActive,
+		CreatedAt:          timestamppb.New(question.CreatedAt),
+		UpdatedAt:          timestamppb.New(question.UpdatedAt),
+		CategoryName:       question.CategoryName,
+		IndustryName:       question.IndustryName,
+	}
+}
+
+// splitProtoTags 将后台透传的逗号标签转换为领域切片。
+func splitProtoTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	return tags
 }

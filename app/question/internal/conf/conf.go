@@ -22,8 +22,12 @@ type Server struct {
 	HTTP *Server_HTTP `yaml:"http"`
 	GRPC *Server_GRPC `yaml:"grpc"`
 }
-type Server_HTTP struct{ Addr string `yaml:"addr"` }
-type Server_GRPC struct{ Addr string `yaml:"addr"` }
+type Server_HTTP struct {
+	Addr string `yaml:"addr"`
+}
+type Server_GRPC struct {
+	Addr string `yaml:"addr"`
+}
 
 type Data struct {
 	Database *Data_Database `yaml:"database"`
@@ -38,8 +42,11 @@ type AI struct {
 	CodeRunnerAddr string `yaml:"coderunner_addr"`
 	AIGatewayAddr  string `yaml:"ai_gateway_addr"`
 	RAGAddr        string `yaml:"rag_addr"`
+	AdminAddr      string `yaml:"admin_addr"`
 }
-type JWT struct{ Secret string `yaml:"secret"` }
+type JWT struct {
+	Secret string `yaml:"secret"`
+}
 
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)

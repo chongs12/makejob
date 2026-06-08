@@ -3,6 +3,7 @@ package makejob.user.v1;
 option go_package = "makejob/api/makejob/user/v1;userv1";
 
 import "google/protobuf/timestamp.proto";
+import "makejob/shared/v1/pagination.proto";
 
 service UserService {
   rpc Register(RegisterRequest) returns (AuthResponse);
@@ -15,6 +16,12 @@ service UserService {
   rpc GetMembershipStatus(UserIDRequest) returns (MembershipStatus);
   rpc UpgradeMembership(UpgradeRequest) returns (MembershipStatus);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // --- 管理后台专用 RPC ---
+  rpc AdminListUsers(AdminListUsersRequest) returns (AdminListUsersResponse);
+  rpc AdminUpdateUserRole(AdminUpdateUserRoleRequest) returns (AdminUpdateUserRoleResponse);
+  rpc AdminBanUser(AdminBanUserRequest) returns (AdminBanUserResponse);
+  rpc GetAdminUserStats(GetAdminUserStatsRequest) returns (AdminUserStatsResponse);
 }
 
 message UserIDRequest {
@@ -92,3 +99,46 @@ message LogoutRequest {
 
 message LogoutResponse {}
 
+message AdminListUsersRequest {
+  makejob.shared.v1.PageParam page = 1;
+}
+
+message AdminListUsersResponse {
+  repeated AdminUserInfo users = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message AdminUserInfo {
+  uint64 id = 1;
+  string username = 2;
+  string email = 3;
+  string role = 4;
+  string avatar = 5;
+  string membership_level = 6;
+  string membership_type = 7;
+  google.protobuf.Timestamp membership_expire_at = 8;
+  bool is_disabled = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message AdminUpdateUserRoleRequest {
+  uint64 user_id = 1;
+  string role = 2;
+}
+
+message AdminUpdateUserRoleResponse {}
+
+message AdminBanUserRequest {
+  uint64 user_id = 1;
+}
+
+message AdminBanUserResponse {}
+
+message GetAdminUserStatsRequest {}
+
+message AdminUserStatsResponse {
+  int64 total_users = 1;
+  int64 pro_members = 2;
+  int64 new_users_today = 3;
+  int64 today_active_users = 4;
+}

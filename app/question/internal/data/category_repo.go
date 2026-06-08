@@ -39,3 +39,17 @@ func (r *categoryRepo) ListByIndustry(ctx context.Context, industryCode string) 
 	}
 	return categories, nil
 }
+
+// GetByID 按分类 ID 读取分类信息，供管理后台题目写入时补齐行业字段。
+func (r *categoryRepo) GetByID(ctx context.Context, id uint64) (*biz.Category, error) {
+	var category model.Category
+	if err := r.db.WithContext(ctx).First(&category, id).Error; err != nil {
+		return nil, err
+	}
+	return &biz.Category{
+		ID:           uint64(category.ID),
+		Name:         category.Name,
+		ParentID:     category.ParentID,
+		IndustryCode: category.IndustryCode,
+	}, nil
+}

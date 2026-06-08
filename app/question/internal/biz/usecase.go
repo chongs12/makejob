@@ -67,6 +67,46 @@ func (uc *QuestionUseCase) ListQuestions(ctx context.Context, filter *QuestionFi
 	return uc.questionRepo.List(ctx, filter, page, pageSize)
 }
 
+// CreateQuestion 管理后台创建题目，并在有分类时补齐行业与分类信息。
+func (uc *QuestionUseCase) CreateQuestion(ctx context.Context, question *Question) error {
+	if question.CategoryID > 0 {
+		category, err := uc.categoryRepo.GetByID(ctx, question.CategoryID)
+		if err != nil {
+			return err
+		}
+		question.CategoryName = category.Name
+		if question.IndustryCode == "" {
+			question.IndustryCode = category.IndustryCode
+		}
+	}
+	return uc.questionRepo.Create(ctx, question)
+}
+
+// UpdateQuestion 管理后台更新题目，并在有分类时同步分类与行业冗余字段。
+func (uc *QuestionUseCase) UpdateQuestion(ctx context.Context, question *Question) error {
+	if question.CategoryID > 0 {
+		category, err := uc.categoryRepo.GetByID(ctx, question.CategoryID)
+		if err != nil {
+			return err
+		}
+		question.CategoryName = category.Name
+		if question.IndustryCode == "" {
+			question.IndustryCode = category.IndustryCode
+		}
+	}
+	return uc.questionRepo.Update(ctx, question)
+}
+
+// DeleteQuestion 管理后台删除题目。
+func (uc *QuestionUseCase) DeleteQuestion(ctx context.Context, id uint64) error {
+	return uc.questionRepo.Delete(ctx, id)
+}
+
+// GetAdminQuestionStats 返回管理后台需要的题目总数。
+func (uc *QuestionUseCase) GetAdminQuestionStats(ctx context.Context) (int64, error) {
+	return uc.questionRepo.Count(ctx, nil)
+}
+
 func (uc *QuestionUseCase) GetQuestion(ctx context.Context, id uint64) (*Question, error) {
 	q, err := uc.questionRepo.GetByID(ctx, id)
 	if err != nil {
@@ -506,8 +546,8 @@ func (uc *QuestionUseCase) ImportQuestions(ctx context.Context, questions []*Que
 	return imported, nil
 }
 
-// PipelineGenerateQuestions 流水线生成题目：调用 AI 生成并写入题库
-func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *GenerateQuestionsRequest) (int, error) {
+// PipelineGenerateQuestions 流水线生成题目：调用 AI 生成并写入题库，并在每次成功写库后回调进度。
+func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *GenerateQuestionsRequest, onProgress func(created int, question *Question) error) (int, error) {
 	if uc.generator == nil {
 		return 0, kratosErr.ServiceUnavailable("GENERATOR_NOT_CONFIGURED", "题目生成服务未配置")
 	}
@@ -534,6 +574,11 @@ func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *G
 			continue
 		}
 		created++
+		if onProgress != nil {
+			if err := onProgress(created, q); err != nil {
+				return created, err
+			}
+		}
 	}
 
 	return created, nil

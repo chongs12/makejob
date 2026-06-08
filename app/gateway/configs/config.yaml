@@ -1,26 +1,29 @@
 server:
   http:
-    addr: 0.0.0.0:8082
+    addr: 0.0.0.0:8080
     timeout: 10s
-
-data:
-  database:
-    driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
 
 services:
   user:
-    addr: "localhost:9004"
-  question:
+    addr: "localhost:9001"
+  membership:
     addr: "localhost:9002"
-  interview:
+  question:
     addr: "localhost:9003"
+  interview:
+    addr: "localhost:9004"
+  realtime:
+    addr: "localhost:8085"
   growth:
-    addr: "localhost:9005"
-  admin:
     addr: "localhost:9006"
-  community:
+  plan:
     addr: "localhost:9007"
+  companion:
+    addr: "localhost:9008"
+  community:
+    addr: "localhost:9009"
+  admin:
+    addr: "localhost:9014"
 
 jwt:
   secret: "makejob-secret-key-change-in-production"

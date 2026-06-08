@@ -12,6 +12,8 @@ data:
 ai:
   service_addr: "localhost:9014"
   coderunner_addr: "localhost:9013"
+  ai_gateway_addr: "localhost:9012"
+  admin_addr: "localhost:9006"
 
 jwt:
   secret: "makejob-secret-key-change-in-production"

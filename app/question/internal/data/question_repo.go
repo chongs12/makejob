@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -62,17 +63,94 @@ func (r *questionRepo) Create(ctx context.Context, question *biz.Question) error
 		Content:         question.Content,
 		Difficulty:      question.Difficulty,
 		Type:            question.Type,
+		IndustryID:      question.IndustryID,
 		IndustryCode:    question.IndustryCode,
+		IndustryName:    question.IndustryName,
 		CategoryID:      question.CategoryID,
 		CategoryName:    question.CategoryName,
+		OptionsJSON:     question.OptionsJSON,
 		StarterCode:     question.StarterCode,
 		Language:        question.Language,
 		EvaluationMode:  question.EvaluationMode,
+		Answer:          question.Answer,
 		ReferenceAnswer: question.ReferenceAnswer,
 		Explanation:     question.Explanation,
+		SolutionJSON:    question.SolutionJSON,
+		JudgeConfigJSON: question.JudgeConfigJSON,
+		AnswerTemplateJSON: question.AnswerTemplateJSON,
+		Tags:            strings.Join(question.Tags, ","),
 		TestCasesJSON:   question.TestCasesJSON,
+		IsActive:        question.IsActive,
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		return err
+	}
+	question.ID = uint64(m.ID)
+	question.CreatedAt = m.CreatedAt
+	question.UpdatedAt = m.UpdatedAt
+	return nil
+}
+
+// Update 更新题目主体信息，供管理后台 CRUD 使用。
+func (r *questionRepo) Update(ctx context.Context, question *biz.Question) error {
+	updates := map[string]any{
+		"title":                question.Title,
+		"content":              question.Content,
+		"difficulty":           question.Difficulty,
+		"type":                 question.Type,
+		"industry_id":          question.IndustryID,
+		"industry_code":        question.IndustryCode,
+		"industry_name":        question.IndustryName,
+		"category_id":          question.CategoryID,
+		"category_name":        question.CategoryName,
+		"options_json":         question.OptionsJSON,
+		"answer":               question.Answer,
+		"reference_answer":     question.ReferenceAnswer,
+		"explanation":          question.Explanation,
+		"solution_json":        question.SolutionJSON,
+		"judge_config_json":    question.JudgeConfigJSON,
+		"answer_template_json": question.AnswerTemplateJSON,
+		"tags":                 strings.Join(question.Tags, ","),
+		"starter_code":         question.StarterCode,
+		"language":             question.Language,
+		"evaluation_mode":      question.EvaluationMode,
+		"test_cases_json":      question.TestCasesJSON,
+	}
+	if question.IsActive {
+		updates["is_active"] = true
+	} else {
+		updates["is_active"] = false
+	}
+	return r.db.WithContext(ctx).Model(&QuestionModel{}).Where("id = ?", question.ID).Updates(updates).Error
+}
+
+// Delete 软删除题目。
+func (r *questionRepo) Delete(ctx context.Context, id uint64) error {
+	return r.db.WithContext(ctx).Delete(&QuestionModel{}, id).Error
+}
+
+// Count 返回指定过滤条件下的题目总数。
+func (r *questionRepo) Count(ctx context.Context, filter *biz.QuestionFilter) (int64, error) {
+	query := r.db.WithContext(ctx).Model(&QuestionModel{})
+	if filter != nil {
+		if filter.IndustryCode != "" {
+			query = query.Where("industry_code = ?", filter.IndustryCode)
+		}
+		if filter.CategoryID > 0 {
+			query = query.Where("category_id = ?", filter.CategoryID)
+		}
+		if filter.Difficulty != "" {
+			query = query.Where("difficulty = ?", filter.Difficulty)
+		}
+		if filter.Keyword != "" {
+			query = query.Where("(title LIKE ? OR content LIKE ?)", "%"+filter.Keyword+"%", "%"+filter.Keyword+"%")
+		}
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // toBizQuestion 将数据库模型转换为领域实体
@@ -83,16 +161,26 @@ func toBizQuestion(m *QuestionModel) *biz.Question {
 		Content:         m.Content,
 		Difficulty:      m.Difficulty,
 		Type:            m.Type,
+		IndustryID:      m.IndustryID,
 		IndustryCode:    m.IndustryCode,
+		IndustryName:    m.IndustryName,
 		CategoryID:      m.CategoryID,
 		CategoryName:    m.CategoryName,
+		Tags:            splitQuestionTags(m.Tags),
+		OptionsJSON:     m.OptionsJSON,
+		Answer:          m.Answer,
+		SolutionJSON:    m.SolutionJSON,
+		JudgeConfigJSON: m.JudgeConfigJSON,
+		AnswerTemplateJSON: m.AnswerTemplateJSON,
 		StarterCode:     m.StarterCode,
 		Language:        m.Language,
 		EvaluationMode:  m.EvaluationMode,
 		ReferenceAnswer: m.ReferenceAnswer,
 		Explanation:     m.Explanation,
 		TestCasesJSON:   m.TestCasesJSON,
+		IsActive:        m.IsActive,
 		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 }
 
@@ -103,15 +191,24 @@ type QuestionModel struct {
 	Content         string `gorm:"type:text"`
 	Difficulty      string `gorm:"size:20"`
 	Type            string `gorm:"size:30"`
+	IndustryID      uint64 `gorm:"index"`
 	IndustryCode    string `gorm:"size:50;index"`
+	IndustryName    string `gorm:"size:200"`
 	CategoryID      uint64 `gorm:"index"`
 	CategoryName    string `gorm:"size:200"`
+	OptionsJSON     string `gorm:"type:text"`
+	Answer          string `gorm:"type:text"`
+	SolutionJSON    string `gorm:"type:text"`
+	JudgeConfigJSON string `gorm:"type:text"`
+	AnswerTemplateJSON string `gorm:"type:text"`
+	Tags            string `gorm:"size:500"`
 	StarterCode     string `gorm:"type:text"`
 	Language        string `gorm:"size:30"`
 	EvaluationMode  string `gorm:"size:30"`
 	ReferenceAnswer string `gorm:"type:text"`
 	Explanation     string `gorm:"type:text"`
 	TestCasesJSON   string `gorm:"type:text"`
+	IsActive        bool   `gorm:"not null;default:true"`
 }
 
 // RandomSelect 按条件随机选取指定数量的题目
@@ -140,6 +237,7 @@ func (r *questionRepo) RandomSelect(ctx context.Context, filter *biz.QuestionFil
 			Content:      m.Content,
 			Difficulty:   m.Difficulty,
 			Type:         m.Type,
+			IndustryID:   m.IndustryID,
 			IndustryCode: m.IndustryCode,
 			CategoryID:   m.CategoryID,
 		}
@@ -157,3 +255,19 @@ func (r *questionRepo) ExistsByTitleAndIndustry(ctx context.Context, title, indu
 }
 
 func (QuestionModel) TableName() string { return "questions" }
+
+// splitQuestionTags 将逗号分隔标签还原为字符串切片。
+func splitQuestionTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	return tags
+}

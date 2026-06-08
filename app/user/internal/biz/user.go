@@ -23,7 +23,9 @@ type UserRepo interface {
 	GetByID(ctx context.Context, id uint64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	BatchGetByIDs(ctx context.Context, ids []uint64) ([]*User, error)
+	List(ctx context.Context, page, pageSize int32) ([]*User, int64, error)
 	Update(ctx context.Context, user *User) error
+	GetAdminStats(ctx context.Context) (int64, int64, int64, int64, error)
 }
 
 // TokenBlacklist token 黑名单接口，用于登出和 token 吊销
@@ -42,9 +44,12 @@ type User struct {
 	Username          string     `gorm:"size:100;not null;uniqueIndex"`
 	Password          string     `gorm:"column:password_hash;size:255;not null"`
 	Email             string     `gorm:"size:200;not null;uniqueIndex"`
+	Avatar            string     `gorm:"size:500"`
 	Role              string     `gorm:"size:20;not null;default:'user'"`
 	MembershipLevel   string     `gorm:"size:20;not null;default:'free'"`
+	MembershipType    string     `gorm:"size:20"`
 	MembershipExpireAt *time.Time
+	IsDisabled        bool       `gorm:"not null;default:false"`
 }
 
 func (User) TableName() string { return "users" }
@@ -159,4 +164,49 @@ func (uc *UserUseCase) UpgradeMembership(ctx context.Context, id uint64, plan st
 	user.MembershipLevel = "pro"
 	user.MembershipExpireAt = &expireAt
 	return uc.repo.Update(ctx, user)
+}
+
+// ListUsers 管理后台分页获取用户列表。
+func (uc *UserUseCase) ListUsers(ctx context.Context, page, pageSize int32) ([]*User, int64, error) {
+	users, total, err := uc.repo.List(ctx, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, user := range users {
+		user.Password = ""
+	}
+	return users, total, nil
+}
+
+// UpdateUserRole 管理后台更新用户角色，并在非 disabled 角色下恢复可用状态。
+func (uc *UserUseCase) UpdateUserRole(ctx context.Context, id uint64, role string) error {
+	user, err := uc.repo.GetByID(ctx, id)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	user.Role = role
+	if role != "disabled" {
+		user.IsDisabled = false
+	}
+	return uc.repo.Update(ctx, user)
+}
+
+// ToggleUserBan 管理后台切换用户封禁状态，保持与旧后台的禁用/恢复语义一致。
+func (uc *UserUseCase) ToggleUserBan(ctx context.Context, id uint64) error {
+	user, err := uc.repo.GetByID(ctx, id)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	user.IsDisabled = !user.IsDisabled
+	if user.IsDisabled {
+		user.Role = "disabled"
+	} else if user.Role == "disabled" {
+		user.Role = "user"
+	}
+	return uc.repo.Update(ctx, user)
+}
+
+// GetAdminStats 返回管理后台用户统计。
+func (uc *UserUseCase) GetAdminStats(ctx context.Context) (int64, int64, int64, int64, error) {
+	return uc.repo.GetAdminStats(ctx)
 }

@@ -290,3 +290,12 @@ func (r *interviewRepo) GetStats(ctx context.Context, userID uint64) (*biz.Inter
 		AvgScore:        stats.Avg,
 	}, nil
 }
+
+// GetAdminStats 统计全站面试总量，供管理后台仪表盘聚合使用。
+func (r *interviewRepo) GetAdminStats(ctx context.Context) (int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.MockInterview{}).Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}

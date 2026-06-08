@@ -897,17 +897,33 @@ func (r *adminRepo) DeleteTTSConfig(ctx context.Context, id uint64) error {
 
 // ==================== Scraper 管理 ====================
 
+// CreateScraperTask 创建 scraper_tasks 任务记录，并完整保存异步任务载荷快照。
 func (r *adminRepo) CreateScraperTask(ctx context.Context, task *biz.ScraperTaskRecord) error {
 	m := &model.ScraperTask{
-		TaskType:    task.TaskType,
-		SourceURL:   task.SourceURL,
-		SourceTitle: task.SourceTitle,
-		Source:      task.Source,
-		Status:      task.Status,
+		TaskType:      task.TaskType,
+		SourceURL:     task.SourceURL,
+		SourceTitle:   task.SourceTitle,
+		Source:        task.Source,
+		Status:        task.Status,
+		PayloadJSON:   task.PayloadJSON,
+		ResultJSON:    task.ResultJSON,
+		QuestionCount: task.QuestionCount,
+		ImportedCount: task.ImportedCount,
+		RetryCount:    task.RetryCount,
+		StartedAt:     task.StartedAt,
+		FinishedAt:    task.FinishedAt,
+		ErrorMsg:      task.ErrorMsg,
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		return err
+	}
+	task.ID = uint64(m.ID)
+	task.CreatedAt = m.CreatedAt
+	task.UpdatedAt = m.UpdatedAt
+	return nil
 }
 
+// ListScraperTasks 按筛选条件分页查询 scraper_tasks，并返回结果快照字段。
 func (r *adminRepo) ListScraperTasks(ctx context.Context, page, pageSize int32, status, taskType string) ([]*biz.ScraperTaskRecord, int64, error) {
 	query := r.db.WithContext(ctx).Model(&model.ScraperTask{})
 	if status != "" {
@@ -934,6 +950,8 @@ func (r *adminRepo) ListScraperTasks(ctx context.Context, page, pageSize int32, 
 			SourceTitle:   m.SourceTitle,
 			Source:        m.Source,
 			Status:        m.Status,
+			PayloadJSON:   m.PayloadJSON,
+			ResultJSON:    m.ResultJSON,
 			QuestionCount: m.QuestionCount,
 			ImportedCount: m.ImportedCount,
 			RetryCount:    m.RetryCount,
@@ -947,6 +965,7 @@ func (r *adminRepo) ListScraperTasks(ctx context.Context, page, pageSize int32, 
 	return result, total, nil
 }
 
+// GetScraperTask 按主键读取单条 scraper_tasks 记录，供任务详情与 SSE 轮询使用。
 func (r *adminRepo) GetScraperTask(ctx context.Context, id uint64) (*biz.ScraperTaskRecord, error) {
 	var m model.ScraperTask
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
@@ -959,6 +978,8 @@ func (r *adminRepo) GetScraperTask(ctx context.Context, id uint64) (*biz.Scraper
 		SourceTitle:   m.SourceTitle,
 		Source:        m.Source,
 		Status:        m.Status,
+		PayloadJSON:   m.PayloadJSON,
+		ResultJSON:    m.ResultJSON,
 		QuestionCount: m.QuestionCount,
 		ImportedCount: m.ImportedCount,
 		RetryCount:    m.RetryCount,
@@ -970,9 +991,12 @@ func (r *adminRepo) GetScraperTask(ctx context.Context, id uint64) (*biz.Scraper
 	}, nil
 }
 
+// UpdateScraperTask 更新 scraper_tasks 的执行状态、进度与结果快照。
 func (r *adminRepo) UpdateScraperTask(ctx context.Context, task *biz.ScraperTaskRecord) error {
 	return r.db.WithContext(ctx).Model(&model.ScraperTask{}).Where("id = ?", task.ID).Updates(map[string]interface{}{
 		"status":         task.Status,
+		"payload_json":   task.PayloadJSON,
+		"result_json":    task.ResultJSON,
 		"question_count": task.QuestionCount,
 		"imported_count": task.ImportedCount,
 		"retry_count":    task.RetryCount,

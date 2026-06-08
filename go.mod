@@ -19,7 +19,6 @@ require (
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
-	makejob-backend v0.0.0
 )
 
 require (
@@ -188,5 +187,3 @@ require (
 	k8s.io/apimachinery v0.32.3 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace makejob-backend => ./backend

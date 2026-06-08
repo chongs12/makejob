@@ -4,10 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
+	adminv1 "makejob/api/makejob/admin/v1"
 	"makejob/app/question/internal/biz"
 	"makejob/app/question/internal/conf"
 	"makejob/app/question/internal/data"
@@ -46,6 +50,7 @@ func main() {
 	}
 }
 
+// wireApp 手动组装题目服务依赖，并为异步 MQ 回写准备受保护 Admin RPC 所需凭证。
 func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error) {
 	db, err := data.NewData(bc.Data)
 	if err != nil {
@@ -85,6 +90,15 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// 创建考试和题集仓储
 	examRepo := data.NewExamRepo(db)
 	questionSetRepo := data.NewQuestionSetRepo(db)
+	adminConn, err := grpc.Dial(bc.AI.AdminAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create admin client: %w", err)
+	}
+	adminClient := adminv1.NewAdminServiceClient(adminConn)
+	adminAccessToken, err := buildAdminAccessToken(bc.JWT.Secret)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create admin access token: %w", err)
+	}
 
 	uc := biz.NewQuestionUseCase(
 		questionRepo, recordRepo, favoriteRepo, noteRepo,
@@ -96,7 +110,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
 
 	// MQ 消费者（注入 RAG 客户端用于题目索引同步）
-	mqConsumer, err := server.NewMQConsumer(bc.MQ.URL, uc, ragClient, logger)
+	mqConsumer, err := server.NewMQConsumer(bc.MQ.URL, uc, ragClient, adminClient, adminAccessToken, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create MQ consumer: %w", err)
 	}
@@ -121,6 +135,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	if c, ok := questionGenerator.(closer); ok {
 		closers = append(closers, c)
 	}
+	closers = append(closers, adminConn)
 
 	cleanup := func() {
 		for _, c := range closers {
@@ -134,4 +149,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	return app, cleanup, nil
+}
+
+// buildAdminAccessToken 为题目服务生成内部 Admin 回写令牌，供异步 MQ 任务调用受保护的管理 RPC。
+func buildAdminAccessToken(jwtSecret string) (string, error) {
+	return auth.GenerateToken(0, "question-service@internal", "admin", jwtSecret, 24*time.Hour)
 }

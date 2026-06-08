@@ -7,8 +7,9 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
-	"makejob-backend/bridge"
 	"makejob/app/admin/internal/biz"
 	"makejob/app/admin/internal/conf"
 	"makejob/app/admin/internal/data"
@@ -51,26 +52,84 @@ func main() {
 	}
 }
 
-// wireApp 手动组装依赖
+// wireApp 手动组装依赖，创建下游 gRPC 客户端并注入到业务层
 func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error) {
 	// data 层：数据库连接
 	db, err := data.NewData(bc.Data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
 	}
-	backendBridge, err := bridge.NewRuntime(db)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize backend bridge: %w", err)
-	}
 
 	// data 层：仓库实现
 	adminRepo := data.NewAdminRepo(db)
+	publisher, err := data.NewMQPublisher(bc.MQ)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create MQ publisher: %w", err)
+	}
+
+	// 创建下游服务 gRPC 连接
+	var userConn, questionConn, interviewConn *grpc.ClientConn
+	cleanupFns := make([]func(), 0)
+
+	if bc.DependentServices != nil && bc.DependentServices.UserAddr != "" {
+		userConn, err = grpc.NewClient(bc.DependentServices.UserAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect user service: %w", err)
+		}
+		cleanupFns = append(cleanupFns, func() { userConn.Close() })
+	}
+
+	if bc.DependentServices != nil && bc.DependentServices.QuestionAddr != "" {
+		questionConn, err = grpc.NewClient(bc.DependentServices.QuestionAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect question service: %w", err)
+		}
+		cleanupFns = append(cleanupFns, func() { questionConn.Close() })
+	}
+
+	if bc.DependentServices != nil && bc.DependentServices.InterviewAddr != "" {
+		interviewConn, err = grpc.NewClient(bc.DependentServices.InterviewAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect interview service: %w", err)
+		}
+		cleanupFns = append(cleanupFns, func() { interviewConn.Close() })
+	}
+
+	// data 层：创建下游服务客户端
+	var userClient biz.UserClient
+	if userConn != nil {
+		userClient = data.NewUserClient(userConn, logger)
+	} else {
+		return nil, nil, fmt.Errorf("user service address is required (dependent_services.user_addr)")
+	}
+
+	var questionClient biz.QuestionClient
+	if questionConn != nil {
+		questionClient = data.NewQuestionClient(questionConn, adminRepo, logger)
+	} else {
+		return nil, nil, fmt.Errorf("question service address is required (dependent_services.question_addr)")
+	}
+
+	var interviewClient biz.InterviewClient
+	if interviewConn != nil {
+		interviewClient = data.NewInterviewClient(interviewConn, logger)
+	} else {
+		return nil, nil, fmt.Errorf("interview service address is required (dependent_services.interview_addr)")
+	}
+
+	aiGatewayClient := data.NewAIGatewayClient()
 
 	// biz 层：业务用例
-	adminUseCase := biz.NewAdminUseCase(adminRepo)
+	adminUseCase := biz.NewAdminUseCase(adminRepo, userClient, questionClient, interviewClient, aiGatewayClient)
 
 	// service 层：gRPC 服务实现
-	adminService := service.NewAdminService(adminUseCase, backendBridge)
+	adminService := service.NewAdminService(adminUseCase, publisher)
 
 	// auth 拦截器
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
@@ -87,7 +146,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	)
 
 	cleanup := func() {
-		// 清理资源
+		for _, fn := range cleanupFns {
+			fn()
+		}
+		_ = publisher.Close()
 	}
 
 	return app, cleanup, nil

@@ -44,6 +44,13 @@ service QuestionService {
 
   // --- 错题主题 ---
   rpc ListMistakeTopics(ListMistakeTopicsRequest) returns (ListMistakeTopicsResponse);
+
+  // --- 管理后台专用 RPC ---
+  rpc AdminListQuestions(AdminListQuestionsRequest) returns (AdminListQuestionsResponse);
+  rpc AdminCreateQuestion(AdminCreateQuestionRequest) returns (AdminCreateQuestionResponse);
+  rpc AdminUpdateQuestion(AdminUpdateQuestionRequest) returns (AdminUpdateQuestionResponse);
+  rpc AdminDeleteQuestion(AdminDeleteQuestionRequest) returns (AdminDeleteQuestionResponse);
+  rpc GetAdminQuestionStats(GetAdminQuestionStatsRequest) returns (AdminQuestionStatsResponse);
 }
 
 // === 题库浏览 ===
@@ -388,4 +395,92 @@ message MistakeQuestion {
   string title = 2;
   string difficulty = 3;
   google.protobuf.Timestamp last_wrong_at = 4;
+}
+
+// === 管理后台专用 ===
+
+message AdminListQuestionsRequest {
+  makejob.shared.v1.PageParam page = 1;
+  string keyword = 2;
+  string difficulty = 3;
+}
+
+message AdminListQuestionsResponse {
+  repeated AdminQuestionInfo questions = 1;
+  makejob.shared.v1.PageResult page_result = 2;
+}
+
+message AdminQuestionInfo {
+  uint64 id = 1;
+  uint64 category_id = 2;
+  uint64 industry_id = 3;
+  string type = 4;
+  string difficulty = 5;
+  string title = 6;
+  string content = 7;
+  string options_json = 8;
+  string answer = 9;
+  string explanation = 10;
+  string solution_json = 11;
+  string judge_config_json = 12;
+  string answer_template_json = 13;
+  string tags = 14;
+  bool is_active = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+  string category_name = 18;
+  string industry_name = 19;
+}
+
+message AdminCreateQuestionRequest {
+  uint64 category_id = 1;
+  uint64 industry_id = 2;
+  string type = 3;
+  string difficulty = 4;
+  string title = 5;
+  string content = 6;
+  string options_json = 7;
+  string answer = 8;
+  string explanation = 9;
+  string solution_json = 10;
+  string judge_config_json = 11;
+  string answer_template_json = 12;
+  string tags = 13;
+  bool is_active = 14;
+}
+
+message AdminCreateQuestionResponse {
+  uint64 id = 1;
+}
+
+message AdminUpdateQuestionRequest {
+  uint64 id = 1;
+  uint64 category_id = 2;
+  uint64 industry_id = 3;
+  string type = 4;
+  string difficulty = 5;
+  string title = 6;
+  string content = 7;
+  string options_json = 8;
+  string answer = 9;
+  string explanation = 10;
+  string solution_json = 11;
+  string judge_config_json = 12;
+  string answer_template_json = 13;
+  string tags = 14;
+  optional bool is_active = 15;
+}
+
+message AdminUpdateQuestionResponse {}
+
+message AdminDeleteQuestionRequest {
+  uint64 id = 1;
+}
+
+message AdminDeleteQuestionResponse {}
+
+message GetAdminQuestionStatsRequest {}
+
+message AdminQuestionStatsResponse {
+  int64 total_questions = 1;
 }

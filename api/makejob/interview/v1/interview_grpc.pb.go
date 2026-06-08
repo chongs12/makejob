@@ -34,6 +34,7 @@ const (
 	InterviewService_SubmitCodingAnswer_FullMethodName           = "/makejob.interview.v1.InterviewService/SubmitCodingAnswer"
 	InterviewService_GetReport_FullMethodName                    = "/makejob.interview.v1.InterviewService/GetReport"
 	InterviewService_GetInterviewStats_FullMethodName            = "/makejob.interview.v1.InterviewService/GetInterviewStats"
+	InterviewService_GetAdminInterviewStats_FullMethodName       = "/makejob.interview.v1.InterviewService/GetAdminInterviewStats"
 )
 
 // InterviewServiceClient is the client API for InterviewService service.
@@ -60,6 +61,7 @@ type InterviewServiceClient interface {
 	GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*InterviewReport, error)
 	// --- 跨服务调用（供 growth 服务使用）---
 	GetInterviewStats(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*InterviewStats, error)
+	GetAdminInterviewStats(ctx context.Context, in *GetAdminInterviewStatsRequest, opts ...grpc.CallOption) (*AdminInterviewStatsResponse, error)
 }
 
 type interviewServiceClient struct {
@@ -210,6 +212,16 @@ func (c *interviewServiceClient) GetInterviewStats(ctx context.Context, in *User
 	return out, nil
 }
 
+func (c *interviewServiceClient) GetAdminInterviewStats(ctx context.Context, in *GetAdminInterviewStatsRequest, opts ...grpc.CallOption) (*AdminInterviewStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminInterviewStatsResponse)
+	err := c.cc.Invoke(ctx, InterviewService_GetAdminInterviewStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InterviewServiceServer is the server API for InterviewService service.
 // All implementations must embed UnimplementedInterviewServiceServer
 // for forward compatibility.
@@ -234,6 +246,7 @@ type InterviewServiceServer interface {
 	GetReport(context.Context, *GetReportRequest) (*InterviewReport, error)
 	// --- 跨服务调用（供 growth 服务使用）---
 	GetInterviewStats(context.Context, *UserIDRequest) (*InterviewStats, error)
+	GetAdminInterviewStats(context.Context, *GetAdminInterviewStatsRequest) (*AdminInterviewStatsResponse, error)
 	mustEmbedUnimplementedInterviewServiceServer()
 }
 
@@ -285,6 +298,9 @@ func (UnimplementedInterviewServiceServer) GetReport(context.Context, *GetReport
 }
 func (UnimplementedInterviewServiceServer) GetInterviewStats(context.Context, *UserIDRequest) (*InterviewStats, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInterviewStats not implemented")
+}
+func (UnimplementedInterviewServiceServer) GetAdminInterviewStats(context.Context, *GetAdminInterviewStatsRequest) (*AdminInterviewStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAdminInterviewStats not implemented")
 }
 func (UnimplementedInterviewServiceServer) mustEmbedUnimplementedInterviewServiceServer() {}
 func (UnimplementedInterviewServiceServer) testEmbeddedByValue()                          {}
@@ -559,6 +575,24 @@ func _InterviewService_GetInterviewStats_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InterviewService_GetAdminInterviewStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAdminInterviewStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InterviewServiceServer).GetAdminInterviewStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InterviewService_GetAdminInterviewStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InterviewServiceServer).GetAdminInterviewStats(ctx, req.(*GetAdminInterviewStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InterviewService_ServiceDesc is the grpc.ServiceDesc for InterviewService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -621,6 +655,10 @@ var InterviewService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetInterviewStats",
 			Handler:    _InterviewService_GetInterviewStats_Handler,
+		},
+		{
+			MethodName: "GetAdminInterviewStats",
+			Handler:    _InterviewService_GetAdminInterviewStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

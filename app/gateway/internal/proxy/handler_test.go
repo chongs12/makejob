@@ -138,6 +138,33 @@ func TestRegisterSystemRoutesMatchesLegacyShape(t *testing.T) {
 	if response.Data["status"] != "ok" {
 		t.Fatalf("expected health status ok, got %+v", response.Data)
 	}
+
+	readyRecorder := httptest.NewRecorder()
+	readyRequest := httptest.NewRequest(http.MethodGet, "/api/health/ready", nil)
+	engine.ServeHTTP(readyRecorder, readyRequest)
+	if readyRecorder.Code != http.StatusOK {
+		t.Fatalf("expected ready status %d, got %d", http.StatusOK, readyRecorder.Code)
+	}
+
+	var readyResponse struct {
+		Code    int                    `json:"code"`
+		Message string                 `json:"message"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(readyRecorder.Body.Bytes(), &readyResponse); err != nil {
+		t.Fatalf("failed to unmarshal ready response: %v", err)
+	}
+	if readyResponse.Code != 0 || readyResponse.Message != "success" {
+		t.Fatalf("unexpected ready response: %+v", readyResponse)
+	}
+
+	checksValue, ok := readyResponse.Data["checks"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected ready checks object, got %+v", readyResponse.Data["checks"])
+	}
+	if checksValue["gateway"] != "ok" {
+		t.Fatalf("expected gateway readiness ok, got %+v", checksValue)
+	}
 }
 
 // TestHandleAdminListAICallLogsRejectsInvalidTaskID 验证无 bridge 代理模式下也会保持单体对 task_id 的参数校验。
@@ -154,5 +181,66 @@ func TestHandleAdminListAICallLogsRejectsInvalidTaskID(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, recorder.Code)
+	}
+}
+
+// buildTestToken 生成测试用 JWT，便于验证需要鉴权的路由注册是否生效。
+func buildTestToken(t *testing.T, userID uint64, role string) string {
+	t.Helper()
+
+	token, err := auth.GenerateToken(userID, "tester@example.com", role, "secret", time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateToken returned error: %v", err)
+	}
+	return token
+}
+
+// TestRegisterRoutesRegistersP64V1Endpoints 验证 P6-4 的 `/api/v1` 新路由已注册，且旧业务前缀不再暴露。
+func TestRegisterRoutesRegistersP64V1Endpoints(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	gateway.RegisterRoutes(engine)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/question-sets", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected /api/v1/question-sets status %d, got %d", http.StatusServiceUnavailable, recorder.Code)
+	}
+
+	legacyRequest := httptest.NewRequest(http.MethodGet, "/api/question-sets", nil)
+	legacyRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(legacyRecorder, legacyRequest)
+	if legacyRecorder.Code != http.StatusNotFound {
+		t.Fatalf("expected legacy business route status %d, got %d", http.StatusNotFound, legacyRecorder.Code)
+	}
+}
+
+// TestRegisterRoutesProtectsAdminStream 验证新的 `/admin/...` SSE 路由已经注册，并继续受管理员鉴权保护。
+func TestRegisterRoutesProtectsAdminStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	gateway.RegisterRoutes(engine)
+
+	userToken := buildTestToken(t, 1, "user")
+	request := httptest.NewRequest(http.MethodGet, "/admin/question-pipeline/generate/stream", nil)
+	request.Header.Set("Authorization", "Bearer "+userToken)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected admin stream status %d, got %d", http.StatusForbidden, recorder.Code)
+	}
+
+	adminToken := buildTestToken(t, 2, "admin")
+	adminRequest := httptest.NewRequest(http.MethodGet, "/admin/question-pipeline/generate/stream", nil)
+	adminRequest.Header.Set("Authorization", "Bearer "+adminToken)
+	adminRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(adminRecorder, adminRequest)
+	if adminRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected admin stream unavailable status %d, got %d", http.StatusServiceUnavailable, adminRecorder.Code)
 	}
 }

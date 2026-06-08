@@ -92,6 +92,7 @@ const (
 	AdminService_ScraperImportAsync_FullMethodName            = "/makejob.admin.v1.AdminService/ScraperImportAsync"
 	AdminService_ListScraperTasks_FullMethodName              = "/makejob.admin.v1.AdminService/ListScraperTasks"
 	AdminService_GetScraperTask_FullMethodName                = "/makejob.admin.v1.AdminService/GetScraperTask"
+	AdminService_UpdateQuestionPipelineTask_FullMethodName    = "/makejob.admin.v1.AdminService/UpdateQuestionPipelineTask"
 	AdminService_RetryScraperTask_FullMethodName              = "/makejob.admin.v1.AdminService/RetryScraperTask"
 	AdminService_GetAdminConfig_FullMethodName                = "/makejob.admin.v1.AdminService/GetAdminConfig"
 	AdminService_SetAdminConfig_FullMethodName                = "/makejob.admin.v1.AdminService/SetAdminConfig"
@@ -189,6 +190,7 @@ type AdminServiceClient interface {
 	ScraperImportAsync(ctx context.Context, in *ScraperImportRequest, opts ...grpc.CallOption) (*ScraperTaskInfo, error)
 	ListScraperTasks(ctx context.Context, in *ListScraperTasksRequest, opts ...grpc.CallOption) (*ListScraperTasksResponse, error)
 	GetScraperTask(ctx context.Context, in *GetScraperTaskRequest, opts ...grpc.CallOption) (*ScraperTaskDetail, error)
+	UpdateQuestionPipelineTask(ctx context.Context, in *UpdateQuestionPipelineTaskRequest, opts ...grpc.CallOption) (*UpdateQuestionPipelineTaskResponse, error)
 	RetryScraperTask(ctx context.Context, in *RetryScraperTaskRequest, opts ...grpc.CallOption) (*ScraperTaskInfo, error)
 	// === 系统配置 ===
 	GetAdminConfig(ctx context.Context, in *GetAdminConfigRequest, opts ...grpc.CallOption) (*AdminConfigValue, error)
@@ -923,6 +925,16 @@ func (c *adminServiceClient) GetScraperTask(ctx context.Context, in *GetScraperT
 	return out, nil
 }
 
+func (c *adminServiceClient) UpdateQuestionPipelineTask(ctx context.Context, in *UpdateQuestionPipelineTaskRequest, opts ...grpc.CallOption) (*UpdateQuestionPipelineTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateQuestionPipelineTaskResponse)
+	err := c.cc.Invoke(ctx, AdminService_UpdateQuestionPipelineTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *adminServiceClient) RetryScraperTask(ctx context.Context, in *RetryScraperTaskRequest, opts ...grpc.CallOption) (*ScraperTaskInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ScraperTaskInfo)
@@ -1045,6 +1057,7 @@ type AdminServiceServer interface {
 	ScraperImportAsync(context.Context, *ScraperImportRequest) (*ScraperTaskInfo, error)
 	ListScraperTasks(context.Context, *ListScraperTasksRequest) (*ListScraperTasksResponse, error)
 	GetScraperTask(context.Context, *GetScraperTaskRequest) (*ScraperTaskDetail, error)
+	UpdateQuestionPipelineTask(context.Context, *UpdateQuestionPipelineTaskRequest) (*UpdateQuestionPipelineTaskResponse, error)
 	RetryScraperTask(context.Context, *RetryScraperTaskRequest) (*ScraperTaskInfo, error)
 	// === 系统配置 ===
 	GetAdminConfig(context.Context, *GetAdminConfigRequest) (*AdminConfigValue, error)
@@ -1274,6 +1287,9 @@ func (UnimplementedAdminServiceServer) ListScraperTasks(context.Context, *ListSc
 }
 func (UnimplementedAdminServiceServer) GetScraperTask(context.Context, *GetScraperTaskRequest) (*ScraperTaskDetail, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetScraperTask not implemented")
+}
+func (UnimplementedAdminServiceServer) UpdateQuestionPipelineTask(context.Context, *UpdateQuestionPipelineTaskRequest) (*UpdateQuestionPipelineTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQuestionPipelineTask not implemented")
 }
 func (UnimplementedAdminServiceServer) RetryScraperTask(context.Context, *RetryScraperTaskRequest) (*ScraperTaskInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method RetryScraperTask not implemented")
@@ -2601,6 +2617,24 @@ func _AdminService_GetScraperTask_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_UpdateQuestionPipelineTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQuestionPipelineTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).UpdateQuestionPipelineTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_UpdateQuestionPipelineTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).UpdateQuestionPipelineTask(ctx, req.(*UpdateQuestionPipelineTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AdminService_RetryScraperTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RetryScraperTaskRequest)
 	if err := dec(in); err != nil {
@@ -2949,6 +2983,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetScraperTask",
 			Handler:    _AdminService_GetScraperTask_Handler,
+		},
+		{
+			MethodName: "UpdateQuestionPipelineTask",
+			Handler:    _AdminService_UpdateQuestionPipelineTask_Handler,
 		},
 		{
 			MethodName: "RetryScraperTask",

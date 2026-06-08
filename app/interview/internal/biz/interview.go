@@ -23,6 +23,8 @@ type InterviewRepo interface {
 	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 	// GetStats SQL 聚合查询面试统计（FIX I3）
 	GetStats(ctx context.Context, userID uint64) (*InterviewStats, error)
+	// GetAdminStats SQL 聚合查询全站面试总量，供管理后台使用。
+	GetAdminStats(ctx context.Context) (int64, error)
 }
 
 // AIServiceClient AI 服务的 gRPC 客户端接口

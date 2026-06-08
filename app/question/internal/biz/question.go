@@ -10,6 +10,9 @@ type QuestionRepo interface {
 	List(ctx context.Context, filter *QuestionFilter, page, pageSize int32) ([]*Question, int64, error)
 	GetByID(ctx context.Context, id uint64) (*Question, error)
 	Create(ctx context.Context, question *Question) error
+	Update(ctx context.Context, question *Question) error
+	Delete(ctx context.Context, id uint64) error
+	Count(ctx context.Context, filter *QuestionFilter) (int64, error)
 	RandomSelect(ctx context.Context, filter *QuestionFilter, count int32) ([]*Question, error)
 	// ExistsByTitleAndIndustry 检查题目是否已存在（FIX Q3: 幂等去重）
 	ExistsByTitleAndIndustry(ctx context.Context, title, industryCode string) (bool, error)
@@ -43,6 +46,7 @@ type NoteRepo interface {
 
 type CategoryRepo interface {
 	ListByIndustry(ctx context.Context, industryCode string) ([]*Category, error)
+	GetByID(ctx context.Context, id uint64) (*Category, error)
 }
 
 type IndustryRepo interface {
@@ -66,10 +70,14 @@ type QuestionGeneratorClient interface {
 
 // GenerateQuestionsRequest AI 题目生成请求
 type GenerateQuestionsRequest struct {
-	IndustryCode string
-	Difficulty   string
-	Count        int32
-	Topics       []string
+	IndustryCode     string
+	Requirement      string
+	AgentPrompt      string
+	GenerationMode   string
+	CandidateCount   int32
+	IncludeScraped   bool
+	IncludeGenerated bool
+	Sources          []string
 }
 
 // ExamRepo 考试记录仓储接口
@@ -88,22 +96,31 @@ type QuestionSetRepo interface {
 
 // 领域实体
 type Question struct {
-	ID              uint64
-	Title           string
-	Content         string
-	Difficulty      string
-	Type            string // coding, subjective, multiple_choice
-	IndustryCode    string
-	CategoryID      uint64
-	CategoryName    string
-	Tags            []string
-	StarterCode     string
-	Language        string
-	EvaluationMode  string
-	ReferenceAnswer string
-	Explanation     string
-	TestCasesJSON   string
-	CreatedAt       time.Time
+	ID                 uint64
+	Title              string
+	Content            string
+	Difficulty         string
+	Type               string // coding, subjective, multiple_choice
+	IndustryID         uint64
+	IndustryCode       string
+	IndustryName       string
+	CategoryID         uint64
+	CategoryName       string
+	Tags               []string
+	OptionsJSON        string
+	Answer             string
+	SolutionJSON       string
+	JudgeConfigJSON    string
+	AnswerTemplateJSON string
+	StarterCode        string
+	Language           string
+	EvaluationMode     string
+	ReferenceAnswer    string
+	Explanation        string
+	TestCasesJSON      string
+	IsActive           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type UserQuestionRecord struct {

@@ -19,3 +19,13 @@ jwt:
   secret: "makejob-secret-key-change-in-production"
   expire_hours: 168
   service_secret: "makejob-internal-service-secret"
+
+mq:
+  url: "amqp://guest:guest@localhost:5672/"
+  exchange: "makejob.async"
+
+dependent_services:
+  user_addr: "127.0.0.1:9001"
+  question_addr: "127.0.0.1:9003"
+  interview_addr: "127.0.0.1:9004"
+  ai_gateway_addr: "127.0.0.1:9012"

@@ -327,6 +327,11 @@ func (uc *InterviewUseCase) GetInterviewStats(ctx context.Context, userID uint64
 	return uc.repo.GetStats(ctx, userID)
 }
 
+// GetAdminInterviewStats 返回管理后台需要的面试总量统计。
+func (uc *InterviewUseCase) GetAdminInterviewStats(ctx context.Context) (int64, error) {
+	return uc.repo.GetAdminStats(ctx)
+}
+
 // ProcessResumeParse MQ 消费者：解析简历并持久化解析结果
 func (uc *InterviewUseCase) ProcessResumeParse(ctx context.Context, interviewID, userID uint64, resumeText string) error {
 	// 校验简历文本非空，空文本直接丢弃

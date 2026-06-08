@@ -37,3 +37,21 @@ func GetAccessTokenFromMetadata(ctx context.Context) string {
 	}
 	return strings.TrimSpace(strings.TrimPrefix(values[0], "Bearer "))
 }
+
+// WithOutgoingAccessToken 将 Bearer Token 追加到 gRPC 出站元数据，供服务间受保护 RPC 透传鉴权。
+func WithOutgoingAccessToken(ctx context.Context, token string) context.Context {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+}
+
+// ForwardAccessToken 将当前上下文中的访问令牌补到 gRPC 出站元数据，优先读取拦截器写入的上下文值。
+func ForwardAccessToken(ctx context.Context) context.Context {
+	token := GetAccessTokenFromContext(ctx)
+	if token == "" {
+		token = GetAccessTokenFromMetadata(ctx)
+	}
+	return WithOutgoingAccessToken(ctx, token)
+}

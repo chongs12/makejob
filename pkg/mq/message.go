@@ -120,9 +120,13 @@ type ArchiveWrittenPayload struct {
 
 // PipelineBuildPayload 题目生成流水线负载（由 admin 服务发布，question 消费）
 type PipelineBuildPayload struct {
-	PipelineID   uint64   `json:"pipeline_id"`
-	IndustryCode string   `json:"industry_code"`
-	Difficulty   string   `json:"difficulty"`
-	Count        int32    `json:"count"`
-	Topics       []string `json:"topics"`
+	TaskID           uint64   `json:"task_id"`
+	IndustryCode     string   `json:"industry_code"`
+	Requirement      string   `json:"requirement"`
+	AgentPrompt      string   `json:"agent_prompt"`
+	GenerationMode   string   `json:"generation_mode"`
+	CandidateCount   int32    `json:"candidate_count"`
+	IncludeScraped   bool     `json:"include_scraped"`
+	IncludeGenerated bool     `json:"include_generated"`
+	Sources          []string `json:"sources"`
 }

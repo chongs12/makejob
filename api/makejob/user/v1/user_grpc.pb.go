@@ -29,6 +29,10 @@ const (
 	UserService_GetMembershipStatus_FullMethodName = "/makejob.user.v1.UserService/GetMembershipStatus"
 	UserService_UpgradeMembership_FullMethodName   = "/makejob.user.v1.UserService/UpgradeMembership"
 	UserService_Logout_FullMethodName              = "/makejob.user.v1.UserService/Logout"
+	UserService_AdminListUsers_FullMethodName      = "/makejob.user.v1.UserService/AdminListUsers"
+	UserService_AdminUpdateUserRole_FullMethodName = "/makejob.user.v1.UserService/AdminUpdateUserRole"
+	UserService_AdminBanUser_FullMethodName        = "/makejob.user.v1.UserService/AdminBanUser"
+	UserService_GetAdminUserStats_FullMethodName   = "/makejob.user.v1.UserService/GetAdminUserStats"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -45,6 +49,11 @@ type UserServiceClient interface {
 	GetMembershipStatus(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*MembershipStatus, error)
 	UpgradeMembership(ctx context.Context, in *UpgradeRequest, opts ...grpc.CallOption) (*MembershipStatus, error)
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
+	// --- 管理后台专用 RPC ---
+	AdminListUsers(ctx context.Context, in *AdminListUsersRequest, opts ...grpc.CallOption) (*AdminListUsersResponse, error)
+	AdminUpdateUserRole(ctx context.Context, in *AdminUpdateUserRoleRequest, opts ...grpc.CallOption) (*AdminUpdateUserRoleResponse, error)
+	AdminBanUser(ctx context.Context, in *AdminBanUserRequest, opts ...grpc.CallOption) (*AdminBanUserResponse, error)
+	GetAdminUserStats(ctx context.Context, in *GetAdminUserStatsRequest, opts ...grpc.CallOption) (*AdminUserStatsResponse, error)
 }
 
 type userServiceClient struct {
@@ -155,6 +164,46 @@ func (c *userServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	return out, nil
 }
 
+func (c *userServiceClient) AdminListUsers(ctx context.Context, in *AdminListUsersRequest, opts ...grpc.CallOption) (*AdminListUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListUsersResponse)
+	err := c.cc.Invoke(ctx, UserService_AdminListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminUpdateUserRole(ctx context.Context, in *AdminUpdateUserRoleRequest, opts ...grpc.CallOption) (*AdminUpdateUserRoleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUpdateUserRoleResponse)
+	err := c.cc.Invoke(ctx, UserService_AdminUpdateUserRole_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) AdminBanUser(ctx context.Context, in *AdminBanUserRequest, opts ...grpc.CallOption) (*AdminBanUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminBanUserResponse)
+	err := c.cc.Invoke(ctx, UserService_AdminBanUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) GetAdminUserStats(ctx context.Context, in *GetAdminUserStatsRequest, opts ...grpc.CallOption) (*AdminUserStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUserStatsResponse)
+	err := c.cc.Invoke(ctx, UserService_GetAdminUserStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -169,6 +218,11 @@ type UserServiceServer interface {
 	GetMembershipStatus(context.Context, *UserIDRequest) (*MembershipStatus, error)
 	UpgradeMembership(context.Context, *UpgradeRequest) (*MembershipStatus, error)
 	Logout(context.Context, *LogoutRequest) (*LogoutResponse, error)
+	// --- 管理后台专用 RPC ---
+	AdminListUsers(context.Context, *AdminListUsersRequest) (*AdminListUsersResponse, error)
+	AdminUpdateUserRole(context.Context, *AdminUpdateUserRoleRequest) (*AdminUpdateUserRoleResponse, error)
+	AdminBanUser(context.Context, *AdminBanUserRequest) (*AdminBanUserResponse, error)
+	GetAdminUserStats(context.Context, *GetAdminUserStatsRequest) (*AdminUserStatsResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -208,6 +262,18 @@ func (UnimplementedUserServiceServer) UpgradeMembership(context.Context, *Upgrad
 }
 func (UnimplementedUserServiceServer) Logout(context.Context, *LogoutRequest) (*LogoutResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedUserServiceServer) AdminListUsers(context.Context, *AdminListUsersRequest) (*AdminListUsersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListUsers not implemented")
+}
+func (UnimplementedUserServiceServer) AdminUpdateUserRole(context.Context, *AdminUpdateUserRoleRequest) (*AdminUpdateUserRoleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminUpdateUserRole not implemented")
+}
+func (UnimplementedUserServiceServer) AdminBanUser(context.Context, *AdminBanUserRequest) (*AdminBanUserResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminBanUser not implemented")
+}
+func (UnimplementedUserServiceServer) GetAdminUserStats(context.Context, *GetAdminUserStatsRequest) (*AdminUserStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAdminUserStats not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -410,6 +476,78 @@ func _UserService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_AdminListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminListUsers(ctx, req.(*AdminListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminUpdateUserRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminUpdateUserRoleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminUpdateUserRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminUpdateUserRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminUpdateUserRole(ctx, req.(*AdminUpdateUserRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_AdminBanUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminBanUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).AdminBanUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_AdminBanUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).AdminBanUser(ctx, req.(*AdminBanUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_GetAdminUserStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAdminUserStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetAdminUserStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetAdminUserStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetAdminUserStats(ctx, req.(*GetAdminUserStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -456,6 +594,22 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _UserService_Logout_Handler,
+		},
+		{
+			MethodName: "AdminListUsers",
+			Handler:    _UserService_AdminListUsers_Handler,
+		},
+		{
+			MethodName: "AdminUpdateUserRole",
+			Handler:    _UserService_AdminUpdateUserRole_Handler,
+		},
+		{
+			MethodName: "AdminBanUser",
+			Handler:    _UserService_AdminBanUser_Handler,
+		},
+		{
+			MethodName: "GetAdminUserStats",
+			Handler:    _UserService_GetAdminUserStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -8,9 +8,19 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
+	Server            *Server            `yaml:"server"`
+	Data              *Data              `yaml:"data"`
+	JWT               *JWT               `yaml:"jwt"`
+	MQ                *MQ                `yaml:"mq"`
+	DependentServices *DependentServices `yaml:"dependent_services"`
+}
+
+// DependentServices 下游微服务地址配置
+type DependentServices struct {
+	UserAddr      string `yaml:"user_addr"`
+	QuestionAddr  string `yaml:"question_addr"`
+	InterviewAddr string `yaml:"interview_addr"`
+	AIGatewayAddr string `yaml:"ai_gateway_addr"`
 }
 
 type Server struct {
@@ -50,6 +60,12 @@ type JWT struct {
 	ServiceSecret string `yaml:"service_secret"`
 }
 
+// MQ 描述 Admin 服务使用的 RabbitMQ 连接与交换机配置。
+type MQ struct {
+	URL      string `yaml:"url"`
+	Exchange string `yaml:"exchange"`
+}
+
 // Load 从 YAML 文件加载配置
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
@@ -74,6 +90,12 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT.ExpireHours == 0 {
 		bc.JWT.ExpireHours = 168
+	}
+	if bc.MQ == nil {
+		bc.MQ = &MQ{}
+	}
+	if bc.MQ.Exchange == "" {
+		bc.MQ.Exchange = "makejob.async"
 	}
 
 	return &bc, nil

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -29,19 +28,26 @@ func TestMergeAdminConfigItems(t *testing.T) {
 	}
 }
 
-// TestNormalizeAdminAIConfigsRejectsUnsupportedProvider 验证 admin 服务会通过 bridge 复用单体规则拒绝非法 AI 配置。
-func TestNormalizeAdminAIConfigsRejectsUnsupportedProvider(t *testing.T) {
-	_, err := normalizeAdminAIConfigs(map[string]string{
-		"ai_provider":        "openai",
-		"ai_model":           "gpt-4o-mini",
-		"ai_api_key":         "key",
-		"ai_base_url":        "https://example.com",
-		"ai_timeout_seconds": "30",
+// TestNormalizeAIConfigInput 验证 AI 配置会补齐默认值并拒绝非法 provider。
+func TestNormalizeAIConfigInput(t *testing.T) {
+	result, err := normalizeAIConfigInput(map[string]string{
+		"ai_model":           "custom-model",
+		"ai_timeout_seconds": "60",
 	})
-	if err == nil {
-		t.Fatal("expected invalid provider config to be rejected")
+	if err != nil {
+		t.Fatalf("normalizeAIConfigInput returned error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "Provider") {
-		t.Fatalf("expected provider validation error, got %v", err)
+	if result["ai_provider"] != "eino" {
+		t.Fatalf("expected default provider eino, got %q", result["ai_provider"])
+	}
+	if result["ai_model"] != "custom-model" {
+		t.Fatalf("expected ai_model override, got %q", result["ai_model"])
+	}
+	if result["ai_timeout_seconds"] != "60" {
+		t.Fatalf("expected ai_timeout_seconds override, got %q", result["ai_timeout_seconds"])
+	}
+
+	if _, err := normalizeAIConfigInput(map[string]string{"ai_provider": "mock"}); err == nil {
+		t.Fatalf("expected invalid provider to be rejected")
 	}
 }

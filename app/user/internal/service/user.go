@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
+	sharedv1 "makejob/api/makejob/shared/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	userv1 "makejob/api/makejob/user/v1"
@@ -205,6 +206,64 @@ func (s *UserService) UpgradeMembership(ctx context.Context, req *userv1.Upgrade
 	return s.GetMembershipStatus(ctx, &userv1.UserIDRequest{UserId: req.UserId})
 }
 
+// AdminListUsers 管理后台分页查询用户。
+func (s *UserService) AdminListUsers(ctx context.Context, req *userv1.AdminListUsersRequest) (*userv1.AdminListUsersResponse, error) {
+	page, pageSize := int32(1), int32(20)
+	if req.GetPage() != nil {
+		page = req.GetPage().GetPage()
+		pageSize = req.GetPage().GetPageSize()
+	}
+
+	users, total, err := s.uc.ListUsers(ctx, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*userv1.AdminUserInfo, len(users))
+	for i, user := range users {
+		items[i] = toProtoAdminUser(user)
+	}
+
+	return &userv1.AdminListUsersResponse{
+		Users: items,
+		PageResult: &sharedv1.PageResult{
+			Total:    total,
+			Page:     page,
+			PageSize: pageSize,
+		},
+	}, nil
+}
+
+// AdminUpdateUserRole 管理后台更新用户角色。
+func (s *UserService) AdminUpdateUserRole(ctx context.Context, req *userv1.AdminUpdateUserRoleRequest) (*userv1.AdminUpdateUserRoleResponse, error) {
+	if err := s.uc.UpdateUserRole(ctx, req.GetUserId(), req.GetRole()); err != nil {
+		return nil, err
+	}
+	return &userv1.AdminUpdateUserRoleResponse{}, nil
+}
+
+// AdminBanUser 管理后台切换用户封禁状态。
+func (s *UserService) AdminBanUser(ctx context.Context, req *userv1.AdminBanUserRequest) (*userv1.AdminBanUserResponse, error) {
+	if err := s.uc.ToggleUserBan(ctx, req.GetUserId()); err != nil {
+		return nil, err
+	}
+	return &userv1.AdminBanUserResponse{}, nil
+}
+
+// GetAdminUserStats 管理后台获取用户统计指标。
+func (s *UserService) GetAdminUserStats(ctx context.Context, _ *userv1.GetAdminUserStatsRequest) (*userv1.AdminUserStatsResponse, error) {
+	totalUsers, proMembers, newUsersToday, todayActiveUsers, err := s.uc.GetAdminStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &userv1.AdminUserStatsResponse{
+		TotalUsers:       totalUsers,
+		ProMembers:       proMembers,
+		NewUsersToday:    newUsersToday,
+		TodayActiveUsers: todayActiveUsers,
+	}, nil
+}
+
 // --- 辅助函数 ---
 
 func toProtoUser(u *biz.User) *userv1.UserProfile {
@@ -212,8 +271,28 @@ func toProtoUser(u *biz.User) *userv1.UserProfile {
 		Id:              uint64(u.ID),
 		Username:        u.Username,
 		Email:           u.Email,
+		Avatar:          u.Avatar,
 		Role:            u.Role,
 		MembershipLevel: u.MembershipLevel,
+		CreatedAt:       timestamppb.New(u.CreatedAt),
+	}
+	if u.MembershipExpireAt != nil {
+		pb.MembershipExpireAt = timestamppb.New(*u.MembershipExpireAt)
+	}
+	return pb
+}
+
+// toProtoAdminUser 将用户实体转换为管理后台专用响应。
+func toProtoAdminUser(u *biz.User) *userv1.AdminUserInfo {
+	pb := &userv1.AdminUserInfo{
+		Id:              uint64(u.ID),
+		Username:        u.Username,
+		Email:           u.Email,
+		Role:            u.Role,
+		Avatar:          u.Avatar,
+		MembershipLevel: u.MembershipLevel,
+		MembershipType:  u.MembershipType,
+		IsDisabled:      u.IsDisabled,
 		CreatedAt:       timestamppb.New(u.CreatedAt),
 	}
 	if u.MembershipExpireAt != nil {

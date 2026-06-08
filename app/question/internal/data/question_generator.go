@@ -54,29 +54,44 @@ type generatedQuestion struct {
 
 // GenerateQuestions 调用 AI Gateway 生成题目
 func (c *questionGeneratorClient) GenerateQuestions(ctx context.Context, req *biz.GenerateQuestionsRequest) ([]*biz.Question, error) {
-	count := req.Count
+	count := req.CandidateCount
 	if count <= 0 {
 		count = 5
 	}
-	topicsHint := ""
-	if len(req.Topics) > 0 {
-		topicsHint = fmt.Sprintf("重点考察以下知识点：%s", strings.Join(req.Topics, "、"))
+	requirement := strings.TrimSpace(req.Requirement)
+	if requirement == "" {
+		requirement = "请围绕岗位核心能力生成高质量面试题"
+	}
+	generationMode := strings.TrimSpace(req.GenerationMode)
+	if generationMode == "" {
+		generationMode = "standard"
+	}
+	sourceHint := "未指定来源标签。"
+	if len(req.Sources) > 0 {
+		sourceHint = fmt.Sprintf("优先参考以下来源标签：%s。", strings.Join(req.Sources, "、"))
+	}
+	materialHint := fmt.Sprintf("include_scraped=%t, include_generated=%t", req.IncludeScraped, req.IncludeGenerated)
+	agentPromptHint := strings.TrimSpace(req.AgentPrompt)
+	if agentPromptHint == "" {
+		agentPromptHint = "无额外出题偏好。"
 	}
 
 	// 构造 InterviewAgent 请求：用 history 中的 system message 指定生成任务
 	systemPrompt := fmt.Sprintf(
-		"你是一个专业的题库出题助手。请为「%s」行业生成 %d 道%s难度的面试/笔试题目。%s\n"+
+		"你是一个专业的题库出题助手。请为「%s」行业生成 %d 道候选题卡，岗位要求为：%s。\n"+
+			"生成模式：%s。来源策略：%s。来源开关：%s。\n"+
+			"额外提示：%s。\n"+
 			"请严格以 JSON 数组格式返回，每道题包含以下字段：\n"+
 			"title(题目标题), content(题目正文), difficulty(easy/medium/hard), "+
 			"type(coding/subjective/multiple_choice), topic(知识点), "+
 			"reference_answer(参考答案), explanation(解析), tags(标签数组)\n"+
 			"只返回 JSON 数组，不要包含其他文字。",
-		req.IndustryCode, count, req.Difficulty, topicsHint,
+		req.IndustryCode, count, requirement, generationMode, sourceHint, materialHint, agentPromptHint,
 	)
 
 	resp, err := c.client.InterviewAgent(ctx, &aiv1.InterviewAgentRequest{
 		IndustryCode: req.IndustryCode,
-		Difficulty:   req.Difficulty,
+		Difficulty:   generationMode,
 		History: []*aiv1.Message{
 			{Role: "system", Content: systemPrompt},
 		},

@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	v1 "makejob/api/makejob/shared/v1"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -798,11 +799,495 @@ func (*LogoutResponse) Descriptor() ([]byte, []int) {
 	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{13}
 }
 
+type AdminListUsersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          *v1.PageParam          `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminListUsersRequest) Reset() {
+	*x = AdminListUsersRequest{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminListUsersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminListUsersRequest) ProtoMessage() {}
+
+func (x *AdminListUsersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminListUsersRequest.ProtoReflect.Descriptor instead.
+func (*AdminListUsersRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *AdminListUsersRequest) GetPage() *v1.PageParam {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+type AdminListUsersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Users         []*AdminUserInfo       `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	PageResult    *v1.PageResult         `protobuf:"bytes,2,opt,name=page_result,json=pageResult,proto3" json:"page_result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminListUsersResponse) Reset() {
+	*x = AdminListUsersResponse{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminListUsersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminListUsersResponse) ProtoMessage() {}
+
+func (x *AdminListUsersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminListUsersResponse.ProtoReflect.Descriptor instead.
+func (*AdminListUsersResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *AdminListUsersResponse) GetUsers() []*AdminUserInfo {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
+func (x *AdminListUsersResponse) GetPageResult() *v1.PageResult {
+	if x != nil {
+		return x.PageResult
+	}
+	return nil
+}
+
+type AdminUserInfo struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Username           string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	Email              string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	Role               string                 `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
+	Avatar             string                 `protobuf:"bytes,5,opt,name=avatar,proto3" json:"avatar,omitempty"`
+	MembershipLevel    string                 `protobuf:"bytes,6,opt,name=membership_level,json=membershipLevel,proto3" json:"membership_level,omitempty"`
+	MembershipType     string                 `protobuf:"bytes,7,opt,name=membership_type,json=membershipType,proto3" json:"membership_type,omitempty"`
+	MembershipExpireAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=membership_expire_at,json=membershipExpireAt,proto3" json:"membership_expire_at,omitempty"`
+	IsDisabled         bool                   `protobuf:"varint,9,opt,name=is_disabled,json=isDisabled,proto3" json:"is_disabled,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *AdminUserInfo) Reset() {
+	*x = AdminUserInfo{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminUserInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminUserInfo) ProtoMessage() {}
+
+func (x *AdminUserInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminUserInfo.ProtoReflect.Descriptor instead.
+func (*AdminUserInfo) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *AdminUserInfo) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *AdminUserInfo) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetAvatar() string {
+	if x != nil {
+		return x.Avatar
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetMembershipLevel() string {
+	if x != nil {
+		return x.MembershipLevel
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetMembershipType() string {
+	if x != nil {
+		return x.MembershipType
+	}
+	return ""
+}
+
+func (x *AdminUserInfo) GetMembershipExpireAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.MembershipExpireAt
+	}
+	return nil
+}
+
+func (x *AdminUserInfo) GetIsDisabled() bool {
+	if x != nil {
+		return x.IsDisabled
+	}
+	return false
+}
+
+func (x *AdminUserInfo) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type AdminUpdateUserRoleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminUpdateUserRoleRequest) Reset() {
+	*x = AdminUpdateUserRoleRequest{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminUpdateUserRoleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminUpdateUserRoleRequest) ProtoMessage() {}
+
+func (x *AdminUpdateUserRoleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminUpdateUserRoleRequest.ProtoReflect.Descriptor instead.
+func (*AdminUpdateUserRoleRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *AdminUpdateUserRoleRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *AdminUpdateUserRoleRequest) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+type AdminUpdateUserRoleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminUpdateUserRoleResponse) Reset() {
+	*x = AdminUpdateUserRoleResponse{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminUpdateUserRoleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminUpdateUserRoleResponse) ProtoMessage() {}
+
+func (x *AdminUpdateUserRoleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminUpdateUserRoleResponse.ProtoReflect.Descriptor instead.
+func (*AdminUpdateUserRoleResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{18}
+}
+
+type AdminBanUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminBanUserRequest) Reset() {
+	*x = AdminBanUserRequest{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminBanUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminBanUserRequest) ProtoMessage() {}
+
+func (x *AdminBanUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminBanUserRequest.ProtoReflect.Descriptor instead.
+func (*AdminBanUserRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *AdminBanUserRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+type AdminBanUserResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdminBanUserResponse) Reset() {
+	*x = AdminBanUserResponse{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminBanUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminBanUserResponse) ProtoMessage() {}
+
+func (x *AdminBanUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminBanUserResponse.ProtoReflect.Descriptor instead.
+func (*AdminBanUserResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{20}
+}
+
+type GetAdminUserStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAdminUserStatsRequest) Reset() {
+	*x = GetAdminUserStatsRequest{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAdminUserStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAdminUserStatsRequest) ProtoMessage() {}
+
+func (x *GetAdminUserStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAdminUserStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetAdminUserStatsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{21}
+}
+
+type AdminUserStatsResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	TotalUsers       int64                  `protobuf:"varint,1,opt,name=total_users,json=totalUsers,proto3" json:"total_users,omitempty"`
+	ProMembers       int64                  `protobuf:"varint,2,opt,name=pro_members,json=proMembers,proto3" json:"pro_members,omitempty"`
+	NewUsersToday    int64                  `protobuf:"varint,3,opt,name=new_users_today,json=newUsersToday,proto3" json:"new_users_today,omitempty"`
+	TodayActiveUsers int64                  `protobuf:"varint,4,opt,name=today_active_users,json=todayActiveUsers,proto3" json:"today_active_users,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *AdminUserStatsResponse) Reset() {
+	*x = AdminUserStatsResponse{}
+	mi := &file_makejob_user_v1_user_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdminUserStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdminUserStatsResponse) ProtoMessage() {}
+
+func (x *AdminUserStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_user_v1_user_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdminUserStatsResponse.ProtoReflect.Descriptor instead.
+func (*AdminUserStatsResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_user_v1_user_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *AdminUserStatsResponse) GetTotalUsers() int64 {
+	if x != nil {
+		return x.TotalUsers
+	}
+	return 0
+}
+
+func (x *AdminUserStatsResponse) GetProMembers() int64 {
+	if x != nil {
+		return x.ProMembers
+	}
+	return 0
+}
+
+func (x *AdminUserStatsResponse) GetNewUsersToday() int64 {
+	if x != nil {
+		return x.NewUsersToday
+	}
+	return 0
+}
+
+func (x *AdminUserStatsResponse) GetTodayActiveUsers() int64 {
+	if x != nil {
+		return x.TodayActiveUsers
+	}
+	return 0
+}
+
 var File_makejob_user_v1_user_proto protoreflect.FileDescriptor
 
 const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x1amakejob/user/v1/user.proto\x12\x0fmakejob.user.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"(\n" +
+	"\x1amakejob/user/v1/user.proto\x12\x0fmakejob.user.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"makejob/shared/v1/pagination.proto\"(\n" +
 	"\rUserIDRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\"_\n" +
 	"\x0fRegisterRequest\x12\x1a\n" +
@@ -853,7 +1338,42 @@ const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\rLogoutRequest\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"\x10\n" +
-	"\x0eLogoutResponse2\xc4\x06\n" +
+	"\x0eLogoutResponse\"I\n" +
+	"\x15AdminListUsersRequest\x120\n" +
+	"\x04page\x18\x01 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\"\x8e\x01\n" +
+	"\x16AdminListUsersResponse\x124\n" +
+	"\x05users\x18\x01 \x03(\v2\x1e.makejob.user.v1.AdminUserInfoR\x05users\x12>\n" +
+	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
+	"pageResult\"\xfb\x02\n" +
+	"\rAdminUserInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12\x12\n" +
+	"\x04role\x18\x04 \x01(\tR\x04role\x12\x16\n" +
+	"\x06avatar\x18\x05 \x01(\tR\x06avatar\x12)\n" +
+	"\x10membership_level\x18\x06 \x01(\tR\x0fmembershipLevel\x12'\n" +
+	"\x0fmembership_type\x18\a \x01(\tR\x0emembershipType\x12L\n" +
+	"\x14membership_expire_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x12membershipExpireAt\x12\x1f\n" +
+	"\vis_disabled\x18\t \x01(\bR\n" +
+	"isDisabled\x129\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"I\n" +
+	"\x1aAdminUpdateUserRoleRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\"\x1d\n" +
+	"\x1bAdminUpdateUserRoleResponse\".\n" +
+	"\x13AdminBanUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\x16\n" +
+	"\x14AdminBanUserResponse\"\x1a\n" +
+	"\x18GetAdminUserStatsRequest\"\xb0\x01\n" +
+	"\x16AdminUserStatsResponse\x12\x1f\n" +
+	"\vtotal_users\x18\x01 \x01(\x03R\n" +
+	"totalUsers\x12\x1f\n" +
+	"\vpro_members\x18\x02 \x01(\x03R\n" +
+	"proMembers\x12&\n" +
+	"\x0fnew_users_today\x18\x03 \x01(\x03R\rnewUsersToday\x12,\n" +
+	"\x12today_active_users\x18\x04 \x01(\x03R\x10todayActiveUsers2\xdf\t\n" +
 	"\vUserService\x12K\n" +
 	"\bRegister\x12 .makejob.user.v1.RegisterRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12E\n" +
 	"\x05Login\x12\x1d.makejob.user.v1.LoginRequest\x1a\x1d.makejob.user.v1.AuthResponse\x12T\n" +
@@ -865,7 +1385,11 @@ const file_makejob_user_v1_user_proto_rawDesc = "" +
 	"\rBatchGetUsers\x12%.makejob.user.v1.BatchGetUsersRequest\x1a&.makejob.user.v1.BatchGetUsersResponse\x12X\n" +
 	"\x13GetMembershipStatus\x12\x1e.makejob.user.v1.UserIDRequest\x1a!.makejob.user.v1.MembershipStatus\x12W\n" +
 	"\x11UpgradeMembership\x12\x1f.makejob.user.v1.UpgradeRequest\x1a!.makejob.user.v1.MembershipStatus\x12I\n" +
-	"\x06Logout\x12\x1e.makejob.user.v1.LogoutRequest\x1a\x1f.makejob.user.v1.LogoutResponseB$Z\"makejob/api/makejob/user/v1;userv1b\x06proto3"
+	"\x06Logout\x12\x1e.makejob.user.v1.LogoutRequest\x1a\x1f.makejob.user.v1.LogoutResponse\x12a\n" +
+	"\x0eAdminListUsers\x12&.makejob.user.v1.AdminListUsersRequest\x1a'.makejob.user.v1.AdminListUsersResponse\x12p\n" +
+	"\x13AdminUpdateUserRole\x12+.makejob.user.v1.AdminUpdateUserRoleRequest\x1a,.makejob.user.v1.AdminUpdateUserRoleResponse\x12[\n" +
+	"\fAdminBanUser\x12$.makejob.user.v1.AdminBanUserRequest\x1a%.makejob.user.v1.AdminBanUserResponse\x12g\n" +
+	"\x11GetAdminUserStats\x12).makejob.user.v1.GetAdminUserStatsRequest\x1a'.makejob.user.v1.AdminUserStatsResponseB$Z\"makejob/api/makejob/user/v1;userv1b\x06proto3"
 
 var (
 	file_makejob_user_v1_user_proto_rawDescOnce sync.Once
@@ -879,55 +1403,79 @@ func file_makejob_user_v1_user_proto_rawDescGZIP() []byte {
 	return file_makejob_user_v1_user_proto_rawDescData
 }
 
-var file_makejob_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_makejob_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_makejob_user_v1_user_proto_goTypes = []any{
-	(*UserIDRequest)(nil),         // 0: makejob.user.v1.UserIDRequest
-	(*RegisterRequest)(nil),       // 1: makejob.user.v1.RegisterRequest
-	(*LoginRequest)(nil),          // 2: makejob.user.v1.LoginRequest
-	(*AuthResponse)(nil),          // 3: makejob.user.v1.AuthResponse
-	(*RefreshTokenRequest)(nil),   // 4: makejob.user.v1.RefreshTokenRequest
-	(*TokenResponse)(nil),         // 5: makejob.user.v1.TokenResponse
-	(*UserProfile)(nil),           // 6: makejob.user.v1.UserProfile
-	(*UpdateProfileRequest)(nil),  // 7: makejob.user.v1.UpdateProfileRequest
-	(*BatchGetUsersRequest)(nil),  // 8: makejob.user.v1.BatchGetUsersRequest
-	(*BatchGetUsersResponse)(nil), // 9: makejob.user.v1.BatchGetUsersResponse
-	(*MembershipStatus)(nil),      // 10: makejob.user.v1.MembershipStatus
-	(*UpgradeRequest)(nil),        // 11: makejob.user.v1.UpgradeRequest
-	(*LogoutRequest)(nil),         // 12: makejob.user.v1.LogoutRequest
-	(*LogoutResponse)(nil),        // 13: makejob.user.v1.LogoutResponse
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*UserIDRequest)(nil),               // 0: makejob.user.v1.UserIDRequest
+	(*RegisterRequest)(nil),             // 1: makejob.user.v1.RegisterRequest
+	(*LoginRequest)(nil),                // 2: makejob.user.v1.LoginRequest
+	(*AuthResponse)(nil),                // 3: makejob.user.v1.AuthResponse
+	(*RefreshTokenRequest)(nil),         // 4: makejob.user.v1.RefreshTokenRequest
+	(*TokenResponse)(nil),               // 5: makejob.user.v1.TokenResponse
+	(*UserProfile)(nil),                 // 6: makejob.user.v1.UserProfile
+	(*UpdateProfileRequest)(nil),        // 7: makejob.user.v1.UpdateProfileRequest
+	(*BatchGetUsersRequest)(nil),        // 8: makejob.user.v1.BatchGetUsersRequest
+	(*BatchGetUsersResponse)(nil),       // 9: makejob.user.v1.BatchGetUsersResponse
+	(*MembershipStatus)(nil),            // 10: makejob.user.v1.MembershipStatus
+	(*UpgradeRequest)(nil),              // 11: makejob.user.v1.UpgradeRequest
+	(*LogoutRequest)(nil),               // 12: makejob.user.v1.LogoutRequest
+	(*LogoutResponse)(nil),              // 13: makejob.user.v1.LogoutResponse
+	(*AdminListUsersRequest)(nil),       // 14: makejob.user.v1.AdminListUsersRequest
+	(*AdminListUsersResponse)(nil),      // 15: makejob.user.v1.AdminListUsersResponse
+	(*AdminUserInfo)(nil),               // 16: makejob.user.v1.AdminUserInfo
+	(*AdminUpdateUserRoleRequest)(nil),  // 17: makejob.user.v1.AdminUpdateUserRoleRequest
+	(*AdminUpdateUserRoleResponse)(nil), // 18: makejob.user.v1.AdminUpdateUserRoleResponse
+	(*AdminBanUserRequest)(nil),         // 19: makejob.user.v1.AdminBanUserRequest
+	(*AdminBanUserResponse)(nil),        // 20: makejob.user.v1.AdminBanUserResponse
+	(*GetAdminUserStatsRequest)(nil),    // 21: makejob.user.v1.GetAdminUserStatsRequest
+	(*AdminUserStatsResponse)(nil),      // 22: makejob.user.v1.AdminUserStatsResponse
+	(*timestamppb.Timestamp)(nil),       // 23: google.protobuf.Timestamp
+	(*v1.PageParam)(nil),                // 24: makejob.shared.v1.PageParam
+	(*v1.PageResult)(nil),               // 25: makejob.shared.v1.PageResult
 }
 var file_makejob_user_v1_user_proto_depIdxs = []int32{
 	6,  // 0: makejob.user.v1.AuthResponse.user:type_name -> makejob.user.v1.UserProfile
-	14, // 1: makejob.user.v1.UserProfile.membership_expire_at:type_name -> google.protobuf.Timestamp
-	14, // 2: makejob.user.v1.UserProfile.created_at:type_name -> google.protobuf.Timestamp
+	23, // 1: makejob.user.v1.UserProfile.membership_expire_at:type_name -> google.protobuf.Timestamp
+	23, // 2: makejob.user.v1.UserProfile.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 3: makejob.user.v1.BatchGetUsersResponse.users:type_name -> makejob.user.v1.UserProfile
-	14, // 4: makejob.user.v1.MembershipStatus.expire_at:type_name -> google.protobuf.Timestamp
-	1,  // 5: makejob.user.v1.UserService.Register:input_type -> makejob.user.v1.RegisterRequest
-	2,  // 6: makejob.user.v1.UserService.Login:input_type -> makejob.user.v1.LoginRequest
-	4,  // 7: makejob.user.v1.UserService.RefreshToken:input_type -> makejob.user.v1.RefreshTokenRequest
-	0,  // 8: makejob.user.v1.UserService.GetProfile:input_type -> makejob.user.v1.UserIDRequest
-	7,  // 9: makejob.user.v1.UserService.UpdateProfile:input_type -> makejob.user.v1.UpdateProfileRequest
-	0,  // 10: makejob.user.v1.UserService.GetUserByID:input_type -> makejob.user.v1.UserIDRequest
-	8,  // 11: makejob.user.v1.UserService.BatchGetUsers:input_type -> makejob.user.v1.BatchGetUsersRequest
-	0,  // 12: makejob.user.v1.UserService.GetMembershipStatus:input_type -> makejob.user.v1.UserIDRequest
-	11, // 13: makejob.user.v1.UserService.UpgradeMembership:input_type -> makejob.user.v1.UpgradeRequest
-	12, // 14: makejob.user.v1.UserService.Logout:input_type -> makejob.user.v1.LogoutRequest
-	3,  // 15: makejob.user.v1.UserService.Register:output_type -> makejob.user.v1.AuthResponse
-	3,  // 16: makejob.user.v1.UserService.Login:output_type -> makejob.user.v1.AuthResponse
-	5,  // 17: makejob.user.v1.UserService.RefreshToken:output_type -> makejob.user.v1.TokenResponse
-	6,  // 18: makejob.user.v1.UserService.GetProfile:output_type -> makejob.user.v1.UserProfile
-	6,  // 19: makejob.user.v1.UserService.UpdateProfile:output_type -> makejob.user.v1.UserProfile
-	6,  // 20: makejob.user.v1.UserService.GetUserByID:output_type -> makejob.user.v1.UserProfile
-	9,  // 21: makejob.user.v1.UserService.BatchGetUsers:output_type -> makejob.user.v1.BatchGetUsersResponse
-	10, // 22: makejob.user.v1.UserService.GetMembershipStatus:output_type -> makejob.user.v1.MembershipStatus
-	10, // 23: makejob.user.v1.UserService.UpgradeMembership:output_type -> makejob.user.v1.MembershipStatus
-	13, // 24: makejob.user.v1.UserService.Logout:output_type -> makejob.user.v1.LogoutResponse
-	15, // [15:25] is the sub-list for method output_type
-	5,  // [5:15] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	23, // 4: makejob.user.v1.MembershipStatus.expire_at:type_name -> google.protobuf.Timestamp
+	24, // 5: makejob.user.v1.AdminListUsersRequest.page:type_name -> makejob.shared.v1.PageParam
+	16, // 6: makejob.user.v1.AdminListUsersResponse.users:type_name -> makejob.user.v1.AdminUserInfo
+	25, // 7: makejob.user.v1.AdminListUsersResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	23, // 8: makejob.user.v1.AdminUserInfo.membership_expire_at:type_name -> google.protobuf.Timestamp
+	23, // 9: makejob.user.v1.AdminUserInfo.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 10: makejob.user.v1.UserService.Register:input_type -> makejob.user.v1.RegisterRequest
+	2,  // 11: makejob.user.v1.UserService.Login:input_type -> makejob.user.v1.LoginRequest
+	4,  // 12: makejob.user.v1.UserService.RefreshToken:input_type -> makejob.user.v1.RefreshTokenRequest
+	0,  // 13: makejob.user.v1.UserService.GetProfile:input_type -> makejob.user.v1.UserIDRequest
+	7,  // 14: makejob.user.v1.UserService.UpdateProfile:input_type -> makejob.user.v1.UpdateProfileRequest
+	0,  // 15: makejob.user.v1.UserService.GetUserByID:input_type -> makejob.user.v1.UserIDRequest
+	8,  // 16: makejob.user.v1.UserService.BatchGetUsers:input_type -> makejob.user.v1.BatchGetUsersRequest
+	0,  // 17: makejob.user.v1.UserService.GetMembershipStatus:input_type -> makejob.user.v1.UserIDRequest
+	11, // 18: makejob.user.v1.UserService.UpgradeMembership:input_type -> makejob.user.v1.UpgradeRequest
+	12, // 19: makejob.user.v1.UserService.Logout:input_type -> makejob.user.v1.LogoutRequest
+	14, // 20: makejob.user.v1.UserService.AdminListUsers:input_type -> makejob.user.v1.AdminListUsersRequest
+	17, // 21: makejob.user.v1.UserService.AdminUpdateUserRole:input_type -> makejob.user.v1.AdminUpdateUserRoleRequest
+	19, // 22: makejob.user.v1.UserService.AdminBanUser:input_type -> makejob.user.v1.AdminBanUserRequest
+	21, // 23: makejob.user.v1.UserService.GetAdminUserStats:input_type -> makejob.user.v1.GetAdminUserStatsRequest
+	3,  // 24: makejob.user.v1.UserService.Register:output_type -> makejob.user.v1.AuthResponse
+	3,  // 25: makejob.user.v1.UserService.Login:output_type -> makejob.user.v1.AuthResponse
+	5,  // 26: makejob.user.v1.UserService.RefreshToken:output_type -> makejob.user.v1.TokenResponse
+	6,  // 27: makejob.user.v1.UserService.GetProfile:output_type -> makejob.user.v1.UserProfile
+	6,  // 28: makejob.user.v1.UserService.UpdateProfile:output_type -> makejob.user.v1.UserProfile
+	6,  // 29: makejob.user.v1.UserService.GetUserByID:output_type -> makejob.user.v1.UserProfile
+	9,  // 30: makejob.user.v1.UserService.BatchGetUsers:output_type -> makejob.user.v1.BatchGetUsersResponse
+	10, // 31: makejob.user.v1.UserService.GetMembershipStatus:output_type -> makejob.user.v1.MembershipStatus
+	10, // 32: makejob.user.v1.UserService.UpgradeMembership:output_type -> makejob.user.v1.MembershipStatus
+	13, // 33: makejob.user.v1.UserService.Logout:output_type -> makejob.user.v1.LogoutResponse
+	15, // 34: makejob.user.v1.UserService.AdminListUsers:output_type -> makejob.user.v1.AdminListUsersResponse
+	18, // 35: makejob.user.v1.UserService.AdminUpdateUserRole:output_type -> makejob.user.v1.AdminUpdateUserRoleResponse
+	20, // 36: makejob.user.v1.UserService.AdminBanUser:output_type -> makejob.user.v1.AdminBanUserResponse
+	22, // 37: makejob.user.v1.UserService.GetAdminUserStats:output_type -> makejob.user.v1.AdminUserStatsResponse
+	24, // [24:38] is the sub-list for method output_type
+	10, // [10:24] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_makejob_user_v1_user_proto_init() }
@@ -941,7 +1489,7 @@ func file_makejob_user_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_user_v1_user_proto_rawDesc), len(file_makejob_user_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

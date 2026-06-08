@@ -32,6 +32,7 @@ service InterviewService {
 
   // --- 跨服务调用（供 growth 服务使用）---
   rpc GetInterviewStats(UserIDRequest) returns (InterviewStats);
+  rpc GetAdminInterviewStats(GetAdminInterviewStatsRequest) returns (AdminInterviewStatsResponse);
 }
 
 // === 请求/响应消息 ===
@@ -260,4 +261,10 @@ message AppendReplyRequest {
 message AppendReplyResponse {
   bool should_end = 1;
   InterviewQuestion next_question = 2;
+}
+
+message GetAdminInterviewStatsRequest {}
+
+message AdminInterviewStatsResponse {
+  int64 total_interviews = 1;
 }

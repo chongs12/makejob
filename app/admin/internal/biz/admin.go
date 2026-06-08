@@ -2,27 +2,16 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+
+	kratoserr "github.com/go-kratos/kratos/v2/errors"
 )
 
 // AdminRepo data 层必须实现的接口
 type AdminRepo interface {
-	// 仪表盘
-	GetDashboard(ctx context.Context) (*Dashboard, error)
-
-	// 用户管理
-	ListUsers(ctx context.Context, page, pageSize int32) ([]*UserRecord, int64, error)
-	UpdateUserRole(ctx context.Context, userID uint64, role string) error
-	DisableUser(ctx context.Context, userID uint64) error
-
-	// 题库管理
-	AdminListQuestions(ctx context.Context, page, pageSize int32, keyword, difficulty string, categoryID uint64, industryCode string) ([]*QuestionRecord, int64, error)
-	CreateQuestion(ctx context.Context, q *QuestionRecord) error
-	UpdateQuestion(ctx context.Context, q *QuestionRecord) error
-	DeleteQuestion(ctx context.Context, id uint64) error
-	BatchCreateQuestions(ctx context.Context, questions []*QuestionRecord) (int, int, []string)
-	GetQuestionTagTaxonomy(ctx context.Context) ([]*TagTaxonomyGroup, error)
-
 	// 分类管理
 	ListCategories(ctx context.Context) ([]*CategoryRecord, error)
 	CreateCategory(ctx context.Context, c *CategoryRecord) error
@@ -89,11 +78,32 @@ type AdminRepo interface {
 	GetRAGDocumentStats(ctx context.Context, collection string) (map[string]int64, error)
 	GetPendingSyncRAGDocuments(ctx context.Context, limit int) ([]*RAGDocumentRecord, error)
 	UpdateRAGDocumentSyncStatus(ctx context.Context, id uint64, status, vectorID string) error
-
-	// 题目查询（供 RAG 索引使用）
-	ListAllQuestions(ctx context.Context, industryID uint64, pageSize int, offset int) ([]*QuestionRecord, error)
-	GetQuestionsByIDs(ctx context.Context, ids []uint64) ([]*QuestionRecord, error)
 }
+
+// UserClient 下游用户服务客户端接口，通过 gRPC 调用 user 微服务
+type UserClient interface {
+	ListUsers(ctx context.Context, page, pageSize int32) ([]*UserRecord, int64, error)
+	UpdateUserRole(ctx context.Context, userID uint64, role string) error
+	BanUser(ctx context.Context, userID uint64) error
+	GetUserStats(ctx context.Context) (totalUsers, proMembers, newUsersToday, todayActiveUsers int64, err error)
+}
+
+// QuestionClient 下游题目服务客户端接口，通过 gRPC 调用 question 微服务
+type QuestionClient interface {
+	ListQuestions(ctx context.Context, page, pageSize int32, keyword, difficulty string, categoryID uint64, industryCode string) ([]*QuestionRecord, int64, error)
+	CreateQuestion(ctx context.Context, q *QuestionRecord) error
+	UpdateQuestion(ctx context.Context, q *QuestionRecord) error
+	DeleteQuestion(ctx context.Context, id uint64) error
+	GetQuestionStats(ctx context.Context) (totalQuestions int64, err error)
+}
+
+// InterviewClient 下游面试服务客户端接口，通过 gRPC 调用 interview 微服务
+type InterviewClient interface {
+	GetInterviewStats(ctx context.Context) (totalInterviews int64, err error)
+}
+
+// AIGatewayClient 下游 AI 网关客户端接口（UNIMPLEMENTED：预留，待 AI Gateway 实现 admin RPC）
+type AIGatewayClient interface{}
 
 // --- 领域实体 ---
 
@@ -135,6 +145,7 @@ type QuestionRecord struct {
 	AnswerTemplateJSON string
 	Tags               string
 	IsActive           bool
+	HasIsActive        bool
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	CategoryName       string
@@ -277,6 +288,8 @@ type ScraperTaskRecord struct {
 	SourceTitle   string
 	Source        string
 	Status        string
+	PayloadJSON   string
+	ResultJSON    string
 	QuestionCount int
 	ImportedCount int
 	RetryCount    int
@@ -303,58 +316,158 @@ type RAGDocumentRecord struct {
 
 // AdminUseCase 管理后台业务用例
 type AdminUseCase struct {
-	repo AdminRepo
+	repo            AdminRepo
+	userClient      UserClient
+	questionClient  QuestionClient
+	interviewClient InterviewClient
+	aiGatewayClient AIGatewayClient
 }
 
-// NewAdminUseCase 创建管理后台用例
-func NewAdminUseCase(repo AdminRepo) *AdminUseCase {
-	return &AdminUseCase{repo: repo}
+// NewAdminUseCase 创建管理后台用例，注入仓库和下游服务客户端
+func NewAdminUseCase(repo AdminRepo, userClient UserClient, questionClient QuestionClient, interviewClient InterviewClient, aiGatewayClient AIGatewayClient) *AdminUseCase {
+	return &AdminUseCase{
+		repo:            repo,
+		userClient:      userClient,
+		questionClient:  questionClient,
+		interviewClient: interviewClient,
+		aiGatewayClient: aiGatewayClient,
+	}
 }
 
 // --- 仪表盘 ---
 
+// GetDashboard 并发调用用户/题目服务的统计接口，聚合仪表盘数据
 func (uc *AdminUseCase) GetDashboard(ctx context.Context) (*Dashboard, error) {
-	return uc.repo.GetDashboard(ctx)
+	d := &Dashboard{}
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	// 并发获取用户统计数据
+	g.Go(func() error {
+		totalUsers, proMembers, newUsersToday, todayActiveUsers, err := uc.userClient.GetUserStats(gctx)
+		if err != nil {
+			return kratoserr.InternalServer("USER_STATS_FAILED", "获取用户统计失败")
+		}
+		d.TotalUsers = totalUsers
+		d.ProMembers = proMembers
+		d.NewUsersToday = newUsersToday
+		d.TodayActiveUsers = todayActiveUsers
+		return nil
+	})
+
+	// 并发获取题目统计数据
+	g.Go(func() error {
+		totalQuestions, err := uc.questionClient.GetQuestionStats(gctx)
+		if err != nil {
+			return kratoserr.InternalServer("QUESTION_STATS_FAILED", "获取题目统计失败")
+		}
+		d.TotalQuestions = totalQuestions
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	if uc.interviewClient != nil {
+		totalInterviews, err := uc.interviewClient.GetInterviewStats(ctx)
+		if err != nil {
+			return nil, kratoserr.InternalServer("INTERVIEW_STATS_FAILED", "获取面试统计失败")
+		}
+		d.TotalInterviews = totalInterviews
+	}
+	return d, nil
 }
 
 // --- 用户管理 ---
 
+// ListUsers 委托给下游用户服务获取用户列表
 func (uc *AdminUseCase) ListUsers(ctx context.Context, page, pageSize int32) ([]*UserRecord, int64, error) {
-	return uc.repo.ListUsers(ctx, page, pageSize)
+	return uc.userClient.ListUsers(ctx, page, pageSize)
 }
 
+// UpdateUserRole 委托给下游用户服务更新用户角色
 func (uc *AdminUseCase) UpdateUserRole(ctx context.Context, userID uint64, role string) error {
-	return uc.repo.UpdateUserRole(ctx, userID, role)
+	return uc.userClient.UpdateUserRole(ctx, userID, role)
 }
 
+// DisableUser 委托给下游用户服务封禁用户
 func (uc *AdminUseCase) DisableUser(ctx context.Context, userID uint64) error {
-	return uc.repo.DisableUser(ctx, userID)
+	return uc.userClient.BanUser(ctx, userID)
 }
 
 // --- 题库管理 ---
 
+// AdminListQuestions 委托给下游题目服务获取题目列表
 func (uc *AdminUseCase) AdminListQuestions(ctx context.Context, page, pageSize int32, keyword, difficulty string, categoryID uint64, industryCode string) ([]*QuestionRecord, int64, error) {
-	return uc.repo.AdminListQuestions(ctx, page, pageSize, keyword, difficulty, categoryID, industryCode)
+	return uc.questionClient.ListQuestions(ctx, page, pageSize, keyword, difficulty, categoryID, industryCode)
 }
 
+// CreateQuestion 委托给下游题目服务创建题目
 func (uc *AdminUseCase) CreateQuestion(ctx context.Context, q *QuestionRecord) error {
-	return uc.repo.CreateQuestion(ctx, q)
+	return uc.questionClient.CreateQuestion(ctx, q)
 }
 
+// UpdateQuestion 委托给下游题目服务更新题目
 func (uc *AdminUseCase) UpdateQuestion(ctx context.Context, q *QuestionRecord) error {
-	return uc.repo.UpdateQuestion(ctx, q)
+	return uc.questionClient.UpdateQuestion(ctx, q)
 }
 
+// DeleteQuestion 委托给下游题目服务删除题目
 func (uc *AdminUseCase) DeleteQuestion(ctx context.Context, id uint64) error {
-	return uc.repo.DeleteQuestion(ctx, id)
+	return uc.questionClient.DeleteQuestion(ctx, id)
 }
 
 func (uc *AdminUseCase) BatchImportQuestions(ctx context.Context, questions []*QuestionRecord) (int, int, []string) {
-	return uc.repo.BatchCreateQuestions(ctx, questions)
+	success, fail := 0, 0
+	errors := make([]string, 0)
+	for _, question := range questions {
+		if err := uc.questionClient.CreateQuestion(ctx, question); err != nil {
+			fail++
+			errors = append(errors, err.Error())
+			continue
+		}
+		success++
+	}
+	return success, fail, errors
 }
 
 func (uc *AdminUseCase) GetQuestionTagTaxonomy(ctx context.Context) ([]*TagTaxonomyGroup, error) {
-	return uc.repo.GetQuestionTagTaxonomy(ctx)
+	const pageSize int32 = 200
+	page := int32(1)
+	tagMap := make(map[string]map[string]bool)
+	for {
+		questions, total, err := uc.questionClient.ListQuestions(ctx, page, pageSize, "", "", 0, "")
+		if err != nil {
+			return nil, err
+		}
+		for _, question := range questions {
+			category := question.Type
+			if category == "" {
+				category = "unknown"
+			}
+			if tagMap[category] == nil {
+				tagMap[category] = make(map[string]bool)
+			}
+			for _, tag := range splitAdminTags(question.Tags) {
+				tagMap[category][tag] = true
+			}
+		}
+		if int64(page*pageSize) >= total || len(questions) == 0 {
+			break
+		}
+		page++
+	}
+
+	groups := make([]*TagTaxonomyGroup, 0, len(tagMap))
+	for category, tags := range tagMap {
+		tagList := make([]string, 0, len(tags))
+		for tag := range tags {
+			tagList = append(tagList, tag)
+		}
+		groups = append(groups, &TagTaxonomyGroup{Category: category, Tags: tagList})
+	}
+	return groups, nil
 }
 
 // --- 分类管理 ---
@@ -567,12 +680,18 @@ func (uc *AdminUseCase) UpdateRAGDocumentSyncStatus(ctx context.Context, id uint
 	return uc.repo.UpdateRAGDocumentSyncStatus(ctx, id, status, vectorID)
 }
 
-// --- 题目查询（供 RAG 索引使用） ---
-
-func (uc *AdminUseCase) ListAllQuestions(ctx context.Context, industryID uint64, pageSize int, offset int) ([]*QuestionRecord, error) {
-	return uc.repo.ListAllQuestions(ctx, industryID, pageSize, offset)
-}
-
-func (uc *AdminUseCase) GetQuestionsByIDs(ctx context.Context, ids []uint64) ([]*QuestionRecord, error) {
-	return uc.repo.GetQuestionsByIDs(ctx, ids)
+// splitAdminTags 将后台持久化的逗号标签拆分为列表。
+func splitAdminTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	return tags
 }
