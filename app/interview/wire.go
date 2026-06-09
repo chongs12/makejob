@@ -8,9 +8,9 @@
 package main
 
 import (
-	"github.com/google/wire"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/wire"
 
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
@@ -23,14 +23,14 @@ import (
 // providerSet 定义 Interview 服务的完整依赖图
 var providerSet = wire.NewSet(
 	// 配置提取
-	wire.FieldsOf(new(*conf.Bootstrap), "AI", "Industry"),
+	wire.FieldsOf(new(*conf.Bootstrap), "AI"),
 
 	// data 层
 	data.NewData,
 	data.NewInterviewRepo,
 	data.NewAIServiceClient,
 	data.NewLearningArchiveClient,
-	data.NewIndustryClient,
+	data.NewIndustryRepo,
 
 	// biz 层
 	biz.NewInterviewUseCase,

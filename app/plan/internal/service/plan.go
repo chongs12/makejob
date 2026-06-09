@@ -232,6 +232,49 @@ func toProtoTaskDetail(task *biz.LearningTask) *planv1.TaskDetail {
 	return detail
 }
 
+// GetProgress 获取学习计划进度统计
+func (s *PlanService) GetProgress(ctx context.Context, req *planv1.GetProgressRequest) (*planv1.PlanProgressResponse, error) {
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		userID = req.GetUserId()
+	}
+
+	progress, err := s.uc.GetProgress(ctx, userID, req.GetPlanId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	dailyProgress := make([]*planv1.DailyProgress, 0, len(progress.DailyProgress))
+	for _, dp := range progress.DailyProgress {
+		dailyProgress = append(dailyProgress, &planv1.DailyProgress{
+			DayNumber: int32(dp.DayNumber),
+			Completed: int32(dp.Completed),
+			Total:     int32(dp.Total),
+		})
+	}
+
+	taskTypeStats := make([]*planv1.TaskTypeStat, 0, len(progress.TaskTypeStats))
+	for _, ts := range progress.TaskTypeStats {
+		taskTypeStats = append(taskTypeStats, &planv1.TaskTypeStat{
+			TaskType:  ts.TaskType,
+			Completed: int32(ts.Completed),
+			Total:     int32(ts.Total),
+		})
+	}
+
+	return &planv1.PlanProgressResponse{
+		PlanId:          progress.PlanID,
+		TotalTasks:      int32(progress.TotalTasks),
+		CompletedTasks:  int32(progress.CompletedTasks),
+		SkippedTasks:    int32(progress.SkippedTasks),
+		InProgressTasks: int32(progress.InProgressTasks),
+		PendingTasks:    int32(progress.PendingTasks),
+		Progress:        float32(progress.Progress),
+		DailyProgress:   dailyProgress,
+		TaskTypeStats:   taskTypeStats,
+	}, nil
+}
+
 // toGRPCError 将业务错误转换为 gRPC 错误
 func toGRPCError(err error) error {
 	if err == nil {

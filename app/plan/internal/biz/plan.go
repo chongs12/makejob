@@ -792,3 +792,141 @@ func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, re
 	uc.logger.Infof("计划调整完成: plan_id=%d added=%d removed=%d reordered=%d", planID, adjustment.AddedCount, adjustment.RemovedCount, adjustment.ReorderedCount)
 	return adjustment, nil
 }
+
+// --- 进度统计 ---
+
+// PlanProgressResponse 学习进度统计结果
+type PlanProgressResponse struct {
+	PlanID          uint64
+	TotalTasks      int
+	CompletedTasks  int
+	SkippedTasks    int
+	InProgressTasks int
+	PendingTasks    int
+	Progress        float64
+	DailyProgress   []DailyProgress
+	TaskTypeStats   []TaskTypeStat
+}
+
+// DailyProgress 每日进度
+type DailyProgress struct {
+	DayNumber int
+	Completed int
+	Total     int
+}
+
+// TaskTypeStat 任务类型统计
+type TaskTypeStat struct {
+	TaskType  string
+	Completed int
+	Total     int
+}
+
+// GetProgress 获取学习计划进度统计
+func (uc *PlanUseCase) GetProgress(ctx context.Context, userID, planID uint64) (*PlanProgressResponse, error) {
+	// 验证计划归属
+	plan, err := uc.repo.GetByID(ctx, planID)
+	if err != nil {
+		return nil, ErrPlanNotFound
+	}
+	if plan.UserID != userID {
+		return nil, ErrPlanAccessDenied
+	}
+
+	// 获取所有任务
+	tasks, err := uc.taskRepo.ListByPlanID(ctx, planID)
+	if err != nil {
+		return nil, kratosErr.InternalServer("LIST_TASKS_FAILED", "获取任务列表失败").WithCause(err)
+	}
+
+	// 统计各状态任务数
+	var completedCount, skippedCount, inProgressCount, pendingCount int
+	dailyStats := make(map[int32]*dailyStat)
+	taskTypeStats := make(map[string]*taskTypeStatData)
+
+	for _, t := range tasks {
+		switch t.Status {
+		case "completed":
+			completedCount++
+		case "skipped":
+			skippedCount++
+		case "in_progress":
+			inProgressCount++
+		case "pending":
+			pendingCount++
+		}
+
+		// 更新每日统计
+		ds, ok := dailyStats[t.DayNumber]
+		if !ok {
+			ds = &dailyStat{}
+			dailyStats[t.DayNumber] = ds
+		}
+		ds.total++
+		if t.Status == "completed" {
+			ds.completed++
+		}
+
+		// 更新任务类型统计
+		ts, ok := taskTypeStats[t.TaskType]
+		if !ok {
+			ts = &taskTypeStatData{}
+			taskTypeStats[t.TaskType] = ts
+		}
+		ts.total++
+		if t.Status == "completed" {
+			ts.completed++
+		}
+	}
+
+	// 计算进度
+	totalTasks := len(tasks)
+	var progress float64
+	if totalTasks > 0 {
+		progress = float64(completedCount) / float64(totalTasks) * 100
+	}
+
+	// 构建每日进度
+	dailyProgress := make([]DailyProgress, 0, len(dailyStats))
+	for day, stats := range dailyStats {
+		dailyProgress = append(dailyProgress, DailyProgress{
+			DayNumber: int(day),
+			Total:     stats.total,
+			Completed: stats.completed,
+		})
+	}
+
+	// 构建任务类型统计
+	taskTypeStatList := make([]TaskTypeStat, 0, len(taskTypeStats))
+	for taskType, stats := range taskTypeStats {
+		taskTypeStatList = append(taskTypeStatList, TaskTypeStat{
+			TaskType:  taskType,
+			Total:     stats.total,
+			Completed: stats.completed,
+		})
+	}
+
+	return &PlanProgressResponse{
+		PlanID:          planID,
+		TotalTasks:      totalTasks,
+		CompletedTasks:  completedCount,
+		SkippedTasks:    skippedCount,
+		InProgressTasks: inProgressCount,
+		PendingTasks:    pendingCount,
+		Progress:        progress,
+		DailyProgress:   dailyProgress,
+		TaskTypeStats:   taskTypeStatList,
+	}, nil
+}
+
+// dailyStat 每日统计辅助结构
+type dailyStat struct {
+	total     int
+	completed int
+}
+
+// taskTypeStatData 任务类型统计辅助结构
+type taskTypeStatData struct {
+	total     int
+	completed int
+}

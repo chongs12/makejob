@@ -34,6 +34,13 @@ func (c *MQConsumer) Start(ctx context.Context) error {
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			return fmt.Errorf("failed to unmarshal resume parse payload: %w", err)
 		}
+		processed, err := c.uc.IsResumeParsed(ctx, payload.InterviewID)
+		if err == nil && processed {
+			return nil
+		}
+		if err != nil {
+			return c.uc.ProcessResumeParse(ctx, payload.InterviewID, payload.UserID, payload.ResumeText)
+		}
 		return c.uc.ProcessResumeParse(ctx, payload.InterviewID, payload.UserID, payload.ResumeText)
 	}))
 
@@ -49,6 +56,13 @@ func (c *MQConsumer) Start(ctx context.Context) error {
 		var payload mq.InterviewArchivePersistPayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			return fmt.Errorf("failed to unmarshal archive payload: %w", err)
+		}
+		processed, err := c.uc.HasCodingArchive(ctx, payload.InterviewID, payload.UserID)
+		if err == nil && processed {
+			return nil
+		}
+		if err != nil {
+			return err
 		}
 		return c.uc.PersistCodingArchive(ctx, payload.InterviewID, payload.UserID)
 	}))

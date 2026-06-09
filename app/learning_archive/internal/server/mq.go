@@ -57,5 +57,13 @@ func (c *MQConsumer) handleInterviewFinished(ctx context.Context, msg mq.TaskMes
 
 	c.logger.Infof("处理面试完成事件: interview_id=%d, user_id=%d, score=%.1f", payload.InterviewID, payload.UserID, payload.Score)
 
+	processed, err := c.uc.HasInterviewFinishedArchive(ctx, payload.InterviewID, payload.UserID)
+	if err == nil && processed {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
 	return c.uc.HandleInterviewFinished(ctx, payload.InterviewID, payload.UserID, payload.Score, payload.WeakTopics, payload.StrengthTopics)
 }

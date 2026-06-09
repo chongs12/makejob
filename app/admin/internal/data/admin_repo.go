@@ -794,6 +794,7 @@ func (r *adminRepo) ListLive2DModels(ctx context.Context) ([]*biz.Live2DModelRec
 	return result, nil
 }
 
+// CreateLive2DModel 创建一条 Live2D 模型记录，并将数据库生成的主键回填到领域对象。
 func (r *adminRepo) CreateLive2DModel(ctx context.Context, m *biz.Live2DModelRecord) error {
 	model_ := &model.Live2DModel{
 		Name:         m.Name,
@@ -811,7 +812,19 @@ func (r *adminRepo) CreateLive2DModel(ctx context.Context, m *biz.Live2DModelRec
 		ttsID := uint(m.TTSConfigID)
 		model_.TTSConfigID = &ttsID
 	}
-	return r.db.WithContext(ctx).Create(model_).Error
+	if err := r.db.WithContext(ctx).
+		Select("Name", "Scene", "ModelURL", "ThumbnailURL", "ConfigJSON", "TTSConfigID", "IndustryID", "IsActive").
+		Create(model_).Error; err != nil {
+		return err
+	}
+	if !m.IsActive {
+		if err := r.db.WithContext(ctx).Model(model_).Update("is_active", false).Error; err != nil {
+			return err
+		}
+		model_.IsActive = false
+	}
+	m.ID = uint64(model_.ID)
+	return nil
 }
 
 func (r *adminRepo) UpdateLive2DModel(ctx context.Context, m *biz.Live2DModelRecord) error {

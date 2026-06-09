@@ -70,6 +70,8 @@ service AdminService {
   rpc CreateLive2DModel(CreateLive2DModelRequest) returns (Live2DModelInfo);
   rpc UpdateLive2DModel(UpdateLive2DModelRequest) returns (google.protobuf.Empty);
   rpc DeleteLive2DModel(DeleteLive2DModelRequest) returns (google.protobuf.Empty);
+  rpc ListSelectableLive2DModels(ListSelectableLive2DModelsRequest) returns (ListSelectableLive2DModelsResponse);
+  rpc GetCurrentLive2DModel(GetCurrentLive2DModelRequest) returns (CurrentLive2DModelResponse);
   rpc ImportLive2DPackage(ImportLive2DPackageRequest) returns (ImportLive2DPackageResponse);
   rpc ImportLive2DBackground(ImportLive2DBackgroundRequest) returns (ImportLive2DBackgroundResponse);
 
@@ -671,6 +673,52 @@ message UpdateLive2DModelRequest {
 
 message DeleteLive2DModelRequest {
   uint64 id = 1;
+}
+
+message ListSelectableLive2DModelsRequest {
+  string scene = 1;
+  string industry_code = 2;
+}
+
+message GetCurrentLive2DModelRequest {
+  string scene = 1;
+  string industry_code = 2;
+}
+
+message ListSelectableLive2DModelsResponse {
+  repeated SelectableLive2DModel models = 1;
+}
+
+message CurrentLive2DModelResponse {
+  string name = 1;
+  string scene = 2;
+  string industry_code = 3;
+  string path = 4;
+  string model_url = 5;
+  string thumbnail_url = 6;
+  google.protobuf.Struct config = 7;
+  string source = 8;
+}
+
+message SelectableLive2DModel {
+  string key = 1;
+  string name = 2;
+  string scene = 3;
+  string model_url = 4;
+  string thumbnail_url = 5;
+  string config_json = 6;
+  string source = 7;
+  string match_type = 8;
+  bool is_generic = 9;
+  bool is_recommended = 10;
+  repeated Live2DMotionInfo motions = 11;
+}
+
+message Live2DMotionInfo {
+  string key = 1;
+  string group = 2;
+  string file = 3;
+  string label = 4;
 }
 
 message ImportLive2DPackageRequest {

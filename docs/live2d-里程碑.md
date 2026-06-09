@@ -332,3 +332,19 @@
 - MiMo 的官方 `audio.voice` 参数统一复用后台表单顶部的 `Voice ID` 字段，不再在 `params_json` 里重复声明
 - MiniMax 后台模板已同步切到当前官方地址 `https://api.minimax.io/v1/t2a_v2`，`group_id` 改为旧版兼容可选项
 - MiniMax 后台模板的默认模型值已同步更新为当前实现使用的 `speech-2.8-turbo`
+
+## 11. 2026-06-08 P1 补齐
+
+- `Live2D 前台查询` 已正式接入微服务：
+  - `Admin` 成为前台 Live2D 查询的唯一后端真相源
+  - 新增前台 RPC：`ListSelectableLive2DModels`、`GetCurrentLive2DModel`
+  - `Gateway` 公开路由已补齐：`/api/v1/live2d/models`、`/api/v1/live2d/current`
+  - 为兼容当前 Web 端，保留旧路径：`/api/live2d/models`、`/api/live2d/current`
+- `Live2D 导入链路` 已补齐：
+  - `ImportLive2DPackage` 可直接导入 ZIP 包并生成待确认模型记录
+  - `ImportLive2DBackground` 可上传舞台背景图并返回静态访问地址
+  - `Gateway` 已挂载 `/live2d-assets/*`，前台可直接访问导入后的模型和背景资源
+- 本轮后端验证：
+  - `go test ./pkg/live2dassets ./app/admin/... ./app/gateway/...`
+  - `go build ./app/admin/cmd/server`
+  - `go build ./app/gateway/cmd/server`

@@ -61,6 +61,8 @@ const (
 	AdminService_CreateLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/CreateLive2DModel"
 	AdminService_UpdateLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/UpdateLive2DModel"
 	AdminService_DeleteLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/DeleteLive2DModel"
+	AdminService_ListSelectableLive2DModels_FullMethodName    = "/makejob.admin.v1.AdminService/ListSelectableLive2DModels"
+	AdminService_GetCurrentLive2DModel_FullMethodName         = "/makejob.admin.v1.AdminService/GetCurrentLive2DModel"
 	AdminService_ImportLive2DPackage_FullMethodName           = "/makejob.admin.v1.AdminService/ImportLive2DPackage"
 	AdminService_ImportLive2DBackground_FullMethodName        = "/makejob.admin.v1.AdminService/ImportLive2DBackground"
 	AdminService_ListTTSConfigs_FullMethodName                = "/makejob.admin.v1.AdminService/ListTTSConfigs"
@@ -154,6 +156,8 @@ type AdminServiceClient interface {
 	CreateLive2DModel(ctx context.Context, in *CreateLive2DModelRequest, opts ...grpc.CallOption) (*Live2DModelInfo, error)
 	UpdateLive2DModel(ctx context.Context, in *UpdateLive2DModelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeleteLive2DModel(ctx context.Context, in *DeleteLive2DModelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListSelectableLive2DModels(ctx context.Context, in *ListSelectableLive2DModelsRequest, opts ...grpc.CallOption) (*ListSelectableLive2DModelsResponse, error)
+	GetCurrentLive2DModel(ctx context.Context, in *GetCurrentLive2DModelRequest, opts ...grpc.CallOption) (*CurrentLive2DModelResponse, error)
 	ImportLive2DPackage(ctx context.Context, in *ImportLive2DPackageRequest, opts ...grpc.CallOption) (*ImportLive2DPackageResponse, error)
 	ImportLive2DBackground(ctx context.Context, in *ImportLive2DBackgroundRequest, opts ...grpc.CallOption) (*ImportLive2DBackgroundResponse, error)
 	// === TTS 管理 ===
@@ -615,6 +619,26 @@ func (c *adminServiceClient) DeleteLive2DModel(ctx context.Context, in *DeleteLi
 	return out, nil
 }
 
+func (c *adminServiceClient) ListSelectableLive2DModels(ctx context.Context, in *ListSelectableLive2DModelsRequest, opts ...grpc.CallOption) (*ListSelectableLive2DModelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSelectableLive2DModelsResponse)
+	err := c.cc.Invoke(ctx, AdminService_ListSelectableLive2DModels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) GetCurrentLive2DModel(ctx context.Context, in *GetCurrentLive2DModelRequest, opts ...grpc.CallOption) (*CurrentLive2DModelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CurrentLive2DModelResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetCurrentLive2DModel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *adminServiceClient) ImportLive2DPackage(ctx context.Context, in *ImportLive2DPackageRequest, opts ...grpc.CallOption) (*ImportLive2DPackageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ImportLive2DPackageResponse)
@@ -1021,6 +1045,8 @@ type AdminServiceServer interface {
 	CreateLive2DModel(context.Context, *CreateLive2DModelRequest) (*Live2DModelInfo, error)
 	UpdateLive2DModel(context.Context, *UpdateLive2DModelRequest) (*emptypb.Empty, error)
 	DeleteLive2DModel(context.Context, *DeleteLive2DModelRequest) (*emptypb.Empty, error)
+	ListSelectableLive2DModels(context.Context, *ListSelectableLive2DModelsRequest) (*ListSelectableLive2DModelsResponse, error)
+	GetCurrentLive2DModel(context.Context, *GetCurrentLive2DModelRequest) (*CurrentLive2DModelResponse, error)
 	ImportLive2DPackage(context.Context, *ImportLive2DPackageRequest) (*ImportLive2DPackageResponse, error)
 	ImportLive2DBackground(context.Context, *ImportLive2DBackgroundRequest) (*ImportLive2DBackgroundResponse, error)
 	// === TTS 管理 ===
@@ -1194,6 +1220,12 @@ func (UnimplementedAdminServiceServer) UpdateLive2DModel(context.Context, *Updat
 }
 func (UnimplementedAdminServiceServer) DeleteLive2DModel(context.Context, *DeleteLive2DModelRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteLive2DModel not implemented")
+}
+func (UnimplementedAdminServiceServer) ListSelectableLive2DModels(context.Context, *ListSelectableLive2DModelsRequest) (*ListSelectableLive2DModelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSelectableLive2DModels not implemented")
+}
+func (UnimplementedAdminServiceServer) GetCurrentLive2DModel(context.Context, *GetCurrentLive2DModelRequest) (*CurrentLive2DModelResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCurrentLive2DModel not implemented")
 }
 func (UnimplementedAdminServiceServer) ImportLive2DPackage(context.Context, *ImportLive2DPackageRequest) (*ImportLive2DPackageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImportLive2DPackage not implemented")
@@ -2059,6 +2091,42 @@ func _AdminService_DeleteLive2DModel_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_ListSelectableLive2DModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSelectableLive2DModelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ListSelectableLive2DModels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ListSelectableLive2DModels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ListSelectableLive2DModels(ctx, req.(*ListSelectableLive2DModelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_GetCurrentLive2DModel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCurrentLive2DModelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetCurrentLive2DModel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetCurrentLive2DModel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetCurrentLive2DModel(ctx, req.(*GetCurrentLive2DModelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AdminService_ImportLive2DPackage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ImportLive2DPackageRequest)
 	if err := dec(in); err != nil {
@@ -2859,6 +2927,14 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteLive2DModel",
 			Handler:    _AdminService_DeleteLive2DModel_Handler,
+		},
+		{
+			MethodName: "ListSelectableLive2DModels",
+			Handler:    _AdminService_ListSelectableLive2DModels_Handler,
+		},
+		{
+			MethodName: "GetCurrentLive2DModel",
+			Handler:    _AdminService_GetCurrentLive2DModel_Handler,
 		},
 		{
 			MethodName: "ImportLive2DPackage",

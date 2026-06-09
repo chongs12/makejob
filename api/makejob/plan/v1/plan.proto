@@ -13,6 +13,7 @@ service PlanService {
   rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse);
   rpc SubmitTaskFeedback(SubmitFeedbackRequest) returns (FeedbackResponse);
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
+  rpc GetProgress(GetProgressRequest) returns (PlanProgressResponse);
 }
 
 message CreatePlanRequest {
@@ -136,4 +137,33 @@ message AdjustPlanResponse {
   int32 tasks_reordered = 3;
   string adjustment_summary = 4;
   repeated TaskDetail updated_tasks = 5;
+}
+
+message GetProgressRequest {
+  uint64 plan_id = 1;
+  uint64 user_id = 2;
+}
+
+message PlanProgressResponse {
+  uint64 plan_id = 1;
+  int32 total_tasks = 2;
+  int32 completed_tasks = 3;
+  int32 skipped_tasks = 4;
+  int32 in_progress_tasks = 5;
+  int32 pending_tasks = 6;
+  float progress = 7;
+  repeated DailyProgress daily_progress = 8;
+  repeated TaskTypeStat task_type_stats = 9;
+}
+
+message DailyProgress {
+  int32 day_number = 1;
+  int32 completed = 2;
+  int32 total = 3;
+}
+
+message TaskTypeStat {
+  string task_type = 1;
+  int32 completed = 2;
+  int32 total = 3;
 }

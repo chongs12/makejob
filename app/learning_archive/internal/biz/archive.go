@@ -2,9 +2,17 @@ package biz
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
+)
+
+const (
+	// ArchiveSourceTypeInterviewFinishedMarker 用于标记 interview.finished 事件已完成处理。
+	ArchiveSourceTypeInterviewFinishedMarker = "interview_finished_marker"
+	archiveSourceRefProcessed                = "done"
 )
 
 // ArchiveRepo data 层接口
@@ -14,6 +22,9 @@ type ArchiveRepo interface {
 	ListByUser(ctx context.Context, userID uint64, limit int32) ([]*ArchiveEntry, error)
 	GetWeakTopics(ctx context.Context, userID uint64) ([]string, error)
 	GetFocusSignals(ctx context.Context, userID uint64) ([]*FocusSignal, error)
+	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
+	GetBySource(ctx context.Context, userID, interviewID uint64, sourceType, sourceRef string) (*ArchiveEntry, error)
+	HasInterviewFinishedMarker(ctx context.Context, interviewID, userID uint64) (bool, error)
 }
 
 // ArchiveEntry 学习档案条目
@@ -60,8 +71,19 @@ func NewArchiveUseCase(repo ArchiveRepo, publisher MQPublisher) *ArchiveUseCase 
 
 // WriteEntry 写入学习档案条目
 func (uc *ArchiveUseCase) WriteEntry(ctx context.Context, entry *ArchiveEntry) error {
+	if entry == nil {
+		return nil
+	}
 	if entry.OccurredAt.IsZero() {
 		entry.OccurredAt = time.Now()
+	}
+	existing, err := uc.findExistingEntry(ctx, entry)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		*entry = *existing
+		return nil
 	}
 	return uc.repo.Create(ctx, entry)
 }
@@ -102,13 +124,27 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		logger.Warn("interview.finished 事件 user_id 为 0，丢弃消息")
 		return nil
 	}
+	exists, err := uc.repo.HasInterviewFinishedMarker(ctx, interviewID, userID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		logger.Infof("面试完成事件已处理，跳过重复消费 interview_id=%d user_id=%d", interviewID, userID)
+		return nil
+	}
 
 	now := time.Now()
+	allEntries := []*ArchiveEntry{{
+		UserID:      userID,
+		SourceType:  ArchiveSourceTypeInterviewFinishedMarker,
+		SourceRef:   archiveSourceRefProcessed,
+		InterviewID: interviewID,
+		OccurredAt:  now,
+	}}
 
 	// 为每个薄弱知识点创建档案条目
-	weakEntries := make([]*ArchiveEntry, 0, len(weakTopics))
 	for _, topic := range weakTopics {
-		weakEntries = append(weakEntries, &ArchiveEntry{
+		allEntries = append(allEntries, &ArchiveEntry{
 			UserID:      userID,
 			SourceType:  "interview_weak",
 			SourceRef:   topic,
@@ -119,9 +155,8 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 	}
 
 	// 为每个优势知识点创建档案条目
-	strengthEntries := make([]*ArchiveEntry, 0, len(strengthTopics))
 	for _, topic := range strengthTopics {
-		strengthEntries = append(strengthEntries, &ArchiveEntry{
+		allEntries = append(allEntries, &ArchiveEntry{
 			UserID:       userID,
 			SourceType:   "interview_strength",
 			SourceRef:    topic,
@@ -131,19 +166,58 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		})
 	}
 
-	allEntries := append(weakEntries, strengthEntries...)
+	// 批量写入数据库，并将事务边界限定在 DB 侧；后续事件发布失败不回滚已提交的档案。
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		_, err := uc.repo.BatchCreate(txCtx, allEntries)
+		return err
+	}); err != nil {
+		return err
+	}
 
-	// 批量写入数据库
-	if len(allEntries) > 0 {
-		if _, err := uc.repo.BatchCreate(ctx, allEntries); err != nil {
-			return err
-		}
+	if len(weakTopics) == 0 && len(strengthTopics) == 0 {
+		return nil
 	}
 
 	// 发布档案写入事件（发布失败仅记录日志，不重试主流程）
-	if err := uc.publisher.PublishArchiveWritten(ctx, userID, "interview", interviewID, weakTopics, strengthTopics); err != nil {
-		logger.Errorf("发布 archive.written 事件失败: %v", err)
+	if uc.publisher != nil {
+		if err := uc.publisher.PublishArchiveWritten(ctx, userID, "interview", interviewID, weakTopics, strengthTopics); err != nil {
+			logger.Errorf("发布 archive.written 事件失败: %v", err)
+		}
 	}
 
 	return nil
+}
+
+// HasInterviewFinishedArchive 判断 interview.finished 事件是否已经生成过学习档案。
+func (uc *ArchiveUseCase) HasInterviewFinishedArchive(ctx context.Context, interviewID, userID uint64) (bool, error) {
+	return uc.repo.HasInterviewFinishedMarker(ctx, interviewID, userID)
+}
+
+// findExistingEntry 按幂等键查找已存在条目，命中时返回历史记录本身。
+func (uc *ArchiveUseCase) findExistingEntry(ctx context.Context, entry *ArchiveEntry) (*ArchiveEntry, error) {
+	if entry == nil {
+		return nil, nil
+	}
+	sourceType := strings.TrimSpace(entry.SourceType)
+	sourceRef := strings.TrimSpace(entry.SourceRef)
+	switch sourceType {
+	case "interview_coding":
+		if sourceRef == "" && entry.InterviewID > 0 {
+			sourceRef = formatUint(entry.InterviewID)
+			entry.SourceRef = sourceRef
+		}
+		return uc.repo.GetBySource(ctx, entry.UserID, entry.InterviewID, sourceType, sourceRef)
+	case "interview_weak", "interview_strength":
+		if sourceRef == "" {
+			return nil, nil
+		}
+		return uc.repo.GetBySource(ctx, entry.UserID, entry.InterviewID, sourceType, sourceRef)
+	default:
+		return nil, nil
+	}
+}
+
+// formatUint 将 uint64 转成稳定字符串，用于构造幂等 source_ref。
+func formatUint(value uint64) string {
+	return strconv.FormatUint(value, 10)
 }

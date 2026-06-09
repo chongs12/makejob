@@ -40,7 +40,7 @@ func (r *interviewRepo) Transaction(ctx context.Context, fn func(txCtx context.C
 // Create 创建面试记录并回填数据库生成的主键与时间字段。
 func (r *interviewRepo) Create(ctx context.Context, interview *biz.Interview) error {
 	m := toModel(interview)
-	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+	if err := r.getDB(ctx).WithContext(ctx).Create(m).Error; err != nil {
 		return err
 	}
 	interview.ID = uint64(m.ID)
@@ -49,19 +49,21 @@ func (r *interviewRepo) Create(ctx context.Context, interview *biz.Interview) er
 	return nil
 }
 
+// GetByID 按主键读取面试记录，并在事务上下文中复用同一个 DB 连接。
 func (r *interviewRepo) GetByID(ctx context.Context, id uint64) (*biz.Interview, error) {
 	var m model.MockInterview
-	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
+	if err := r.getDB(ctx).WithContext(ctx).First(&m, id).Error; err != nil {
 		return nil, err
 	}
 	return toBiz(&m), nil
 }
 
+// ListByUser 分页查询用户面试列表，并支持事务内一致性读取。
 func (r *interviewRepo) ListByUser(ctx context.Context, userID uint64, page, pageSize int32) ([]*biz.Interview, int64, error) {
 	var models []model.MockInterview
 	var total int64
 
-	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	query := r.getDB(ctx).WithContext(ctx).Where("user_id = ?", userID)
 	query.Model(&model.MockInterview{}).Count(&total)
 
 	offset := (page - 1) * pageSize
@@ -77,11 +79,13 @@ func (r *interviewRepo) ListByUser(ctx context.Context, userID uint64, page, pag
 	return interviews, total, nil
 }
 
+// Update 更新面试记录，若存在事务上下文则写入同一事务。
 func (r *interviewRepo) Update(ctx context.Context, interview *biz.Interview) error {
 	m := toModel(interview)
 	return r.getDB(ctx).WithContext(ctx).Save(m).Error
 }
 
+// CreateMessage 创建面试消息，并在事务内复用同一个 DB 连接。
 func (r *interviewRepo) CreateMessage(ctx context.Context, msg *biz.InterviewMessage) error {
 	m := &model.InterviewMessage{
 		InterviewID:   msg.InterviewID,
@@ -90,12 +94,13 @@ func (r *interviewRepo) CreateMessage(ctx context.Context, msg *biz.InterviewMes
 		MessageType:   msg.MessageType,
 		QuestionIndex: msg.QuestionIndex,
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
 
+// ListMessages 按时间正序读取面试消息，并支持事务内读取未提交写入。
 func (r *interviewRepo) ListMessages(ctx context.Context, interviewID uint64) ([]*biz.InterviewMessage, error) {
 	var models []model.InterviewMessage
-	if err := r.db.WithContext(ctx).Where("interview_id = ?", interviewID).
+	if err := r.getDB(ctx).WithContext(ctx).Where("interview_id = ?", interviewID).
 		Order("created_at ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -114,6 +119,7 @@ func (r *interviewRepo) ListMessages(ctx context.Context, interviewID uint64) ([
 	return msgs, nil
 }
 
+// CreateCodingAttempt 创建编程题作答记录，并在事务内复用同一个 DB 连接。
 func (r *interviewRepo) CreateCodingAttempt(ctx context.Context, attempt *biz.CodingAttempt) error {
 	m := &model.InterviewCodingAttempt{
 		InterviewID:     attempt.InterviewID,
@@ -128,9 +134,10 @@ func (r *interviewRepo) CreateCodingAttempt(ctx context.Context, attempt *biz.Co
 		AIScore:         attempt.AIScore,
 		AIFeedback:      attempt.AIFeedback,
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
 
+// UpdateCodingAttempt 更新编程题作答记录，并在事务内复用同一个 DB 连接。
 func (r *interviewRepo) UpdateCodingAttempt(ctx context.Context, attempt *biz.CodingAttempt) error {
 	m := &model.InterviewCodingAttempt{
 		ID:              attempt.ID,
@@ -146,13 +153,13 @@ func (r *interviewRepo) UpdateCodingAttempt(ctx context.Context, attempt *biz.Co
 		AIScore:         attempt.AIScore,
 		AIFeedback:      attempt.AIFeedback,
 	}
-	return r.db.WithContext(ctx).Save(m).Error
+	return r.getDB(ctx).WithContext(ctx).Save(m).Error
 }
 
 // ListCodingAttempts 获取面试的所有编程答题记录
 func (r *interviewRepo) ListCodingAttempts(ctx context.Context, interviewID uint64) ([]*biz.CodingAttempt, error) {
 	var models []model.InterviewCodingAttempt
-	if err := r.db.WithContext(ctx).Where("interview_id = ?", interviewID).
+	if err := r.getDB(ctx).WithContext(ctx).Where("interview_id = ?", interviewID).
 		Order("question_index ASC").Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -179,7 +186,7 @@ func (r *interviewRepo) ListCodingAttempts(ctx context.Context, interviewID uint
 // ListMessagesLimited 获取面试最近 N 条消息，并按时间正序返回。
 func (r *interviewRepo) ListMessagesLimited(ctx context.Context, interviewID uint64, limit int32) ([]*biz.InterviewMessage, error) {
 	var models []model.InterviewMessage
-	if err := r.db.WithContext(ctx).Where("interview_id = ?", interviewID).
+	if err := r.getDB(ctx).WithContext(ctx).Where("interview_id = ?", interviewID).
 		Order("created_at DESC").Limit(int(limit)).Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -203,7 +210,7 @@ func (r *interviewRepo) ListMessagesLimited(ctx context.Context, interviewID uin
 
 // BindRealtimeDialog 绑定实时对话 ID 到面试记录
 func (r *interviewRepo) BindRealtimeDialog(ctx context.Context, interviewID uint64, dialogID string) error {
-	return r.db.WithContext(ctx).Model(&model.MockInterview{}).
+	return r.getDB(ctx).WithContext(ctx).Model(&model.MockInterview{}).
 		Where("id = ?", interviewID).
 		Update("realtime_dialog_id", dialogID).Error
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/metadata"
 
 	"makejob/pkg/auth"
 )
@@ -35,6 +36,43 @@ func TestJWTMiddlewareInjectsLegacyUserID(t *testing.T) {
 		}
 		if userID != 12 {
 			t.Fatalf("expected user_id 12, got %d", userID)
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, recorder.Code)
+	}
+}
+
+// TestJWTMiddlewareInjectsOutgoingAuthorization 验证网关鉴权后会把 Bearer Token 写入 gRPC 出站上下文，供下游服务透传鉴权。
+func TestJWTMiddlewareInjectsOutgoingAuthorization(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	token, err := auth.GenerateToken(12, "tester@example.com", "user", "secret", time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateToken returned error: %v", err)
+	}
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	engine.Use(gateway.JWTMiddleware())
+	engine.GET("/protected", func(c *gin.Context) {
+		md, ok := metadata.FromOutgoingContext(c.Request.Context())
+		if !ok {
+			t.Fatalf("outgoing metadata was not injected")
+		}
+		authHeaders := md.Get("authorization")
+		if len(authHeaders) != 1 {
+			t.Fatalf("expected 1 authorization header, got %d", len(authHeaders))
+		}
+		if authHeaders[0] != "Bearer "+token {
+			t.Fatalf("expected forwarded token, got %q", authHeaders[0])
 		}
 		c.Status(http.StatusNoContent)
 	})
@@ -242,5 +280,70 @@ func TestRegisterRoutesProtectsAdminStream(t *testing.T) {
 	engine.ServeHTTP(adminRecorder, adminRequest)
 	if adminRecorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected admin stream unavailable status %d, got %d", http.StatusServiceUnavailable, adminRecorder.Code)
+	}
+}
+
+// TestRegisterRoutesExposesMembershipCallbackWithoutJWT 验证支付回调路由改为公开入口，不再被 JWT 中间件拦截。
+func TestRegisterRoutesExposesMembershipCallbackWithoutJWT(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	gateway.RegisterRoutes(engine)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/membership/callback", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected callback route status %d, got %d", http.StatusServiceUnavailable, recorder.Code)
+	}
+}
+
+// TestRegisterRoutesAddsMistakeTopicAliases 验证 `/api/v1/mistake-topics` 兼容路由已注册并继续受登录保护。
+func TestRegisterRoutesAddsMistakeTopicAliases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	gateway.RegisterRoutes(engine)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/mistake-topics", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected alias route unauthenticated status %d, got %d", http.StatusUnauthorized, recorder.Code)
+	}
+
+	token := buildTestToken(t, 1, "user")
+	protectedRequest := httptest.NewRequest(http.MethodGet, "/api/v1/mistake-topics", nil)
+	protectedRequest.Header.Set("Authorization", "Bearer "+token)
+	protectedRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(protectedRecorder, protectedRequest)
+	if protectedRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected alias route service unavailable status %d, got %d", http.StatusServiceUnavailable, protectedRecorder.Code)
+	}
+}
+
+// TestRegisterRoutesAddsLive2DPublicRoutes 验证 Live2D 前台公开路由已同时注册到 `/api` 与 `/api/v1`。
+func TestRegisterRoutesAddsLive2DPublicRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	gateway := &Gateway{jwtSecret: "secret"}
+	engine := gin.New()
+	gateway.RegisterRoutes(engine)
+
+	legacyRequest := httptest.NewRequest(http.MethodGet, "/api/live2d/models?scene=companion", nil)
+	legacyRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(legacyRecorder, legacyRequest)
+	if legacyRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected legacy live2d route status %d, got %d", http.StatusServiceUnavailable, legacyRecorder.Code)
+	}
+
+	v1Request := httptest.NewRequest(http.MethodGet, "/api/v1/live2d/current?scene=interview", nil)
+	v1Recorder := httptest.NewRecorder()
+	engine.ServeHTTP(v1Recorder, v1Request)
+	if v1Recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected v1 live2d route status %d, got %d", http.StatusServiceUnavailable, v1Recorder.Code)
 	}
 }

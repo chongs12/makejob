@@ -2,8 +2,9 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	kratoserr "github.com/go-kratos/kratos/v2/errors"
 )
 
 // joinNonEmptyTags 统一清洗并拼接标签列表。
@@ -25,7 +26,7 @@ func metadataJSONFromStringMap(input map[string]string) (string, error) {
 	}
 	data, err := json.Marshal(input)
 	if err != nil {
-		return "", fmt.Errorf("marshal metadata failed: %w", err)
+		return "", kratoserr.InternalServer("METADATA_MARSHAL_FAILED", "序列化元数据失败").WithCause(err)
 	}
 	return string(data), nil
 }

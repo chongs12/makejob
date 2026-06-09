@@ -49,6 +49,7 @@ type Gateway struct {
 	communityClient  communityv1.CommunityServiceClient
 	realtimeWSAddr   string
 	jwtSecret        string
+	serviceToken     string
 }
 
 // legacyResponse 复刻原单体统一响应结构，供系统健康检查接口继续复用。
@@ -64,7 +65,11 @@ const (
 
 // NewGateway 创建网关实例
 func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
-	gw := &Gateway{jwtSecret: cfg.JWT.Secret}
+	serviceToken, err := buildGatewayServiceToken(cfg.JWT.Secret)
+	if err != nil {
+		return nil, err
+	}
+	gw := &Gateway{jwtSecret: cfg.JWT.Secret, serviceToken: serviceToken}
 
 	type clientSetup struct {
 		name  string
@@ -169,6 +174,11 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 	return gw, nil
 }
 
+// buildGatewayServiceToken 为 Gateway 生成内部服务调用令牌，供无用户上下文的受保护下游 RPC 使用。
+func buildGatewayServiceToken(jwtSecret string) (string, error) {
+	return auth.GenerateToken(0, "gateway@internal", "admin", jwtSecret, 24*time.Hour)
+}
+
 // Close 关闭所有连接
 func (gw *Gateway) Close() {
 	for _, conn := range gw.conns {
@@ -241,6 +251,7 @@ func grpcErr(c *gin.Context, err error) {
 func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 	gw.registerSystemRoutes(r)
 	gw.registerV1Routes(r)
+	gw.registerLegacyPublicRoutes(r)
 	gw.registerLegacyAdminRoutes(r)
 
 	adminSSE := r.Group("/admin")
@@ -479,6 +490,9 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		public.GET("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListPosts))
 		public.GET("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleGetPost))
 		public.GET("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleListComments))
+		public.POST("/membership/callback", gw.requireService("membership", gw.membershipClient != nil, gw.handlePaymentCallback))
+		public.GET("/live2d/models", gw.requireService("admin", gw.adminClient != nil, gw.handleListPublicLive2DModels))
+		public.GET("/live2d/current", gw.requireService("admin", gw.adminClient != nil, gw.handleGetPublicCurrentLive2DModel))
 	}
 
 	protected := api.Group("")
@@ -493,6 +507,9 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.POST("/questions/run-code", gw.requireService("question", gw.questionClient != nil, gw.handleRunCodeV1))
 		protected.GET("/questions/recommendations", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeRecommendations))
 		protected.GET("/mistakes/topics", gw.requireService("question", gw.questionClient != nil, gw.handleListMistakeTopics))
+		protected.GET("/mistakes/topics/:code", gw.requireService("question", gw.questionClient != nil, gw.handleGetMistakeTopic))
+		protected.GET("/mistake-topics", gw.requireService("question", gw.questionClient != nil, gw.handleListMistakeTopics))
+		protected.GET("/mistake-topics/:code", gw.requireService("question", gw.questionClient != nil, gw.handleGetMistakeTopic))
 		protected.POST("/exams/timed", gw.requireService("question", gw.questionClient != nil, gw.handleGenerateTimedExam))
 		protected.POST("/exams/:id/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitExam))
 		protected.POST("/notes", gw.requireService("question", gw.questionClient != nil, gw.handleCreateNote))
@@ -514,6 +531,7 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.PUT("/plans/:id/tasks/:tid/status", gw.requireService("plan", gw.planClient != nil, gw.handleUpdateTaskStatusV1))
 		protected.POST("/plans/:id/tasks/:tid/feedback", gw.requireService("plan", gw.planClient != nil, gw.handleSubmitTaskFeedbackV1))
 		protected.POST("/plans/:id/adjust", gw.requireService("plan", gw.planClient != nil, gw.handleAdjustPlan))
+		protected.GET("/plans/:id/progress", gw.requireService("plan", gw.planClient != nil, gw.handleGetPlanProgress))
 
 		protected.GET("/growth/summary", gw.requireService("growth", gw.growthClient != nil, gw.handleGetGrowthSummary))
 		protected.GET("/growth/weekly-focus", gw.requireService("growth", gw.growthClient != nil, gw.handleGetWeeklyFocus))
@@ -531,6 +549,10 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.POST("/membership/orders", gw.requireService("membership", gw.membershipClient != nil, gw.handleCreateOrder))
 		protected.GET("/membership/info", gw.requireService("membership", gw.membershipClient != nil, gw.handleMembershipInfo))
 		protected.POST("/membership/check-access", gw.requireService("membership", gw.membershipClient != nil, gw.handleCheckFeatureAccess))
+		protected.GET("/membership/plans", gw.requireService("membership", gw.membershipClient != nil, gw.handleListMembershipPlans))
+		protected.GET("/membership/orders", gw.requireService("membership", gw.membershipClient != nil, gw.handleListOrders))
+		protected.GET("/membership/orders/:id", gw.requireService("membership", gw.membershipClient != nil, gw.handleGetOrder))
+		protected.POST("/membership/upgrade", gw.requireService("membership", gw.membershipClient != nil, gw.handleUpgradeMembership))
 
 		protected.POST("/questions/:id/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitAnswer))
 		protected.POST("/questions/:id/run", gw.requireService("question", gw.questionClient != nil, gw.handleRunCode))
@@ -556,6 +578,16 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 }
 
 // requireService 在具体业务服务未接通时统一返回 503，避免将缺失能力误暴露为 404。
+// registerLegacyPublicRoutes 保留仍被前端直接使用的 `/api/...` 公开业务路径。
+func (gw *Gateway) registerLegacyPublicRoutes(r *gin.Engine) {
+	api := r.Group("/api")
+	public := api.Group("")
+	{
+		public.GET("/live2d/models", gw.requireService("admin", gw.adminClient != nil, gw.handleListPublicLive2DModels))
+		public.GET("/live2d/current", gw.requireService("admin", gw.adminClient != nil, gw.handleGetPublicCurrentLive2DModel))
+	}
+}
+
 func (gw *Gateway) requireService(service string, available bool, next gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !available {
@@ -673,7 +705,7 @@ func (gw *Gateway) JWTMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		injectIdentityContext(c, claims)
+		injectIdentityContext(c, claims, tokenString)
 		c.Next()
 	}
 }
@@ -684,7 +716,7 @@ func (gw *Gateway) OptionalJWTMiddleware() gin.HandlerFunc {
 		tokenString, err := extractAccessToken(c.Request)
 		if err == nil && tokenString != "" {
 			if claims, parseErr := auth.ParseToken(tokenString, gw.jwtSecret); parseErr == nil {
-				injectIdentityContext(c, claims)
+				injectIdentityContext(c, claims, tokenString)
 			}
 		}
 		c.Next()
@@ -734,15 +766,24 @@ func isWebSocketUpgradeRequest(r *http.Request) bool {
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket")
 }
 
-// injectIdentityContext 将网关解析出的 JWT 声明写回 Gin 上下文，并兼容 legacy handler 依赖的 user_id 类型。
-func injectIdentityContext(c *gin.Context, claims *auth.Claims) {
+// injectIdentityContext 将网关解析出的 JWT 声明和访问令牌写回请求上下文，供下游 gRPC 继续透传鉴权。
+func injectIdentityContext(c *gin.Context, claims *auth.Claims, tokenString string) {
 	userID := safeLegacyUserID(claims.UserID)
 	c.Set("user_id", userID)
 	c.Set("role", claims.Role)
 	c.Set("email", claims.Email)
 
 	ctx := context.WithValue(c.Request.Context(), auth.ContextKeyUserID, claims.UserID)
+	ctx = context.WithValue(ctx, auth.ContextKeyRole, claims.Role)
+	ctx = context.WithValue(ctx, auth.ContextKeyEmail, claims.Email)
+	ctx = auth.WithAccessToken(ctx, tokenString)
+	ctx = auth.WithOutgoingAccessToken(ctx, tokenString)
 	c.Request = c.Request.WithContext(ctx)
+}
+
+// serviceAuthContext 为无用户 JWT 的下游调用补内部服务令牌。
+func (gw *Gateway) serviceAuthContext(ctx context.Context) context.Context {
+	return auth.WithOutgoingAccessToken(ctx, gw.serviceToken)
 }
 
 // safeLegacyUserID 将 JWT 中的 uint64 用户 ID 安全收敛为 legacy handler 可读取的 uint。
@@ -801,6 +842,32 @@ func legacySuccess(c *gin.Context, data interface{}) {
 		Message: "success",
 		Data:    data,
 	})
+}
+
+// handleListPublicLive2DModels 返回前台可切换的 Live2D 模型列表，并兼容单体统一响应包裹结构。
+func (gw *Gateway) handleListPublicLive2DModels(c *gin.Context) {
+	resp, err := gw.adminClient.ListSelectableLive2DModels(c.Request.Context(), &adminv1.ListSelectableLive2DModelsRequest{
+		Scene:        c.Query("scene"),
+		IndustryCode: c.Query("industry_code"),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	legacySuccess(c, resp.Models)
+}
+
+// handleGetPublicCurrentLive2DModel 返回前台当前场景默认使用的 Live2D 模型，并兼容单体统一响应包裹结构。
+func (gw *Gateway) handleGetPublicCurrentLive2DModel(c *gin.Context) {
+	resp, err := gw.adminClient.GetCurrentLive2DModel(c.Request.Context(), &adminv1.GetCurrentLive2DModelRequest{
+		Scene:        c.Query("scene"),
+		IndustryCode: c.Query("industry_code"),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	legacySuccess(c, resp)
 }
 
 // ========== User 代理 ==========
@@ -1014,6 +1081,85 @@ func (gw *Gateway) handleCheckFeatureAccess(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleListMembershipPlans 查询可用会员套餐列表。
+func (gw *Gateway) handleListMembershipPlans(c *gin.Context) {
+	resp, err := gw.membershipClient.ListPlans(c.Request.Context(), &membershipv1.ListPlansRequest{})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleListOrders 查询当前用户的订单列表。
+func (gw *Gateway) handleListOrders(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "10"), 10, 32)
+	resp, err := gw.membershipClient.ListOrders(c.Request.Context(), &membershipv1.ListOrdersRequest{
+		UserId:   userID,
+		Page:     int32(page),
+		PageSize: int32(pageSize),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGetOrder 查询单个订单详情。
+func (gw *Gateway) handleGetOrder(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	orderID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order id"})
+		return
+	}
+	resp, err := gw.membershipClient.GetOrder(c.Request.Context(), &membershipv1.GetOrderRequest{
+		UserId:  userID,
+		OrderId: orderID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handlePaymentCallback 处理支付回调（不需要 JWT 认证，由外部支付系统调用）。
+func (gw *Gateway) handlePaymentCallback(c *gin.Context) {
+	var req struct {
+		OrderNo       string `json:"order_no"`
+		Channel       string `json:"channel"`
+		TransactionID string `json:"transaction_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.OrderNo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order_no is required"})
+		return
+	}
+	resp, err := gw.membershipClient.HandlePaymentCallback(gw.serviceAuthContext(c.Request.Context()), &membershipv1.PaymentCallbackRequest{
+		OrderNo:       req.OrderNo,
+		Channel:       req.Channel,
+		TransactionId: req.TransactionID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 func (gw *Gateway) handleGetMembershipStatus(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -1027,26 +1173,67 @@ func (gw *Gateway) handleGetMembershipStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleUpgradeMembership 升级当前用户会员，并兼容旧版 `plan/plan_type` 到新 proto 契约的映射。
 func (gw *Gateway) handleUpgradeMembership(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
 	var req struct {
-		Plan string `json:"plan"`
+		Level        string `json:"level"`
+		DurationDays int32  `json:"duration_days"`
+		Plan         string `json:"plan"`
+		PlanType     string `json:"plan_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.userClient.UpgradeMembership(c.Request.Context(), &userv1.UpgradeRequest{
-		UserId: userID, Plan: req.Plan,
+	level := strings.TrimSpace(req.Level)
+	if level == "" {
+		level = strings.TrimSpace(req.Plan)
+	}
+	if level == "" {
+		level = strings.TrimSpace(req.PlanType)
+	}
+	if level == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "level is required"})
+		return
+	}
+
+	durationDays := req.DurationDays
+	if durationDays <= 0 {
+		durationDays = defaultMembershipDurationDays(level)
+	}
+	if durationDays <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "duration_days is required"})
+		return
+	}
+
+	resp, err := gw.membershipClient.UpgradeMembership(c.Request.Context(), &membershipv1.UpgradeRequest{
+		UserId:       userID,
+		Level:        level,
+		DurationDays: durationDays,
 	})
 	if err != nil {
 		grpcErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// defaultMembershipDurationDays 根据套餐等级返回默认会员时长，兼容旧前端只传 plan_type 的场景。
+func defaultMembershipDurationDays(level string) int32 {
+	switch strings.TrimSpace(level) {
+	case "monthly":
+		return 30
+	case "quarterly":
+		return 90
+	case "yearly":
+		return 365
+	default:
+		return 0
+	}
 }
 
 // ========== Question 代理 ==========
@@ -1481,6 +1668,23 @@ func (gw *Gateway) handleListMistakeTopics(c *gin.Context) {
 	resp, err := gw.questionClient.ListMistakeTopics(c.Request.Context(), &questionv1.ListMistakeTopicsRequest{
 		UserId: userID,
 		Limit:  int32(limit),
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGetMistakeTopic 根据错因专题编码查询单个专题卡片详情。
+func (gw *Gateway) handleGetMistakeTopic(c *gin.Context) {
+	code := c.Param("code")
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
+		return
+	}
+	resp, err := gw.questionClient.GetMistakeTopic(c.Request.Context(), &questionv1.GetMistakeTopicRequest{
+		Code: code,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -2050,6 +2254,26 @@ func (gw *Gateway) handleGetPlan(c *gin.Context) {
 		return
 	}
 	resp, err := gw.planClient.GetPlan(c.Request.Context(), &planv1.GetPlanRequest{
+		PlanId: planID, UserId: userID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleGetPlanProgress 获取学习计划进度统计。
+func (gw *Gateway) handleGetPlanProgress(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	resp, err := gw.planClient.GetProgress(c.Request.Context(), &planv1.GetProgressRequest{
 		PlanId: planID, UserId: userID,
 	})
 	if err != nil {

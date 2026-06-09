@@ -65,7 +65,7 @@ func NewInterviewUseCase(
 
 // CreateInterview 创建面试会话
 func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInterviewRequest) (*Interview, *InterviewQuestion, error) {
-	// 验证行业代码（gRPC 调用 Industry 服务）
+	// 验证行业代码（当前由本地仓储实现，接口保持不变）
 	ind, err := uc.industry.GetIndustry(ctx, req.IndustryCode)
 	if err != nil {
 		return nil, nil, kratosErr.New(400, "INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
@@ -85,36 +85,41 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		Live2DModelKey: req.Live2DModelKey,
 	}
 
-	if err := uc.repo.Create(ctx, interview); err != nil {
-		return nil, nil, kratosErr.InternalServer("CREATE_FAILED", "创建面试失败").WithCause(err)
+	var firstQuestion *InterviewQuestion
+	if !isRealtimeMode(interview.InterviewMode) {
+		// 首题生成依赖外部 AI，必须放在事务外执行，避免长事务占用数据库连接。
+		aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
+			IndustryCode: req.IndustryCode,
+			Difficulty:   req.Difficulty,
+			ResumeText:   req.ResumeText,
+			JobDesc:      req.JobDescription,
+		})
+		if err != nil {
+			return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
+		}
+		if aiResp != nil {
+			firstQuestion = aiResp.Question
+		}
 	}
 
-	// 生成第一道题（通过 AI 服务）
+	// 创建面试记录与首题消息必须同事务提交，避免出现“只有会话没有首题”的伪成功状态。
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.repo.Create(txCtx, interview); err != nil {
+			return kratosErr.InternalServer("CREATE_FAILED", "创建面试失败").WithCause(err)
+		}
+		if firstQuestionMsg := BuildQuestionMessage(interview.ID, 0, firstQuestion); firstQuestionMsg != nil {
+			if err := uc.repo.CreateMessage(txCtx, firstQuestionMsg); err != nil {
+				return kratosErr.InternalServer("SAVE_FIRST_QUESTION_FAILED", "保存第一道题失败").WithCause(err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, nil, err
+	}
+
 	if strings.TrimSpace(interview.ResumeText) != "" && uc.publisher != nil {
 		if err := uc.publisher.PublishInterviewResumeParse(ctx, interview.ID, interview.UserID, interview.ResumeText); err != nil {
 			log.Warnf("发布简历解析消息失败: interview_id=%d err=%v", interview.ID, err)
-		}
-	}
-	if isRealtimeMode(interview.InterviewMode) {
-		return interview, nil, nil
-	}
-	aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
-		InterviewID:  interview.ID,
-		IndustryCode: req.IndustryCode,
-		Difficulty:   req.Difficulty,
-		ResumeText:   req.ResumeText,
-		JobDesc:      req.JobDescription,
-	})
-	if err != nil {
-		return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
-	}
-	var firstQuestion *InterviewQuestion
-	if aiResp != nil {
-		firstQuestion = aiResp.Question
-	}
-	if firstQuestionMsg := BuildQuestionMessage(interview.ID, 0, firstQuestion); firstQuestionMsg != nil {
-		if err := uc.repo.CreateMessage(ctx, firstQuestionMsg); err != nil {
-			return nil, nil, kratosErr.InternalServer("SAVE_FIRST_QUESTION_FAILED", "保存第一道题失败").WithCause(err)
 		}
 	}
 
@@ -135,7 +140,11 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		return nil, nil, ErrInterviewNotOngoing
 	}
 
-	// 2. 保存用户答案
+	// 2. 预加载历史消息，后续先走 AI 计算，再统一在事务中落库，避免部分写入成功。
+	history, err := uc.repo.ListMessages(ctx, interviewID)
+	if err != nil {
+		return nil, nil, kratosErr.InternalServer("HISTORY_FAILED", "获取历史消息失败").WithCause(err)
+	}
 	msg := &InterviewMessage{
 		InterviewID:   interviewID,
 		Role:          "user",
@@ -143,20 +152,14 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		MessageType:   "text",
 		QuestionIndex: index,
 	}
-	if err := uc.repo.CreateMessage(ctx, msg); err != nil {
-		return nil, nil, kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
-	}
+	historyForAI := append(append(make([]*InterviewMessage, 0, len(history)+1), history...), msg)
 
 	// 3. 调用 AI 服务评估答案（gRPC 跨服务调用）
-	history, err := uc.repo.ListMessages(ctx, interviewID)
-	if err != nil {
-		return nil, nil, kratosErr.InternalServer("HISTORY_FAILED", "获取历史消息失败").WithCause(err)
-	}
 	aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
 		InterviewID:   interviewID,
 		IndustryCode:  interview.IndustryCode,
 		Difficulty:    interview.Difficulty,
-		History:       NormalizeHistoryMessages(history),
+		History:       NormalizeHistoryMessages(historyForAI),
 		UserAnswer:    answer,
 		QuestionIndex: index,
 		ResumeText:    interview.ResumeText,
@@ -169,34 +172,40 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		return nil, nil, kratosErr.InternalServer("AI_EMPTY_RESPONSE", "AI 服务返回空响应")
 	}
 
-	// 4. 保存 AI 回复（nil 安全）
+	// 4. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
 	feedback := aiResp.Feedback
 	if feedback == nil {
 		feedback = &AnswerFeedback{}
 	}
 	feedbackText := strings.TrimSpace(feedback.Feedback)
-	if feedbackText != "" {
-		aiMsg := &InterviewMessage{
-			InterviewID:   interviewID,
-			Role:          "assistant",
-			Content:       feedbackText,
-			MessageType:   "text",
-			QuestionIndex: index,
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.repo.CreateMessage(txCtx, msg); err != nil {
+			return kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
 		}
-		if err := uc.repo.CreateMessage(ctx, aiMsg); err != nil {
-			return nil, nil, kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 回复失败").WithCause(err)
+		if feedbackText != "" {
+			aiMsg := &InterviewMessage{
+				InterviewID:   interviewID,
+				Role:          "assistant",
+				Content:       feedbackText,
+				MessageType:   "text",
+				QuestionIndex: index,
+			}
+			if err := uc.repo.CreateMessage(txCtx, aiMsg); err != nil {
+				return kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 回复失败").WithCause(err)
+			}
 		}
-	}
-	if nextQuestionMsg := BuildQuestionMessage(interviewID, index+1, aiResp.Question); nextQuestionMsg != nil {
-		if err := uc.repo.CreateMessage(ctx, nextQuestionMsg); err != nil {
-			return nil, nil, kratosErr.InternalServer("SAVE_NEXT_QUESTION_FAILED", "保存下一题失败").WithCause(err)
+		if nextQuestionMsg := BuildQuestionMessage(interviewID, index+1, aiResp.Question); nextQuestionMsg != nil {
+			if err := uc.repo.CreateMessage(txCtx, nextQuestionMsg); err != nil {
+				return kratosErr.InternalServer("SAVE_NEXT_QUESTION_FAILED", "保存下一题失败").WithCause(err)
+			}
 		}
-	}
-
-	// 5. 更新面试进度
-	interview.CurrentIndex = index + 1
-	if err := uc.repo.Update(ctx, interview); err != nil {
-		return nil, nil, kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
+		interview.CurrentIndex = index + 1
+		if err := uc.repo.Update(txCtx, interview); err != nil {
+			return kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
+		}
+		return nil
+	}); err != nil {
+		return nil, nil, err
 	}
 
 	// FIX I4: 异步写入学习档案，使用独立超时 context，不阻塞答题响应
@@ -347,6 +356,11 @@ func (uc *InterviewUseCase) ProcessResumeParse(ctx context.Context, interviewID,
 		return nil
 	}
 
+	if strings.TrimSpace(interview.ResumeParsedJSON) != "" {
+		log.Infof("简历解析已存在，跳过重复消费 interview_id=%d", interviewID)
+		return nil
+	}
+
 	// 调用 AI Gateway 解析简历
 	resp, err := uc.ai.ResumeParser(ctx, &ResumeParserRequest{ResumeText: resumeText})
 	if err != nil {
@@ -471,6 +485,15 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 
 // PersistCodingArchive MQ 消费者：持久化编程题归档
 func (uc *InterviewUseCase) PersistCodingArchive(ctx context.Context, interviewID, userID uint64) error {
+	exists, err := uc.HasCodingArchive(ctx, interviewID, userID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		log.Infof("编程归档已存在，跳过重复消费 interview_id=%d user_id=%d", interviewID, userID)
+		return nil
+	}
+
 	// 获取面试信息
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
@@ -481,6 +504,7 @@ func (uc *InterviewUseCase) PersistCodingArchive(ctx context.Context, interviewI
 	return uc.archive.WriteEntry(ctx, &ArchiveEntry{
 		UserID:       interview.UserID,
 		SourceType:   "interview_coding",
+		SourceRef:    fmt.Sprintf("%d", interviewID),
 		InterviewID:  interviewID,
 		IndustryCode: interview.IndustryCode,
 		OccurredAt:   interview.CreatedAt,
@@ -578,10 +602,6 @@ func (uc *InterviewUseCase) SubmitCodingAnswer(ctx context.Context, interviewID,
 		MessageType:   "code",
 		QuestionIndex: questionIndex,
 	}
-	if err := uc.repo.CreateMessage(ctx, codeMsg); err != nil {
-		return nil, kratosErr.InternalServer("SAVE_CODE_FAILED", "保存编程答案失败").WithCause(err)
-	}
-
 	// 3. 调用 CodeRunner 执行代码（降级处理）
 	result := &CodingAnswerResult{}
 	if uc.codeRunner != nil {
@@ -630,25 +650,54 @@ func (uc *InterviewUseCase) SubmitCodingAnswer(ctx context.Context, interviewID,
 		AIScore:         result.AIScore,
 		AIFeedback:      result.AIFeedback,
 	}
-	if err := uc.repo.CreateCodingAttempt(ctx, attempt); err != nil {
-		return nil, kratosErr.InternalServer("SAVE_ATTEMPT_FAILED", "保存编程答题记录失败").WithCause(err)
-	}
-
-	// 6. 保存 AI 评审反馈消息
-	if result.AIFeedback != "" {
-		aiMsg := &InterviewMessage{
-			InterviewID:   interviewID,
-			Role:          "assistant",
-			Content:       result.AIFeedback,
-			MessageType:   "text",
-			QuestionIndex: questionIndex,
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.repo.CreateMessage(txCtx, codeMsg); err != nil {
+			return kratosErr.InternalServer("SAVE_CODE_FAILED", "保存编程答案失败").WithCause(err)
 		}
-		if err := uc.repo.CreateMessage(ctx, aiMsg); err != nil {
-			log.Errorf("保存 AI 评审反馈失败: %v", err)
+		if err := uc.repo.CreateCodingAttempt(txCtx, attempt); err != nil {
+			return kratosErr.InternalServer("SAVE_ATTEMPT_FAILED", "保存编程答题记录失败").WithCause(err)
 		}
+		if result.AIFeedback != "" {
+			aiMsg := &InterviewMessage{
+				InterviewID:   interviewID,
+				Role:          "assistant",
+				Content:       result.AIFeedback,
+				MessageType:   "text",
+				QuestionIndex: questionIndex,
+			}
+			if err := uc.repo.CreateMessage(txCtx, aiMsg); err != nil {
+				return kratosErr.InternalServer("SAVE_AI_REVIEW_FAILED", "保存 AI 评审反馈失败").WithCause(err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return result, nil
+}
+
+// IsResumeParsed 判断面试是否已经完成简历解析，供 MQ 消费者做幂等短路。
+func (uc *InterviewUseCase) IsResumeParsed(ctx context.Context, interviewID uint64) (bool, error) {
+	interview, err := uc.repo.GetByID(ctx, interviewID)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(interview.ResumeParsedJSON) != "", nil
+}
+
+// HasCodingArchive 判断编程归档是否已写入学习档案，供 MQ 消费者做幂等短路。
+func (uc *InterviewUseCase) HasCodingArchive(ctx context.Context, interviewID, userID uint64) (bool, error) {
+	entries, err := uc.archive.ListByUser(ctx, userID, 1000)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry != nil && entry.SourceType == "interview_coding" && entry.InterviewID == interviewID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // IsRealtimeInterview 查询面试是否为实时模式

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
@@ -532,6 +533,26 @@ func (s *QuestionService) ListMistakeTopics(ctx context.Context, req *questionv1
 
 	return &questionv1.ListMistakeTopicsResponse{
 		Topics: items,
+	}, nil
+}
+
+// GetMistakeTopic 根据错因专题编码查询单个专题卡片详情。
+func (s *QuestionService) GetMistakeTopic(ctx context.Context, req *questionv1.GetMistakeTopicRequest) (*questionv1.MistakeTopicCard, error) {
+	topic, found := biz.GetMistakeTopicByCode(req.GetCode())
+	if !found {
+		return nil, kratosErr.NotFound("MISTAKE_TOPIC_NOT_FOUND", "错因专题不存在")
+	}
+
+	return &questionv1.MistakeTopicCard{
+		Code:                topic.Code,
+		Tag:                 topic.Tag,
+		Title:               topic.Title,
+		ProblemPattern:      topic.ProblemPattern,
+		RootCauses:          topic.RootCauses,
+		SelfCheckList:       topic.SelfCheckList,
+		PracticeDirections:  topic.PracticeDirections,
+		RecommendedActions:  topic.RecommendedActions,
+		RelatedQuestionSets: topic.RelatedQuestionSets,
 	}, nil
 }
 

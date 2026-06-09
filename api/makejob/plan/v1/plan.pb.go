@@ -1186,6 +1186,286 @@ func (x *AdjustPlanResponse) GetUpdatedTasks() []*TaskDetail {
 	return nil
 }
 
+type GetProgressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PlanId        uint64                 `protobuf:"varint,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	UserId        uint64                 `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProgressRequest) Reset() {
+	*x = GetProgressRequest{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProgressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProgressRequest) ProtoMessage() {}
+
+func (x *GetProgressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProgressRequest.ProtoReflect.Descriptor instead.
+func (*GetProgressRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetProgressRequest) GetPlanId() uint64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *GetProgressRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+type PlanProgressResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	PlanId          uint64                 `protobuf:"varint,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	TotalTasks      int32                  `protobuf:"varint,2,opt,name=total_tasks,json=totalTasks,proto3" json:"total_tasks,omitempty"`
+	CompletedTasks  int32                  `protobuf:"varint,3,opt,name=completed_tasks,json=completedTasks,proto3" json:"completed_tasks,omitempty"`
+	SkippedTasks    int32                  `protobuf:"varint,4,opt,name=skipped_tasks,json=skippedTasks,proto3" json:"skipped_tasks,omitempty"`
+	InProgressTasks int32                  `protobuf:"varint,5,opt,name=in_progress_tasks,json=inProgressTasks,proto3" json:"in_progress_tasks,omitempty"`
+	PendingTasks    int32                  `protobuf:"varint,6,opt,name=pending_tasks,json=pendingTasks,proto3" json:"pending_tasks,omitempty"`
+	Progress        float32                `protobuf:"fixed32,7,opt,name=progress,proto3" json:"progress,omitempty"`
+	DailyProgress   []*DailyProgress       `protobuf:"bytes,8,rep,name=daily_progress,json=dailyProgress,proto3" json:"daily_progress,omitempty"`
+	TaskTypeStats   []*TaskTypeStat        `protobuf:"bytes,9,rep,name=task_type_stats,json=taskTypeStats,proto3" json:"task_type_stats,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PlanProgressResponse) Reset() {
+	*x = PlanProgressResponse{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlanProgressResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlanProgressResponse) ProtoMessage() {}
+
+func (x *PlanProgressResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlanProgressResponse.ProtoReflect.Descriptor instead.
+func (*PlanProgressResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PlanProgressResponse) GetPlanId() uint64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetTotalTasks() int32 {
+	if x != nil {
+		return x.TotalTasks
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetCompletedTasks() int32 {
+	if x != nil {
+		return x.CompletedTasks
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetSkippedTasks() int32 {
+	if x != nil {
+		return x.SkippedTasks
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetInProgressTasks() int32 {
+	if x != nil {
+		return x.InProgressTasks
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetPendingTasks() int32 {
+	if x != nil {
+		return x.PendingTasks
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetProgress() float32 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *PlanProgressResponse) GetDailyProgress() []*DailyProgress {
+	if x != nil {
+		return x.DailyProgress
+	}
+	return nil
+}
+
+func (x *PlanProgressResponse) GetTaskTypeStats() []*TaskTypeStat {
+	if x != nil {
+		return x.TaskTypeStats
+	}
+	return nil
+}
+
+type DailyProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DayNumber     int32                  `protobuf:"varint,1,opt,name=day_number,json=dayNumber,proto3" json:"day_number,omitempty"`
+	Completed     int32                  `protobuf:"varint,2,opt,name=completed,proto3" json:"completed,omitempty"`
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DailyProgress) Reset() {
+	*x = DailyProgress{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DailyProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DailyProgress) ProtoMessage() {}
+
+func (x *DailyProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DailyProgress.ProtoReflect.Descriptor instead.
+func (*DailyProgress) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DailyProgress) GetDayNumber() int32 {
+	if x != nil {
+		return x.DayNumber
+	}
+	return 0
+}
+
+func (x *DailyProgress) GetCompleted() int32 {
+	if x != nil {
+		return x.Completed
+	}
+	return 0
+}
+
+func (x *DailyProgress) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+type TaskTypeStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskType      string                 `protobuf:"bytes,1,opt,name=task_type,json=taskType,proto3" json:"task_type,omitempty"`
+	Completed     int32                  `protobuf:"varint,2,opt,name=completed,proto3" json:"completed,omitempty"`
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskTypeStat) Reset() {
+	*x = TaskTypeStat{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskTypeStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskTypeStat) ProtoMessage() {}
+
+func (x *TaskTypeStat) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskTypeStat.ProtoReflect.Descriptor instead.
+func (*TaskTypeStat) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *TaskTypeStat) GetTaskType() string {
+	if x != nil {
+		return x.TaskType
+	}
+	return ""
+}
+
+func (x *TaskTypeStat) GetCompleted() int32 {
+	if x != nil {
+		return x.Completed
+	}
+	return 0
+}
+
+func (x *TaskTypeStat) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
 var File_makejob_plan_v1_plan_proto protoreflect.FileDescriptor
 
 const file_makejob_plan_v1_plan_proto_rawDesc = "" +
@@ -1299,7 +1579,30 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\rtasks_removed\x18\x02 \x01(\x05R\ftasksRemoved\x12'\n" +
 	"\x0ftasks_reordered\x18\x03 \x01(\x05R\x0etasksReordered\x12-\n" +
 	"\x12adjustment_summary\x18\x04 \x01(\tR\x11adjustmentSummary\x12@\n" +
-	"\rupdated_tasks\x18\x05 \x03(\v2\x1b.makejob.plan.v1.TaskDetailR\fupdatedTasks2\xf3\x04\n" +
+	"\rupdated_tasks\x18\x05 \x03(\v2\x1b.makejob.plan.v1.TaskDetailR\fupdatedTasks\"F\n" +
+	"\x12GetProgressRequest\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\x99\x03\n" +
+	"\x14PlanProgressResponse\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x1f\n" +
+	"\vtotal_tasks\x18\x02 \x01(\x05R\n" +
+	"totalTasks\x12'\n" +
+	"\x0fcompleted_tasks\x18\x03 \x01(\x05R\x0ecompletedTasks\x12#\n" +
+	"\rskipped_tasks\x18\x04 \x01(\x05R\fskippedTasks\x12*\n" +
+	"\x11in_progress_tasks\x18\x05 \x01(\x05R\x0finProgressTasks\x12#\n" +
+	"\rpending_tasks\x18\x06 \x01(\x05R\fpendingTasks\x12\x1a\n" +
+	"\bprogress\x18\a \x01(\x02R\bprogress\x12E\n" +
+	"\x0edaily_progress\x18\b \x03(\v2\x1e.makejob.plan.v1.DailyProgressR\rdailyProgress\x12E\n" +
+	"\x0ftask_type_stats\x18\t \x03(\v2\x1d.makejob.plan.v1.TaskTypeStatR\rtaskTypeStats\"b\n" +
+	"\rDailyProgress\x12\x1d\n" +
+	"\n" +
+	"day_number\x18\x01 \x01(\x05R\tdayNumber\x12\x1c\n" +
+	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\"_\n" +
+	"\fTaskTypeStat\x12\x1b\n" +
+	"\ttask_type\x18\x01 \x01(\tR\btaskType\x12\x1c\n" +
+	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total2\xce\x05\n" +
 	"\vPlanService\x12O\n" +
 	"\n" +
 	"CreatePlan\x12\".makejob.plan.v1.CreatePlanRequest\x1a\x1d.makejob.plan.v1.PlanResponse\x12G\n" +
@@ -1309,7 +1612,8 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\x10UpdateTaskStatus\x12(.makejob.plan.v1.UpdateTaskStatusRequest\x1a).makejob.plan.v1.UpdateTaskStatusResponse\x12_\n" +
 	"\x12SubmitTaskFeedback\x12&.makejob.plan.v1.SubmitFeedbackRequest\x1a!.makejob.plan.v1.FeedbackResponse\x12U\n" +
 	"\n" +
-	"AdjustPlan\x12\".makejob.plan.v1.AdjustPlanRequest\x1a#.makejob.plan.v1.AdjustPlanResponseB$Z\"makejob/api/makejob/plan/v1;planv1b\x06proto3"
+	"AdjustPlan\x12\".makejob.plan.v1.AdjustPlanRequest\x1a#.makejob.plan.v1.AdjustPlanResponse\x12Y\n" +
+	"\vGetProgress\x12#.makejob.plan.v1.GetProgressRequest\x1a%.makejob.plan.v1.PlanProgressResponseB$Z\"makejob/api/makejob/plan/v1;planv1b\x06proto3"
 
 var (
 	file_makejob_plan_v1_plan_proto_rawDescOnce sync.Once
@@ -1323,7 +1627,7 @@ func file_makejob_plan_v1_plan_proto_rawDescGZIP() []byte {
 	return file_makejob_plan_v1_plan_proto_rawDescData
 }
 
-var file_makejob_plan_v1_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_makejob_plan_v1_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_makejob_plan_v1_plan_proto_goTypes = []any{
 	(*CreatePlanRequest)(nil),        // 0: makejob.plan.v1.CreatePlanRequest
 	(*PlanResponse)(nil),             // 1: makejob.plan.v1.PlanResponse
@@ -1340,35 +1644,43 @@ var file_makejob_plan_v1_plan_proto_goTypes = []any{
 	(*FeedbackResponse)(nil),         // 12: makejob.plan.v1.FeedbackResponse
 	(*AdjustPlanRequest)(nil),        // 13: makejob.plan.v1.AdjustPlanRequest
 	(*AdjustPlanResponse)(nil),       // 14: makejob.plan.v1.AdjustPlanResponse
-	(*timestamppb.Timestamp)(nil),    // 15: google.protobuf.Timestamp
+	(*GetProgressRequest)(nil),       // 15: makejob.plan.v1.GetProgressRequest
+	(*PlanProgressResponse)(nil),     // 16: makejob.plan.v1.PlanProgressResponse
+	(*DailyProgress)(nil),            // 17: makejob.plan.v1.DailyProgress
+	(*TaskTypeStat)(nil),             // 18: makejob.plan.v1.TaskTypeStat
+	(*timestamppb.Timestamp)(nil),    // 19: google.protobuf.Timestamp
 }
 var file_makejob_plan_v1_plan_proto_depIdxs = []int32{
-	15, // 0: makejob.plan.v1.PlanResponse.created_at:type_name -> google.protobuf.Timestamp
+	19, // 0: makejob.plan.v1.PlanResponse.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 1: makejob.plan.v1.PlanDetail.tasks:type_name -> makejob.plan.v1.TaskDetail
-	15, // 2: makejob.plan.v1.PlanDetail.created_at:type_name -> google.protobuf.Timestamp
-	15, // 3: makejob.plan.v1.TaskDetail.completed_at:type_name -> google.protobuf.Timestamp
+	19, // 2: makejob.plan.v1.PlanDetail.created_at:type_name -> google.protobuf.Timestamp
+	19, // 3: makejob.plan.v1.TaskDetail.completed_at:type_name -> google.protobuf.Timestamp
 	8,  // 4: makejob.plan.v1.ListPlansResponse.items:type_name -> makejob.plan.v1.PlanSummary
-	15, // 5: makejob.plan.v1.PlanSummary.created_at:type_name -> google.protobuf.Timestamp
+	19, // 5: makejob.plan.v1.PlanSummary.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 6: makejob.plan.v1.AdjustPlanResponse.updated_tasks:type_name -> makejob.plan.v1.TaskDetail
-	0,  // 7: makejob.plan.v1.PlanService.CreatePlan:input_type -> makejob.plan.v1.CreatePlanRequest
-	2,  // 8: makejob.plan.v1.PlanService.GetPlan:input_type -> makejob.plan.v1.GetPlanRequest
-	3,  // 9: makejob.plan.v1.PlanService.GetCurrentPlan:input_type -> makejob.plan.v1.GetCurrentPlanRequest
-	6,  // 10: makejob.plan.v1.PlanService.ListPlans:input_type -> makejob.plan.v1.ListPlansRequest
-	9,  // 11: makejob.plan.v1.PlanService.UpdateTaskStatus:input_type -> makejob.plan.v1.UpdateTaskStatusRequest
-	11, // 12: makejob.plan.v1.PlanService.SubmitTaskFeedback:input_type -> makejob.plan.v1.SubmitFeedbackRequest
-	13, // 13: makejob.plan.v1.PlanService.AdjustPlan:input_type -> makejob.plan.v1.AdjustPlanRequest
-	1,  // 14: makejob.plan.v1.PlanService.CreatePlan:output_type -> makejob.plan.v1.PlanResponse
-	4,  // 15: makejob.plan.v1.PlanService.GetPlan:output_type -> makejob.plan.v1.PlanDetail
-	4,  // 16: makejob.plan.v1.PlanService.GetCurrentPlan:output_type -> makejob.plan.v1.PlanDetail
-	7,  // 17: makejob.plan.v1.PlanService.ListPlans:output_type -> makejob.plan.v1.ListPlansResponse
-	10, // 18: makejob.plan.v1.PlanService.UpdateTaskStatus:output_type -> makejob.plan.v1.UpdateTaskStatusResponse
-	12, // 19: makejob.plan.v1.PlanService.SubmitTaskFeedback:output_type -> makejob.plan.v1.FeedbackResponse
-	14, // 20: makejob.plan.v1.PlanService.AdjustPlan:output_type -> makejob.plan.v1.AdjustPlanResponse
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	17, // 7: makejob.plan.v1.PlanProgressResponse.daily_progress:type_name -> makejob.plan.v1.DailyProgress
+	18, // 8: makejob.plan.v1.PlanProgressResponse.task_type_stats:type_name -> makejob.plan.v1.TaskTypeStat
+	0,  // 9: makejob.plan.v1.PlanService.CreatePlan:input_type -> makejob.plan.v1.CreatePlanRequest
+	2,  // 10: makejob.plan.v1.PlanService.GetPlan:input_type -> makejob.plan.v1.GetPlanRequest
+	3,  // 11: makejob.plan.v1.PlanService.GetCurrentPlan:input_type -> makejob.plan.v1.GetCurrentPlanRequest
+	6,  // 12: makejob.plan.v1.PlanService.ListPlans:input_type -> makejob.plan.v1.ListPlansRequest
+	9,  // 13: makejob.plan.v1.PlanService.UpdateTaskStatus:input_type -> makejob.plan.v1.UpdateTaskStatusRequest
+	11, // 14: makejob.plan.v1.PlanService.SubmitTaskFeedback:input_type -> makejob.plan.v1.SubmitFeedbackRequest
+	13, // 15: makejob.plan.v1.PlanService.AdjustPlan:input_type -> makejob.plan.v1.AdjustPlanRequest
+	15, // 16: makejob.plan.v1.PlanService.GetProgress:input_type -> makejob.plan.v1.GetProgressRequest
+	1,  // 17: makejob.plan.v1.PlanService.CreatePlan:output_type -> makejob.plan.v1.PlanResponse
+	4,  // 18: makejob.plan.v1.PlanService.GetPlan:output_type -> makejob.plan.v1.PlanDetail
+	4,  // 19: makejob.plan.v1.PlanService.GetCurrentPlan:output_type -> makejob.plan.v1.PlanDetail
+	7,  // 20: makejob.plan.v1.PlanService.ListPlans:output_type -> makejob.plan.v1.ListPlansResponse
+	10, // 21: makejob.plan.v1.PlanService.UpdateTaskStatus:output_type -> makejob.plan.v1.UpdateTaskStatusResponse
+	12, // 22: makejob.plan.v1.PlanService.SubmitTaskFeedback:output_type -> makejob.plan.v1.FeedbackResponse
+	14, // 23: makejob.plan.v1.PlanService.AdjustPlan:output_type -> makejob.plan.v1.AdjustPlanResponse
+	16, // 24: makejob.plan.v1.PlanService.GetProgress:output_type -> makejob.plan.v1.PlanProgressResponse
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_makejob_plan_v1_plan_proto_init() }
@@ -1382,7 +1694,7 @@ func file_makejob_plan_v1_plan_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_plan_v1_plan_proto_rawDesc), len(file_makejob_plan_v1_plan_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

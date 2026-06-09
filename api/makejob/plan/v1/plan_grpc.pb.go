@@ -26,6 +26,7 @@ const (
 	PlanService_UpdateTaskStatus_FullMethodName   = "/makejob.plan.v1.PlanService/UpdateTaskStatus"
 	PlanService_SubmitTaskFeedback_FullMethodName = "/makejob.plan.v1.PlanService/SubmitTaskFeedback"
 	PlanService_AdjustPlan_FullMethodName         = "/makejob.plan.v1.PlanService/AdjustPlan"
+	PlanService_GetProgress_FullMethodName        = "/makejob.plan.v1.PlanService/GetProgress"
 )
 
 // PlanServiceClient is the client API for PlanService service.
@@ -39,6 +40,7 @@ type PlanServiceClient interface {
 	UpdateTaskStatus(ctx context.Context, in *UpdateTaskStatusRequest, opts ...grpc.CallOption) (*UpdateTaskStatusResponse, error)
 	SubmitTaskFeedback(ctx context.Context, in *SubmitFeedbackRequest, opts ...grpc.CallOption) (*FeedbackResponse, error)
 	AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error)
+	GetProgress(ctx context.Context, in *GetProgressRequest, opts ...grpc.CallOption) (*PlanProgressResponse, error)
 }
 
 type planServiceClient struct {
@@ -119,6 +121,16 @@ func (c *planServiceClient) AdjustPlan(ctx context.Context, in *AdjustPlanReques
 	return out, nil
 }
 
+func (c *planServiceClient) GetProgress(ctx context.Context, in *GetProgressRequest, opts ...grpc.CallOption) (*PlanProgressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlanProgressResponse)
+	err := c.cc.Invoke(ctx, PlanService_GetProgress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PlanServiceServer is the server API for PlanService service.
 // All implementations must embed UnimplementedPlanServiceServer
 // for forward compatibility.
@@ -130,6 +142,7 @@ type PlanServiceServer interface {
 	UpdateTaskStatus(context.Context, *UpdateTaskStatusRequest) (*UpdateTaskStatusResponse, error)
 	SubmitTaskFeedback(context.Context, *SubmitFeedbackRequest) (*FeedbackResponse, error)
 	AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error)
+	GetProgress(context.Context, *GetProgressRequest) (*PlanProgressResponse, error)
 	mustEmbedUnimplementedPlanServiceServer()
 }
 
@@ -160,6 +173,9 @@ func (UnimplementedPlanServiceServer) SubmitTaskFeedback(context.Context, *Submi
 }
 func (UnimplementedPlanServiceServer) AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdjustPlan not implemented")
+}
+func (UnimplementedPlanServiceServer) GetProgress(context.Context, *GetProgressRequest) (*PlanProgressResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProgress not implemented")
 }
 func (UnimplementedPlanServiceServer) mustEmbedUnimplementedPlanServiceServer() {}
 func (UnimplementedPlanServiceServer) testEmbeddedByValue()                     {}
@@ -308,6 +324,24 @@ func _PlanService_AdjustPlan_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PlanService_GetProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProgressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).GetProgress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_GetProgress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).GetProgress(ctx, req.(*GetProgressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PlanService_ServiceDesc is the grpc.ServiceDesc for PlanService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -342,6 +376,10 @@ var PlanService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdjustPlan",
 			Handler:    _PlanService_AdjustPlan_Handler,
+		},
+		{
+			MethodName: "GetProgress",
+			Handler:    _PlanService_GetProgress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

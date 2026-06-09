@@ -11,7 +11,6 @@ type Bootstrap struct {
 	Server     *Server     `yaml:"server"`
 	Data       *Data       `yaml:"data"`
 	AI         *AI         `yaml:"ai"`
-	Industry   *Industry   `yaml:"industry"`
 	Archive    *Archive    `yaml:"archive"`
 	MQ         *MQ         `yaml:"mq"`
 	JWT        *JWT        `yaml:"jwt"`
@@ -51,10 +50,6 @@ type Data_Redis struct {
 }
 
 type AI struct {
-	ServiceAddr string `yaml:"service_addr"`
-}
-
-type Industry struct {
 	ServiceAddr string `yaml:"service_addr"`
 }
 
@@ -121,9 +116,6 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.AI == nil {
 		bc.AI = &AI{}
-	}
-	if bc.Industry == nil {
-		bc.Industry = &Industry{}
 	}
 	if bc.Archive == nil {
 		bc.Archive = &Archive{}

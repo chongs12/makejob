@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	adminv1 "makejob/api/makejob/admin/v1"
@@ -737,7 +738,7 @@ func (s *AdminService) UpdateAIPreset(ctx context.Context, req *adminv1.UpdateAI
 		return nil, err
 	}
 	if currentPreset == nil {
-		return nil, fmt.Errorf("ai preset %d not found", req.Id)
+		return nil, kratoserr.NotFound("AI_PRESET_NOT_FOUND", "AI 预设不存在")
 	}
 
 	updatedPreset := &biz.AIPreset{
@@ -887,8 +888,9 @@ func (s *AdminService) GetAICallLog(ctx context.Context, req *adminv1.GetAICallL
 
 // ==================== Live2D 管理 ====================
 
+// ListLive2DModels 返回后台管理页可维护的 Live2D 模型列表，并先同步本地发现结果。
 func (s *AdminService) ListLive2DModels(ctx context.Context, _ *emptypb.Empty) (*adminv1.ListLive2DModelsResponse, error) {
-	models, err := s.uc.ListLive2DModels(ctx)
+	models, err := s.uc.ListManagedLive2DModels(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -910,6 +912,7 @@ func (s *AdminService) ListLive2DModels(ctx context.Context, _ *emptypb.Empty) (
 	return &adminv1.ListLive2DModelsResponse{Models: items}, nil
 }
 
+// CreateLive2DModel 创建一条后台维护的 Live2D 模型记录。
 func (s *AdminService) CreateLive2DModel(ctx context.Context, req *adminv1.CreateLive2DModelRequest) (*adminv1.Live2DModelInfo, error) {
 	m := &biz.Live2DModelRecord{
 		Name:         req.Name,
@@ -927,6 +930,7 @@ func (s *AdminService) CreateLive2DModel(ctx context.Context, req *adminv1.Creat
 	return &adminv1.Live2DModelInfo{Id: m.ID}, nil
 }
 
+// UpdateLive2DModel 更新指定的 Live2D 模型配置。
 func (s *AdminService) UpdateLive2DModel(ctx context.Context, req *adminv1.UpdateLive2DModelRequest) (*emptypb.Empty, error) {
 	m := &biz.Live2DModelRecord{
 		ID:           req.Id,
@@ -947,21 +951,110 @@ func (s *AdminService) UpdateLive2DModel(ctx context.Context, req *adminv1.Updat
 	return &emptypb.Empty{}, nil
 }
 
+// DeleteLive2DModel 删除后台模型记录，并在无复用时同步清理受管资源目录。
 func (s *AdminService) DeleteLive2DModel(ctx context.Context, req *adminv1.DeleteLive2DModelRequest) (*emptypb.Empty, error) {
-	if err := s.uc.DeleteLive2DModel(ctx, req.Id); err != nil {
+	if err := s.uc.DeleteManagedLive2DModel(ctx, req.Id); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
 
-// ImportLive2DPackage UNIMPLEMENTED: Live2D 模型包导入，待 Companion 微服务实现后接入
-func (s *AdminService) ImportLive2DPackage(ctx context.Context, req *adminv1.ImportLive2DPackageRequest) (*adminv1.ImportLive2DPackageResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "Live2D 模型包导入待 Companion 微服务实现后接入")
+// ListSelectableLive2DModels 返回前台指定场景下可切换的 Live2D 模型列表。
+func (s *AdminService) ListSelectableLive2DModels(ctx context.Context, req *adminv1.ListSelectableLive2DModelsRequest) (*adminv1.ListSelectableLive2DModelsResponse, error) {
+	models, err := s.uc.ListSelectableLive2DModels(ctx, req.Scene, req.IndustryCode)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*adminv1.SelectableLive2DModel, 0, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		items = append(items, &adminv1.SelectableLive2DModel{
+			Key:           model.Key,
+			Name:          model.Name,
+			Scene:         model.Scene,
+			ModelUrl:      model.ModelURL,
+			ThumbnailUrl:  model.ThumbnailURL,
+			ConfigJson:    model.ConfigJSON,
+			Source:        model.Source,
+			MatchType:     model.MatchType,
+			IsGeneric:     model.IsGeneric,
+			IsRecommended: model.IsRecommended,
+			Motions:       toAdminLive2DMotionInfos(model.Motions),
+		})
+	}
+	return &adminv1.ListSelectableLive2DModelsResponse{Models: items}, nil
 }
 
-// ImportLive2DBackground UNIMPLEMENTED: Live2D 背景资源导入，待 Companion 微服务实现后接入
+// GetCurrentLive2DModel 返回前台当前场景应默认使用的 Live2D 模型。
+func (s *AdminService) GetCurrentLive2DModel(ctx context.Context, req *adminv1.GetCurrentLive2DModelRequest) (*adminv1.CurrentLive2DModelResponse, error) {
+	model, err := s.uc.GetCurrentLive2DModel(ctx, req.Scene, req.IndustryCode)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := structpb.NewStruct(model.Config)
+	if err != nil {
+		return nil, kratoserr.InternalServer("LIVE2D_CONFIG_CONVERT_FAILED", "convert live2d config failed")
+	}
+	return &adminv1.CurrentLive2DModelResponse{
+		Name:         model.Name,
+		Scene:        model.Scene,
+		IndustryCode: model.IndustryCode,
+		Path:         model.Path,
+		ModelUrl:     model.ModelURL,
+		ThumbnailUrl: model.ThumbnailURL,
+		Config:       config,
+		Source:       model.Source,
+	}, nil
+}
+
+// ImportLive2DPackage 导入管理员上传的 Live2D ZIP 包，并自动生成待确认模型记录。
+func (s *AdminService) ImportLive2DPackage(ctx context.Context, req *adminv1.ImportLive2DPackageRequest) (*adminv1.ImportLive2DPackageResponse, error) {
+	resp, err := s.uc.ImportLive2DPackage(ctx, req.Filename, req.FileContent)
+	if err != nil {
+		return nil, err
+	}
+	return &adminv1.ImportLive2DPackageResponse{
+		Name:         resp.Name,
+		AssetDir:     resp.AssetDir,
+		ModelUrl:     resp.ModelURL,
+		ThumbnailUrl: resp.ThumbnailURL,
+		ModelId:      resp.ModelID,
+		Created:      resp.Created,
+		IsActive:     resp.IsActive,
+	}, nil
+}
+
+// ImportLive2DBackground 导入管理员上传的舞台背景图，并返回可直接回填的静态地址。
 func (s *AdminService) ImportLive2DBackground(ctx context.Context, req *adminv1.ImportLive2DBackgroundRequest) (*adminv1.ImportLive2DBackgroundResponse, error) {
-	return nil, kratoserr.ServiceUnavailable("UNIMPLEMENTED", "Live2D 背景资源导入待 Companion 微服务实现后接入")
+	resp, err := s.uc.ImportLive2DBackground(ctx, req.Filename, req.FileContent)
+	if err != nil {
+		return nil, err
+	}
+	return &adminv1.ImportLive2DBackgroundResponse{
+		FileName: resp.FileName,
+		AssetUrl: resp.AssetURL,
+	}, nil
+}
+
+// toAdminLive2DMotionInfos 将领域动作条目映射为 proto 响应结构。
+func toAdminLive2DMotionInfos(items []*biz.Live2DMotionInfo) []*adminv1.Live2DMotionInfo {
+	result := make([]*adminv1.Live2DMotionInfo, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		result = append(result, &adminv1.Live2DMotionInfo{
+			Key:   item.Key,
+			Group: item.Group,
+			File:  item.File,
+			Label: item.Label,
+		})
+	}
+	return result
 }
 
 // ==================== TTS 管理 ====================

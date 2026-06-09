@@ -44,6 +44,7 @@ service QuestionService {
 
   // --- 错题主题 ---
   rpc ListMistakeTopics(ListMistakeTopicsRequest) returns (ListMistakeTopicsResponse);
+  rpc GetMistakeTopic(GetMistakeTopicRequest) returns (MistakeTopicCard);
 
   // --- 管理后台专用 RPC ---
   rpc AdminListQuestions(AdminListQuestionsRequest) returns (AdminListQuestionsResponse);
@@ -395,6 +396,22 @@ message MistakeQuestion {
   string title = 2;
   string difficulty = 3;
   google.protobuf.Timestamp last_wrong_at = 4;
+}
+
+message GetMistakeTopicRequest {
+  string code = 1;
+}
+
+message MistakeTopicCard {
+  string code = 1;
+  string tag = 2;
+  string title = 3;
+  string problem_pattern = 4;
+  repeated string root_causes = 5;
+  repeated string self_check_list = 6;
+  repeated string practice_directions = 7;
+  repeated string recommended_actions = 8;
+  repeated string related_question_sets = 9;
 }
 
 // === 管理后台专用 ===

@@ -9,11 +9,13 @@ import (
 
 	"makejob/app/gateway/internal/conf"
 	"makejob/app/gateway/internal/proxy"
+	"makejob/pkg/live2dassets"
 	mlog "makejob/pkg/logger"
 )
 
 var flagConf string
 
+// main 启动 Gateway HTTP 服务，并挂载前端可直接访问的 Live2D 静态资源目录。
 func main() {
 	// FIX: 将init()中的flag注册移到main()开头（禁止使用init()函数）
 	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path")
@@ -38,6 +40,11 @@ func main() {
 
 	// 创建 Gin 引擎
 	r := gin.Default()
+	if assetsDir, err := live2dassets.EnsureAssetsDir(); err == nil && assetsDir != "" {
+		r.StaticFS(live2dassets.MountPath, gin.Dir(assetsDir, false))
+	} else if err != nil {
+		log.Warnf("failed to mount live2d assets dir: %v", err)
+	}
 
 	// CORS 中间件
 	r.Use(func(c *gin.Context) {

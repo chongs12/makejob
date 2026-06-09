@@ -21,9 +21,6 @@ ai:
 rag:
   service_addr: "localhost:9010"
 
-industry:
-  service_addr: "localhost:9011"
-
 archive:
   service_addr: "localhost:9008"
 

@@ -42,6 +42,7 @@ const (
 	QuestionService_ListQuestionSets_FullMethodName           = "/makejob.question.v1.QuestionService/ListQuestionSets"
 	QuestionService_GetQuestionSetDetail_FullMethodName       = "/makejob.question.v1.QuestionService/GetQuestionSetDetail"
 	QuestionService_ListMistakeTopics_FullMethodName          = "/makejob.question.v1.QuestionService/ListMistakeTopics"
+	QuestionService_GetMistakeTopic_FullMethodName            = "/makejob.question.v1.QuestionService/GetMistakeTopic"
 	QuestionService_AdminListQuestions_FullMethodName         = "/makejob.question.v1.QuestionService/AdminListQuestions"
 	QuestionService_AdminCreateQuestion_FullMethodName        = "/makejob.question.v1.QuestionService/AdminCreateQuestion"
 	QuestionService_AdminUpdateQuestion_FullMethodName        = "/makejob.question.v1.QuestionService/AdminUpdateQuestion"
@@ -83,6 +84,7 @@ type QuestionServiceClient interface {
 	GetQuestionSetDetail(ctx context.Context, in *GetQuestionSetDetailRequest, opts ...grpc.CallOption) (*QuestionSetDetail, error)
 	// --- 错题主题 ---
 	ListMistakeTopics(ctx context.Context, in *ListMistakeTopicsRequest, opts ...grpc.CallOption) (*ListMistakeTopicsResponse, error)
+	GetMistakeTopic(ctx context.Context, in *GetMistakeTopicRequest, opts ...grpc.CallOption) (*MistakeTopicCard, error)
 	// --- 管理后台专用 RPC ---
 	AdminListQuestions(ctx context.Context, in *AdminListQuestionsRequest, opts ...grpc.CallOption) (*AdminListQuestionsResponse, error)
 	AdminCreateQuestion(ctx context.Context, in *AdminCreateQuestionRequest, opts ...grpc.CallOption) (*AdminCreateQuestionResponse, error)
@@ -319,6 +321,16 @@ func (c *questionServiceClient) ListMistakeTopics(ctx context.Context, in *ListM
 	return out, nil
 }
 
+func (c *questionServiceClient) GetMistakeTopic(ctx context.Context, in *GetMistakeTopicRequest, opts ...grpc.CallOption) (*MistakeTopicCard, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MistakeTopicCard)
+	err := c.cc.Invoke(ctx, QuestionService_GetMistakeTopic_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *questionServiceClient) AdminListQuestions(ctx context.Context, in *AdminListQuestionsRequest, opts ...grpc.CallOption) (*AdminListQuestionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AdminListQuestionsResponse)
@@ -403,6 +415,7 @@ type QuestionServiceServer interface {
 	GetQuestionSetDetail(context.Context, *GetQuestionSetDetailRequest) (*QuestionSetDetail, error)
 	// --- 错题主题 ---
 	ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error)
+	GetMistakeTopic(context.Context, *GetMistakeTopicRequest) (*MistakeTopicCard, error)
 	// --- 管理后台专用 RPC ---
 	AdminListQuestions(context.Context, *AdminListQuestionsRequest) (*AdminListQuestionsResponse, error)
 	AdminCreateQuestion(context.Context, *AdminCreateQuestionRequest) (*AdminCreateQuestionResponse, error)
@@ -484,6 +497,9 @@ func (UnimplementedQuestionServiceServer) GetQuestionSetDetail(context.Context, 
 }
 func (UnimplementedQuestionServiceServer) ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMistakeTopics not implemented")
+}
+func (UnimplementedQuestionServiceServer) GetMistakeTopic(context.Context, *GetMistakeTopicRequest) (*MistakeTopicCard, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMistakeTopic not implemented")
 }
 func (UnimplementedQuestionServiceServer) AdminListQuestions(context.Context, *AdminListQuestionsRequest) (*AdminListQuestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdminListQuestions not implemented")
@@ -917,6 +933,24 @@ func _QuestionService_ListMistakeTopics_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QuestionService_GetMistakeTopic_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMistakeTopicRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).GetMistakeTopic(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_GetMistakeTopic_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).GetMistakeTopic(ctx, req.(*GetMistakeTopicRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _QuestionService_AdminListQuestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AdminListQuestionsRequest)
 	if err := dec(in); err != nil {
@@ -1101,6 +1135,10 @@ var QuestionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMistakeTopics",
 			Handler:    _QuestionService_ListMistakeTopics_Handler,
+		},
+		{
+			MethodName: "GetMistakeTopic",
+			Handler:    _QuestionService_GetMistakeTopic_Handler,
 		},
 		{
 			MethodName: "AdminListQuestions",
