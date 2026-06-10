@@ -1,9 +1,9 @@
 server:
   http:
-    addr: 0.0.0.0:8005
+    addr: 0.0.0.0:8006
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9005
+    addr: 0.0.0.0:9006
     timeout: 10s
 
 data:
@@ -21,7 +21,7 @@ jwt:
   service_secret: "makejob-internal-service-secret"
 
 dependent_services:
-  question_addr: "localhost:9001"
-  plan_addr: "localhost:9002"
-  learning_archive_addr: "localhost:9003"
+  question_addr: "localhost:9003"
+  plan_addr: "localhost:9007"
+  learning_archive_addr: "localhost:9010"
   interview_addr: "localhost:9004"

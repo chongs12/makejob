@@ -472,7 +472,7 @@ export function TaxonomyPage() {
       }
 
       const created = await createIndustry(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (industryId) => {
       setSelectedIndustryId(industryId)
@@ -496,7 +496,7 @@ export function TaxonomyPage() {
       }
 
       const created = await createCategory(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (categoryId) => {
       setSelectedCategoryId(categoryId)

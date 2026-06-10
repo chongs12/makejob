@@ -1,6 +1,6 @@
 server:
   http:
-    addr: 0.0.0.0:8009
+    addr: 0.0.0.0:8013
     timeout: 30s
   grpc:
     # FIX: 端口对齐spec要求的9013
@@ -10,7 +10,7 @@ server:
 data:
   database:
     driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_coderunner sslmode=disable"
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
   redis:
     addr: localhost:6384
     password: ""

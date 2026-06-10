@@ -274,7 +274,7 @@ export function PromptPage() {
       }
 
       const created = await createPrompt(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (promptId) => {
       setSelectedPromptId(promptId)

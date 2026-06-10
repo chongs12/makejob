@@ -172,7 +172,7 @@ type GenerateQuestionCandidatesResult struct {
 	Warnings     []string
 }
 
-// GenerateQuestionCandidates 同步生成题目候选（调试/预览用途）（FIX H5: 透传 agent_prompt/include_scraped/include_generated）
+// GenerateQuestionCandidates 同步生成题目候选，优先使用自定义 agent_prompt，避免无模板时阻塞题卡流水线。
 func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error) {
 	const scene = "question_generator"
 	start := time.Now()
@@ -182,15 +182,13 @@ func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industry
 		return nil, ErrAIConfigNotFound
 	}
 
-	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
-	if err != nil {
-		return nil, ErrPromptRenderFailed
-	}
-
-	// 如果有自定义 agent_prompt，使用它替换模板
-	promptTemplate := tpl.TemplateText
-	if agentPrompt != "" {
-		promptTemplate = agentPrompt
+	promptTemplate := strings.TrimSpace(agentPrompt)
+	if promptTemplate == "" {
+		tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+		if err != nil {
+			return nil, ErrPromptRenderFailed
+		}
+		promptTemplate = tpl.TemplateText
 	}
 
 	promptText := RenderPrompt(promptTemplate, map[string]string{
@@ -210,10 +208,8 @@ func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industry
 		return nil, ErrLLMCallFailed
 	}
 
-	// 解析响应
 	var candidates []*QuestionCandidate
 	if err := json.Unmarshal([]byte(resp.Content), &candidates); err != nil {
-		// 尝试解析为包装格式
 		var wrapped struct {
 			Questions  []*QuestionCandidate `json:"questions"`
 			Candidates []*QuestionCandidate `json:"candidates"`

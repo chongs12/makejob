@@ -119,7 +119,7 @@ export function PracticePage() {
   const activeTopicCode = routeSearch.topic || ''
   const activeTopicQuery = useQuery({
     queryKey: ['mistake-topic-detail', activeTopicCode],
-    queryFn: () => fetchMistakeTopic(activeTopicCode),
+    queryFn: () => fetchMistakeTopic(activeTopicCode, accessToken),
     enabled: Boolean(activeTopicCode),
   })
 
@@ -149,7 +149,7 @@ export function PracticePage() {
   )
   const recommendationTopicsQuery = useQuery({
     queryKey: ['practice-recommendation-topics', recommendationTopicCodes],
-    queryFn: () => fetchMistakeTopics(recommendationTopicCodes),
+    queryFn: () => fetchMistakeTopics(recommendationTopicCodes, accessToken),
     enabled: Boolean(recommendationTopicCodes.length),
     staleTime: 5 * 60 * 1000,
   })

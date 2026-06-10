@@ -134,7 +134,7 @@ interface GrowthSummaryResponse {
  * 拉取成长档案页需要的聚合摘要数据。
  */
 async function fetchGrowthSummary(token: string): Promise<GrowthSummaryResponse> {
-  const response = await requestJson<ApiEnvelope<GrowthSummaryResponse>>('/user/growth-summary', {
+  const response = await requestJson<ApiEnvelope<GrowthSummaryResponse>>('/growth/summary', {
     token,
   })
 
@@ -310,8 +310,8 @@ export default function GrowthPage() {
   })
 
   const mistakeTopicsQuery = useQuery({
-    queryKey: ['growth-mistake-topics'],
-    queryFn: () => fetchMistakeTopics([]),
+    queryKey: ['growth-mistake-topics', accessToken],
+    queryFn: () => fetchMistakeTopics([], accessToken),
     staleTime: 5 * 60 * 1000,
   })
 

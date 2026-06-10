@@ -388,7 +388,7 @@ function buildRuntimeAttentionNotes(response: AIConfigResponse | undefined): str
     return []
   }
 
-  return [...response.support.notes, ...response.warnings]
+  return [...(response.support?.notes || []), ...(response.warnings || [])]
 }
 
 /**
@@ -454,7 +454,7 @@ function resolveNumberStep(key: string): string {
 }
 
 /**
- * 将字段按业务区块分组，便于管理页按“提供方/运行时/场景”组织表单。
+ * 将字段按业务区块分组，便于管理页按"提供方/运行时/场景"组织表单。
  */
 function groupAIConfigFields(metas: AIConfigFieldMeta[]): Record<AIConfigGroup, AIConfigFieldMeta[]> {
   return metas.reduce<Record<AIConfigGroup, AIConfigFieldMeta[]>>(
@@ -663,7 +663,7 @@ export function AIConfigPage() {
   function loadPresetToDraft(preset: AIPresetSummary): void {
     setSelectedPresetId(preset.id)
     setDraft(buildAIConfigDraft(preset.configs, fieldMetas))
-    setMessage(`已将预设“${preset.name}”载入草稿，点击“应用所选预设”后才会全局生效。`)
+    setMessage(`已将预设"${preset.name}"载入草稿，点击"应用所选预设"后才会全局生效。`)
   }
 
   /**
@@ -707,7 +707,7 @@ export function AIConfigPage() {
       return
     }
 
-    if (!window.confirm(`确认删除预设“${selectedPreset.name}”吗？删除后不可恢复。`)) {
+    if (!window.confirm(`确认删除预设"${selectedPreset.name}"吗？删除后不可恢复。`)) {
       return
     }
 
@@ -723,7 +723,7 @@ export function AIConfigPage() {
       return
     }
 
-    if (!window.confirm(`确认将预设“${selectedPreset.name}”应用为当前全局 AI 配置吗？`)) {
+    if (!window.confirm(`确认将预设"${selectedPreset.name}"应用为当前全局 AI 配置吗？`)) {
       return
     }
 
@@ -836,13 +836,13 @@ export function AIConfigPage() {
         </div>
 
         <div className="admin-ai-config__preset-list">
-          {configQuery.data.presets.length === 0 ? (
+          {(configQuery.data.presets || []).length === 0 ? (
             <div className="admin-ai-config__preset-card admin-ai-config__preset-card--empty">
               <strong>还没有 AI 预设</strong>
-              <p>先填写一套配置，然后点击“当前草稿另存为预设”。</p>
+              <p>先填写一套配置，然后点击"当前草稿另存为预设"。</p>
             </div>
           ) : (
-            configQuery.data.presets.map((preset) => {
+            (configQuery.data.presets || []).map((preset) => {
               const isSelected = selectedPresetId === preset.id
               return (
                 <button

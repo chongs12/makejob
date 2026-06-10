@@ -58,6 +58,9 @@ func main() {
 		c.Next()
 	})
 
+	// 响应包装中间件：将所有 JSON 响应包成 { code, message, data } 格式
+	r.Use(proxy.WrapResponseMiddleware())
+
 	// 注册路由
 	gw.RegisterRoutes(r)
 

@@ -1,9 +1,9 @@
 server:
   http:
-    addr: 0.0.0.0:8003
+    addr: 0.0.0.0:8004
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9003
+    addr: 0.0.0.0:9004
     timeout: 10s
 
 data:
@@ -19,10 +19,10 @@ ai:
   service_addr: "localhost:9014"
 
 rag:
-  service_addr: "localhost:9010"
+  service_addr: "localhost:9012"
 
 archive:
-  service_addr: "localhost:9008"
+  service_addr: "localhost:9010"
 
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"

@@ -1,15 +1,15 @@
 server:
   http:
-    addr: 0.0.0.0:8006
+    addr: 0.0.0.0:8007
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9006
+    addr: 0.0.0.0:9007
     timeout: 10s
 
 data:
   database:
     driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_plan sslmode=disable"
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
   redis:
     addr: localhost:6384
     password: ""
@@ -21,7 +21,7 @@ jwt:
   service_secret: "makejob-internal-service-secret"
 
 mq:
-  url: "amqp://guest:guest@localhost:5672/"
+  url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"
 
 ai:

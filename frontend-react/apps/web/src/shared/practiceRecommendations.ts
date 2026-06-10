@@ -51,7 +51,7 @@ export async function fetchPracticeRecommendations(
     params.set('interview_id', String(interviewId))
   }
 
-  const response = await requestJson<ApiEnvelope<PracticeRecommendationResponse>>(`/user/practice-recommendations?${params.toString()}`, {
+  const response = await requestJson<ApiEnvelope<PracticeRecommendationResponse>>(`/questions/recommendations?${params.toString()}`, {
     token,
   })
 

@@ -1,8 +1,8 @@
 server:
   http:
-    addr: 0.0.0.0:8008
+    addr: 0.0.0.0:8010
   grpc:
-    addr: 0.0.0.0:9008
+    addr: 0.0.0.0:9010
 
 data:
   database:
@@ -11,3 +11,7 @@ data:
 
 jwt:
   secret: "makejob-secret-key-change-in-production"
+
+mq:
+  url: "amqp://makejob:makejob123@localhost:5672//makejob"
+  exchange: "makejob.events"

@@ -1081,8 +1081,8 @@ export function QuestionPipelinePage() {
   const queueGenerateTaskMutation = useMutation({
     mutationFn: async () => queueQuestionPipelineGenerateTask(token, buildQuestionPipelineGeneratePayload(form)),
     onSuccess: async (task) => {
-      setAsyncGenerateTaskId(String(task.id))
-      setMessage(`已创建异步题目流水线任务 #${task.id}，可稍后按任务 ID 恢复结果或前往运行任务页查看状态。`)
+      setAsyncGenerateTaskId(String(task?.id ?? ''))
+      setMessage(`已创建异步题目流水线任务 #${task?.id ?? ''}，可稍后按任务 ID 恢复结果或前往运行任务页查看状态。`)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
@@ -1101,8 +1101,8 @@ export function QuestionPipelinePage() {
       }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-questions'] })
-      setMessage(`已导入 ${result.success_count} 道题，失败 ${result.fail_count} 道。`)
-      if (result.success_count > 0) {
+      setMessage(`已导入 ${result.success_count ?? 0} 道题，失败 ${result.fail_count ?? 0} 道。`)
+      if ((result.success_count ?? 0) > 0) {
         setCards((current) => current.filter((item) => !item.selected))
       }
       setWarnings(result.errors || [])
@@ -1120,7 +1120,7 @@ export function QuestionPipelinePage() {
         questions: buildSelectedImportPayload(cards),
       }),
     onSuccess: async (task) => {
-      setMessage(`已创建异步导入任务 #${task.id}，可前往运行任务页查看执行状态。`)
+      setMessage(`已创建异步导入任务 #${task?.id ?? ''}，可前往运行任务页查看执行状态。`)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
@@ -1140,7 +1140,7 @@ export function QuestionPipelinePage() {
       return fetchScraperTaskDetail(token, taskID)
     },
     onSuccess: (task) => {
-      if (task.task_type !== 'question_pipeline_build') {
+      if ((task.task_type || '') !== 'question_pipeline_build') {
         setMessage(`任务 #${task.id} 不是题目流水线生成任务，请确认任务 ID。`)
         return
       }

@@ -1,9 +1,11 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -62,6 +64,32 @@ type legacyResponse struct {
 const (
 	questionPipelineTaskType = "question_pipeline_build"
 )
+
+// questionPipelineGeneratePayload 描述题目流水线生成接口的 JSON 请求体，供同步、异步与直连 SSE 三种入口共用。
+type questionPipelineGeneratePayload struct {
+	IndustryCode     string   `json:"industry_code"`
+	Requirement      string   `json:"requirement"`
+	AgentPrompt      string   `json:"agent_prompt"`
+	GenerationMode   string   `json:"generation_mode"`
+	CandidateCount   int32    `json:"candidate_count"`
+	IncludeScraped   bool     `json:"include_scraped"`
+	IncludeGenerated bool     `json:"include_generated"`
+	Sources          []string `json:"sources"`
+}
+
+// toProto 将网关侧题目流水线请求载荷转换为 Admin gRPC 所需的 protobuf 请求。
+func (payload questionPipelineGeneratePayload) toProto() *adminv1.GenerateQuestionPipelineRequest {
+	return &adminv1.GenerateQuestionPipelineRequest{
+		IndustryCode:     payload.IndustryCode,
+		Requirement:      payload.Requirement,
+		AgentPrompt:      payload.AgentPrompt,
+		GenerationMode:   payload.GenerationMode,
+		CandidateCount:   payload.CandidateCount,
+		IncludeScraped:   payload.IncludeScraped,
+		IncludeGenerated: payload.IncludeGenerated,
+		Sources:          payload.Sources,
+	}
+}
 
 // NewGateway 创建网关实例
 func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
@@ -186,6 +214,539 @@ func (gw *Gateway) Close() {
 	}
 }
 
+// WrapResponseMiddleware 自动将所有 JSON 响应包装为 { code, message, data } 格式，
+// 对齐前端 ApiEnvelope<T> 协议。同时解包 gRPC 单字段包装对象（如 { categories: [...] } → [...]）
+// 并将 camelCase 字段名转为 snake_case。
+func WrapResponseMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		w := &envelopeWriter{ResponseWriter: c.Writer, status: http.StatusOK}
+		c.Writer = w
+		c.Next()
+
+		if w.passthrough {
+			return
+		}
+
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "application/json") {
+			w.writeBufferedBody()
+			return
+		}
+
+		if !w.wroteBody {
+			if w.status == http.StatusNoContent || c.Request.Method == http.MethodHead {
+				return
+			}
+			w.writeEnvelope(buildEnvelopePayload(w.status, nil, nil))
+			return
+		}
+
+		// 已经是 envelope 格式的不重复包装
+		var check struct {
+			Code *int `json:"code"`
+		}
+		if json.Unmarshal(w.body.Bytes(), &check) == nil && check.Code != nil {
+			w.writeBufferedBody()
+			return
+		}
+
+		// 解析原始响应
+		var raw json.RawMessage
+		if err := json.Unmarshal(w.body.Bytes(), &raw); err != nil {
+			w.writeBufferedBody()
+			return
+		}
+
+		// 解包 gRPC 单字段包装对象、分页结构与时间戳对象，并按页面旧协议做必要兼容。
+		data := normalizeGatewayResponse(c.Request.URL.Path, raw)
+		w.writeEnvelope(buildEnvelopePayload(w.status, data, w.body.Bytes()))
+	}
+}
+
+// buildEnvelopePayload 根据 HTTP 状态码与原始错误体构造统一响应包装。
+func buildEnvelopePayload(statusCode int, data interface{}, rawBody []byte) gin.H {
+	code := 0
+	message := "success"
+	if statusCode >= 400 {
+		code = statusCode
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(rawBody, &errResp) == nil && errResp.Error != "" {
+			message = errResp.Error
+		} else {
+			message = http.StatusText(statusCode)
+		}
+	}
+	return gin.H{
+		"code":    code,
+		"message": message,
+		"data":    data,
+	}
+}
+
+// normalizeGatewayResponse 将 gRPC/legacy JSON 响应统一转换为前端旧协议所需的数据结构。
+func normalizeGatewayResponse(path string, raw json.RawMessage) interface{} {
+	var decoded interface{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		var fallback interface{}
+		_ = json.Unmarshal(raw, &fallback)
+		return fallback
+	}
+	return adaptLegacyResponseByPath(path, normalizeJSONValue(decoded))
+}
+
+// normalizeJSONValue 递归归一化 JSON 值，处理 snake_case、分页结构、单字段列表与 protobuf 时间戳。
+func normalizeJSONValue(value interface{}) interface{} {
+	switch typedValue := value.(type) {
+	case []interface{}:
+		result := make([]interface{}, len(typedValue))
+		for i, item := range typedValue {
+			result[i] = normalizeJSONValue(item)
+		}
+		return result
+	case map[string]interface{}:
+		if timestamp, ok := normalizeProtoTimestamp(typedValue); ok {
+			return timestamp
+		}
+
+		result := make(map[string]interface{}, len(typedValue))
+		for key, item := range typedValue {
+			result[camelToSnake(key)] = normalizeJSONValue(item)
+		}
+		if flattened, ok := flattenPageResult(result); ok {
+			return flattened
+		}
+		if unwrapped, ok := unwrapSingleListField(result); ok {
+			return unwrapped
+		}
+		return result
+	default:
+		return typedValue
+	}
+}
+
+// normalizeProtoTimestamp 将 protobuf 的 {seconds,nanos} 时间对象转换为 RFC3339 字符串。
+func normalizeProtoTimestamp(value map[string]interface{}) (string, bool) {
+	if len(value) == 0 || len(value) > 2 {
+		return "", false
+	}
+	secondsValue, hasSeconds := value["seconds"]
+	if !hasSeconds {
+		return "", false
+	}
+	nanosValue := value["nanos"]
+
+	seconds, ok := toInt64(secondsValue)
+	if !ok {
+		return "", false
+	}
+	nanos, ok := toInt64(nanosValue)
+	if !ok {
+		nanos = 0
+	}
+	return time.Unix(seconds, nanos).UTC().Format(time.RFC3339Nano), true
+}
+
+// flattenPageResult 将 { items/documents/questions..., page_result } 统一扁平为前端约定的分页结构。
+func flattenPageResult(value map[string]interface{}) (map[string]interface{}, bool) {
+	pageResultRaw, ok := value["page_result"]
+	if !ok {
+		return nil, false
+	}
+	pageResult, ok := pageResultRaw.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	listFieldCount := 0
+	var listValue interface{}
+	for key, candidate := range value {
+		if key == "page_result" {
+			continue
+		}
+		if _, ok := candidate.([]interface{}); !ok {
+			return nil, false
+		}
+		listFieldCount++
+		listValue = candidate
+	}
+	if listFieldCount != 1 {
+		return nil, false
+	}
+
+	return map[string]interface{}{
+		"list":      listValue,
+		"total":     pageResult["total"],
+		"page":      pageResult["page"],
+		"page_size": pageResult["page_size"],
+	}, true
+}
+
+// unwrapSingleListField 将仅包含一个数组字段的对象解包成数组，兼容旧单体直接返回列表的行为。
+func unwrapSingleListField(value map[string]interface{}) (interface{}, bool) {
+	if len(value) != 1 {
+		return nil, false
+	}
+	for _, candidate := range value {
+		if listValue, ok := candidate.([]interface{}); ok {
+			return listValue, true
+		}
+	}
+	return nil, false
+}
+
+// adaptLegacyResponseByPath 按接口路径补齐少量前端仍依赖的历史字段结构。
+func adaptLegacyResponseByPath(path string, value interface{}) interface{} {
+	switch {
+	case strings.HasSuffix(path, "/admin/ai-configs"), strings.Contains(path, "/admin/ai-config-presets/") && strings.HasSuffix(path, "/apply"):
+		return normalizeAdminAIConfigPayload(value)
+	case strings.HasSuffix(path, "/admin/ai-config-presets"):
+		return normalizeAdminAIPresetPayload(value)
+	case strings.HasSuffix(path, "/admin/questions/tag-taxonomy"):
+		return normalizeAdminQuestionTagTaxonomy(value)
+	case strings.HasSuffix(path, "/admin/questions"):
+		return normalizeAdminQuestionPagePayload(value)
+	case strings.HasSuffix(path, "/admin/rag-configs"):
+		return normalizeAdminRAGConfigPayload(value)
+	default:
+		return value
+	}
+}
+
+// normalizeAdminAIConfigPayload 将 AI 配置响应修正为后台页面当前依赖的字段命名与默认支持信息。
+func normalizeAdminAIConfigPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	items, _ := payload["items"].([]interface{})
+	normalizedItems := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		typedItem, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		normalizedItems = append(normalizedItems, gin.H{
+			"config_key":   typedItem["key"],
+			"config_value": typedItem["value"],
+			"config_type":  typedItem["config_type"],
+			"description":  typedItem["description"],
+		})
+	}
+	payload["items"] = normalizedItems
+	if _, ok := payload["support"]; !ok {
+		payload["support"] = gin.H{
+			"primary_providers":  []string{"eino"},
+			"fallback_providers": []string{},
+			"notes": []string{
+				"当前网关兼容层按旧后台协议补齐了运行时支持信息。",
+				"当前后端仅支持 ai_provider=eino，fallback provider 暂未启用。",
+			},
+		}
+	}
+	if _, ok := payload["warnings"]; !ok {
+		payload["warnings"] = []string{}
+	}
+	return payload
+}
+
+// normalizeAdminAIPresetPayload 将 AI 预设列表和单条预设都归一化为后台页直接消费的结构。
+func normalizeAdminAIPresetPayload(value interface{}) interface{} {
+	switch typedValue := value.(type) {
+	case []interface{}:
+		result := make([]interface{}, len(typedValue))
+		for i, item := range typedValue {
+			result[i] = normalizeAdminAIPresetPayload(item)
+		}
+		return result
+	case map[string]interface{}:
+		if _, ok := typedValue["configs"]; !ok {
+			typedValue["configs"] = map[string]interface{}{}
+		}
+		return typedValue
+	default:
+		return value
+	}
+}
+
+// normalizeAdminQuestionTagTaxonomy 将标签词典字段从 category 改回前端现用的 group。
+func normalizeAdminQuestionTagTaxonomy(value interface{}) interface{} {
+	items, ok := value.([]interface{})
+	if !ok {
+		return value
+	}
+	result := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		typedItem, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		result = append(result, gin.H{
+			"group":       typedItem["category"],
+			"description": "",
+			"tags":        typedItem["tags"],
+		})
+	}
+	return result
+}
+
+// normalizeAdminQuestionPagePayload 解析题库管理页中的 JSON 字符串字段，避免编辑态直接读取时报错。
+func normalizeAdminQuestionPagePayload(value interface{}) interface{} {
+	pageResult, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	listItems, ok := pageResult["list"].([]interface{})
+	if !ok {
+		return value
+	}
+	normalizedList := make([]interface{}, 0, len(listItems))
+	for _, item := range listItems {
+		typedItem, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		normalizedList = append(normalizedList, normalizeAdminQuestionRecord(typedItem))
+	}
+	pageResult["list"] = normalizedList
+	return pageResult
+}
+
+// normalizeAdminQuestionRecord 将后台题目记录中的字符串化结构字段恢复成前端编辑页直接可用的对象。
+func normalizeAdminQuestionRecord(value map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(value)+4)
+	for key, item := range value {
+		result[key] = item
+	}
+	result["options"] = parseJSONArrayOrEmpty(toString(value["options_json"]))
+	result["solution"] = parseJSONObjectOrNil(toString(value["solution_json"]))
+	result["judge_config"] = parseJSONObjectOrNil(toString(value["judge_config_json"]))
+	result["answer_template"] = parseJSONObjectOrNil(toString(value["answer_template_json"]))
+	result["tags"] = splitTagString(toString(value["tags"]))
+	return result
+}
+
+// normalizeAdminRAGConfigPayload 兼容后台 RAG 配置页当前依赖的 item 字段命名与 warnings 默认值。
+func normalizeAdminRAGConfigPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	configs, _ := payload["configs"].(map[string]interface{})
+	status, _ := payload["status"].(map[string]interface{})
+	payload["configs"] = gin.H{
+		"ai_rag_enabled":         fmt.Sprint(status["enabled"]),
+		"ai_rag_collection":      firstNonEmpty(toString(configs["ai_rag_collection"]), toString(configs["rag_collection_name"])),
+		"ai_rag_embed_model":     firstNonEmpty(toString(configs["ai_rag_embed_model"]), toString(configs["rag_embedding_model"])),
+		"ai_rag_top_k":           toString(configs["ai_rag_top_k"]),
+		"ai_rag_score_threshold": toString(configs["ai_rag_score_threshold"]),
+		"ai_rag_milvus_addr":     toString(configs["ai_rag_milvus_addr"]),
+		"ai_rag_milvus_user":     toString(configs["ai_rag_milvus_user"]),
+		"ai_rag_milvus_password": toString(configs["ai_rag_milvus_password"]),
+		"ai_rag_embed_api_key":   toString(configs["ai_rag_embed_api_key"]),
+		"ai_rag_embed_base_url":  toString(configs["ai_rag_embed_base_url"]),
+	}
+	items, _ := payload["items"].([]interface{})
+	normalizedItems := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		typedItem, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		configKey := firstNonEmpty(
+			mapLegacyRAGConfigKey(toString(typedItem["key"])),
+			toString(typedItem["key"]),
+		)
+		normalizedItems = append(normalizedItems, gin.H{
+			"config_key":   configKey,
+			"config_value": typedItem["value"],
+			"config_type":  typedItem["config_type"],
+			"description":  typedItem["description"],
+		})
+	}
+	payload["items"] = normalizedItems
+	if _, ok := payload["warnings"]; !ok {
+		payload["warnings"] = []string{}
+	}
+	return payload
+}
+
+// mapLegacyRAGConfigKey 将当前 RAG 配置键映射回旧后台字段名，减少前端已有表单改动。
+func mapLegacyRAGConfigKey(key string) string {
+	switch strings.TrimSpace(key) {
+	case "rag_collection_name":
+		return "ai_rag_collection"
+	case "rag_embedding_model":
+		return "ai_rag_embed_model"
+	default:
+		return key
+	}
+}
+
+// toInt64 将 JSON 反序列化后的数字统一转换为 int64，兼容 protobuf 时间戳字段。
+func toInt64(value interface{}) (int64, bool) {
+	switch typedValue := value.(type) {
+	case nil:
+		return 0, false
+	case float64:
+		return int64(typedValue), true
+	case int64:
+		return typedValue, true
+	case int:
+		return int64(typedValue), true
+	case json.Number:
+		parsed, err := typedValue.Int64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+// toString 将接口值安全转换为字符串，供兼容层解析历史 JSON 字段。
+func toString(value interface{}) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
+}
+
+// parseJSONArrayOrEmpty 将 JSON 数组字符串解析为数组，失败时返回空数组避免页面崩溃。
+func parseJSONArrayOrEmpty(raw string) []interface{} {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []interface{}{}
+	}
+	var result []interface{}
+	if err := json.Unmarshal([]byte(trimmed), &result); err != nil {
+		return []interface{}{}
+	}
+	return result
+}
+
+// parseJSONObjectOrNil 将 JSON 对象字符串解析为对象，失败时返回 nil 保持旧页面的空值语义。
+func parseJSONObjectOrNil(raw string) interface{} {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	var result interface{}
+	if err := json.Unmarshal([]byte(trimmed), &result); err != nil {
+		return nil
+	}
+	return result
+}
+
+// splitTagString 将逗号分隔的标签字符串拆分为前端编辑页可直接使用的标签数组。
+func splitTagString(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []string{}
+	}
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || r == '，'
+	})
+	result := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, item := range parts {
+		tag := strings.TrimSpace(item)
+		if tag == "" {
+			continue
+		}
+		if _, exists := seen[tag]; exists {
+			continue
+		}
+		seen[tag] = struct{}{}
+		result = append(result, tag)
+	}
+	return result
+}
+
+// camelToSnake 将 camelCase 转为 snake_case
+func camelToSnake(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s) + 4)
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				buf.WriteByte('_')
+			}
+			buf.WriteByte(byte(r - 'A' + 'a'))
+		} else {
+			buf.WriteRune(r)
+		}
+	}
+	return buf.String()
+}
+
+// envelopeWriter 捕获 handler 写入的响应体，供中间件二次处理。
+type envelopeWriter struct {
+	gin.ResponseWriter
+	body        bytes.Buffer
+	status      int
+	wroteBody   bool
+	passthrough bool
+}
+
+func (w *envelopeWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code) // 立即委托，让 Gin 正常设置 headers
+}
+
+func (w *envelopeWriter) Write(b []byte) (int, error) {
+	w.wroteBody = true
+	if w.passthrough {
+		return w.ResponseWriter.Write(b)
+	}
+	return w.body.Write(b)
+}
+
+func (w *envelopeWriter) WriteString(s string) (int, error) {
+	w.wroteBody = true
+	if w.passthrough {
+		return w.ResponseWriter.WriteString(s)
+	}
+	return w.body.WriteString(s)
+}
+
+// enablePassthrough 让 writer 从当前时刻开始直接透传到底层响应，供 SSE/流式输出使用。
+func (w *envelopeWriter) enablePassthrough() {
+	if w.passthrough {
+		return
+	}
+	w.passthrough = true
+	w.writeBufferedBody()
+}
+
+// Flush 在进入流式响应时立即把已缓冲数据写出，并将后续写入改为直通模式。
+func (w *envelopeWriter) Flush() {
+	w.enablePassthrough()
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// writeBufferedBody 将当前缓冲区内容原样写回底层响应。
+func (w *envelopeWriter) writeBufferedBody() {
+	if w.body.Len() == 0 {
+		return
+	}
+	_, _ = w.ResponseWriter.Write(w.body.Bytes())
+	w.body.Reset()
+}
+
+// writeEnvelope 将统一 envelope 结构写回底层响应。
+func (w *envelopeWriter) writeEnvelope(payload gin.H) {
+	envelope, err := json.Marshal(payload)
+	if err != nil {
+		w.writeBufferedBody()
+		return
+	}
+	w.ResponseWriter.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.ResponseWriter.Write(envelope)
+	w.body.Reset()
+}
+
 // grpcErrorToHTTP 将 gRPC 状态码映射为 HTTP 状态码
 func grpcErrorToHTTP(err error) (int, string) {
 	st, ok := status.FromError(err)
@@ -247,6 +808,101 @@ func grpcErr(c *gin.Context, err error) {
 	c.JSON(code, gin.H{"error": msg})
 }
 
+// loadAdminIndustryMaps 读取后台行业列表并构建 ID/Code 双向映射，供旧页面兼容层复用。
+func (gw *Gateway) loadAdminIndustryMaps(ctx context.Context) (map[uint64]string, map[string]uint64, error) {
+	resp, err := gw.adminClient.AdminListIndustries(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, nil, err
+	}
+	idToCode := make(map[uint64]string, len(resp.GetIndustries()))
+	codeToID := make(map[string]uint64, len(resp.GetIndustries()))
+	for _, industry := range resp.GetIndustries() {
+		code := strings.TrimSpace(industry.GetCode())
+		idToCode[industry.GetId()] = code
+		if code != "" {
+			codeToID[code] = industry.GetId()
+		}
+	}
+	return idToCode, codeToID, nil
+}
+
+// getOptionalAdminConfigUint64 尝试读取后台配置中的整型值，缺失或非法时回退为 0。
+func (gw *Gateway) getOptionalAdminConfigUint64(ctx context.Context, key string) uint64 {
+	resp, err := gw.adminClient.GetAdminConfig(ctx, &adminv1.GetAdminConfigRequest{Key: key})
+	if err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			return 0
+		}
+		return 0
+	}
+	value, parseErr := strconv.ParseUint(strings.TrimSpace(resp.GetValue()), 10, 64)
+	if parseErr != nil {
+		return 0
+	}
+	return value
+}
+
+// firstNonEmpty 返回第一个非空字符串，方便兼容旧字段和新字段并存的情况。
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// resolveTTSSupportMeta 根据引擎名称补齐后台页面展示所需的支持状态与说明。
+func resolveTTSSupportMeta(engine string) (string, string) {
+	switch strings.TrimSpace(engine) {
+	case "volcengine":
+		return "ready", "已按旧后台协议补齐火山引擎模板字段，可直接用于当前管理页。"
+	case "xiaomi_mimo":
+		return "planned", "已保留历史字段结构，但当前运行时默认仍以火山引擎链路为主。"
+	default:
+		return "legacy_unsupported", "该引擎缺少完整的旧后台元数据描述，请确认运行时实现是否仍可用。"
+	}
+}
+
+// buildLegacyTTSProviders 构造旧后台 TTS 页面需要的供应商目录与字段模板。
+func buildLegacyTTSProviders() []gin.H {
+	return []gin.H{
+		{
+			"key":             "volcengine",
+			"label":           "火山引擎",
+			"description":     "当前后台默认维护的在线 TTS 供应商。",
+			"support_status":  "ready",
+			"support_message": "已按旧后台协议补齐模板字段，可直接创建与编辑配置。",
+			"auth_template":   "{\n  \"app_id\": \"\",\n  \"token\": \"\",\n  \"cluster\": \"volcano_tts\"\n}",
+			"params_template": "{\n  \"encoding\": \"mp3\",\n  \"speed_ratio\": 1\n}",
+			"auth_fields": []gin.H{
+				{"key": "app_id", "label": "App ID", "description": "火山引擎应用标识。", "required": true},
+				{"key": "token", "label": "Token", "description": "火山引擎访问令牌。", "required": true, "secret": true},
+				{"key": "cluster", "label": "Cluster", "description": "默认可使用 volcano_tts。", "required": false},
+			},
+			"param_fields": []gin.H{
+				{"key": "encoding", "label": "编码格式", "description": "默认输出 mp3。", "required": false},
+				{"key": "speed_ratio", "label": "语速", "description": "1 为默认语速。", "required": false},
+			},
+		},
+		{
+			"key":             "xiaomi_mimo",
+			"label":           "小米 Mimo",
+			"description":     "保留给历史配置和后续接入使用的兼容占位符。",
+			"support_status":  "planned",
+			"support_message": "当前仅保留旧页面结构占位，运行时链路默认未启用。",
+			"auth_template":   "{\n  \"api_key\": \"\"\n}",
+			"params_template": "{\n  \"voice\": \"\"\n}",
+			"auth_fields": []gin.H{
+				{"key": "api_key", "label": "API Key", "description": "供应商访问密钥。", "required": true, "secret": true},
+			},
+			"param_fields": []gin.H{
+				{"key": "voice", "label": "Voice", "description": "运行时消费的音色编码。", "required": false},
+			},
+		},
+	}
+}
+
 // RegisterRoutes 注册 HTTP 路由（对齐 backend 单体路由）
 func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 	gw.registerSystemRoutes(r)
@@ -254,11 +910,14 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 	gw.registerLegacyPublicRoutes(r)
 	gw.registerLegacyAdminRoutes(r)
 
+	// 保留独立的 admin SSE 端点（不经过 /api 前缀，供 Gateway 直接代理 SSE 流）
 	adminSSE := r.Group("/admin")
 	adminSSE.Use(gw.JWTMiddleware(), gw.AdminMiddleware())
 	adminSSE.GET("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineStream))
+	adminSSE.POST("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineDirectStream))
 	return
 
+	_ = r // suppress unused warning for dead code below
 	api := r.Group("/api")
 
 	// ========== 公开接口（无需认证，对齐 backend OptionalAuth） ==========
@@ -379,6 +1038,7 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 				admin.POST("/question-pipeline/generate", gw.handleAdminGenerateQuestionPipeline)
 				admin.POST("/question-pipeline/generate/async", gw.handleAdminGenerateQuestionPipelineAsync)
 				admin.GET("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineStream)
+				admin.POST("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineDirectStream)
 				admin.POST("/question-pipeline/import", gw.handleAdminImportQuestionPipeline)
 
 				// 分类管理
@@ -394,6 +1054,7 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 
 				// Prompt 模板
 				admin.GET("/prompt-templates", gw.handleAdminListPromptTemplates)
+				admin.GET("/prompts", gw.handleAdminListPrompts)
 				admin.POST("/prompt-templates", gw.handleAdminSavePromptTemplate)
 				admin.POST("/prompts", gw.handleAdminCreatePrompt)
 				admin.PUT("/prompts/:id", gw.handleAdminUpdatePrompt)
@@ -575,6 +1236,89 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.DELETE("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleDeletePost))
 		protected.POST("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleCreateComment))
 	}
+
+	// Admin BFF 路由
+	admin := api.Group("/admin")
+	admin.Use(gw.JWTMiddleware(), gw.AdminMiddleware())
+	{
+		admin.GET("/dashboard", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetDashboard))
+		admin.GET("/users", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListUsers))
+		admin.PUT("/users/:id/role", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateUserRole))
+		admin.PUT("/users/:id/disable", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDisableUser))
+		admin.GET("/questions", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListQuestions))
+		admin.POST("/questions", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateQuestion))
+		admin.PUT("/questions/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateQuestion))
+		admin.DELETE("/questions/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteQuestion))
+		admin.POST("/questions/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminBatchImportQuestions))
+		admin.GET("/questions/tag-taxonomy", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetQuestionTagTaxonomy))
+		admin.POST("/question-pipeline/generate", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipeline))
+		admin.POST("/question-pipeline/generate/async", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineAsync))
+		admin.GET("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineStream))
+		admin.POST("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineDirectStream))
+		admin.POST("/question-pipeline/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminImportQuestionPipeline))
+		admin.GET("/categories", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListCategories))
+		admin.POST("/categories", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateCategory))
+		admin.PUT("/categories/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateCategory))
+		admin.DELETE("/categories/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteCategory))
+		admin.GET("/industries", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListIndustries))
+		admin.POST("/industries", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateIndustry))
+		admin.PUT("/industries/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateIndustry))
+		admin.GET("/prompt-templates", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListPromptTemplates))
+		admin.GET("/prompts", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListPrompts))
+		admin.POST("/prompt-templates", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminSavePromptTemplate))
+		admin.POST("/prompts", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreatePrompt))
+		admin.PUT("/prompts/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdatePrompt))
+		admin.DELETE("/prompts/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeletePrompt))
+		admin.POST("/prompts/test-render", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminTestRenderPrompt))
+		admin.GET("/ai-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetAIConfigs))
+		admin.PUT("/ai-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateAIConfigs))
+		admin.GET("/ai-config-presets", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListAIPresets))
+		admin.POST("/ai-config-presets", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateAIPreset))
+		admin.PUT("/ai-config-presets/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateAIPreset))
+		admin.DELETE("/ai-config-presets/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteAIPreset))
+		admin.POST("/ai-config-presets/:id/apply", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminApplyAIPreset))
+		admin.POST("/ai/debug", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDebugAI))
+		admin.GET("/ai-call-logs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListAICallLogs))
+		admin.GET("/ai-call-logs/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetAICallLog))
+		admin.GET("/live2d-models", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListLive2DModels))
+		admin.POST("/live2d-models", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateLive2DModel))
+		admin.PUT("/live2d-models/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateLive2DModel))
+		admin.DELETE("/live2d-models/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteLive2DModel))
+		admin.POST("/live2d-models/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminImportLive2DPackage))
+		admin.POST("/live2d-models/backgrounds/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminImportLive2DBackground))
+		admin.GET("/tts-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListTTSConfigs))
+		admin.POST("/tts-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateTTSConfig))
+		admin.PUT("/tts-configs/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateTTSConfig))
+		admin.DELETE("/tts-configs/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteTTSConfig))
+		admin.PUT("/tts-configs/defaults", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateTTSSceneDefaults))
+		admin.GET("/rag-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetRAGConfigs))
+		admin.PUT("/rag-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateRAGConfigs))
+		admin.POST("/rag-configs/test", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminTestRAGConnection))
+		admin.POST("/rag/index-all", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminIndexAllQuestions))
+		admin.POST("/rag/index", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminIndexQuestions))
+		admin.DELETE("/rag/index", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteRAGIndex))
+		admin.GET("/rag/search", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminSearchRAGQuestions))
+		admin.GET("/rag-documents", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListRAGDocuments))
+		admin.GET("/rag-documents/stats", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetRAGDocumentStats))
+		admin.GET("/rag-documents/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetRAGDocument))
+		admin.POST("/rag-documents", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminCreateRAGDocument))
+		admin.PUT("/rag-documents/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateRAGDocument))
+		admin.DELETE("/rag-documents/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteRAGDocument))
+		admin.POST("/rag-documents/batch-import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminBatchImportRAGDocuments))
+		admin.POST("/rag-documents/sync", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminSyncRAGDocuments))
+		admin.POST("/rag-documents/sync-all", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminSyncAllPendingRAGDocuments))
+		admin.GET("/scraper/sources", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetScraperSources))
+		admin.POST("/scraper/search", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminScraperSearch))
+		admin.POST("/scraper/fetch", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminScraperFetch))
+		admin.POST("/scraper/clean", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminScraperClean))
+		admin.POST("/scraper/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminScraperImport))
+		admin.POST("/scraper/import/async", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminScraperImportAsync))
+		admin.GET("/scraper/tasks", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminListScraperTasks))
+		admin.GET("/scraper/tasks/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetScraperTask))
+		admin.POST("/scraper/tasks/:id/retry", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminRetryScraperTask))
+		admin.GET("/configs/:key", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetConfig))
+		admin.PUT("/configs/:key", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminSetConfig))
+	}
 }
 
 // requireService 在具体业务服务未接通时统一返回 503，避免将缺失能力误暴露为 404。
@@ -621,6 +1365,7 @@ func (gw *Gateway) registerLegacyAdminRoutes(r *gin.Engine) {
 		admin.POST("/question-pipeline/generate", gw.handleAdminGenerateQuestionPipeline)
 		admin.POST("/question-pipeline/generate/async", gw.handleAdminGenerateQuestionPipelineAsync)
 		admin.GET("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineStream)
+		admin.POST("/question-pipeline/generate/stream", gw.handleAdminGenerateQuestionPipelineDirectStream)
 		admin.POST("/question-pipeline/import", gw.handleAdminImportQuestionPipeline)
 		admin.GET("/categories", gw.handleAdminListCategories)
 		admin.POST("/categories", gw.handleAdminCreateCategory)
@@ -630,6 +1375,7 @@ func (gw *Gateway) registerLegacyAdminRoutes(r *gin.Engine) {
 		admin.POST("/industries", gw.handleAdminCreateIndustry)
 		admin.PUT("/industries/:id", gw.handleAdminUpdateIndustry)
 		admin.GET("/prompt-templates", gw.handleAdminListPromptTemplates)
+		admin.GET("/prompts", gw.handleAdminListPrompts)
 		admin.POST("/prompt-templates", gw.handleAdminSavePromptTemplate)
 		admin.POST("/prompts", gw.handleAdminCreatePrompt)
 		admin.PUT("/prompts/:id", gw.handleAdminUpdatePrompt)
@@ -3015,27 +3761,86 @@ func (gw *Gateway) handleAdminGetQuestionTagTaxonomy(c *gin.Context) {
 
 // ==================== Admin: 题目流水线 ====================
 
-func (gw *Gateway) handleAdminGenerateQuestionPipeline(c *gin.Context) {
-	var req struct {
-		IndustryCode     string   `json:"industry_code"`
-		Requirement      string   `json:"requirement"`
-		AgentPrompt      string   `json:"agent_prompt"`
-		GenerationMode   string   `json:"generation_mode"`
-		CandidateCount   int32    `json:"candidate_count"`
-		IncludeScraped   bool     `json:"include_scraped"`
-		IncludeGenerated bool     `json:"include_generated"`
-		Sources          []string `json:"sources"`
-	}
+// bindQuestionPipelineGenerateRequest 解析题目流水线请求体，并统一复用到同步、异步和 SSE 入口。
+func bindQuestionPipelineGenerateRequest(c *gin.Context) (*adminv1.GenerateQuestionPipelineRequest, error) {
+	var req questionPipelineGeneratePayload
 	if err := c.ShouldBindJSON(&req); err != nil {
+		return nil, err
+	}
+	return req.toProto(), nil
+}
+
+// startQuestionPipelineSSE 初始化题目流水线的 SSE 响应头，并返回可刷新的写入器。
+func startQuestionPipelineSSE(c *gin.Context) (http.Flusher, bool) {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming is not supported"})
+		return nil, false
+	}
+	headers := c.Writer.Header()
+	headers.Set("Content-Type", "text/event-stream; charset=utf-8")
+	headers.Set("Cache-Control", "no-cache, no-transform")
+	headers.Set("Connection", "keep-alive")
+	headers.Set("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.WriteHeaderNow()
+	if err := writeQuestionPipelineSSEPrelude(c, flusher); err != nil {
+		return nil, false
+	}
+	return flusher, true
+}
+
+// normalizeQuestionPipelineGenerateResponsePayload 将 protobuf 响应转换为前端流式处理复用的 snake_case JSON 结构。
+func normalizeQuestionPipelineGenerateResponsePayload(resp *adminv1.GenerateQuestionPipelineResponse) map[string]interface{} {
+	if resp == nil {
+		return map[string]interface{}{}
+	}
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	normalized, ok := normalizeGatewayResponse("/api/v1/admin/question-pipeline/generate", raw).(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+	return normalized
+}
+
+// streamQuestionPipelineGenerateResponse 将同步生成结果拆成前端已有的 SSE 事件序列，避免额外改动页面协议。
+func streamQuestionPipelineGenerateResponse(c *gin.Context, flusher http.Flusher, payload map[string]interface{}) error {
+	if err := writeQuestionPipelineSSEEvent(c, flusher, "status", gin.H{"message": "模型生成完成，正在整理候选题卡"}); err != nil {
+		return err
+	}
+	if warnings, ok := payload["warnings"].([]interface{}); ok {
+		for _, item := range warnings {
+			message := strings.TrimSpace(fmt.Sprint(item))
+			if message == "" {
+				continue
+			}
+			if err := writeQuestionPipelineSSEEvent(c, flusher, "warning", gin.H{"message": message}); err != nil {
+				return err
+			}
+		}
+	}
+	if cards, ok := payload["cards"].([]interface{}); ok {
+		for _, item := range cards {
+			if err := writeQuestionPipelineSSEEvent(c, flusher, "card", gin.H{"card": item}); err != nil {
+				return err
+			}
+		}
+	}
+	return writeQuestionPipelineSSEEvent(c, flusher, "complete", gin.H{"response": payload})
+}
+
+// handleAdminGenerateQuestionPipeline 调用同步题目流水线生成接口，并直接返回完整候选题卡结果。
+// handleAdminGenerateQuestionPipeline 调用同步题目流水线生成接口，并直接返回完整候选题卡结果。
+func (gw *Gateway) handleAdminGenerateQuestionPipeline(c *gin.Context) {
+	req, err := bindQuestionPipelineGenerateRequest(c)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.adminClient.GenerateQuestionPipeline(c.Request.Context(), &adminv1.GenerateQuestionPipelineRequest{
-		IndustryCode: req.IndustryCode, Requirement: req.Requirement,
-		AgentPrompt: req.AgentPrompt, GenerationMode: req.GenerationMode,
-		CandidateCount: req.CandidateCount, IncludeScraped: req.IncludeScraped,
-		IncludeGenerated: req.IncludeGenerated, Sources: req.Sources,
-	})
+	resp, err := gw.adminClient.GenerateQuestionPipeline(c.Request.Context(), req)
 	if err != nil {
 		grpcErr(c, err)
 		return
@@ -3043,27 +3848,15 @@ func (gw *Gateway) handleAdminGenerateQuestionPipeline(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleAdminGenerateQuestionPipelineAsync 创建后台异步题目流水线任务，供长耗时场景排队执行。
+// handleAdminGenerateQuestionPipelineAsync 创建后台异步题目流水线任务，供长耗时场景排队执行。
 func (gw *Gateway) handleAdminGenerateQuestionPipelineAsync(c *gin.Context) {
-	var req struct {
-		IndustryCode     string   `json:"industry_code"`
-		Requirement      string   `json:"requirement"`
-		AgentPrompt      string   `json:"agent_prompt"`
-		GenerationMode   string   `json:"generation_mode"`
-		CandidateCount   int32    `json:"candidate_count"`
-		IncludeScraped   bool     `json:"include_scraped"`
-		IncludeGenerated bool     `json:"include_generated"`
-		Sources          []string `json:"sources"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	req, err := bindQuestionPipelineGenerateRequest(c)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.adminClient.GenerateQuestionPipelineAsync(c.Request.Context(), &adminv1.GenerateQuestionPipelineRequest{
-		IndustryCode: req.IndustryCode, Requirement: req.Requirement,
-		AgentPrompt: req.AgentPrompt, GenerationMode: req.GenerationMode,
-		CandidateCount: req.CandidateCount, IncludeScraped: req.IncludeScraped,
-		IncludeGenerated: req.IncludeGenerated, Sources: req.Sources,
-	})
+	resp, err := gw.adminClient.GenerateQuestionPipelineAsync(c.Request.Context(), req)
 	if err != nil {
 		grpcErr(c, err)
 		return
@@ -3072,15 +3865,42 @@ func (gw *Gateway) handleAdminGenerateQuestionPipelineAsync(c *gin.Context) {
 }
 
 // handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。
+// handleAdminGenerateQuestionPipelineDirectStream 兼容前端直连 POST SSE 生成接口，
+// 底层仍复用同步生成 RPC，再由网关拆成 status/card/warning/complete 事件流。
+// handleAdminGenerateQuestionPipelineDirectStream 兼容前端直连 POST SSE 生成接口，
+// 底层仍复用同步生成 RPC，再由网关拆成 status/card/warning/complete 事件流。
+func (gw *Gateway) handleAdminGenerateQuestionPipelineDirectStream(c *gin.Context) {
+	req, err := bindQuestionPipelineGenerateRequest(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	flusher, ok := startQuestionPipelineSSE(c)
+	if !ok {
+		return
+	}
+	if err := writeQuestionPipelineSSEEvent(c, flusher, "status", gin.H{"message": "已提交生成请求，正在等待模型返回结果"}); err != nil {
+		return
+	}
+
+	resp, err := gw.adminClient.GenerateQuestionPipeline(c.Request.Context(), req)
+	if err != nil {
+		_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{"message": grpcErrorMessage(err)})
+		return
+	}
+	_ = streamQuestionPipelineGenerateResponse(c, flusher, normalizeQuestionPipelineGenerateResponsePayload(resp))
+}
+
+// handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。
+// handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。
 func (gw *Gateway) handleAdminGenerateQuestionPipelineStream(c *gin.Context) {
 	taskID, err := strconv.ParseUint(strings.TrimSpace(c.Query("task_id")), 10, 64)
 	if err != nil || taskID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task_id"})
 		return
 	}
-	flusher, ok := c.Writer.(http.Flusher)
+	flusher, ok := startQuestionPipelineSSE(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming is not supported"})
 		return
 	}
 	task, err := gw.adminClient.GetScraperTask(c.Request.Context(), &adminv1.GetScraperTaskRequest{Id: taskID})
@@ -3090,17 +3910,6 @@ func (gw *Gateway) handleAdminGenerateQuestionPipelineStream(c *gin.Context) {
 	}
 	if task.GetTaskType() != questionPipelineTaskType {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not a question pipeline task"})
-		return
-	}
-
-	headers := c.Writer.Header()
-	headers.Set("Content-Type", "text/event-stream; charset=utf-8")
-	headers.Set("Cache-Control", "no-cache, no-transform")
-	headers.Set("Connection", "keep-alive")
-	headers.Set("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	c.Writer.WriteHeaderNow()
-	if err := writeQuestionPipelineSSEPrelude(c, flusher); err != nil {
 		return
 	}
 
@@ -3344,6 +4153,62 @@ func (gw *Gateway) handleAdminUpdateIndustry(c *gin.Context) {
 }
 
 // ==================== Admin: Prompt 模板 ====================
+
+// handleAdminListPrompts 兼容旧后台 `/admin/prompts` 结构，并补齐 scene/industry_id 等前端仍在使用的字段。
+func (gw *Gateway) handleAdminListPrompts(c *gin.Context) {
+	sceneFilter := strings.TrimSpace(c.Query("scene"))
+	industryIDFilter := strings.TrimSpace(c.Query("industry_id"))
+
+	industryIDToCode, industryCodeToID, err := gw.loadAdminIndustryMaps(c.Request.Context())
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+
+	industryCode := ""
+	if industryIDFilter != "" {
+		industryID, parseErr := strconv.ParseUint(industryIDFilter, 10, 64)
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid industry_id"})
+			return
+		}
+		industryCode = industryIDToCode[industryID]
+		if industryCode == "" {
+			c.JSON(http.StatusOK, []gin.H{})
+			return
+		}
+	}
+
+	resp, err := gw.adminClient.ListPromptTemplates(c.Request.Context(), &adminv1.ListPromptTemplatesRequest{
+		IndustryCode: industryCode,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+
+	items := make([]gin.H, 0, len(resp.GetTemplates()))
+	for _, template := range resp.GetTemplates() {
+		if sceneFilter != "" && strings.TrimSpace(template.GetScene()) != sceneFilter {
+			continue
+		}
+		var industryID interface{}
+		if mappedID := industryCodeToID[template.GetIndustryCode()]; mappedID > 0 {
+			industryID = mappedID
+		}
+		items = append(items, gin.H{
+			"id":               template.GetId(),
+			"industry_id":      industryID,
+			"name":             template.GetName(),
+			"scene":            firstNonEmpty(template.GetScene(), template.GetTemplateType()),
+			"template_content": template.GetContent(),
+			"variables":        template.GetVariables(),
+			"is_active":        template.GetIsActive(),
+			"updated_at":       template.GetUpdatedAt(),
+		})
+	}
+	c.JSON(http.StatusOK, items)
+}
 
 func (gw *Gateway) handleAdminCreatePrompt(c *gin.Context) {
 	var req struct {
@@ -3680,7 +4545,32 @@ func (gw *Gateway) handleAdminListTTSConfigs(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	defaultBindings := gin.H{
+		"interview": gw.getOptionalAdminConfigUint64(c.Request.Context(), "tts_default_interview"),
+		"companion": gw.getOptionalAdminConfigUint64(c.Request.Context(), "tts_default_companion"),
+	}
+	items := make([]gin.H, 0, len(resp.GetConfigs()))
+	for _, config := range resp.GetConfigs() {
+		supportStatus, supportMessage := resolveTTSSupportMeta(config.GetEngine())
+		items = append(items, gin.H{
+			"id":               config.GetId(),
+			"name":             config.GetName(),
+			"engine":           config.GetEngine(),
+			"voice_id":         config.GetVoiceId(),
+			"auth_config_json": config.GetAuthConfigJson(),
+			"params_json":      config.GetParamsJson(),
+			"is_active":        config.GetIsActive(),
+			"sort_order":       config.GetSortOrder(),
+			"support_status":   supportStatus,
+			"support_message":  supportMessage,
+			"created_at":       config.GetCreatedAt(),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"configs":          items,
+		"providers":        buildLegacyTTSProviders(),
+		"default_bindings": defaultBindings,
+	})
 }
 
 func (gw *Gateway) handleAdminCreateTTSConfig(c *gin.Context) {
@@ -3782,14 +4672,30 @@ func (gw *Gateway) handleAdminGetRAGConfigs(c *gin.Context) {
 }
 
 func (gw *Gateway) handleAdminUpdateRAGConfigs(c *gin.Context) {
-	var req struct {
-		Configs map[string]string `json:"configs"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var raw map[string]interface{}
+	if err := c.ShouldBindJSON(&raw); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	_, err := gw.adminClient.UpdateRAGConfigs(c.Request.Context(), &adminv1.UpdateRAGConfigsRequest{Configs: req.Configs})
+
+	configs := make(map[string]string)
+	if nested, ok := raw["configs"].(map[string]interface{}); ok {
+		for key, value := range nested {
+			configs[key] = strings.TrimSpace(fmt.Sprint(value))
+		}
+	} else {
+		for key, value := range raw {
+			configs[key] = strings.TrimSpace(fmt.Sprint(value))
+		}
+	}
+	if value := strings.TrimSpace(configs["ai_rag_collection"]); value != "" {
+		configs["rag_collection_name"] = value
+	}
+	if value := strings.TrimSpace(configs["ai_rag_embed_model"]); value != "" {
+		configs["rag_embedding_model"] = value
+	}
+
+	_, err := gw.adminClient.UpdateRAGConfigs(c.Request.Context(), &adminv1.UpdateRAGConfigsRequest{Configs: configs})
 	if err != nil {
 		grpcErr(c, err)
 		return

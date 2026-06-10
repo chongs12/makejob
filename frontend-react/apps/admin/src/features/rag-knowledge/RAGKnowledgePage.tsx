@@ -304,7 +304,7 @@ export function RAGKnowledgePage() {
       }
     },
     onSuccess: async (result) => {
-      setMessage(`批量导入完成：成功 ${result.imported} 条，失败 ${result.failed} 条`)
+      setMessage(`批量导入完成：成功 ${result.imported ?? 0} 条，失败 ${result.failed ?? 0} 条`)
       setBatchImportText('')
       setShowBatchImport(false)
       await queryClient.invalidateQueries({ queryKey: ['admin', 'rag-documents'] })
@@ -513,8 +513,8 @@ export function RAGKnowledgePage() {
           <div className="admin-rag-knowledge__editor-head">
             <h3>{selectedId ? '编辑文档' : '新建文档'}</h3>
             {selectedId && docQuery.data && (
-              <span className={SYNC_STATUS_CLASS[docQuery.data.sync_status]}>
-                {SYNC_STATUS_LABELS[docQuery.data.sync_status]}
+              <span className={SYNC_STATUS_CLASS[docQuery.data.sync_status || 'pending']}>
+                {SYNC_STATUS_LABELS[docQuery.data.sync_status || 'pending']}
               </span>
             )}
           </div>

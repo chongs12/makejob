@@ -199,7 +199,7 @@ export function CompanionHubPage() {
   })
   const mistakeTopicsQuery = useQuery({
     queryKey: ['companion-weekly-focus-topics'],
-    queryFn: () => fetchMistakeTopics([]),
+    queryFn: () => fetchMistakeTopics([], accessToken),
     enabled: Boolean(weeklyFocusQuery.data?.themes.length),
     staleTime: 5 * 60 * 1000,
   })

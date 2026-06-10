@@ -1,11 +1,11 @@
 server:
   http:
-    addr: 0.0.0.0:8080
+    addr: 0.0.0.0:8082
     timeout: 10s
 
 services:
   user:
-    addr: "localhost:9001"
+    addr: "localhost:9101"
   membership:
     addr: "localhost:9002"
   question:

@@ -1,9 +1,9 @@
 server:
   http:
-    addr: 0.0.0.0:8006
+    addr: 0.0.0.0:8014
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9006
+    addr: 0.0.0.0:9014
     timeout: 10s
 
 data:
@@ -21,12 +21,12 @@ jwt:
   service_secret: "makejob-internal-service-secret"
 
 mq:
-  url: "amqp://guest:guest@localhost:5672/"
+  url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"
 
 dependent_services:
-  user_addr: "127.0.0.1:9001"
+  user_addr: "127.0.0.1:9101"
   question_addr: "127.0.0.1:9003"
   interview_addr: "127.0.0.1:9004"
-  ai_gateway_addr: "127.0.0.1:9012"
-  rag_addr: "127.0.0.1:9010"
+  ai_gateway_addr: "127.0.0.1:9011"
+  rag_addr: "127.0.0.1:9012"

@@ -2,16 +2,13 @@ package model
 
 import "gorm.io/gorm"
 
-// AIPreset AI 预设配置 GORM model
+// AIPreset 对应 AI 预设表，保持与当前线上 schema 一致。
 type AIPreset struct {
 	gorm.Model
 	Name       string `gorm:"size:100;not null;uniqueIndex"`
-	Provider   string `gorm:"size:50"`
-	ModelName  string `gorm:"column:model;size:100"`
-	Params     string `gorm:"type:text"` // JSON-encoded map[string]string (legacy)
-	ConfigJSON string `gorm:"type:text"` // JSON-encoded map[string]string (full config)
-	IsDefault  bool   `gorm:"default:false"`
-	IsActive   bool   `gorm:"not null;default:false"`
+	ConfigJSON string `gorm:"column:config_json;type:text;not null;default:''"`
+	IsActive   bool   `gorm:"column:is_active;not null;default:false"`
 }
 
+// TableName 返回 AI 预设表名。
 func (AIPreset) TableName() string { return "ai_presets" }

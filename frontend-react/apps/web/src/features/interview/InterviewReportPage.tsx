@@ -113,7 +113,7 @@ export function InterviewReportPage() {
   })
   const mistakeTopicsQuery = useQuery({
     queryKey: ['interview-mistake-topics'],
-    queryFn: () => fetchMistakeTopics([]),
+    queryFn: () => fetchMistakeTopics([], accessToken),
     enabled: Boolean(codingMistakeTags.length),
     retry: false,
     staleTime: 5 * 60 * 1000,

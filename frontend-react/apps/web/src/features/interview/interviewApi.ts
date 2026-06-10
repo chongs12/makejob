@@ -87,7 +87,8 @@ export async function submitInterviewAnswer(
  * 手动获取下一题，作为自动推进失败时的恢复入口。
  */
 export async function fetchNextInterviewQuestion(token: string, interviewId: string): Promise<InterviewNextQuestionResponse> {
-  const response = await requestJson<ApiEnvelope<InterviewNextQuestionResponse>>(`/interviews/${interviewId}/next`, {
+  const response = await requestJson<ApiEnvelope<InterviewNextQuestionResponse>>(`/interviews/${interviewId}/next-question`, {
+    method: 'POST',
     token,
   })
 

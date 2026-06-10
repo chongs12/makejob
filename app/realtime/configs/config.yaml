@@ -1,15 +1,15 @@
 server:
   http:
-    addr: 0.0.0.0:8008
+    addr: 0.0.0.0:8085
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9008
+    addr: 0.0.0.0:9005
     timeout: 10s
 
 data:
   database:
     driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_realtime sslmode=disable"
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
   redis:
     addr: localhost:6384
     password: ""
@@ -26,5 +26,5 @@ volcengine:
   ws_url: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
 
 dependent_services:
-  interview_addr: "localhost:9002"
-  rag_addr: "localhost:9006"
+  interview_addr: "localhost:9004"
+  rag_addr: "localhost:9012"

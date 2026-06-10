@@ -170,19 +170,19 @@ export function RuntimeOverviewPage() {
           </div>
           <div className="admin-runtime-kv">
             <span>主 Provider</span>
-            <strong>{runtimeConfig?.configs.ai_provider || '未设置'}</strong>
+            <strong>{runtimeConfig?.configs?.ai_provider || '未设置'}</strong>
           </div>
           <div className="admin-runtime-kv">
             <span>默认模型</span>
-            <strong>{runtimeConfig?.configs.ai_model || '未设置'}</strong>
+            <strong>{runtimeConfig?.configs?.ai_model || '未设置'}</strong>
           </div>
           <div className="admin-runtime-kv">
             <span>Fallback Provider</span>
-            <strong>{runtimeConfig?.configs.ai_fallback_provider || '未启用'}</strong>
+            <strong>{runtimeConfig?.configs?.ai_fallback_provider || '未启用'}</strong>
           </div>
           <div className="admin-runtime-kv">
             <span>当前支持</span>
-            <strong>{runtimeConfig?.support.primary_providers.join(' / ') || '无'}</strong>
+            <strong>{runtimeConfig?.support?.primary_providers?.join(' / ') || '无'}</strong>
           </div>
           <div className="admin-runtime-list-block">
             <h4>运行告警</h4>
@@ -198,9 +198,9 @@ export function RuntimeOverviewPage() {
           </div>
           <div className="admin-runtime-list-block">
             <h4>支持说明</h4>
-            {(runtimeConfig?.support.notes || []).length > 0 ? (
+            {(runtimeConfig?.support?.notes || []).length > 0 ? (
               <ul>
-                {runtimeConfig?.support.notes.map((note) => (
+                {runtimeConfig?.support?.notes.map((note) => (
                   <li key={note}>{note}</li>
                 ))}
               </ul>

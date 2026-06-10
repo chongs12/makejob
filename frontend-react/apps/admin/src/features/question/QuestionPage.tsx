@@ -395,7 +395,7 @@ function buildQuestionForm(question?: QuestionListItem | null): QuestionFormStat
     answerTemplateSampleAnswer: question.answer_template?.sample_answer || '',
     answerTemplateFollowUpsText: (question.answer_template?.follow_ups || []).join('\n'),
     answerTemplatePitfallsText: (question.answer_template?.pitfalls || []).join('\n'),
-    tagsText: question.tags.join(', '),
+    tagsText: (question.tags || []).join(', '),
     isActive: question.is_active,
   }
 }
@@ -808,7 +808,7 @@ export function QuestionPage() {
       }
 
       const created = await createQuestion(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (questionId) => {
       setSelectedQuestionId(questionId)
@@ -854,7 +854,7 @@ export function QuestionPage() {
     },
     onSuccess: async (result) => {
       setMessage(
-        `批量导入完成：共 ${result.total_count} 条，成功 ${result.success_count} 条，失败 ${result.fail_count} 条。`,
+        `批量导入完成：共 ${result.total_count ?? 0} 条，成功 ${result.success_count ?? 0} 条，失败 ${result.fail_count ?? 0} 条。`,
       )
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'questions'],
@@ -1114,9 +1114,9 @@ export function QuestionPage() {
                     <span>{question.category_name}</span>
                   </div>
                   <p>{summarizeQuestionContent(question.content)}</p>
-                  {question.tags.length > 0 ? (
+                  {(question.tags || []).length > 0 ? (
                     <div className="admin-question-card__tags">
-                      {question.tags.map((tag) => (
+                      {(question.tags || []).map((tag) => (
                         <span key={tag}>{tag}</span>
                       ))}
                     </div>

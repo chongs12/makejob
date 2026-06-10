@@ -9,7 +9,7 @@ server:
 data:
   database:
     driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_ai_gateway sslmode=disable"
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
   redis:
     addr: localhost:6384
     password: ""

@@ -3,10 +3,11 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"makejob/app/admin/internal/biz"
 	"makejob/app/admin/internal/data/model"
@@ -15,6 +16,21 @@ import (
 type adminRepo struct {
 	db *gorm.DB
 }
+
+// adminConfigCompatRow 描述后台配置表的兼容列集合，用于探测真实 schema 并做动态映射。
+type adminConfigCompatRow struct {
+	ID          uint
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   gorm.DeletedAt
+	Key         string `gorm:"column:config_key"`
+	Value       string `gorm:"column:config_value"`
+	ConfigType  string `gorm:"column:config_type"`
+	Description string `gorm:"column:description"`
+}
+
+// TableName 返回后台通用配置表名，供兼容写入逻辑复用。
+func (adminConfigCompatRow) TableName() string { return "admin_configs" }
 
 // NewAdminRepo 创建管理后台仓库实现
 func NewAdminRepo(db *gorm.DB) biz.AdminRepo {
@@ -463,10 +479,7 @@ func (r *adminRepo) ListAIPresets(ctx context.Context) ([]*biz.AIPreset, error) 
 	}
 	presets := make([]*biz.AIPreset, len(models_))
 	for i, m := range models_ {
-		configs := make(map[string]string)
-		if m.ConfigJSON != "" {
-			_ = json.Unmarshal([]byte(m.ConfigJSON), &configs)
-		}
+		configs := decodeAIPresetConfigs(m)
 		presets[i] = &biz.AIPreset{
 			ID:        uint64(m.ID),
 			Name:      m.Name,
@@ -500,15 +513,32 @@ func (r *adminRepo) CreateAIPreset(ctx context.Context, preset *biz.AIPreset) er
 		ConfigJSON: string(configsJSON),
 		IsActive:   false,
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		return err
+	}
+	preset.ID = uint64(m.ID)
+	preset.IsActive = m.IsActive
+	preset.CreatedAt = m.CreatedAt
+	preset.UpdatedAt = m.UpdatedAt
+	return nil
 }
 
 func (r *adminRepo) UpdateAIPreset(ctx context.Context, preset *biz.AIPreset) error {
 	configsJSON, _ := json.Marshal(preset.Configs)
-	return r.db.WithContext(ctx).Model(&model.AIPreset{}).Where("id = ?", preset.ID).Updates(map[string]interface{}{
+	if err := r.db.WithContext(ctx).Model(&model.AIPreset{}).Where("id = ?", preset.ID).Updates(map[string]interface{}{
 		"name":        preset.Name,
 		"config_json": string(configsJSON),
-	}).Error
+	}).Error; err != nil {
+		return err
+	}
+	latest, err := r.GetAIPresetByID(ctx, preset.ID)
+	if err != nil {
+		return err
+	}
+	preset.IsActive = latest.IsActive
+	preset.CreatedAt = latest.CreatedAt
+	preset.UpdatedAt = latest.UpdatedAt
+	return nil
 }
 
 func (r *adminRepo) DeleteAIPreset(ctx context.Context, id uint64) error {
@@ -520,30 +550,45 @@ func (r *adminRepo) GetAIPresetByID(ctx context.Context, id uint64) (*biz.AIPres
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
 		return nil, err
 	}
+	return &biz.AIPreset{
+		ID:        uint64(m.ID),
+		Name:      m.Name,
+		Configs:   decodeAIPresetConfigs(m),
+		IsActive:  m.IsActive,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
+	}, nil
+}
+
+// decodeAIPresetConfigs 解析 AI 预设配置快照，当前统一使用 config_json 作为存储载体。
+func decodeAIPresetConfigs(m model.AIPreset) map[string]string {
 	configs := make(map[string]string)
 	if m.ConfigJSON != "" {
 		_ = json.Unmarshal([]byte(m.ConfigJSON), &configs)
 	}
-	return &biz.AIPreset{
-		ID:       uint64(m.ID),
-		Name:     m.Name,
-		Configs:  configs,
-		IsActive: m.IsActive,
-	}, nil
+	return configs
 }
 
+// ApplyAIPreset 激活指定 AI 预设，并将预设快照原子写入后台运行配置。
 func (r *adminRepo) ApplyAIPreset(ctx context.Context, id uint64) error {
-	// 先获取预设
 	preset, err := r.GetAIPresetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	// 清除所有活跃状态
-	r.db.WithContext(ctx).Model(&model.AIPreset{}).Where("1 = 1").Update("is_active", false)
-	// 设置当前预设为活跃
-	r.db.WithContext(ctx).Model(&model.AIPreset{}).Where("id = ?", id).Update("is_active", true)
-	// 将预设配置写入 admin_configs
-	return r.BatchUpsertConfigs(ctx, preset.Configs)
+	return r.applyAIPresetCompat(ctx, id, preset)
+}
+
+// applyAIPresetCompat 复用事务封装预设激活与配置写入，避免旧逻辑出现部分成功。
+func (r *adminRepo) applyAIPresetCompat(ctx context.Context, id uint64, preset *biz.AIPreset) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.WithContext(ctx).Model(&model.AIPreset{}).Where("1 = 1").Update("is_active", false).Error; err != nil {
+			return err
+		}
+		if err := tx.WithContext(ctx).Model(&model.AIPreset{}).Where("id = ?", id).Update("is_active", true).Error; err != nil {
+			return err
+		}
+		return r.batchUpsertAdminConfigs(ctx, tx, preset.Configs)
+	})
 }
 
 // ==================== Prompt 模板 ====================
@@ -639,31 +684,49 @@ func (r *adminRepo) DeletePromptTemplate(ctx context.Context, id uint64) error {
 // ==================== 系统配置 ====================
 
 func (r *adminRepo) GetAdminConfig(ctx context.Context, key string) (string, error) {
-	var cfg model.AdminConfig
-	if err := r.db.WithContext(ctx).First(&cfg, "key = ?", key).Error; err != nil {
+	columns, err := r.loadAdminConfigColumns(ctx, r.db.WithContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	keyColumn := adminConfigKeyColumn(columns)
+	valueColumn := adminConfigValueColumn(columns)
+	query := r.db.WithContext(ctx).Table("admin_configs").Select(fmt.Sprintf("%s AS value", valueColumn)).Where(fmt.Sprintf("%s = ?", keyColumn), key)
+	if hasAdminConfigDeletedAt(columns) {
+		query = query.Where("deleted_at IS NULL")
+	}
+	var row struct {
+		Value string
+	}
+	if err := query.Take(&row).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return "", nil
 		}
 		return "", err
 	}
-	return cfg.Value, nil
+	return row.Value, nil
 }
 
 func (r *adminRepo) SetAdminConfig(ctx context.Context, key, value string) error {
-	cfg := &model.AdminConfig{Key: key, Value: value}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"value"}),
-	}).Create(cfg).Error
+	return r.upsertAdminConfig(ctx, r.db.WithContext(ctx), key, value)
 }
 
 func (r *adminRepo) ListAdminConfigs(ctx context.Context) ([]*biz.AdminConfigItem, error) {
-	var configs []model.AdminConfig
-	if err := r.db.WithContext(ctx).Find(&configs).Error; err != nil {
+	columns, err := r.loadAdminConfigColumns(ctx, r.db.WithContext(ctx))
+	if err != nil {
 		return nil, err
 	}
-	result := make([]*biz.AdminConfigItem, len(configs))
-	for i, c := range configs {
+	keyColumn := adminConfigKeyColumn(columns)
+	valueColumn := adminConfigValueColumn(columns)
+	rows := make([]adminConfigCompatRow, 0)
+	query := r.db.WithContext(ctx).Table("admin_configs").Select(strings.Join(buildAdminConfigSelectColumns(columns, keyColumn, valueColumn), ", "))
+	if hasAdminConfigDeletedAt(columns) {
+		query = query.Where("deleted_at IS NULL")
+	}
+	if err := query.Order(adminConfigOrderColumn(columns) + " ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*biz.AdminConfigItem, len(rows))
+	for i, c := range rows {
 		result[i] = &biz.AdminConfigItem{
 			Key:         c.Key,
 			Value:       c.Value,
@@ -674,17 +737,130 @@ func (r *adminRepo) ListAdminConfigs(ctx context.Context) ([]*biz.AdminConfigIte
 	return result, nil
 }
 
+// BatchUpsertConfigs 批量保存后台配置项，统一走兼容写入路径以适配历史表结构。
 func (r *adminRepo) BatchUpsertConfigs(ctx context.Context, configs map[string]string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return r.batchUpsertAdminConfigs(ctx, tx, configs)
+	})
+}
+
+// batchUpsertAdminConfigs 基于同一事务批量写入后台配置，并按真实表结构补齐兼容字段。
+func (r *adminRepo) batchUpsertAdminConfigs(ctx context.Context, db *gorm.DB, configs map[string]string) error {
+	columns, err := r.loadAdminConfigColumns(ctx, db)
+	if err != nil {
+		return err
+	}
 	for key, value := range configs {
-		cfg := &model.AdminConfig{Key: key, Value: value}
-		if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"value"}),
-		}).Create(cfg).Error; err != nil {
+		if err := r.upsertAdminConfigWithColumns(ctx, db, columns, key, value); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// upsertAdminConfig 以“先更新、后插入”的方式写入后台配置，兼容历史库表缺少唯一约束的场景。
+func (r *adminRepo) upsertAdminConfig(ctx context.Context, db *gorm.DB, key, value string) error {
+	columns, err := r.loadAdminConfigColumns(ctx, db)
+	if err != nil {
+		return err
+	}
+	return r.upsertAdminConfigWithColumns(ctx, db, columns, key, value)
+}
+
+// loadAdminConfigColumns 读取 admin_configs 的真实列集合，供兼容老库表结构时动态裁剪写入字段。
+func (r *adminRepo) loadAdminConfigColumns(ctx context.Context, db *gorm.DB) (map[string]struct{}, error) {
+	columnTypes, err := db.WithContext(ctx).Migrator().ColumnTypes(&adminConfigCompatRow{})
+	if err != nil {
+		return nil, err
+	}
+	columns := make(map[string]struct{}, len(columnTypes))
+	for _, columnType := range columnTypes {
+		columns[strings.ToLower(columnType.Name())] = struct{}{}
+	}
+	return columns, nil
+}
+
+// upsertAdminConfigWithColumns 按探测出的真实列集合构造更新与插入语句，避免历史表结构不一致导致写入失败。
+func (r *adminRepo) upsertAdminConfigWithColumns(ctx context.Context, db *gorm.DB, columns map[string]struct{}, key, value string) error {
+	now := time.Now()
+	keyColumn := adminConfigKeyColumn(columns)
+	valueColumn := adminConfigValueColumn(columns)
+	updates := map[string]interface{}{valueColumn: value}
+	if hasAdminConfigDeletedAt(columns) {
+		updates["deleted_at"] = nil
+	}
+	if _, ok := columns["updated_at"]; ok {
+		updates["updated_at"] = now
+	}
+	updateResult := db.WithContext(ctx).Table("admin_configs").Where(fmt.Sprintf("%s = ?", keyColumn), key).Updates(updates)
+	if updateResult.Error != nil {
+		return updateResult.Error
+	}
+	if updateResult.RowsAffected > 0 {
+		return nil
+	}
+	row := map[string]interface{}{
+		keyColumn:   key,
+		valueColumn: value,
+	}
+	if _, ok := columns["config_type"]; ok {
+		row["config_type"] = "string"
+	}
+	if _, ok := columns["description"]; ok {
+		row["description"] = ""
+	}
+	if _, ok := columns["created_at"]; ok {
+		row["created_at"] = now
+	}
+	if _, ok := columns["updated_at"]; ok {
+		row["updated_at"] = now
+	}
+	return db.WithContext(ctx).Table("admin_configs").Create(row).Error
+}
+
+// adminConfigKeyColumn 返回当前 admin_configs 表对应的键列名。
+func adminConfigKeyColumn(columns map[string]struct{}) string {
+	if _, ok := columns["config_key"]; ok {
+		return "config_key"
+	}
+	return "key"
+}
+
+// adminConfigValueColumn 返回当前 admin_configs 表对应的值列名。
+func adminConfigValueColumn(columns map[string]struct{}) string {
+	if _, ok := columns["config_value"]; ok {
+		return "config_value"
+	}
+	return "value"
+}
+
+// adminConfigOrderColumn 返回当前 admin_configs 表适合稳定排序的列名。
+func adminConfigOrderColumn(columns map[string]struct{}) string {
+	if _, ok := columns["config_key"]; ok {
+		return "config_key"
+	}
+	return "key"
+}
+
+// hasAdminConfigDeletedAt 判断当前配置表是否包含软删除列。
+func hasAdminConfigDeletedAt(columns map[string]struct{}) bool {
+	_, ok := columns["deleted_at"]
+	return ok
+}
+
+// buildAdminConfigSelectColumns 构造兼容查询字段列表，统一把不同 schema 的键值列别名成标准字段。
+func buildAdminConfigSelectColumns(columns map[string]struct{}, keyColumn, valueColumn string) []string {
+	selectColumns := []string{
+		fmt.Sprintf("%s AS config_key", keyColumn),
+		fmt.Sprintf("%s AS config_value", valueColumn),
+	}
+	if _, ok := columns["config_type"]; ok {
+		selectColumns = append(selectColumns, "config_type")
+	}
+	if _, ok := columns["description"]; ok {
+		selectColumns = append(selectColumns, "description")
+	}
+	return selectColumns
 }
 
 // ==================== AI 调用日志 ====================

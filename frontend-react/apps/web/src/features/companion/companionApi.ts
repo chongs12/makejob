@@ -75,8 +75,8 @@ export async function fetchCompanionPlanProgress(token: string, planId: number):
  * 将当前学习陪伴页的每日执行摘要同步到服务端，供成长档案页跨设备查看。
  */
 export async function syncCompanionStudyLog(token: string, payload: CompanionStudyLogPayload): Promise<void> {
-  const response = await requestJson<ApiEnvelope<unknown>>('/user/study-logs/daily', {
-    method: 'PUT',
+  const response = await requestJson<ApiEnvelope<unknown>>('/growth/study-log', {
+    method: 'POST',
     token,
     body: payload,
   })
@@ -128,7 +128,7 @@ export async function updateCompanionTaskStatus(
   taskId: number,
   status: CompanionTaskStatus,
 ): Promise<void> {
-  const response = await requestJson<ApiEnvelope<null>>(`/plans/${planId}/tasks/${taskId}`, {
+  const response = await requestJson<ApiEnvelope<null>>(`/plans/${planId}/tasks/${taskId}/status`, {
     method: 'PUT',
     token,
     body: {

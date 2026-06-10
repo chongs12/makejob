@@ -1,15 +1,15 @@
 server:
   http:
-    addr: 0.0.0.0:8007
+    addr: 0.0.0.0:8008
     timeout: 10s
   grpc:
-    addr: 0.0.0.0:9007
+    addr: 0.0.0.0:9008
     timeout: 10s
 
 data:
   database:
     driver: postgres
-    source: "host=localhost port=5434 user=postgres password=password dbname=makejob_companion sslmode=disable"
+    source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
   redis:
     addr: localhost:6384
     password: ""

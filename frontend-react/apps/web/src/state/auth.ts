@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { AUTH_EXPIRED_EVENT_NAME, createApiClient, extractErrorMessage, requestJson } from '@makejob/api-client'
+import { AUTH_EXPIRED_EVENT_NAME, createApiClient, extractErrorMessage, getApiBaseUrl, requestJson } from '@makejob/api-client'
 import {
   isSuccessCode,
   normalizeUserProfile,
@@ -24,11 +24,13 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ ok: boolean; message: string }>
   fetchProfile: () => Promise<boolean>
   ensureProfile: () => Promise<boolean>
+  refreshSession: () => Promise<boolean>
   clearSession: () => void
   logout: () => void
 }
 
 let profilePromise: Promise<boolean> | null = null
+let refreshPromise: Promise<boolean> | null = null
 let authExpiredListenerBound = false
 
 /**
@@ -126,15 +128,35 @@ function getApi() {
 }
 
 /**
+ * 直接调用刷新令牌接口，避免 requestJson 在 401 时再次广播失效事件造成循环。
+ */
+async function requestRefreshSession(refreshToken: string): Promise<ApiEnvelope<LoginResult>> {
+  const response = await fetch(`${getApiBaseUrl().replace(/\/+$/, '')}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      refresh_token: refreshToken,
+    }),
+  })
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    throw new Error(`刷新令牌接口未返回 JSON，状态码：${response.status}`)
+  }
+  return (await response.json()) as ApiEnvelope<LoginResult>
+}
+
+/**
  * 监听全局登录态失效事件，并在收到后统一清空当前前台会话。
  */
-function bindAuthExpiredListener(clearSession: () => void): void {
+function bindAuthExpiredListener(handleAuthExpired: () => void): void {
   if (authExpiredListenerBound || typeof window === 'undefined') {
     return
   }
 
   window.addEventListener(AUTH_EXPIRED_EVENT_NAME, () => {
-    clearSession()
+    handleAuthExpired()
   })
   authExpiredListenerBound = true
 }
@@ -152,11 +174,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    */
   initAuth() {
     if (get().initialized) {
-      bindAuthExpiredListener(get().clearSession)
+      bindAuthExpiredListener(() => {
+        void get().refreshSession()
+      })
       return
     }
 
-    bindAuthExpiredListener(get().clearSession)
+    bindAuthExpiredListener(() => {
+      void get().refreshSession()
+    })
     const accessToken = readToken()
     const refreshToken = readRefreshToken()
     const user = readStoredUser()
@@ -258,9 +284,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         const response = await getApi().get<ApiEnvelope<RawUserProfile>>('/user/profile')
         if (!isSuccessCode(response.code)) {
-          if (response.code === 401) {
-            get().clearSession()
-          }
           return false
         }
 
@@ -299,7 +322,71 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return true
     }
 
+    if (await get().fetchProfile()) {
+      return true
+    }
+    if (!(await get().refreshSession())) {
+      return false
+    }
+    if (get().user && get().profileLoaded) {
+      return true
+    }
     return get().fetchProfile()
+  },
+
+  /**
+   * 使用本地持久化的 refresh token 续期会话，尽量避免用户因 access token 过期被迫重复登录。
+   */
+  async refreshSession() {
+    const currentRefreshToken = get().refreshToken || readRefreshToken()
+    if (!currentRefreshToken) {
+      get().clearSession()
+      return false
+    }
+    if (refreshPromise) {
+      return refreshPromise
+    }
+
+    refreshPromise = (async () => {
+      try {
+        const response = await requestRefreshSession(currentRefreshToken)
+        if (!isSuccessCode(response.code)) {
+          get().clearSession()
+          return false
+        }
+
+        const accessToken = extractAccessToken(response.data)
+        if (!accessToken) {
+          get().clearSession()
+          return false
+        }
+
+        const nextRefreshToken = extractRefreshToken(response.data) || currentRefreshToken
+        persistSession({
+          accessToken,
+          refreshToken: nextRefreshToken,
+          user: get().user,
+        })
+
+        set({
+          accessToken,
+          refreshToken: nextRefreshToken,
+          initialized: true,
+        })
+
+        if (get().user && get().profileLoaded) {
+          return true
+        }
+        return get().fetchProfile()
+      } catch {
+        get().clearSession()
+        return false
+      } finally {
+        refreshPromise = null
+      }
+    })()
+
+    return refreshPromise
   },
 
   /**

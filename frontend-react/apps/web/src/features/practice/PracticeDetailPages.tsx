@@ -605,9 +605,10 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
  * 根据练习分析里的错因标签展示可继续深挖的专题卡片。
  */
 function MistakeTopicHighlights(props: { tags: string[]; title?: string }) {
+  const accessToken = useAuthStore((state) => state.accessToken)
   const topicsQuery = useQuery({
-    queryKey: ['mistake-topics-catalog'],
-    queryFn: () => fetchMistakeTopics([]),
+    queryKey: ['mistake-topics-catalog', accessToken],
+    queryFn: () => fetchMistakeTopics([], accessToken),
     enabled: props.tags.length > 0,
     staleTime: 5 * 60 * 1000,
   })
@@ -1865,10 +1866,11 @@ export function PracticeNotesPage() {
  */
 export function MistakeTopicPage() {
   const navigate = useNavigate()
+  const accessToken = useAuthStore((state) => state.accessToken)
   const { topicCode } = useParams({ from: '/practice/topics/$topicCode' })
   const topicQuery = useQuery({
-    queryKey: ['mistake-topic-detail', topicCode],
-    queryFn: () => fetchMistakeTopic(topicCode),
+    queryKey: ['mistake-topic-detail', topicCode, accessToken],
+    queryFn: () => fetchMistakeTopic(topicCode, accessToken),
     enabled: Boolean(topicCode),
   })
 

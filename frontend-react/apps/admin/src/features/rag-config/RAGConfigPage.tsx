@@ -288,7 +288,7 @@ export function RAGConfigPage() {
     )
   }
 
-  const status = configQuery.data.status
+  const status = configQuery.data.status || { enabled: false, embed_model: '', collection: '' }
 
   return (
     <section className="admin-panel admin-rag-config">
@@ -323,9 +323,9 @@ export function RAGConfigPage() {
       </div>
 
       {/* 警告信息 */}
-      {configQuery.data.warnings && configQuery.data.warnings.length > 0 && (
+      {(configQuery.data.warnings || []).length > 0 && (
         <div className="admin-rag-config__warnings">
-          {configQuery.data.warnings.map((warning) => (
+          {(configQuery.data.warnings || []).map((warning) => (
             <p key={warning} className="is-warning">{warning}</p>
           ))}
         </div>

@@ -24,7 +24,7 @@ export interface WeeklyFocusResponse {
  * 拉取当前用户本周最值得优先补强的主题摘要。
  */
 export async function fetchWeeklyFocus(token: string): Promise<WeeklyFocusResponse> {
-  const response = await requestJson<ApiEnvelope<WeeklyFocusResponse>>('/user/weekly-focus', {
+  const response = await requestJson<ApiEnvelope<WeeklyFocusResponse>>('/growth/weekly-focus', {
     token,
   })
 

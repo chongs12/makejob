@@ -28,7 +28,7 @@ export interface PracticeAnalysisPayload {
 /**
  * 批量拉取错因专题卡片，供成长页、面试报告页和练习反馈页共用。
  */
-export async function fetchMistakeTopics(codes: string[]): Promise<MistakeTopicCard[]> {
+export async function fetchMistakeTopics(codes: string[], token?: string | null): Promise<MistakeTopicCard[]> {
   const normalizedCodes = Array.from(new Set(codes.map((item) => item.trim()).filter(Boolean)))
   const params = new URLSearchParams()
   if (normalizedCodes.length) {
@@ -36,7 +36,7 @@ export async function fetchMistakeTopics(codes: string[]): Promise<MistakeTopicC
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : ''
-  const response = await requestJson<ApiEnvelope<MistakeTopicCard[]>>(`/mistake-topics${suffix}`)
+  const response = await requestJson<ApiEnvelope<MistakeTopicCard[]>>(`/mistake-topics${suffix}`, { token })
   if (!isSuccessCode(response.code)) {
     throw new Error(response.message || '获取错因专题失败')
   }
@@ -47,8 +47,8 @@ export async function fetchMistakeTopics(codes: string[]): Promise<MistakeTopicC
 /**
  * 获取单个错因专题详情，供专题页独立展示。
  */
-export async function fetchMistakeTopic(code: string): Promise<MistakeTopicCard> {
-  const response = await requestJson<ApiEnvelope<MistakeTopicCard>>(`/mistake-topics/${code}`)
+export async function fetchMistakeTopic(code: string, token?: string | null): Promise<MistakeTopicCard> {
+  const response = await requestJson<ApiEnvelope<MistakeTopicCard>>(`/mistake-topics/${code}`, { token })
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取错因专题详情失败')
   }

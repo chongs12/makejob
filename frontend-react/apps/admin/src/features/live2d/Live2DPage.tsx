@@ -558,7 +558,7 @@ export function Live2DPage() {
       }
 
       const created = await createLive2DModel(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (modelId) => {
       setSelectedModelId(modelId)

@@ -1,8 +1,8 @@
 server:
   http:
-    addr: 0.0.0.0:8002
+    addr: 0.0.0.0:8003
   grpc:
-    addr: 0.0.0.0:9002
+    addr: 0.0.0.0:9003
 
 data:
   database:
@@ -12,12 +12,12 @@ data:
 ai:
   service_addr: "localhost:9014"
   coderunner_addr: "localhost:9013"
-  ai_gateway_addr: "localhost:9012"
-  admin_addr: "localhost:9006"
+  ai_gateway_addr: "localhost:9011"
+  admin_addr: "localhost:9014"
 
 jwt:
   secret: "makejob-secret-key-change-in-production"
 
 mq:
-  url: "amqp://guest:guest@localhost:5672/"
+  url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"

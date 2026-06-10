@@ -652,10 +652,11 @@ func (s *AdminService) GetAIConfigs(ctx context.Context, _ *emptypb.Empty) (*adm
 	var activePresetID uint64
 	for i, p := range presets {
 		presetItems[i] = &adminv1.AIPreset{
-			Id:       p.ID,
-			Name:     p.Name,
-			Configs:  p.Configs,
-			IsActive: p.IsActive,
+			Id:        p.ID,
+			Name:      p.Name,
+			Configs:   p.Configs,
+			IsActive:  p.IsActive,
+			UpdatedAt: timestamppb.New(p.UpdatedAt),
 		}
 		if p.IsActive {
 			activePresetID = p.ID
@@ -725,10 +726,11 @@ func (s *AdminService) CreateAIPreset(ctx context.Context, req *adminv1.CreateAI
 		return nil, err
 	}
 	return &adminv1.AIPreset{
-		Id:       preset.ID,
-		Name:     preset.Name,
-		Configs:  preset.Configs,
-		IsActive: preset.IsActive,
+		Id:        preset.ID,
+		Name:      preset.Name,
+		Configs:   preset.Configs,
+		IsActive:  preset.IsActive,
+		UpdatedAt: timestamppb.New(preset.UpdatedAt),
 	}, nil
 }
 
@@ -758,10 +760,11 @@ func (s *AdminService) UpdateAIPreset(ctx context.Context, req *adminv1.UpdateAI
 		return nil, err
 	}
 	return &adminv1.AIPreset{
-		Id:       updatedPreset.ID,
-		Name:     updatedPreset.Name,
-		Configs:  updatedPreset.Configs,
-		IsActive: updatedPreset.IsActive,
+		Id:        updatedPreset.ID,
+		Name:      updatedPreset.Name,
+		Configs:   updatedPreset.Configs,
+		IsActive:  updatedPreset.IsActive,
+		UpdatedAt: timestamppb.New(updatedPreset.UpdatedAt),
 	}, nil
 }
 

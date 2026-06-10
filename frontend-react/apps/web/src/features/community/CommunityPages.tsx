@@ -184,7 +184,7 @@ async function fetchMyCommunityPosts(token: string, params: {
     searchParams.set('tag', params.tag)
   }
 
-  const response = await requestJson<ApiEnvelope<PageResult<CommunityPostItem>>>(`/community/my-posts?${searchParams.toString()}`, {
+  const response = await requestJson<ApiEnvelope<PageResult<CommunityPostItem>>>(`/community/my/posts?${searchParams.toString()}`, {
     token,
   })
   if (!isSuccessCode(response.code) || !response.data) {

@@ -418,18 +418,18 @@ export function TTSPage() {
 
     if (selectedConfigId === null) {
       setForm((current) => {
-        if (current.engine || configsQuery.data.providers.length === 0) {
+        if (current.engine || (configsQuery.data.providers || []).length === 0) {
           return current
         }
-        return buildInitialTTSForm(configsQuery.data.providers)
+        return buildInitialTTSForm(configsQuery.data.providers || [])
       })
       setMessage((current) => (current === '读取 TTS 配置中' ? '已同步 TTS 配置列表。' : current))
       return
     }
 
-    const nextConfig = configsQuery.data.configs.find((item) => item.id === selectedConfigId)
+    const nextConfig = (configsQuery.data.configs || []).find((item) => item.id === selectedConfigId)
     if (nextConfig) {
-      setForm(buildTTSForm(nextConfig, configsQuery.data.providers))
+      setForm(buildTTSForm(nextConfig, configsQuery.data.providers || []))
     }
   }, [configsQuery.data, selectedConfigId])
 
@@ -443,7 +443,7 @@ export function TTSPage() {
       }
 
       const created = await createTTSConfig(accessToken, payload)
-      return created.id
+      return created?.id
     },
     onSuccess: async (configId) => {
       setSelectedConfigId(configId)
@@ -603,7 +603,7 @@ export function TTSPage() {
           </p>
         </div>
         <div className="admin-tts-page__summary">
-          <strong>{configsQuery.data.configs.length}</strong>
+          <strong>{(configsQuery.data.configs || []).length}</strong>
           <span>条配置</span>
         </div>
       </div>
@@ -652,13 +652,13 @@ export function TTSPage() {
 
       <div className="admin-tts-page__layout">
         <div className="admin-tts-list">
-          {configsQuery.data.configs.length === 0 ? (
+          {(configsQuery.data.configs || []).length === 0 ? (
             <div className="admin-tts-card admin-tts-card--empty">
               <strong>当前还没有 TTS 配置记录</strong>
               <p>可以先新建一条可运行的供应商配置，再到 Live2D 页面绑定使用。</p>
             </div>
           ) : (
-            configsQuery.data.configs.map((config) => (
+            (configsQuery.data.configs || []).map((config) => (
               <button
                 key={config.id}
                 type="button"
@@ -702,7 +702,7 @@ export function TTSPage() {
             <label className="admin-field">
               <span>供应商</span>
               <select value={form.engine} onChange={(event) => handleEngineChange(event.target.value)}>
-                {configsQuery.data.providers.map((provider) => (
+                {(configsQuery.data.providers || []).map((provider) => (
                   <option key={provider.key} value={provider.key}>
                     {provider.label}
                   </option>

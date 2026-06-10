@@ -387,9 +387,9 @@ export function RuntimeTasksPage() {
       </div>
 
       <div className="admin-runtime-inline-config">
-        <span>当前主 Provider：{aiConfig?.configs.ai_provider || '未设置'}</span>
-        <span>默认模型：{aiConfig?.configs.ai_model || '未设置'}</span>
-        <span>Fallback：{aiConfig?.configs.ai_fallback_provider || '未启用'}</span>
+        <span>当前主 Provider：{aiConfig?.configs?.ai_provider || '未设置'}</span>
+        <span>默认模型：{aiConfig?.configs?.ai_model || '未设置'}</span>
+        <span>Fallback：{aiConfig?.configs?.ai_fallback_provider || '未启用'}</span>
       </div>
 
       <div className="admin-runtime-list-page__layout">

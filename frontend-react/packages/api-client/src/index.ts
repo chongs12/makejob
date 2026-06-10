@@ -17,7 +17,7 @@ export function getApiBaseUrl(): string {
       ? import.meta.env.VITE_API_BASE_URL
       : undefined
 
-  return typeof envBase === 'string' && envBase.trim() ? envBase.trim() : '/api'
+  return typeof envBase === 'string' && envBase.trim() ? envBase.trim() : '/api/v1'
 }
 
 /**

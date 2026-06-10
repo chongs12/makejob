@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -280,6 +281,185 @@ func TestRegisterRoutesProtectsAdminStream(t *testing.T) {
 	engine.ServeHTTP(adminRecorder, adminRequest)
 	if adminRecorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected admin stream unavailable status %d, got %d", http.StatusServiceUnavailable, adminRecorder.Code)
+	}
+
+	postRequest := httptest.NewRequest(http.MethodPost, "/api/v1/admin/question-pipeline/generate/stream", strings.NewReader(`{}`))
+	postRequest.Header.Set("Content-Type", "application/json")
+	postRequest.Header.Set("Authorization", "Bearer "+adminToken)
+	postRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(postRecorder, postRequest)
+	if postRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected admin POST stream unavailable status %d, got %d", http.StatusServiceUnavailable, postRecorder.Code)
+	}
+}
+
+// TestWrapResponseMiddlewarePreservesExistingEnvelope 验证已符合 ApiEnvelope 结构的响应不会在中间件中丢失 body。
+func TestWrapResponseMiddlewarePreservesExistingEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(WrapResponseMiddleware())
+	engine.GET("/enveloped", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "success",
+			"data": gin.H{
+				"ok": true,
+			},
+		})
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/enveloped", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	var response struct {
+		Code    int                    `json:"code"`
+		Message string                 `json:"message"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response.Code != 0 || response.Message != "success" || response.Data["ok"] != true {
+		t.Fatalf("unexpected response payload: %+v", response)
+	}
+}
+
+// TestWrapResponseMiddlewareFlattensPageResult 验证分页响应会被扁平化为前端约定的 {list,total,page,page_size}。
+func TestWrapResponseMiddlewareFlattensPageResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(WrapResponseMiddleware())
+	engine.GET("/api/v1/admin/rag-documents", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"documents": []gin.H{
+				{
+					"id":         1,
+					"title":      "doc",
+					"updated_at": gin.H{"seconds": float64(1710000000), "nanos": float64(0)},
+				},
+			},
+			"page_result": gin.H{
+				"total":     1,
+				"page":      2,
+				"page_size": 20,
+			},
+		})
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/rag-documents", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	var response struct {
+		Code int `json:"code"`
+		Data struct {
+			List     []map[string]interface{} `json:"list"`
+			Total    float64                  `json:"total"`
+			Page     float64                  `json:"page"`
+			PageSize float64                  `json:"page_size"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response.Code != 0 {
+		t.Fatalf("expected success code, got %+v", response)
+	}
+	if len(response.Data.List) != 1 {
+		t.Fatalf("expected flattened list with 1 item, got %+v", response.Data)
+	}
+	if response.Data.Total != 1 || response.Data.Page != 2 || response.Data.PageSize != 20 {
+		t.Fatalf("unexpected page payload: %+v", response.Data)
+	}
+	if _, ok := response.Data.List[0]["updated_at"].(string); !ok {
+		t.Fatalf("expected timestamp to be normalized into string, got %#v", response.Data.List[0]["updated_at"])
+	}
+}
+
+// TestWrapResponseMiddlewareNormalizesAdminQuestions 验证题库管理页会收到已解析的 options/tags/judge_config 字段。
+func TestWrapResponseMiddlewareNormalizesAdminQuestions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(WrapResponseMiddleware())
+	engine.GET("/api/v1/admin/questions", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"questions": []gin.H{
+				{
+					"id":                   1,
+					"title":                "question",
+					"options_json":         "[\"A\",\"B\"]",
+					"solution_json":        "{\"summary\":\"s\"}",
+					"judge_config_json":    "{\"evaluation_mode\":\"analysis_only\"}",
+					"answer_template_json": "{\"core_conclusion\":\"c\"}",
+					"tags":                 "go, 并发",
+				},
+			},
+			"page_result": gin.H{
+				"total":     1,
+				"page":      1,
+				"page_size": 10,
+			},
+		})
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/questions", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	var response struct {
+		Data struct {
+			List []map[string]interface{} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response.Data.List) != 1 {
+		t.Fatalf("expected 1 question item, got %+v", response.Data.List)
+	}
+	if options, ok := response.Data.List[0]["options"].([]interface{}); !ok || len(options) != 2 {
+		t.Fatalf("expected parsed options array, got %#v", response.Data.List[0]["options"])
+	}
+	if tags, ok := response.Data.List[0]["tags"].([]interface{}); !ok || len(tags) != 2 {
+		t.Fatalf("expected parsed tags array, got %#v", response.Data.List[0]["tags"])
+	}
+	if _, ok := response.Data.List[0]["judge_config"].(map[string]interface{}); !ok {
+		t.Fatalf("expected parsed judge_config object, got %#v", response.Data.List[0]["judge_config"])
+	}
+}
+
+// TestWrapResponseMiddlewareBypassesSSE 验证 SSE 在中间件存在时仍会原样输出，不会被 envelope 包装吞掉。
+func TestWrapResponseMiddlewareBypassesSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(WrapResponseMiddleware())
+	engine.GET("/stream", func(c *gin.Context) {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.Status(http.StatusOK)
+		c.Writer.WriteHeaderNow()
+		_, _ = c.Writer.Write([]byte("event: ping\ndata: ready\n\n"))
+		c.Writer.Flush()
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/stream", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: ping") {
+		t.Fatalf("expected SSE payload, got %q", body)
+	}
+	if strings.Contains(body, "\"code\"") {
+		t.Fatalf("expected SSE response to bypass envelope, got %q", body)
 	}
 }
 
