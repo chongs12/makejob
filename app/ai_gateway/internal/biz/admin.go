@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -147,6 +146,7 @@ func (uc *AdminUseCase) DebugAI(ctx context.Context, scene, prompt string, param
 
 // QuestionCandidate 题目候选（FIX H6: 补齐与 PipelineCard 对齐的字段）
 type QuestionCandidate struct {
+	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Content     string   `json:"content"`
 	Type        string   `json:"type"`
@@ -158,7 +158,7 @@ type QuestionCandidate struct {
 	SourceType  string   `json:"source_type"`
 	Confidence  float64  `json:"confidence"`
 	Solution    string   `json:"solution,omitempty"`
-	JudgeConfig string   `json:"judge_config,omitempty"`
+	JudgeConfig any      `json:"judge_config,omitempty"`  // 使用 any 类型，序列化时会作为对象
 	SourceLabel string   `json:"source_label,omitempty"`
 	SourceTitle string   `json:"source_title,omitempty"`
 	SourceURL   string   `json:"source_url,omitempty"`
@@ -172,80 +172,78 @@ type GenerateQuestionCandidatesResult struct {
 	Warnings     []string
 }
 
-// GenerateQuestionCandidates 同步生成题目候选，优先使用自定义 agent_prompt，避免无模板时阻塞题卡流水线。
+// GenerateQuestionCandidates 同步生成题目候选。
+// 采用逐张生成模式（复刻单体架构），每张题卡独立调用 AI，带上下文避免重复。
 func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error) {
-	const scene = "question_generator"
-	start := time.Now()
-
-	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
-	if err != nil {
-		return nil, ErrAIConfigNotFound
-	}
-
-	promptTemplate := strings.TrimSpace(agentPrompt)
-	if promptTemplate == "" {
-		tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
-		if err != nil {
-			return nil, ErrPromptRenderFailed
-		}
-		promptTemplate = tpl.TemplateText
-	}
-
-	promptText := RenderPrompt(promptTemplate, map[string]string{
-		"industry_code":     industryCode,
-		"requirement":       requirement,
-		"candidate_count":   fmt.Sprintf("%d", candidateCount),
-		"generation_mode":   generationMode,
-		"sources":           joinStrings(sources),
-		"include_scraped":   fmt.Sprintf("%v", includeScraped),
-		"include_generated": fmt.Sprintf("%v", includeGenerated),
-	})
-
-	messages := []Message{{Role: "user", Content: promptText}}
-	resp, err := uc.llm.Chat(ctx, messages, cfg)
-	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
-	if err != nil {
-		return nil, ErrLLMCallFailed
-	}
-
-	var candidates []*QuestionCandidate
-	if err := json.Unmarshal([]byte(resp.Content), &candidates); err != nil {
-		var wrapped struct {
-			Questions  []*QuestionCandidate `json:"questions"`
-			Candidates []*QuestionCandidate `json:"candidates"`
-		}
-		if err2 := json.Unmarshal([]byte(resp.Content), &wrapped); err2 != nil {
-			return nil, ErrParseFailed
-		}
-		if wrapped.Questions != nil {
-			candidates = wrapped.Questions
-		} else {
-			candidates = wrapped.Candidates
-		}
-	}
-
-	return &GenerateQuestionCandidatesResult{
-		IndustryCode: industryCode,
-		Requirement:  requirement,
-		Candidates:   candidates,
-		Warnings:     []string{},
-	}, nil
+	// 使用逐张生成模式
+	return uc.GenerateQuestionCandidatesDirect(ctx, industryCode, requirement, agentPrompt, candidateCount)
 }
 
 // saveLog 记录 LLM 调用日志
 func (uc *AdminUseCase) saveLog(ctx context.Context, scene, model string, resp *LLMResponse, callErr error, latencyMs int64) {
-	logEntry := &AICallLog{Scene: scene, Model: model, LatencyMs: latencyMs}
+	logEntry := &AICallLog{
+		TraceID:   fmt.Sprintf("%d", time.Now().UnixNano()),
+		Source:    "ai_gateway",
+		Scene:     scene,
+		Model:     model,
+		LatencyMs: latencyMs,
+	}
 	if resp != nil {
 		logEntry.InputTokens = resp.InputTokens
 		logEntry.OutputTokens = resp.OutputTokens
+		logEntry.IsSuccess = true
+		logEntry.Status = "success"
 	}
 	if callErr != nil {
+		logEntry.IsSuccess = false
 		logEntry.Status = "error"
 		logEntry.ErrorMsg = callErr.Error()
-	} else {
-		logEntry.Status = "success"
 	}
 	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
+}
+
+// sanitizeLLMOutput 清理 LLM 输出，移除代码块、推理块等
+func sanitizeLLMOutput(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	// 移除代码块标记
+	if strings.HasPrefix(raw, "```") {
+		if lineEnd := strings.Index(raw, "\n"); lineEnd >= 0 {
+			raw = raw[lineEnd+1:]
+		} else {
+			raw = strings.TrimPrefix(raw, "```")
+		}
+	}
+	raw = strings.TrimSuffix(strings.TrimSpace(raw), "```")
+
+	return strings.TrimSpace(raw)
+}
+
+// extractJSON 从文本中提取 JSON 对象或数组
+func extractJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	// 尝试提取 JSON 对象
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start >= 0 && end > start {
+		return strings.TrimSpace(raw[start : end+1])
+	}
+
+	// 尝试提取 JSON 数组
+	start = strings.Index(raw, "[")
+	end = strings.LastIndex(raw, "]")
+	if start >= 0 && end > start {
+		return strings.TrimSpace(raw[start : end+1])
+	}
+
+	return ""
 }

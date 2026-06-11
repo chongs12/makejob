@@ -54,7 +54,21 @@
       "Bash(findstr \":8082\")",
       "Bash(findstr \"LISTENING\")",
       "Bash(sort -t: -k2 -n)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(buf --version)",
+      "Bash(echo \"EXIT=$?\")",
+      "Read(//d/d/gogogo/makejob/**)",
+      "Bash(ls apps/web/src/features/companion)",
+      "Bash(ls apps/web/src/features/plan)",
+      "Bash(psql -U postgres -d makejob -c \"\\\\d user_favorites\")",
+      "Bash(xargs grep *)",
+      "Bash(PGPASSWORD=password psql *)",
+      "Bash(tasklist)",
+      "Bash(xxd D:/gogogo/makejob/app/ai_gateway/internal/biz/admin.go)",
+      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/ai/v1/ai.proto)",
+      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/admin/v1/admin.proto)",
+      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative -I. api/makejob/admin/v1/admin.proto)",
+      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=. api/makejob/admin/v1/admin.proto)"
     ]
   }
 }

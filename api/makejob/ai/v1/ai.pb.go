@@ -1690,6 +1690,139 @@ func (x *QuestionCandidate) GetSourceUrl() string {
 	return ""
 }
 
+// 题目流水线流式事件
+type QuestionPipelineStreamEvent struct {
+	state               protoimpl.MessageState              `protogen:"open.v1"`
+	Event               string                              `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`                                   // status | warning | card | complete | error
+	Message             string                              `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                               // 消息文本
+	TraceId             string                              `protobuf:"bytes,3,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`                // 追踪ID
+	RawOutput           string                              `protobuf:"bytes,4,opt,name=raw_output,json=rawOutput,proto3" json:"raw_output,omitempty"`          // 原始输出
+	FailureStage        string                              `protobuf:"bytes,5,opt,name=failure_stage,json=failureStage,proto3" json:"failure_stage,omitempty"` // 失败阶段
+	CandidateExcerpt    string                              `protobuf:"bytes,6,opt,name=candidate_excerpt,json=candidateExcerpt,proto3" json:"candidate_excerpt,omitempty"`
+	RepairAttempted     bool                                `protobuf:"varint,7,opt,name=repair_attempted,json=repairAttempted,proto3" json:"repair_attempted,omitempty"`
+	SupplementAttempted bool                                `protobuf:"varint,8,opt,name=supplement_attempted,json=supplementAttempted,proto3" json:"supplement_attempted,omitempty"`
+	SlotIndex           int32                               `protobuf:"varint,9,opt,name=slot_index,json=slotIndex,proto3" json:"slot_index,omitempty"`     // 题卡索引
+	RetryIndex          int32                               `protobuf:"varint,10,opt,name=retry_index,json=retryIndex,proto3" json:"retry_index,omitempty"` // 重试索引
+	Card                *QuestionCandidate                  `protobuf:"bytes,11,opt,name=card,proto3" json:"card,omitempty"`                                // 题卡数据
+	Response            *GenerateQuestionCandidatesResponse `protobuf:"bytes,12,opt,name=response,proto3" json:"response,omitempty"`                        // 完整响应
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *QuestionPipelineStreamEvent) Reset() {
+	*x = QuestionPipelineStreamEvent{}
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuestionPipelineStreamEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuestionPipelineStreamEvent) ProtoMessage() {}
+
+func (x *QuestionPipelineStreamEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuestionPipelineStreamEvent.ProtoReflect.Descriptor instead.
+func (*QuestionPipelineStreamEvent) Descriptor() ([]byte, []int) {
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *QuestionPipelineStreamEvent) GetEvent() string {
+	if x != nil {
+		return x.Event
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetRawOutput() string {
+	if x != nil {
+		return x.RawOutput
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetFailureStage() string {
+	if x != nil {
+		return x.FailureStage
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetCandidateExcerpt() string {
+	if x != nil {
+		return x.CandidateExcerpt
+	}
+	return ""
+}
+
+func (x *QuestionPipelineStreamEvent) GetRepairAttempted() bool {
+	if x != nil {
+		return x.RepairAttempted
+	}
+	return false
+}
+
+func (x *QuestionPipelineStreamEvent) GetSupplementAttempted() bool {
+	if x != nil {
+		return x.SupplementAttempted
+	}
+	return false
+}
+
+func (x *QuestionPipelineStreamEvent) GetSlotIndex() int32 {
+	if x != nil {
+		return x.SlotIndex
+	}
+	return 0
+}
+
+func (x *QuestionPipelineStreamEvent) GetRetryIndex() int32 {
+	if x != nil {
+		return x.RetryIndex
+	}
+	return 0
+}
+
+func (x *QuestionPipelineStreamEvent) GetCard() *QuestionCandidate {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+func (x *QuestionPipelineStreamEvent) GetResponse() *GenerateQuestionCandidatesResponse {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
 var File_makejob_ai_v1_ai_proto protoreflect.FileDescriptor
 
 const file_makejob_ai_v1_ai_proto_rawDesc = "" +
@@ -1872,7 +2005,24 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\fsource_label\x18\r \x01(\tR\vsourceLabel\x12!\n" +
 	"\fsource_title\x18\x0e \x01(\tR\vsourceTitle\x12\x1d\n" +
 	"\n" +
-	"source_url\x18\x0f \x01(\tR\tsourceUrl2\xd3\x06\n" +
+	"source_url\x18\x0f \x01(\tR\tsourceUrl\"\xfc\x03\n" +
+	"\x1bQuestionPipelineStreamEvent\x12\x14\n" +
+	"\x05event\x18\x01 \x01(\tR\x05event\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x19\n" +
+	"\btrace_id\x18\x03 \x01(\tR\atraceId\x12\x1d\n" +
+	"\n" +
+	"raw_output\x18\x04 \x01(\tR\trawOutput\x12#\n" +
+	"\rfailure_stage\x18\x05 \x01(\tR\ffailureStage\x12+\n" +
+	"\x11candidate_excerpt\x18\x06 \x01(\tR\x10candidateExcerpt\x12)\n" +
+	"\x10repair_attempted\x18\a \x01(\bR\x0frepairAttempted\x121\n" +
+	"\x14supplement_attempted\x18\b \x01(\bR\x13supplementAttempted\x12\x1d\n" +
+	"\n" +
+	"slot_index\x18\t \x01(\x05R\tslotIndex\x12\x1f\n" +
+	"\vretry_index\x18\n" +
+	" \x01(\x05R\n" +
+	"retryIndex\x124\n" +
+	"\x04card\x18\v \x01(\v2 .makejob.ai.v1.QuestionCandidateR\x04card\x12M\n" +
+	"\bresponse\x18\f \x01(\v21.makejob.ai.v1.GenerateQuestionCandidatesResponseR\bresponse2\xd8\a\n" +
 	"\tAIService\x12]\n" +
 	"\x0eInterviewAgent\x12$.makejob.ai.v1.InterviewAgentRequest\x1a%.makejob.ai.v1.InterviewAgentResponse\x12N\n" +
 	"\tPlanAgent\x12\x1f.makejob.ai.v1.PlanAgentRequest\x1a .makejob.ai.v1.PlanAgentResponse\x12]\n" +
@@ -1882,7 +2032,8 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\x0eLive2DDirector\x12%.makejob.ai.v1.Live2DDirectiveRequest\x1a&.makejob.ai.v1.Live2DDirectiveResponse\x12W\n" +
 	"\fRenderPrompt\x12\".makejob.ai.v1.RenderPromptRequest\x1a#.makejob.ai.v1.RenderPromptResponse\x12H\n" +
 	"\aDebugAI\x12\x1d.makejob.ai.v1.DebugAIRequest\x1a\x1e.makejob.ai.v1.DebugAIResponse\x12\x81\x01\n" +
-	"\x1aGenerateQuestionCandidates\x120.makejob.ai.v1.GenerateQuestionCandidatesRequest\x1a1.makejob.ai.v1.GenerateQuestionCandidatesResponseB Z\x1emakejob/api/makejob/ai/v1;aiv1b\x06proto3"
+	"\x1aGenerateQuestionCandidates\x120.makejob.ai.v1.GenerateQuestionCandidatesRequest\x1a1.makejob.ai.v1.GenerateQuestionCandidatesResponse\x12\x82\x01\n" +
+	" GenerateQuestionCandidatesStream\x120.makejob.ai.v1.GenerateQuestionCandidatesRequest\x1a*.makejob.ai.v1.QuestionPipelineStreamEvent0\x01B Z\x1emakejob/api/makejob/ai/v1;aiv1b\x06proto3"
 
 var (
 	file_makejob_ai_v1_ai_proto_rawDescOnce sync.Once
@@ -1896,7 +2047,7 @@ func file_makejob_ai_v1_ai_proto_rawDescGZIP() []byte {
 	return file_makejob_ai_v1_ai_proto_rawDescData
 }
 
-var file_makejob_ai_v1_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_makejob_ai_v1_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_makejob_ai_v1_ai_proto_goTypes = []any{
 	(*InterviewAgentRequest)(nil),              // 0: makejob.ai.v1.InterviewAgentRequest
 	(*Message)(nil),                            // 1: makejob.ai.v1.Message
@@ -1919,40 +2070,45 @@ var file_makejob_ai_v1_ai_proto_goTypes = []any{
 	(*GenerateQuestionCandidatesRequest)(nil),  // 18: makejob.ai.v1.GenerateQuestionCandidatesRequest
 	(*GenerateQuestionCandidatesResponse)(nil), // 19: makejob.ai.v1.GenerateQuestionCandidatesResponse
 	(*QuestionCandidate)(nil),                  // 20: makejob.ai.v1.QuestionCandidate
-	nil,                                        // 21: makejob.ai.v1.RenderPromptRequest.VariablesEntry
-	nil,                                        // 22: makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
-	nil,                                        // 23: makejob.ai.v1.DebugAIRequest.ParamsEntry
+	(*QuestionPipelineStreamEvent)(nil),        // 21: makejob.ai.v1.QuestionPipelineStreamEvent
+	nil,                                        // 22: makejob.ai.v1.RenderPromptRequest.VariablesEntry
+	nil,                                        // 23: makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
+	nil,                                        // 24: makejob.ai.v1.DebugAIRequest.ParamsEntry
 }
 var file_makejob_ai_v1_ai_proto_depIdxs = []int32{
 	1,  // 0: makejob.ai.v1.InterviewAgentRequest.history:type_name -> makejob.ai.v1.Message
 	5,  // 1: makejob.ai.v1.PlanAgentResponse.tasks:type_name -> makejob.ai.v1.PlanTask
-	21, // 2: makejob.ai.v1.RenderPromptRequest.variables:type_name -> makejob.ai.v1.RenderPromptRequest.VariablesEntry
-	22, // 3: makejob.ai.v1.RenderPromptResponse.resolved_variables:type_name -> makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
-	23, // 4: makejob.ai.v1.DebugAIRequest.params:type_name -> makejob.ai.v1.DebugAIRequest.ParamsEntry
+	22, // 2: makejob.ai.v1.RenderPromptRequest.variables:type_name -> makejob.ai.v1.RenderPromptRequest.VariablesEntry
+	23, // 3: makejob.ai.v1.RenderPromptResponse.resolved_variables:type_name -> makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
+	24, // 4: makejob.ai.v1.DebugAIRequest.params:type_name -> makejob.ai.v1.DebugAIRequest.ParamsEntry
 	20, // 5: makejob.ai.v1.GenerateQuestionCandidatesResponse.candidates:type_name -> makejob.ai.v1.QuestionCandidate
-	0,  // 6: makejob.ai.v1.AIService.InterviewAgent:input_type -> makejob.ai.v1.InterviewAgentRequest
-	3,  // 7: makejob.ai.v1.AIService.PlanAgent:input_type -> makejob.ai.v1.PlanAgentRequest
-	6,  // 8: makejob.ai.v1.AIService.CompanionAgent:input_type -> makejob.ai.v1.CompanionAgentRequest
-	8,  // 9: makejob.ai.v1.AIService.QuizAnalyzer:input_type -> makejob.ai.v1.QuizAnalyzerRequest
-	10, // 10: makejob.ai.v1.AIService.ResumeParser:input_type -> makejob.ai.v1.ResumeParserRequest
-	12, // 11: makejob.ai.v1.AIService.Live2DDirector:input_type -> makejob.ai.v1.Live2DDirectiveRequest
-	14, // 12: makejob.ai.v1.AIService.RenderPrompt:input_type -> makejob.ai.v1.RenderPromptRequest
-	16, // 13: makejob.ai.v1.AIService.DebugAI:input_type -> makejob.ai.v1.DebugAIRequest
-	18, // 14: makejob.ai.v1.AIService.GenerateQuestionCandidates:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
-	2,  // 15: makejob.ai.v1.AIService.InterviewAgent:output_type -> makejob.ai.v1.InterviewAgentResponse
-	4,  // 16: makejob.ai.v1.AIService.PlanAgent:output_type -> makejob.ai.v1.PlanAgentResponse
-	7,  // 17: makejob.ai.v1.AIService.CompanionAgent:output_type -> makejob.ai.v1.CompanionAgentResponse
-	9,  // 18: makejob.ai.v1.AIService.QuizAnalyzer:output_type -> makejob.ai.v1.QuizAnalyzerResponse
-	11, // 19: makejob.ai.v1.AIService.ResumeParser:output_type -> makejob.ai.v1.ResumeParserResponse
-	13, // 20: makejob.ai.v1.AIService.Live2DDirector:output_type -> makejob.ai.v1.Live2DDirectiveResponse
-	15, // 21: makejob.ai.v1.AIService.RenderPrompt:output_type -> makejob.ai.v1.RenderPromptResponse
-	17, // 22: makejob.ai.v1.AIService.DebugAI:output_type -> makejob.ai.v1.DebugAIResponse
-	19, // 23: makejob.ai.v1.AIService.GenerateQuestionCandidates:output_type -> makejob.ai.v1.GenerateQuestionCandidatesResponse
-	15, // [15:24] is the sub-list for method output_type
-	6,  // [6:15] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	20, // 6: makejob.ai.v1.QuestionPipelineStreamEvent.card:type_name -> makejob.ai.v1.QuestionCandidate
+	19, // 7: makejob.ai.v1.QuestionPipelineStreamEvent.response:type_name -> makejob.ai.v1.GenerateQuestionCandidatesResponse
+	0,  // 8: makejob.ai.v1.AIService.InterviewAgent:input_type -> makejob.ai.v1.InterviewAgentRequest
+	3,  // 9: makejob.ai.v1.AIService.PlanAgent:input_type -> makejob.ai.v1.PlanAgentRequest
+	6,  // 10: makejob.ai.v1.AIService.CompanionAgent:input_type -> makejob.ai.v1.CompanionAgentRequest
+	8,  // 11: makejob.ai.v1.AIService.QuizAnalyzer:input_type -> makejob.ai.v1.QuizAnalyzerRequest
+	10, // 12: makejob.ai.v1.AIService.ResumeParser:input_type -> makejob.ai.v1.ResumeParserRequest
+	12, // 13: makejob.ai.v1.AIService.Live2DDirector:input_type -> makejob.ai.v1.Live2DDirectiveRequest
+	14, // 14: makejob.ai.v1.AIService.RenderPrompt:input_type -> makejob.ai.v1.RenderPromptRequest
+	16, // 15: makejob.ai.v1.AIService.DebugAI:input_type -> makejob.ai.v1.DebugAIRequest
+	18, // 16: makejob.ai.v1.AIService.GenerateQuestionCandidates:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
+	18, // 17: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
+	2,  // 18: makejob.ai.v1.AIService.InterviewAgent:output_type -> makejob.ai.v1.InterviewAgentResponse
+	4,  // 19: makejob.ai.v1.AIService.PlanAgent:output_type -> makejob.ai.v1.PlanAgentResponse
+	7,  // 20: makejob.ai.v1.AIService.CompanionAgent:output_type -> makejob.ai.v1.CompanionAgentResponse
+	9,  // 21: makejob.ai.v1.AIService.QuizAnalyzer:output_type -> makejob.ai.v1.QuizAnalyzerResponse
+	11, // 22: makejob.ai.v1.AIService.ResumeParser:output_type -> makejob.ai.v1.ResumeParserResponse
+	13, // 23: makejob.ai.v1.AIService.Live2DDirector:output_type -> makejob.ai.v1.Live2DDirectiveResponse
+	15, // 24: makejob.ai.v1.AIService.RenderPrompt:output_type -> makejob.ai.v1.RenderPromptResponse
+	17, // 25: makejob.ai.v1.AIService.DebugAI:output_type -> makejob.ai.v1.DebugAIResponse
+	19, // 26: makejob.ai.v1.AIService.GenerateQuestionCandidates:output_type -> makejob.ai.v1.GenerateQuestionCandidatesResponse
+	21, // 27: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:output_type -> makejob.ai.v1.QuestionPipelineStreamEvent
+	18, // [18:28] is the sub-list for method output_type
+	8,  // [8:18] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_makejob_ai_v1_ai_proto_init() }
@@ -1966,7 +2122,7 @@ func file_makejob_ai_v1_ai_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_ai_v1_ai_proto_rawDesc), len(file_makejob_ai_v1_ai_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

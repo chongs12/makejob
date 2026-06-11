@@ -17,10 +17,10 @@ func NewCategoryRepo(db *gorm.DB) biz.CategoryRepo {
 	return &categoryRepo{db: db}
 }
 
-func (r *categoryRepo) ListByIndustry(ctx context.Context, industryCode string) ([]*biz.Category, error) {
+func (r *categoryRepo) ListByIndustry(ctx context.Context, industryID uint64) ([]*biz.Category, error) {
 	query := r.db.WithContext(ctx).Model(&model.Category{})
-	if industryCode != "" {
-		query = query.Where("industry_code = ?", industryCode)
+	if industryID > 0 {
+		query = query.Where("industry_id = ?", industryID)
 	}
 
 	var models []model.Category
@@ -30,11 +30,15 @@ func (r *categoryRepo) ListByIndustry(ctx context.Context, industryCode string) 
 
 	categories := make([]*biz.Category, len(models))
 	for i, m := range models {
+		var parentID uint64
+		if m.ParentID != nil {
+			parentID = uint64(*m.ParentID)
+		}
 		categories[i] = &biz.Category{
-			ID:           uint64(m.ID),
-			Name:         m.Name,
-			ParentID:     m.ParentID,
-			IndustryCode: m.IndustryCode,
+			ID:         uint64(m.ID),
+			Name:       m.Name,
+			ParentID:   parentID,
+			IndustryID: uint64(m.IndustryID),
 		}
 	}
 	return categories, nil
@@ -46,10 +50,14 @@ func (r *categoryRepo) GetByID(ctx context.Context, id uint64) (*biz.Category, e
 	if err := r.db.WithContext(ctx).First(&category, id).Error; err != nil {
 		return nil, err
 	}
+	var parentID uint64
+	if category.ParentID != nil {
+		parentID = uint64(*category.ParentID)
+	}
 	return &biz.Category{
-		ID:           uint64(category.ID),
-		Name:         category.Name,
-		ParentID:     category.ParentID,
-		IndustryCode: category.IndustryCode,
+		ID:         uint64(category.ID),
+		Name:       category.Name,
+		ParentID:   parentID,
+		IndustryID: uint64(category.IndustryID),
 	}, nil
 }

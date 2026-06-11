@@ -41,6 +41,15 @@ message PostSummary {
   int32 like_count = 6;
   int32 comment_count = 7;
   google.protobuf.Timestamp created_at = 8;
+  // 对齐前端 CommunityPostItem
+  string post_type = 9;
+  string summary = 10;
+  string tags = 11;
+  int32 view_count = 12;
+  string author_avatar = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  bool is_author = 15;
+  bool is_liked = 16;
 }
 
 message GetPostRequest {
@@ -60,6 +69,12 @@ message PostDetail {
   bool is_liked = 10;
   google.protobuf.Timestamp created_at = 11;
   int32 view_count = 12; // FIX B5: 浏览量字段
+  // 对齐前端 CommunityPostItem
+  string post_type = 13;
+  string summary = 14;
+  string tags = 15;
+  google.protobuf.Timestamp updated_at = 16;
+  bool is_author = 17;
 }
 
 message CreatePostRequest {
@@ -107,6 +122,10 @@ message Comment {
   string author_name = 4;
   string content = 5;
   google.protobuf.Timestamp created_at = 6;
+  // 对齐前端 CommunityCommentItem
+  string author_avatar = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  bool is_author = 9;
 }
 
 message CreateCommentRequest {

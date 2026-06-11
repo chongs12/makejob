@@ -68,22 +68,38 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		return nil, err
 	}
 	return &questionv1.QuestionDetail{
-		Id:              q.ID,
-		Title:           q.Title,
-		Content:         q.Content,
-		Difficulty:      q.Difficulty,
-		Type:            q.Type,
-		IndustryCode:    q.IndustryCode,
-		Category:        &questionv1.CategoryInfo{Id: q.CategoryID, Name: q.CategoryName},
-		Tags:            q.Tags,
-		ReferenceAnswer: q.ReferenceAnswer,
-		Explanation:     q.Explanation,
-		CreatedAt:       timestamppb.New(q.CreatedAt),
+		Id:                 q.ID,
+		Title:              q.Title,
+		Content:            q.Content,
+		Difficulty:         q.Difficulty,
+		Type:               q.Type,
+		IndustryCode:       q.IndustryCode,
+		Category:           &questionv1.CategoryInfo{Id: q.CategoryID, Name: q.CategoryName},
+		Tags:               q.Tags,
+		StarterCode:        q.StarterCode,
+		Language:           q.Language,
+		EvaluationMode:     q.EvaluationMode,
+		ReferenceAnswer:    q.ReferenceAnswer,
+		Explanation:        q.Explanation,
+		CreatedAt:          timestamppb.New(q.CreatedAt),
+		OptionsJson:        q.OptionsJSON,
+		Answer:             q.Answer,
+		SolutionJson:       q.SolutionJSON,
+		JudgeConfigJson:    q.JudgeConfigJSON,
+		AnswerTemplateJson: q.AnswerTemplateJSON,
 	}, nil
 }
 
 func (s *QuestionService) ListCategories(ctx context.Context, req *questionv1.ListCategoriesRequest) (*questionv1.CategoryTreeResponse, error) {
-	categories, err := s.uc.ListCategories(ctx, req.IndustryCode)
+	// categories 表存的是 industry_id（整数外键），需要先将 code 解析为 ID
+	var industryID uint64
+	if req.IndustryCode != "" {
+		industry, err := s.uc.GetIndustryByCode(ctx, req.IndustryCode)
+		if err == nil && industry != nil {
+			industryID = industry.ID
+		}
+	}
+	categories, err := s.uc.ListCategories(ctx, industryID)
 	if err != nil {
 		return nil, err
 	}
@@ -281,17 +297,44 @@ func (s *QuestionService) GetPracticeRecommendations(ctx context.Context, req *q
 	}
 
 	items := make([]*questionv1.RecommendedQuestion, len(questions))
+	focusTagSet := make(map[string]struct{})
+	focusTags := make([]string, 0)
 	for i, q := range questions {
+		tagsCSV := strings.Join(q.Tags, ",")
+		focusTag := ""
+		if len(q.Tags) > 0 {
+			focusTag = q.Tags[0]
+		}
+		if focusTag != "" {
+			if _, ok := focusTagSet[focusTag]; !ok {
+				focusTagSet[focusTag] = struct{}{}
+				focusTags = append(focusTags, focusTag)
+			}
+		}
 		items[i] = &questionv1.RecommendedQuestion{
-			QuestionId: q.ID,
-			Title:      q.Title,
-			Difficulty: q.Difficulty,
+			QuestionId:          q.ID,
+			Title:               q.Title,
+			Difficulty:          q.Difficulty,
+			Type:                q.Type,
+			CategoryId:          q.CategoryID,
+			IndustryId:          q.IndustryID,
+			CategoryName:        q.CategoryName,
+			Tags:                tagsCSV,
+			RecommendReason:     reason,
+			FocusTag:            focusTag,
+			TopicTitle:          focusTag,
+			RelatedQuestionSets: []string{},
+			RecommendedActions:  []string{},
+			RecommendationMode:  "topic",
+			SourceType:          "learning_archive",
+			Priority:            int32(i + 1),
 		}
 	}
 
 	return &questionv1.PracticeRecommendationResponse{
 		Questions: items,
 		Reason:    reason,
+		FocusTags: focusTags,
 	}, nil
 }
 
@@ -347,16 +390,31 @@ func (s *QuestionService) GetUserPracticeStats(ctx context.Context, req *questio
 		}
 	}
 
+	correctCount := totalCorrect
+	wrongCount := totalAnswered - totalCorrect
+	if wrongCount < 0 {
+		wrongCount = 0
+	}
 	return &questionv1.UserPracticeStats{
 		TotalAnswered: totalAnswered,
 		TotalCorrect:  totalCorrect,
 		Accuracy:      accuracy,
 		CategoryStats: items,
+		CorrectCount:  correctCount,
+		WrongCount:    wrongCount,
+		AccuracyRate:  accuracy,
 	}, nil
 }
 
+// GetRandomExam 根据请求中的筛选条件随机返回一组题目。
 func (s *QuestionService) GetRandomExam(ctx context.Context, req *questionv1.RandomExamRequest) (*questionv1.ExamResponse, error) {
-	questions, err := s.uc.GetRandomExam(ctx, req.IndustryCode, req.QuestionCount)
+	questions, err := s.uc.GetRandomExam(ctx, &biz.GetRandomExamRequest{
+		IndustryID:    req.IndustryId,
+		IndustryCode:  req.IndustryCode,
+		CategoryID:    req.CategoryId,
+		Difficulty:    req.Difficulty,
+		QuestionCount: req.QuestionCount,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +447,15 @@ func (s *QuestionService) DeleteNote(ctx context.Context, req *questionv1.Delete
 
 // GenerateTimedExam 生成限时考试（P3-3）
 func (s *QuestionService) GenerateTimedExam(ctx context.Context, req *questionv1.GenerateTimedExamRequest) (*questionv1.GenerateTimedExamResponse, error) {
-	exam, questions, err := s.uc.GenerateTimedExam(ctx, req.UserId, req.IndustryCode, req.QuestionCount, req.TimeLimitMinutes)
+	exam, questions, err := s.uc.GenerateTimedExam(ctx, &biz.GenerateTimedExamRequest{
+		UserID:           req.UserId,
+		IndustryID:       req.IndustryId,
+		IndustryCode:     req.IndustryCode,
+		CategoryID:       req.CategoryId,
+		Difficulty:       req.Difficulty,
+		QuestionCount:    req.QuestionCount,
+		TimeLimitMinutes: req.TimeLimitMinutes,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -461,12 +527,41 @@ func (s *QuestionService) ListQuestionSets(ctx context.Context, req *questionv1.
 
 	items := make([]*questionv1.QuestionSetSummary, len(sets))
 	for i, set := range sets {
-		items[i] = &questionv1.QuestionSetSummary{
+		summary := &questionv1.QuestionSetSummary{
 			Id:            set.ID,
 			Title:         set.Name,
 			Description:   set.Description,
 			QuestionCount: set.QuestionCount,
+			Slug:          slugify(set.Name),
 		}
+
+		// 加载题集内的题目预览，供前端列表卡片展示
+		questions, err := s.uc.GetQuestionSetQuestions(ctx, set.ID)
+		if err == nil && len(questions) > 0 {
+			tagSet := make(map[string]struct{})
+			previews := make([]*questionv1.QuestionSetPreview, 0, len(questions))
+			for _, q := range questions {
+				previews = append(previews, &questionv1.QuestionSetPreview{
+					Id:         q.ID,
+					Title:      q.Title,
+					Type:       q.Type,
+					Difficulty: q.Difficulty,
+				})
+				for _, tag := range q.Tags {
+					if tag != "" {
+						tagSet[tag] = struct{}{}
+					}
+				}
+			}
+			summary.Questions = previews
+			focusTags := make([]string, 0, len(tagSet))
+			for tag := range tagSet {
+				focusTags = append(focusTags, tag)
+			}
+			summary.FocusTags = focusTags
+		}
+
+		items[i] = summary
 	}
 
 	return &questionv1.ListQuestionSetsResponse{
@@ -491,8 +586,10 @@ func (s *QuestionService) GetQuestionSetDetail(ctx context.Context, req *questio
 		Title:         set.Name,
 		Description:   set.Description,
 		QuestionCount: set.QuestionCount,
+		Slug:          slugify(set.Name),
 	}
 
+	tagSet := make(map[string]struct{})
 	items := make([]*questionv1.QuestionSummary, len(questions))
 	for i, q := range questions {
 		items[i] = &questionv1.QuestionSummary{
@@ -502,12 +599,34 @@ func (s *QuestionService) GetQuestionSetDetail(ctx context.Context, req *questio
 			Type:         q.Type,
 			IndustryCode: q.IndustryCode,
 		}
+		for _, tag := range q.Tags {
+			if tag != "" {
+				tagSet[tag] = struct{}{}
+			}
+		}
 	}
+	focusTags := make([]string, 0, len(tagSet))
+	for tag := range tagSet {
+		focusTags = append(focusTags, tag)
+	}
+	info.FocusTags = focusTags
 
 	return &questionv1.QuestionSetDetail{
 		Info:      info,
 		Questions: items,
 	}, nil
+}
+
+// slugify 将标题转换为 URL 友好的 slug（小写、空格转连字符）。
+func slugify(title string) string {
+	s := strings.ToLower(strings.TrimSpace(title))
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, "_", "-")
+	// 移除连续的连字符
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	return s
 }
 
 // ListMistakeTopics 获取用户错题知识点聚合（P3-6）

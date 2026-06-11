@@ -59,28 +59,28 @@ func (r *questionRepo) GetByID(ctx context.Context, id uint64) (*biz.Question, e
 // Create 创建题目
 func (r *questionRepo) Create(ctx context.Context, question *biz.Question) error {
 	m := &QuestionModel{
-		Title:           question.Title,
-		Content:         question.Content,
-		Difficulty:      question.Difficulty,
-		Type:            question.Type,
-		IndustryID:      question.IndustryID,
-		IndustryCode:    question.IndustryCode,
-		IndustryName:    question.IndustryName,
-		CategoryID:      question.CategoryID,
-		CategoryName:    question.CategoryName,
-		OptionsJSON:     question.OptionsJSON,
-		StarterCode:     question.StarterCode,
-		Language:        question.Language,
-		EvaluationMode:  question.EvaluationMode,
-		Answer:          question.Answer,
-		ReferenceAnswer: question.ReferenceAnswer,
-		Explanation:     question.Explanation,
-		SolutionJSON:    question.SolutionJSON,
-		JudgeConfigJSON: question.JudgeConfigJSON,
+		Title:              question.Title,
+		Content:            question.Content,
+		Difficulty:         question.Difficulty,
+		Type:               question.Type,
+		IndustryID:         question.IndustryID,
+		IndustryCode:       question.IndustryCode,
+		IndustryName:       question.IndustryName,
+		CategoryID:         question.CategoryID,
+		CategoryName:       question.CategoryName,
+		OptionsJSON:        question.OptionsJSON,
+		StarterCode:        question.StarterCode,
+		Language:           question.Language,
+		EvaluationMode:     question.EvaluationMode,
+		Answer:             question.Answer,
+		ReferenceAnswer:    question.ReferenceAnswer,
+		Explanation:        question.Explanation,
+		SolutionJSON:       question.SolutionJSON,
+		JudgeConfigJSON:    question.JudgeConfigJSON,
 		AnswerTemplateJSON: question.AnswerTemplateJSON,
-		Tags:            strings.Join(question.Tags, ","),
-		TestCasesJSON:   question.TestCasesJSON,
-		IsActive:        question.IsActive,
+		Tags:               strings.Join(question.Tags, ","),
+		TestCasesJSON:      question.TestCasesJSON,
+		IsActive:           question.IsActive,
 	}
 	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
 		return err
@@ -156,72 +156,77 @@ func (r *questionRepo) Count(ctx context.Context, filter *biz.QuestionFilter) (i
 // toBizQuestion 将数据库模型转换为领域实体
 func toBizQuestion(m *QuestionModel) *biz.Question {
 	return &biz.Question{
-		ID:              uint64(m.ID),
-		Title:           m.Title,
-		Content:         m.Content,
-		Difficulty:      m.Difficulty,
-		Type:            m.Type,
-		IndustryID:      m.IndustryID,
-		IndustryCode:    m.IndustryCode,
-		IndustryName:    m.IndustryName,
-		CategoryID:      m.CategoryID,
-		CategoryName:    m.CategoryName,
-		Tags:            splitQuestionTags(m.Tags),
-		OptionsJSON:     m.OptionsJSON,
-		Answer:          m.Answer,
-		SolutionJSON:    m.SolutionJSON,
-		JudgeConfigJSON: m.JudgeConfigJSON,
+		ID:                 uint64(m.ID),
+		Title:              m.Title,
+		Content:            m.Content,
+		Difficulty:         m.Difficulty,
+		Type:               m.Type,
+		IndustryID:         m.IndustryID,
+		IndustryCode:       m.IndustryCode,
+		IndustryName:       m.IndustryName,
+		CategoryID:         m.CategoryID,
+		CategoryName:       m.CategoryName,
+		Tags:               splitQuestionTags(m.Tags),
+		OptionsJSON:        m.OptionsJSON,
+		Answer:             m.Answer,
+		SolutionJSON:       m.SolutionJSON,
+		JudgeConfigJSON:    m.JudgeConfigJSON,
 		AnswerTemplateJSON: m.AnswerTemplateJSON,
-		StarterCode:     m.StarterCode,
-		Language:        m.Language,
-		EvaluationMode:  m.EvaluationMode,
-		ReferenceAnswer: m.ReferenceAnswer,
-		Explanation:     m.Explanation,
-		TestCasesJSON:   m.TestCasesJSON,
-		IsActive:        m.IsActive,
-		CreatedAt:       m.CreatedAt,
-		UpdatedAt:       m.UpdatedAt,
+		StarterCode:        m.StarterCode,
+		Language:           m.Language,
+		EvaluationMode:     m.EvaluationMode,
+		ReferenceAnswer:    m.ReferenceAnswer,
+		Explanation:        m.Explanation,
+		TestCasesJSON:      m.TestCasesJSON,
+		IsActive:           m.IsActive,
+		CreatedAt:          m.CreatedAt,
+		UpdatedAt:          m.UpdatedAt,
 	}
 }
 
 // QuestionModel GORM model
 type QuestionModel struct {
 	gorm.Model
-	Title           string `gorm:"size:500;not null"`
-	Content         string `gorm:"type:text"`
-	Difficulty      string `gorm:"size:20"`
-	Type            string `gorm:"size:30"`
-	IndustryID      uint64 `gorm:"index"`
-	IndustryCode    string `gorm:"size:50;index"`
-	IndustryName    string `gorm:"size:200"`
-	CategoryID      uint64 `gorm:"index"`
-	CategoryName    string `gorm:"size:200"`
-	OptionsJSON     string `gorm:"type:text"`
-	Answer          string `gorm:"type:text"`
-	SolutionJSON    string `gorm:"type:text"`
-	JudgeConfigJSON string `gorm:"type:text"`
+	Title              string `gorm:"size:500;not null"`
+	Content            string `gorm:"type:text"`
+	Difficulty         string `gorm:"size:20"`
+	Type               string `gorm:"size:30"`
+	IndustryID         uint64 `gorm:"index"`
+	IndustryCode       string `gorm:"size:50;index"`
+	IndustryName       string `gorm:"size:200"`
+	CategoryID         uint64 `gorm:"index"`
+	CategoryName       string `gorm:"size:200"`
+	OptionsJSON        string `gorm:"type:text"`
+	Answer             string `gorm:"type:text"`
+	SolutionJSON       string `gorm:"type:text"`
+	JudgeConfigJSON    string `gorm:"type:text"`
 	AnswerTemplateJSON string `gorm:"type:text"`
-	Tags            string `gorm:"size:500"`
-	StarterCode     string `gorm:"type:text"`
-	Language        string `gorm:"size:30"`
-	EvaluationMode  string `gorm:"size:30"`
-	ReferenceAnswer string `gorm:"type:text"`
-	Explanation     string `gorm:"type:text"`
-	TestCasesJSON   string `gorm:"type:text"`
-	IsActive        bool   `gorm:"not null;default:true"`
+	Tags               string `gorm:"size:500"`
+	StarterCode        string `gorm:"type:text"`
+	Language           string `gorm:"size:30"`
+	EvaluationMode     string `gorm:"size:30"`
+	ReferenceAnswer    string `gorm:"type:text"`
+	Explanation        string `gorm:"type:text"`
+	TestCasesJSON      string `gorm:"type:text"`
+	IsActive           bool   `gorm:"not null;default:true"`
 }
 
 // RandomSelect 按条件随机选取指定数量的题目
 func (r *questionRepo) RandomSelect(ctx context.Context, filter *biz.QuestionFilter, count int32) ([]*biz.Question, error) {
-	query := r.db.WithContext(ctx).Model(&QuestionModel{})
-	if filter != nil && filter.IndustryCode != "" {
-		query = query.Where("industry_code = ?", filter.IndustryCode)
-	}
-	if filter != nil && filter.CategoryID > 0 {
-		query = query.Where("category_id = ?", filter.CategoryID)
-	}
-	if filter != nil && filter.Difficulty != "" {
-		query = query.Where("difficulty = ?", filter.Difficulty)
+	query := r.db.WithContext(ctx).Model(&QuestionModel{}).
+		Where("is_active = ?", true)
+	if filter != nil {
+		if filter.IndustryID > 0 {
+			query = query.Where("industry_id = ?", filter.IndustryID)
+		} else if filter.IndustryCode != "" {
+			query = query.Where("industry_code = ?", filter.IndustryCode)
+		}
+		if filter.CategoryID > 0 {
+			query = query.Where("category_id = ?", filter.CategoryID)
+		}
+		if filter.Difficulty != "" {
+			query = query.Where("difficulty = ?", filter.Difficulty)
+		}
 	}
 
 	var models []QuestionModel

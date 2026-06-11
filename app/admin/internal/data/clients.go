@@ -394,6 +394,10 @@ func (c *noopAIGatewayClient) GenerateQuestionCandidates(_ context.Context, _, _
 	return nil, fmt.Errorf("AI Gateway 服务未配置")
 }
 
+func (c *noopAIGatewayClient) GenerateQuestionCandidatesStream(_ context.Context, _, _, _ string, _ int32, _ biz.PipelineStreamEmitter) error {
+	return fmt.Errorf("AI Gateway 服务未配置")
+}
+
 // RenderPrompt 调用 AI Gateway 的 RenderPrompt RPC
 func (c *aiGatewayClient) RenderPrompt(ctx context.Context, scene, templateText string, variables map[string]string, runWithLLM bool) (*biz.RenderPromptResult, error) {
 	resp, err := c.client.RenderPrompt(forwardServiceAuth(ctx), &aiv1.RenderPromptRequest{
@@ -438,7 +442,23 @@ func (c *aiGatewayClient) DebugAI(ctx context.Context, scene, prompt string, par
 
 // GenerateQuestionCandidates 调用 AI Gateway 的 GenerateQuestionCandidates RPC（FIX H5: 透传所有字段）
 func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*biz.GenerateQuestionCandidatesResult, error) {
-	resp, err := c.client.GenerateQuestionCandidates(forwardServiceAuth(ctx), &aiv1.GenerateQuestionCandidatesRequest{
+	// 先从原始 context 中提取认证信息
+	accessToken := auth.GetAccessTokenFromContext(ctx)
+	if accessToken == "" {
+		accessToken = auth.GetAccessTokenFromMetadata(ctx)
+	}
+
+	// 创建全新的 context，不继承上游的 deadline
+	// AI 调用耗时较长（通常 30-120 秒），不能被上游的短超时影响
+	aiCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// 将认证信息添加到新 context 中
+	if accessToken != "" {
+		aiCtx = auth.WithOutgoingAccessToken(aiCtx, accessToken)
+	}
+
+	resp, err := c.client.GenerateQuestionCandidates(aiCtx, &aiv1.GenerateQuestionCandidatesRequest{
 		IndustryCode:     industryCode,
 		Requirement:      requirement,
 		CandidateCount:   candidateCount,
@@ -479,6 +499,115 @@ func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, indust
 		Candidates:   candidates,
 		Warnings:     resp.Warnings,
 	}, nil
+}
+
+// GenerateQuestionCandidatesStream 调用 AI Gateway 的 GenerateQuestionCandidatesStream RPC（流式）
+func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, emit biz.PipelineStreamEmitter) error {
+	// 先从原始 context 中提取认证信息
+	accessToken := auth.GetAccessTokenFromContext(ctx)
+	if accessToken == "" {
+		accessToken = auth.GetAccessTokenFromMetadata(ctx)
+	}
+
+	// 创建全新的 context，不继承上游的 deadline
+	aiCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	// 将认证信息添加到新 context 中
+	if accessToken != "" {
+		aiCtx = auth.WithOutgoingAccessToken(aiCtx, accessToken)
+	}
+
+	stream, err := c.client.GenerateQuestionCandidatesStream(aiCtx, &aiv1.GenerateQuestionCandidatesRequest{
+		IndustryCode:   industryCode,
+		Requirement:    requirement,
+		CandidateCount: candidateCount,
+		AgentPrompt:    agentPrompt,
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			// EOF 表示流结束
+			if err.Error() == "EOF" {
+				break
+			}
+			return err
+		}
+
+		// 转换事件
+		streamEvent := &biz.PipelineStreamEvent{
+			Event:               event.GetEvent(),
+			Message:             event.GetMessage(),
+			TraceID:             event.GetTraceId(),
+			RawOutput:           event.GetRawOutput(),
+			FailureStage:        event.GetFailureStage(),
+			CandidateExcerpt:    event.GetCandidateExcerpt(),
+			RepairAttempted:     event.GetRepairAttempted(),
+			SupplementAttempted: event.GetSupplementAttempted(),
+			SlotIndex:           event.GetSlotIndex(),
+			RetryIndex:          event.GetRetryIndex(),
+		}
+
+		if event.GetCard() != nil {
+			streamEvent.Card = &biz.QuestionCandidate{
+				Title:       event.GetCard().GetTitle(),
+				Content:     event.GetCard().GetContent(),
+				Type:        event.GetCard().GetType(),
+				Difficulty:  event.GetCard().GetDifficulty(),
+				Category:    event.GetCard().GetCategory(),
+				Answer:      event.GetCard().GetAnswer(),
+				Explanation: event.GetCard().GetExplanation(),
+				Tags:        event.GetCard().GetTags(),
+				SourceType:  event.GetCard().GetSourceType(),
+				Confidence:  event.GetCard().GetConfidence(),
+				Solution:    event.GetCard().GetSolution(),
+				JudgeConfig: event.GetCard().GetJudgeConfig(),
+				SourceLabel: event.GetCard().GetSourceLabel(),
+				SourceTitle: event.GetCard().GetSourceTitle(),
+				SourceURL:   event.GetCard().GetSourceUrl(),
+			}
+		}
+
+		if event.GetResponse() != nil {
+			resp := event.GetResponse()
+			streamEvent.Response = &biz.GenerateQuestionCandidatesResult{
+				IndustryCode: resp.GetIndustryCode(),
+				Requirement:  resp.GetRequirement(),
+				Warnings:     resp.GetWarnings(),
+			}
+			for _, c := range resp.GetCandidates() {
+				streamEvent.Response.Candidates = append(streamEvent.Response.Candidates, &biz.QuestionCandidate{
+					Title:       c.GetTitle(),
+					Content:     c.GetContent(),
+					Type:        c.GetType(),
+					Difficulty:  c.GetDifficulty(),
+					Category:    c.GetCategory(),
+					Answer:      c.GetAnswer(),
+					Explanation: c.GetExplanation(),
+					Tags:        c.GetTags(),
+					SourceType:  c.GetSourceType(),
+					Confidence:  c.GetConfidence(),
+					Solution:    c.GetSolution(),
+					JudgeConfig: c.GetJudgeConfig(),
+					SourceLabel: c.GetSourceLabel(),
+					SourceTitle: c.GetSourceTitle(),
+					SourceURL:   c.GetSourceUrl(),
+				})
+			}
+		}
+
+		if emit != nil {
+			if err := emit(streamEvent); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // ==================== RAG 服务 gRPC 客户端 ====================

@@ -75,8 +75,21 @@ type GrowthSummary struct {
 	AvgScore        float64                `protobuf:"fixed64,5,opt,name=avg_score,json=avgScore,proto3" json:"avg_score,omitempty"`
 	WeeklyStats     []*WeeklyStat          `protobuf:"bytes,6,rep,name=weekly_stats,json=weeklyStats,proto3" json:"weekly_stats,omitempty"`
 	WeakTopics      []*TopicWeakness       `protobuf:"bytes,7,rep,name=weak_topics,json=weakTopics,proto3" json:"weak_topics,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 以下字段对齐前端 GrowthSummaryResponse
+	PracticeStats           *GrowthPracticeStats       `protobuf:"bytes,8,opt,name=practice_stats,json=practiceStats,proto3" json:"practice_stats,omitempty"`
+	StudyDays               int32                      `protobuf:"varint,9,opt,name=study_days,json=studyDays,proto3" json:"study_days,omitempty"`
+	InterviewCount          int32                      `protobuf:"varint,10,opt,name=interview_count,json=interviewCount,proto3" json:"interview_count,omitempty"`
+	CompletedInterviewCount int32                      `protobuf:"varint,11,opt,name=completed_interview_count,json=completedInterviewCount,proto3" json:"completed_interview_count,omitempty"`
+	AverageInterviewScore   float64                    `protobuf:"fixed64,12,opt,name=average_interview_score,json=averageInterviewScore,proto3" json:"average_interview_score,omitempty"`
+	PlanCount               int32                      `protobuf:"varint,13,opt,name=plan_count,json=planCount,proto3" json:"plan_count,omitempty"`
+	CurrentPlan             *GrowthCurrentPlan         `protobuf:"bytes,14,opt,name=current_plan,json=currentPlan,proto3" json:"current_plan,omitempty"`
+	FocusSignals            []*GrowthFocusSignal       `protobuf:"bytes,15,rep,name=focus_signals,json=focusSignals,proto3" json:"focus_signals,omitempty"`
+	TrendSummary            *GrowthTrendSummary        `protobuf:"bytes,16,opt,name=trend_summary,json=trendSummary,proto3" json:"trend_summary,omitempty"`
+	RecentStudyLogs         []*GrowthStudyLog          `protobuf:"bytes,17,rep,name=recent_study_logs,json=recentStudyLogs,proto3" json:"recent_study_logs,omitempty"`
+	RecentInterviews        []*GrowthInterviewSnapshot `protobuf:"bytes,18,rep,name=recent_interviews,json=recentInterviews,proto3" json:"recent_interviews,omitempty"`
+	RecentPlans             []*GrowthPlanSnapshot      `protobuf:"bytes,19,rep,name=recent_plans,json=recentPlans,proto3" json:"recent_plans,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *GrowthSummary) Reset() {
@@ -158,6 +171,922 @@ func (x *GrowthSummary) GetWeakTopics() []*TopicWeakness {
 	return nil
 }
 
+func (x *GrowthSummary) GetPracticeStats() *GrowthPracticeStats {
+	if x != nil {
+		return x.PracticeStats
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetStudyDays() int32 {
+	if x != nil {
+		return x.StudyDays
+	}
+	return 0
+}
+
+func (x *GrowthSummary) GetInterviewCount() int32 {
+	if x != nil {
+		return x.InterviewCount
+	}
+	return 0
+}
+
+func (x *GrowthSummary) GetCompletedInterviewCount() int32 {
+	if x != nil {
+		return x.CompletedInterviewCount
+	}
+	return 0
+}
+
+func (x *GrowthSummary) GetAverageInterviewScore() float64 {
+	if x != nil {
+		return x.AverageInterviewScore
+	}
+	return 0
+}
+
+func (x *GrowthSummary) GetPlanCount() int32 {
+	if x != nil {
+		return x.PlanCount
+	}
+	return 0
+}
+
+func (x *GrowthSummary) GetCurrentPlan() *GrowthCurrentPlan {
+	if x != nil {
+		return x.CurrentPlan
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetFocusSignals() []*GrowthFocusSignal {
+	if x != nil {
+		return x.FocusSignals
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetTrendSummary() *GrowthTrendSummary {
+	if x != nil {
+		return x.TrendSummary
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetRecentStudyLogs() []*GrowthStudyLog {
+	if x != nil {
+		return x.RecentStudyLogs
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetRecentInterviews() []*GrowthInterviewSnapshot {
+	if x != nil {
+		return x.RecentInterviews
+	}
+	return nil
+}
+
+func (x *GrowthSummary) GetRecentPlans() []*GrowthPlanSnapshot {
+	if x != nil {
+		return x.RecentPlans
+	}
+	return nil
+}
+
+type GrowthCategoryStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CategoryId    int32                  `protobuf:"varint,1,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	CategoryName  string                 `protobuf:"bytes,2,opt,name=category_name,json=categoryName,proto3" json:"category_name,omitempty"`
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	Correct       int32                  `protobuf:"varint,4,opt,name=correct,proto3" json:"correct,omitempty"`
+	AccuracyRate  float64                `protobuf:"fixed64,5,opt,name=accuracy_rate,json=accuracyRate,proto3" json:"accuracy_rate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrowthCategoryStat) Reset() {
+	*x = GrowthCategoryStat{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthCategoryStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthCategoryStat) ProtoMessage() {}
+
+func (x *GrowthCategoryStat) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthCategoryStat.ProtoReflect.Descriptor instead.
+func (*GrowthCategoryStat) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GrowthCategoryStat) GetCategoryId() int32 {
+	if x != nil {
+		return x.CategoryId
+	}
+	return 0
+}
+
+func (x *GrowthCategoryStat) GetCategoryName() string {
+	if x != nil {
+		return x.CategoryName
+	}
+	return ""
+}
+
+func (x *GrowthCategoryStat) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *GrowthCategoryStat) GetCorrect() int32 {
+	if x != nil {
+		return x.Correct
+	}
+	return 0
+}
+
+func (x *GrowthCategoryStat) GetAccuracyRate() float64 {
+	if x != nil {
+		return x.AccuracyRate
+	}
+	return 0
+}
+
+type GrowthPracticeStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TotalAnswered int32                  `protobuf:"varint,1,opt,name=total_answered,json=totalAnswered,proto3" json:"total_answered,omitempty"`
+	CorrectCount  int32                  `protobuf:"varint,2,opt,name=correct_count,json=correctCount,proto3" json:"correct_count,omitempty"`
+	WrongCount    int32                  `protobuf:"varint,3,opt,name=wrong_count,json=wrongCount,proto3" json:"wrong_count,omitempty"`
+	AccuracyRate  float64                `protobuf:"fixed64,4,opt,name=accuracy_rate,json=accuracyRate,proto3" json:"accuracy_rate,omitempty"`
+	TodayCount    int32                  `protobuf:"varint,5,opt,name=today_count,json=todayCount,proto3" json:"today_count,omitempty"`
+	StreakDays    int32                  `protobuf:"varint,6,opt,name=streak_days,json=streakDays,proto3" json:"streak_days,omitempty"`
+	CategoryStats []*GrowthCategoryStat  `protobuf:"bytes,7,rep,name=category_stats,json=categoryStats,proto3" json:"category_stats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrowthPracticeStats) Reset() {
+	*x = GrowthPracticeStats{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthPracticeStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthPracticeStats) ProtoMessage() {}
+
+func (x *GrowthPracticeStats) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthPracticeStats.ProtoReflect.Descriptor instead.
+func (*GrowthPracticeStats) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GrowthPracticeStats) GetTotalAnswered() int32 {
+	if x != nil {
+		return x.TotalAnswered
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetCorrectCount() int32 {
+	if x != nil {
+		return x.CorrectCount
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetWrongCount() int32 {
+	if x != nil {
+		return x.WrongCount
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetAccuracyRate() float64 {
+	if x != nil {
+		return x.AccuracyRate
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetTodayCount() int32 {
+	if x != nil {
+		return x.TodayCount
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetStreakDays() int32 {
+	if x != nil {
+		return x.StreakDays
+	}
+	return 0
+}
+
+func (x *GrowthPracticeStats) GetCategoryStats() []*GrowthCategoryStat {
+	if x != nil {
+		return x.CategoryStats
+	}
+	return nil
+}
+
+type GrowthCurrentPlan struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Id                     int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title                  string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Status                 string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	TotalTasks             int32                  `protobuf:"varint,4,opt,name=total_tasks,json=totalTasks,proto3" json:"total_tasks,omitempty"`
+	CompletedTasks         int32                  `protobuf:"varint,5,opt,name=completed_tasks,json=completedTasks,proto3" json:"completed_tasks,omitempty"`
+	Progress               float64                `protobuf:"fixed64,6,opt,name=progress,proto3" json:"progress,omitempty"`
+	NextTaskTitle          string                 `protobuf:"bytes,7,opt,name=next_task_title,json=nextTaskTitle,proto3" json:"next_task_title,omitempty"`
+	NextTaskSource         string                 `protobuf:"bytes,8,opt,name=next_task_source,json=nextTaskSource,proto3" json:"next_task_source,omitempty"`
+	NextTaskReason         string                 `protobuf:"bytes,9,opt,name=next_task_reason,json=nextTaskReason,proto3" json:"next_task_reason,omitempty"`
+	NextTaskSourceRef      string                 `protobuf:"bytes,10,opt,name=next_task_source_ref,json=nextTaskSourceRef,proto3" json:"next_task_source_ref,omitempty"`
+	NextTaskCollectionHint string                 `protobuf:"bytes,11,opt,name=next_task_collection_hint,json=nextTaskCollectionHint,proto3" json:"next_task_collection_hint,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *GrowthCurrentPlan) Reset() {
+	*x = GrowthCurrentPlan{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthCurrentPlan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthCurrentPlan) ProtoMessage() {}
+
+func (x *GrowthCurrentPlan) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthCurrentPlan.ProtoReflect.Descriptor instead.
+func (*GrowthCurrentPlan) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GrowthCurrentPlan) GetId() int32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GrowthCurrentPlan) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetTotalTasks() int32 {
+	if x != nil {
+		return x.TotalTasks
+	}
+	return 0
+}
+
+func (x *GrowthCurrentPlan) GetCompletedTasks() int32 {
+	if x != nil {
+		return x.CompletedTasks
+	}
+	return 0
+}
+
+func (x *GrowthCurrentPlan) GetProgress() float64 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *GrowthCurrentPlan) GetNextTaskTitle() string {
+	if x != nil {
+		return x.NextTaskTitle
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetNextTaskSource() string {
+	if x != nil {
+		return x.NextTaskSource
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetNextTaskReason() string {
+	if x != nil {
+		return x.NextTaskReason
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetNextTaskSourceRef() string {
+	if x != nil {
+		return x.NextTaskSourceRef
+	}
+	return ""
+}
+
+func (x *GrowthCurrentPlan) GetNextTaskCollectionHint() string {
+	if x != nil {
+		return x.NextTaskCollectionHint
+	}
+	return ""
+}
+
+type GrowthFocusSignal struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	FocusTag                  string                 `protobuf:"bytes,1,opt,name=focus_tag,json=focusTag,proto3" json:"focus_tag,omitempty"`
+	TopicCode                 string                 `protobuf:"bytes,2,opt,name=topic_code,json=topicCode,proto3" json:"topic_code,omitempty"`
+	TopicTitle                string                 `protobuf:"bytes,3,opt,name=topic_title,json=topicTitle,proto3" json:"topic_title,omitempty"`
+	TopicProblemPattern       string                 `protobuf:"bytes,4,opt,name=topic_problem_pattern,json=topicProblemPattern,proto3" json:"topic_problem_pattern,omitempty"`
+	RelatedQuestionSets       []string               `protobuf:"bytes,5,rep,name=related_question_sets,json=relatedQuestionSets,proto3" json:"related_question_sets,omitempty"`
+	RecommendedActions        []string               `protobuf:"bytes,6,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
+	PrimaryQuestionSet        string                 `protobuf:"bytes,7,opt,name=primary_question_set,json=primaryQuestionSet,proto3" json:"primary_question_set,omitempty"`
+	DominantArchivePhase      string                 `protobuf:"bytes,8,opt,name=dominant_archive_phase,json=dominantArchivePhase,proto3" json:"dominant_archive_phase,omitempty"`
+	DominantArchivePhaseLabel string                 `protobuf:"bytes,9,opt,name=dominant_archive_phase_label,json=dominantArchivePhaseLabel,proto3" json:"dominant_archive_phase_label,omitempty"`
+	OccurrenceCount           int32                  `protobuf:"varint,10,opt,name=occurrence_count,json=occurrenceCount,proto3" json:"occurrence_count,omitempty"`
+	ArchiveOccurrenceCount    int32                  `protobuf:"varint,11,opt,name=archive_occurrence_count,json=archiveOccurrenceCount,proto3" json:"archive_occurrence_count,omitempty"`
+	InterviewOccurrenceCount  int32                  `protobuf:"varint,12,opt,name=interview_occurrence_count,json=interviewOccurrenceCount,proto3" json:"interview_occurrence_count,omitempty"`
+	Source                    string                 `protobuf:"bytes,13,opt,name=source,proto3" json:"source,omitempty"`
+	SourceLabel               string                 `protobuf:"bytes,14,opt,name=source_label,json=sourceLabel,proto3" json:"source_label,omitempty"`
+	Reason                    string                 `protobuf:"bytes,15,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *GrowthFocusSignal) Reset() {
+	*x = GrowthFocusSignal{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthFocusSignal) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthFocusSignal) ProtoMessage() {}
+
+func (x *GrowthFocusSignal) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthFocusSignal.ProtoReflect.Descriptor instead.
+func (*GrowthFocusSignal) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GrowthFocusSignal) GetFocusTag() string {
+	if x != nil {
+		return x.FocusTag
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetTopicCode() string {
+	if x != nil {
+		return x.TopicCode
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetTopicTitle() string {
+	if x != nil {
+		return x.TopicTitle
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetTopicProblemPattern() string {
+	if x != nil {
+		return x.TopicProblemPattern
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetRelatedQuestionSets() []string {
+	if x != nil {
+		return x.RelatedQuestionSets
+	}
+	return nil
+}
+
+func (x *GrowthFocusSignal) GetRecommendedActions() []string {
+	if x != nil {
+		return x.RecommendedActions
+	}
+	return nil
+}
+
+func (x *GrowthFocusSignal) GetPrimaryQuestionSet() string {
+	if x != nil {
+		return x.PrimaryQuestionSet
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetDominantArchivePhase() string {
+	if x != nil {
+		return x.DominantArchivePhase
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetDominantArchivePhaseLabel() string {
+	if x != nil {
+		return x.DominantArchivePhaseLabel
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetOccurrenceCount() int32 {
+	if x != nil {
+		return x.OccurrenceCount
+	}
+	return 0
+}
+
+func (x *GrowthFocusSignal) GetArchiveOccurrenceCount() int32 {
+	if x != nil {
+		return x.ArchiveOccurrenceCount
+	}
+	return 0
+}
+
+func (x *GrowthFocusSignal) GetInterviewOccurrenceCount() int32 {
+	if x != nil {
+		return x.InterviewOccurrenceCount
+	}
+	return 0
+}
+
+func (x *GrowthFocusSignal) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetSourceLabel() string {
+	if x != nil {
+		return x.SourceLabel
+	}
+	return ""
+}
+
+func (x *GrowthFocusSignal) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type GrowthTrendSummary struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	DominantSource      string                 `protobuf:"bytes,1,opt,name=dominant_source,json=dominantSource,proto3" json:"dominant_source,omitempty"`
+	DominantSourceLabel string                 `protobuf:"bytes,2,opt,name=dominant_source_label,json=dominantSourceLabel,proto3" json:"dominant_source_label,omitempty"`
+	TopFocusTag         string                 `protobuf:"bytes,3,opt,name=top_focus_tag,json=topFocusTag,proto3" json:"top_focus_tag,omitempty"`
+	TopTopicCode        string                 `protobuf:"bytes,4,opt,name=top_topic_code,json=topTopicCode,proto3" json:"top_topic_code,omitempty"`
+	TopTopicTitle       string                 `protobuf:"bytes,5,opt,name=top_topic_title,json=topTopicTitle,proto3" json:"top_topic_title,omitempty"`
+	Summary             string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *GrowthTrendSummary) Reset() {
+	*x = GrowthTrendSummary{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthTrendSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthTrendSummary) ProtoMessage() {}
+
+func (x *GrowthTrendSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthTrendSummary.ProtoReflect.Descriptor instead.
+func (*GrowthTrendSummary) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GrowthTrendSummary) GetDominantSource() string {
+	if x != nil {
+		return x.DominantSource
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetDominantSourceLabel() string {
+	if x != nil {
+		return x.DominantSourceLabel
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopFocusTag() string {
+	if x != nil {
+		return x.TopFocusTag
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopTopicCode() string {
+	if x != nil {
+		return x.TopTopicCode
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopTopicTitle() string {
+	if x != nil {
+		return x.TopTopicTitle
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+type GrowthStudyLog struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	DateKey          string                 `protobuf:"bytes,2,opt,name=date_key,json=dateKey,proto3" json:"date_key,omitempty"`
+	Summary          string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	FocusTaskTitle   string                 `protobuf:"bytes,4,opt,name=focus_task_title,json=focusTaskTitle,proto3" json:"focus_task_title,omitempty"`
+	CompletedCount   int32                  `protobuf:"varint,5,opt,name=completed_count,json=completedCount,proto3" json:"completed_count,omitempty"`
+	SkippedCount     int32                  `protobuf:"varint,6,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
+	CompletedTitles  []string               `protobuf:"bytes,7,rep,name=completed_titles,json=completedTitles,proto3" json:"completed_titles,omitempty"`
+	SkippedTitles    []string               `protobuf:"bytes,8,rep,name=skipped_titles,json=skippedTitles,proto3" json:"skipped_titles,omitempty"`
+	LatestActionText string                 `protobuf:"bytes,9,opt,name=latest_action_text,json=latestActionText,proto3" json:"latest_action_text,omitempty"`
+	UpdatedAt        string                 `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GrowthStudyLog) Reset() {
+	*x = GrowthStudyLog{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthStudyLog) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthStudyLog) ProtoMessage() {}
+
+func (x *GrowthStudyLog) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthStudyLog.ProtoReflect.Descriptor instead.
+func (*GrowthStudyLog) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GrowthStudyLog) GetId() int32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GrowthStudyLog) GetDateKey() string {
+	if x != nil {
+		return x.DateKey
+	}
+	return ""
+}
+
+func (x *GrowthStudyLog) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *GrowthStudyLog) GetFocusTaskTitle() string {
+	if x != nil {
+		return x.FocusTaskTitle
+	}
+	return ""
+}
+
+func (x *GrowthStudyLog) GetCompletedCount() int32 {
+	if x != nil {
+		return x.CompletedCount
+	}
+	return 0
+}
+
+func (x *GrowthStudyLog) GetSkippedCount() int32 {
+	if x != nil {
+		return x.SkippedCount
+	}
+	return 0
+}
+
+func (x *GrowthStudyLog) GetCompletedTitles() []string {
+	if x != nil {
+		return x.CompletedTitles
+	}
+	return nil
+}
+
+func (x *GrowthStudyLog) GetSkippedTitles() []string {
+	if x != nil {
+		return x.SkippedTitles
+	}
+	return nil
+}
+
+func (x *GrowthStudyLog) GetLatestActionText() string {
+	if x != nil {
+		return x.LatestActionText
+	}
+	return ""
+}
+
+func (x *GrowthStudyLog) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type GrowthInterviewSnapshot struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Score          int32                  `protobuf:"varint,3,opt,name=score,proto3" json:"score,omitempty"`
+	TotalQuestions int32                  `protobuf:"varint,4,opt,name=total_questions,json=totalQuestions,proto3" json:"total_questions,omitempty"`
+	CreatedAt      string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	EndedAt        string                 `protobuf:"bytes,6,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GrowthInterviewSnapshot) Reset() {
+	*x = GrowthInterviewSnapshot{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthInterviewSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthInterviewSnapshot) ProtoMessage() {}
+
+func (x *GrowthInterviewSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthInterviewSnapshot.ProtoReflect.Descriptor instead.
+func (*GrowthInterviewSnapshot) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GrowthInterviewSnapshot) GetId() int32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GrowthInterviewSnapshot) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GrowthInterviewSnapshot) GetScore() int32 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *GrowthInterviewSnapshot) GetTotalQuestions() int32 {
+	if x != nil {
+		return x.TotalQuestions
+	}
+	return 0
+}
+
+func (x *GrowthInterviewSnapshot) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *GrowthInterviewSnapshot) GetEndedAt() string {
+	if x != nil {
+		return x.EndedAt
+	}
+	return ""
+}
+
+type GrowthPlanSnapshot struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title          string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Status         string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	TotalTasks     int32                  `protobuf:"varint,4,opt,name=total_tasks,json=totalTasks,proto3" json:"total_tasks,omitempty"`
+	CompletedTasks int32                  `protobuf:"varint,5,opt,name=completed_tasks,json=completedTasks,proto3" json:"completed_tasks,omitempty"`
+	Progress       float64                `protobuf:"fixed64,6,opt,name=progress,proto3" json:"progress,omitempty"`
+	StartDate      string                 `protobuf:"bytes,7,opt,name=start_date,json=startDate,proto3" json:"start_date,omitempty"`
+	EndDate        string                 `protobuf:"bytes,8,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GrowthPlanSnapshot) Reset() {
+	*x = GrowthPlanSnapshot{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthPlanSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthPlanSnapshot) ProtoMessage() {}
+
+func (x *GrowthPlanSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthPlanSnapshot.ProtoReflect.Descriptor instead.
+func (*GrowthPlanSnapshot) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GrowthPlanSnapshot) GetId() int32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *GrowthPlanSnapshot) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *GrowthPlanSnapshot) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GrowthPlanSnapshot) GetTotalTasks() int32 {
+	if x != nil {
+		return x.TotalTasks
+	}
+	return 0
+}
+
+func (x *GrowthPlanSnapshot) GetCompletedTasks() int32 {
+	if x != nil {
+		return x.CompletedTasks
+	}
+	return 0
+}
+
+func (x *GrowthPlanSnapshot) GetProgress() float64 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *GrowthPlanSnapshot) GetStartDate() string {
+	if x != nil {
+		return x.StartDate
+	}
+	return ""
+}
+
+func (x *GrowthPlanSnapshot) GetEndDate() string {
+	if x != nil {
+		return x.EndDate
+	}
+	return ""
+}
+
 type WeeklyStat struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Week              string                 `protobuf:"bytes,1,opt,name=week,proto3" json:"week,omitempty"`
@@ -170,7 +1099,7 @@ type WeeklyStat struct {
 
 func (x *WeeklyStat) Reset() {
 	*x = WeeklyStat{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[2]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +1111,7 @@ func (x *WeeklyStat) String() string {
 func (*WeeklyStat) ProtoMessage() {}
 
 func (x *WeeklyStat) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[2]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +1124,7 @@ func (x *WeeklyStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeeklyStat.ProtoReflect.Descriptor instead.
 func (*WeeklyStat) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{2}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *WeeklyStat) GetWeek() string {
@@ -237,7 +1166,7 @@ type TopicWeakness struct {
 
 func (x *TopicWeakness) Reset() {
 	*x = TopicWeakness{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[3]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -249,7 +1178,7 @@ func (x *TopicWeakness) String() string {
 func (*TopicWeakness) ProtoMessage() {}
 
 func (x *TopicWeakness) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[3]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -262,7 +1191,7 @@ func (x *TopicWeakness) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicWeakness.ProtoReflect.Descriptor instead.
 func (*TopicWeakness) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{3}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TopicWeakness) GetTopic() string {
@@ -287,16 +1216,18 @@ func (x *TopicWeakness) GetMistakeCount() int32 {
 }
 
 type WeeklyFocus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*FocusItem           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Summary       string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Items   []*FocusItem           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Summary string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
+	// 对齐前端 WeeklyFocusResponse.themes
+	Themes        []*WeeklyFocusTheme `protobuf:"bytes,3,rep,name=themes,proto3" json:"themes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WeeklyFocus) Reset() {
 	*x = WeeklyFocus{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[4]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -308,7 +1239,7 @@ func (x *WeeklyFocus) String() string {
 func (*WeeklyFocus) ProtoMessage() {}
 
 func (x *WeeklyFocus) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[4]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -321,7 +1252,7 @@ func (x *WeeklyFocus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeeklyFocus.ProtoReflect.Descriptor instead.
 func (*WeeklyFocus) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{4}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WeeklyFocus) GetItems() []*FocusItem {
@@ -338,6 +1269,145 @@ func (x *WeeklyFocus) GetSummary() string {
 	return ""
 }
 
+func (x *WeeklyFocus) GetThemes() []*WeeklyFocusTheme {
+	if x != nil {
+		return x.Themes
+	}
+	return nil
+}
+
+type WeeklyFocusTheme struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	Title                     string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Reason                    string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Source                    string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	SourceLabel               string                 `protobuf:"bytes,4,opt,name=source_label,json=sourceLabel,proto3" json:"source_label,omitempty"`
+	FocusTags                 []string               `protobuf:"bytes,5,rep,name=focus_tags,json=focusTags,proto3" json:"focus_tags,omitempty"`
+	TopicCodes                []string               `protobuf:"bytes,6,rep,name=topic_codes,json=topicCodes,proto3" json:"topic_codes,omitempty"`
+	RelatedQuestionSets       []string               `protobuf:"bytes,7,rep,name=related_question_sets,json=relatedQuestionSets,proto3" json:"related_question_sets,omitempty"`
+	DominantArchivePhase      string                 `protobuf:"bytes,8,opt,name=dominant_archive_phase,json=dominantArchivePhase,proto3" json:"dominant_archive_phase,omitempty"`
+	DominantArchivePhaseLabel string                 `protobuf:"bytes,9,opt,name=dominant_archive_phase_label,json=dominantArchivePhaseLabel,proto3" json:"dominant_archive_phase_label,omitempty"`
+	OccurrenceCount           int32                  `protobuf:"varint,10,opt,name=occurrence_count,json=occurrenceCount,proto3" json:"occurrence_count,omitempty"`
+	InterviewOccurrenceCount  int32                  `protobuf:"varint,11,opt,name=interview_occurrence_count,json=interviewOccurrenceCount,proto3" json:"interview_occurrence_count,omitempty"`
+	Suggestions               []string               `protobuf:"bytes,12,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *WeeklyFocusTheme) Reset() {
+	*x = WeeklyFocusTheme{}
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WeeklyFocusTheme) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WeeklyFocusTheme) ProtoMessage() {}
+
+func (x *WeeklyFocusTheme) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WeeklyFocusTheme.ProtoReflect.Descriptor instead.
+func (*WeeklyFocusTheme) Descriptor() ([]byte, []int) {
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *WeeklyFocusTheme) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetSourceLabel() string {
+	if x != nil {
+		return x.SourceLabel
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetFocusTags() []string {
+	if x != nil {
+		return x.FocusTags
+	}
+	return nil
+}
+
+func (x *WeeklyFocusTheme) GetTopicCodes() []string {
+	if x != nil {
+		return x.TopicCodes
+	}
+	return nil
+}
+
+func (x *WeeklyFocusTheme) GetRelatedQuestionSets() []string {
+	if x != nil {
+		return x.RelatedQuestionSets
+	}
+	return nil
+}
+
+func (x *WeeklyFocusTheme) GetDominantArchivePhase() string {
+	if x != nil {
+		return x.DominantArchivePhase
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetDominantArchivePhaseLabel() string {
+	if x != nil {
+		return x.DominantArchivePhaseLabel
+	}
+	return ""
+}
+
+func (x *WeeklyFocusTheme) GetOccurrenceCount() int32 {
+	if x != nil {
+		return x.OccurrenceCount
+	}
+	return 0
+}
+
+func (x *WeeklyFocusTheme) GetInterviewOccurrenceCount() int32 {
+	if x != nil {
+		return x.InterviewOccurrenceCount
+	}
+	return 0
+}
+
+func (x *WeeklyFocusTheme) GetSuggestions() []string {
+	if x != nil {
+		return x.Suggestions
+	}
+	return nil
+}
+
 type FocusItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
@@ -350,7 +1420,7 @@ type FocusItem struct {
 
 func (x *FocusItem) Reset() {
 	*x = FocusItem{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[5]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -362,7 +1432,7 @@ func (x *FocusItem) String() string {
 func (*FocusItem) ProtoMessage() {}
 
 func (x *FocusItem) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[5]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -375,7 +1445,7 @@ func (x *FocusItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusItem.ProtoReflect.Descriptor instead.
 func (*FocusItem) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{5}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *FocusItem) GetTopic() string {
@@ -418,7 +1488,7 @@ type SyncStudyLogRequest struct {
 
 func (x *SyncStudyLogRequest) Reset() {
 	*x = SyncStudyLogRequest{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[6]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -430,7 +1500,7 @@ func (x *SyncStudyLogRequest) String() string {
 func (*SyncStudyLogRequest) ProtoMessage() {}
 
 func (x *SyncStudyLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[6]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -443,7 +1513,7 @@ func (x *SyncStudyLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncStudyLogRequest.ProtoReflect.Descriptor instead.
 func (*SyncStudyLogRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{6}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SyncStudyLogRequest) GetUserId() uint64 {
@@ -487,7 +1557,7 @@ type StudyLog struct {
 
 func (x *StudyLog) Reset() {
 	*x = StudyLog{}
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[7]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +1569,7 @@ func (x *StudyLog) String() string {
 func (*StudyLog) ProtoMessage() {}
 
 func (x *StudyLog) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_growth_v1_growth_proto_msgTypes[7]
+	mi := &file_makejob_growth_v1_growth_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +1582,7 @@ func (x *StudyLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StudyLog.ProtoReflect.Descriptor instead.
 func (*StudyLog) Descriptor() ([]byte, []int) {
-	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{7}
+	return file_makejob_growth_v1_growth_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StudyLog) GetId() uint64 {
@@ -556,7 +1626,7 @@ const file_makejob_growth_v1_growth_proto_rawDesc = "" +
 	"\n" +
 	"\x1emakejob/growth/v1/growth.proto\x12\x11makejob.growth.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"(\n" +
 	"\rUserIDRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xd6\x02\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xd2\b\n" +
 	"\rGrowthSummary\x12(\n" +
 	"\x10total_study_days\x18\x01 \x01(\x05R\x0etotalStudyDays\x12'\n" +
 	"\x0ftotal_questions\x18\x02 \x01(\x05R\x0etotalQuestions\x12)\n" +
@@ -565,7 +1635,112 @@ const file_makejob_growth_v1_growth_proto_rawDesc = "" +
 	"\tavg_score\x18\x05 \x01(\x01R\bavgScore\x12@\n" +
 	"\fweekly_stats\x18\x06 \x03(\v2\x1d.makejob.growth.v1.WeeklyStatR\vweeklyStats\x12A\n" +
 	"\vweak_topics\x18\a \x03(\v2 .makejob.growth.v1.TopicWeaknessR\n" +
-	"weakTopics\"\x97\x01\n" +
+	"weakTopics\x12M\n" +
+	"\x0epractice_stats\x18\b \x01(\v2&.makejob.growth.v1.GrowthPracticeStatsR\rpracticeStats\x12\x1d\n" +
+	"\n" +
+	"study_days\x18\t \x01(\x05R\tstudyDays\x12'\n" +
+	"\x0finterview_count\x18\n" +
+	" \x01(\x05R\x0einterviewCount\x12:\n" +
+	"\x19completed_interview_count\x18\v \x01(\x05R\x17completedInterviewCount\x126\n" +
+	"\x17average_interview_score\x18\f \x01(\x01R\x15averageInterviewScore\x12\x1d\n" +
+	"\n" +
+	"plan_count\x18\r \x01(\x05R\tplanCount\x12G\n" +
+	"\fcurrent_plan\x18\x0e \x01(\v2$.makejob.growth.v1.GrowthCurrentPlanR\vcurrentPlan\x12I\n" +
+	"\rfocus_signals\x18\x0f \x03(\v2$.makejob.growth.v1.GrowthFocusSignalR\ffocusSignals\x12J\n" +
+	"\rtrend_summary\x18\x10 \x01(\v2%.makejob.growth.v1.GrowthTrendSummaryR\ftrendSummary\x12M\n" +
+	"\x11recent_study_logs\x18\x11 \x03(\v2!.makejob.growth.v1.GrowthStudyLogR\x0frecentStudyLogs\x12W\n" +
+	"\x11recent_interviews\x18\x12 \x03(\v2*.makejob.growth.v1.GrowthInterviewSnapshotR\x10recentInterviews\x12H\n" +
+	"\frecent_plans\x18\x13 \x03(\v2%.makejob.growth.v1.GrowthPlanSnapshotR\vrecentPlans\"\xaf\x01\n" +
+	"\x12GrowthCategoryStat\x12\x1f\n" +
+	"\vcategory_id\x18\x01 \x01(\x05R\n" +
+	"categoryId\x12#\n" +
+	"\rcategory_name\x18\x02 \x01(\tR\fcategoryName\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\x12\x18\n" +
+	"\acorrect\x18\x04 \x01(\x05R\acorrect\x12#\n" +
+	"\raccuracy_rate\x18\x05 \x01(\x01R\faccuracyRate\"\xb7\x02\n" +
+	"\x13GrowthPracticeStats\x12%\n" +
+	"\x0etotal_answered\x18\x01 \x01(\x05R\rtotalAnswered\x12#\n" +
+	"\rcorrect_count\x18\x02 \x01(\x05R\fcorrectCount\x12\x1f\n" +
+	"\vwrong_count\x18\x03 \x01(\x05R\n" +
+	"wrongCount\x12#\n" +
+	"\raccuracy_rate\x18\x04 \x01(\x01R\faccuracyRate\x12\x1f\n" +
+	"\vtoday_count\x18\x05 \x01(\x05R\n" +
+	"todayCount\x12\x1f\n" +
+	"\vstreak_days\x18\x06 \x01(\x05R\n" +
+	"streakDays\x12L\n" +
+	"\x0ecategory_stats\x18\a \x03(\v2%.makejob.growth.v1.GrowthCategoryStatR\rcategoryStats\"\x9f\x03\n" +
+	"\x11GrowthCurrentPlan\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1f\n" +
+	"\vtotal_tasks\x18\x04 \x01(\x05R\n" +
+	"totalTasks\x12'\n" +
+	"\x0fcompleted_tasks\x18\x05 \x01(\x05R\x0ecompletedTasks\x12\x1a\n" +
+	"\bprogress\x18\x06 \x01(\x01R\bprogress\x12&\n" +
+	"\x0fnext_task_title\x18\a \x01(\tR\rnextTaskTitle\x12(\n" +
+	"\x10next_task_source\x18\b \x01(\tR\x0enextTaskSource\x12(\n" +
+	"\x10next_task_reason\x18\t \x01(\tR\x0enextTaskReason\x12/\n" +
+	"\x14next_task_source_ref\x18\n" +
+	" \x01(\tR\x11nextTaskSourceRef\x129\n" +
+	"\x19next_task_collection_hint\x18\v \x01(\tR\x16nextTaskCollectionHint\"\xa8\x05\n" +
+	"\x11GrowthFocusSignal\x12\x1b\n" +
+	"\tfocus_tag\x18\x01 \x01(\tR\bfocusTag\x12\x1d\n" +
+	"\n" +
+	"topic_code\x18\x02 \x01(\tR\ttopicCode\x12\x1f\n" +
+	"\vtopic_title\x18\x03 \x01(\tR\n" +
+	"topicTitle\x122\n" +
+	"\x15topic_problem_pattern\x18\x04 \x01(\tR\x13topicProblemPattern\x122\n" +
+	"\x15related_question_sets\x18\x05 \x03(\tR\x13relatedQuestionSets\x12/\n" +
+	"\x13recommended_actions\x18\x06 \x03(\tR\x12recommendedActions\x120\n" +
+	"\x14primary_question_set\x18\a \x01(\tR\x12primaryQuestionSet\x124\n" +
+	"\x16dominant_archive_phase\x18\b \x01(\tR\x14dominantArchivePhase\x12?\n" +
+	"\x1cdominant_archive_phase_label\x18\t \x01(\tR\x19dominantArchivePhaseLabel\x12)\n" +
+	"\x10occurrence_count\x18\n" +
+	" \x01(\x05R\x0foccurrenceCount\x128\n" +
+	"\x18archive_occurrence_count\x18\v \x01(\x05R\x16archiveOccurrenceCount\x12<\n" +
+	"\x1ainterview_occurrence_count\x18\f \x01(\x05R\x18interviewOccurrenceCount\x12\x16\n" +
+	"\x06source\x18\r \x01(\tR\x06source\x12!\n" +
+	"\fsource_label\x18\x0e \x01(\tR\vsourceLabel\x12\x16\n" +
+	"\x06reason\x18\x0f \x01(\tR\x06reason\"\xfd\x01\n" +
+	"\x12GrowthTrendSummary\x12'\n" +
+	"\x0fdominant_source\x18\x01 \x01(\tR\x0edominantSource\x122\n" +
+	"\x15dominant_source_label\x18\x02 \x01(\tR\x13dominantSourceLabel\x12\"\n" +
+	"\rtop_focus_tag\x18\x03 \x01(\tR\vtopFocusTag\x12$\n" +
+	"\x0etop_topic_code\x18\x04 \x01(\tR\ftopTopicCode\x12&\n" +
+	"\x0ftop_topic_title\x18\x05 \x01(\tR\rtopTopicTitle\x12\x18\n" +
+	"\asummary\x18\x06 \x01(\tR\asummary\"\xec\x02\n" +
+	"\x0eGrowthStudyLog\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x19\n" +
+	"\bdate_key\x18\x02 \x01(\tR\adateKey\x12\x18\n" +
+	"\asummary\x18\x03 \x01(\tR\asummary\x12(\n" +
+	"\x10focus_task_title\x18\x04 \x01(\tR\x0efocusTaskTitle\x12'\n" +
+	"\x0fcompleted_count\x18\x05 \x01(\x05R\x0ecompletedCount\x12#\n" +
+	"\rskipped_count\x18\x06 \x01(\x05R\fskippedCount\x12)\n" +
+	"\x10completed_titles\x18\a \x03(\tR\x0fcompletedTitles\x12%\n" +
+	"\x0eskipped_titles\x18\b \x03(\tR\rskippedTitles\x12,\n" +
+	"\x12latest_action_text\x18\t \x01(\tR\x10latestActionText\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\tR\tupdatedAt\"\xba\x01\n" +
+	"\x17GrowthInterviewSnapshot\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05score\x18\x03 \x01(\x05R\x05score\x12'\n" +
+	"\x0ftotal_questions\x18\x04 \x01(\x05R\x0etotalQuestions\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12\x19\n" +
+	"\bended_at\x18\x06 \x01(\tR\aendedAt\"\xf2\x01\n" +
+	"\x12GrowthPlanSnapshot\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1f\n" +
+	"\vtotal_tasks\x18\x04 \x01(\x05R\n" +
+	"totalTasks\x12'\n" +
+	"\x0fcompleted_tasks\x18\x05 \x01(\x05R\x0ecompletedTasks\x12\x1a\n" +
+	"\bprogress\x18\x06 \x01(\x01R\bprogress\x12\x1d\n" +
+	"\n" +
+	"start_date\x18\a \x01(\tR\tstartDate\x12\x19\n" +
+	"\bend_date\x18\b \x01(\tR\aendDate\"\x97\x01\n" +
 	"\n" +
 	"WeeklyStat\x12\x12\n" +
 	"\x04week\x18\x01 \x01(\tR\x04week\x12-\n" +
@@ -575,10 +1750,27 @@ const file_makejob_growth_v1_growth_proto_rawDesc = "" +
 	"\rTopicWeakness\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12%\n" +
 	"\x0eweakness_score\x18\x02 \x01(\x01R\rweaknessScore\x12#\n" +
-	"\rmistake_count\x18\x03 \x01(\x05R\fmistakeCount\"[\n" +
+	"\rmistake_count\x18\x03 \x01(\x05R\fmistakeCount\"\x98\x01\n" +
 	"\vWeeklyFocus\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.makejob.growth.v1.FocusItemR\x05items\x12\x18\n" +
-	"\asummary\x18\x02 \x01(\tR\asummary\"q\n" +
+	"\asummary\x18\x02 \x01(\tR\asummary\x12;\n" +
+	"\x06themes\x18\x03 \x03(\v2#.makejob.growth.v1.WeeklyFocusThemeR\x06themes\"\xf1\x03\n" +
+	"\x10WeeklyFocusTheme\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12!\n" +
+	"\fsource_label\x18\x04 \x01(\tR\vsourceLabel\x12\x1d\n" +
+	"\n" +
+	"focus_tags\x18\x05 \x03(\tR\tfocusTags\x12\x1f\n" +
+	"\vtopic_codes\x18\x06 \x03(\tR\n" +
+	"topicCodes\x122\n" +
+	"\x15related_question_sets\x18\a \x03(\tR\x13relatedQuestionSets\x124\n" +
+	"\x16dominant_archive_phase\x18\b \x01(\tR\x14dominantArchivePhase\x12?\n" +
+	"\x1cdominant_archive_phase_label\x18\t \x01(\tR\x19dominantArchivePhaseLabel\x12)\n" +
+	"\x10occurrence_count\x18\n" +
+	" \x01(\x05R\x0foccurrenceCount\x12<\n" +
+	"\x1ainterview_occurrence_count\x18\v \x01(\x05R\x18interviewOccurrenceCount\x12 \n" +
+	"\vsuggestions\x18\f \x03(\tR\vsuggestions\"q\n" +
 	"\tFocusItem\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x16\n" +
@@ -615,34 +1807,52 @@ func file_makejob_growth_v1_growth_proto_rawDescGZIP() []byte {
 	return file_makejob_growth_v1_growth_proto_rawDescData
 }
 
-var file_makejob_growth_v1_growth_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_makejob_growth_v1_growth_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_makejob_growth_v1_growth_proto_goTypes = []any{
-	(*UserIDRequest)(nil),         // 0: makejob.growth.v1.UserIDRequest
-	(*GrowthSummary)(nil),         // 1: makejob.growth.v1.GrowthSummary
-	(*WeeklyStat)(nil),            // 2: makejob.growth.v1.WeeklyStat
-	(*TopicWeakness)(nil),         // 3: makejob.growth.v1.TopicWeakness
-	(*WeeklyFocus)(nil),           // 4: makejob.growth.v1.WeeklyFocus
-	(*FocusItem)(nil),             // 5: makejob.growth.v1.FocusItem
-	(*SyncStudyLogRequest)(nil),   // 6: makejob.growth.v1.SyncStudyLogRequest
-	(*StudyLog)(nil),              // 7: makejob.growth.v1.StudyLog
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(*UserIDRequest)(nil),           // 0: makejob.growth.v1.UserIDRequest
+	(*GrowthSummary)(nil),           // 1: makejob.growth.v1.GrowthSummary
+	(*GrowthCategoryStat)(nil),      // 2: makejob.growth.v1.GrowthCategoryStat
+	(*GrowthPracticeStats)(nil),     // 3: makejob.growth.v1.GrowthPracticeStats
+	(*GrowthCurrentPlan)(nil),       // 4: makejob.growth.v1.GrowthCurrentPlan
+	(*GrowthFocusSignal)(nil),       // 5: makejob.growth.v1.GrowthFocusSignal
+	(*GrowthTrendSummary)(nil),      // 6: makejob.growth.v1.GrowthTrendSummary
+	(*GrowthStudyLog)(nil),          // 7: makejob.growth.v1.GrowthStudyLog
+	(*GrowthInterviewSnapshot)(nil), // 8: makejob.growth.v1.GrowthInterviewSnapshot
+	(*GrowthPlanSnapshot)(nil),      // 9: makejob.growth.v1.GrowthPlanSnapshot
+	(*WeeklyStat)(nil),              // 10: makejob.growth.v1.WeeklyStat
+	(*TopicWeakness)(nil),           // 11: makejob.growth.v1.TopicWeakness
+	(*WeeklyFocus)(nil),             // 12: makejob.growth.v1.WeeklyFocus
+	(*WeeklyFocusTheme)(nil),        // 13: makejob.growth.v1.WeeklyFocusTheme
+	(*FocusItem)(nil),               // 14: makejob.growth.v1.FocusItem
+	(*SyncStudyLogRequest)(nil),     // 15: makejob.growth.v1.SyncStudyLogRequest
+	(*StudyLog)(nil),                // 16: makejob.growth.v1.StudyLog
+	(*timestamppb.Timestamp)(nil),   // 17: google.protobuf.Timestamp
 }
 var file_makejob_growth_v1_growth_proto_depIdxs = []int32{
-	2, // 0: makejob.growth.v1.GrowthSummary.weekly_stats:type_name -> makejob.growth.v1.WeeklyStat
-	3, // 1: makejob.growth.v1.GrowthSummary.weak_topics:type_name -> makejob.growth.v1.TopicWeakness
-	5, // 2: makejob.growth.v1.WeeklyFocus.items:type_name -> makejob.growth.v1.FocusItem
-	8, // 3: makejob.growth.v1.StudyLog.created_at:type_name -> google.protobuf.Timestamp
-	0, // 4: makejob.growth.v1.GrowthService.GetGrowthSummary:input_type -> makejob.growth.v1.UserIDRequest
-	0, // 5: makejob.growth.v1.GrowthService.GetWeeklyFocus:input_type -> makejob.growth.v1.UserIDRequest
-	6, // 6: makejob.growth.v1.GrowthService.SyncStudyLog:input_type -> makejob.growth.v1.SyncStudyLogRequest
-	1, // 7: makejob.growth.v1.GrowthService.GetGrowthSummary:output_type -> makejob.growth.v1.GrowthSummary
-	4, // 8: makejob.growth.v1.GrowthService.GetWeeklyFocus:output_type -> makejob.growth.v1.WeeklyFocus
-	7, // 9: makejob.growth.v1.GrowthService.SyncStudyLog:output_type -> makejob.growth.v1.StudyLog
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	10, // 0: makejob.growth.v1.GrowthSummary.weekly_stats:type_name -> makejob.growth.v1.WeeklyStat
+	11, // 1: makejob.growth.v1.GrowthSummary.weak_topics:type_name -> makejob.growth.v1.TopicWeakness
+	3,  // 2: makejob.growth.v1.GrowthSummary.practice_stats:type_name -> makejob.growth.v1.GrowthPracticeStats
+	4,  // 3: makejob.growth.v1.GrowthSummary.current_plan:type_name -> makejob.growth.v1.GrowthCurrentPlan
+	5,  // 4: makejob.growth.v1.GrowthSummary.focus_signals:type_name -> makejob.growth.v1.GrowthFocusSignal
+	6,  // 5: makejob.growth.v1.GrowthSummary.trend_summary:type_name -> makejob.growth.v1.GrowthTrendSummary
+	7,  // 6: makejob.growth.v1.GrowthSummary.recent_study_logs:type_name -> makejob.growth.v1.GrowthStudyLog
+	8,  // 7: makejob.growth.v1.GrowthSummary.recent_interviews:type_name -> makejob.growth.v1.GrowthInterviewSnapshot
+	9,  // 8: makejob.growth.v1.GrowthSummary.recent_plans:type_name -> makejob.growth.v1.GrowthPlanSnapshot
+	2,  // 9: makejob.growth.v1.GrowthPracticeStats.category_stats:type_name -> makejob.growth.v1.GrowthCategoryStat
+	14, // 10: makejob.growth.v1.WeeklyFocus.items:type_name -> makejob.growth.v1.FocusItem
+	13, // 11: makejob.growth.v1.WeeklyFocus.themes:type_name -> makejob.growth.v1.WeeklyFocusTheme
+	17, // 12: makejob.growth.v1.StudyLog.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 13: makejob.growth.v1.GrowthService.GetGrowthSummary:input_type -> makejob.growth.v1.UserIDRequest
+	0,  // 14: makejob.growth.v1.GrowthService.GetWeeklyFocus:input_type -> makejob.growth.v1.UserIDRequest
+	15, // 15: makejob.growth.v1.GrowthService.SyncStudyLog:input_type -> makejob.growth.v1.SyncStudyLogRequest
+	1,  // 16: makejob.growth.v1.GrowthService.GetGrowthSummary:output_type -> makejob.growth.v1.GrowthSummary
+	12, // 17: makejob.growth.v1.GrowthService.GetWeeklyFocus:output_type -> makejob.growth.v1.WeeklyFocus
+	16, // 18: makejob.growth.v1.GrowthService.SyncStudyLog:output_type -> makejob.growth.v1.StudyLog
+	16, // [16:19] is the sub-list for method output_type
+	13, // [13:16] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_makejob_growth_v1_growth_proto_init() }
@@ -656,7 +1866,7 @@ func file_makejob_growth_v1_growth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_growth_v1_growth_proto_rawDesc), len(file_makejob_growth_v1_growth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

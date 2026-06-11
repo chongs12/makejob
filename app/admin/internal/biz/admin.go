@@ -108,6 +108,25 @@ type InterviewClient interface {
 }
 
 // AIGatewayClient 下游 AI 网关客户端接口，通过 gRPC 调用 AI Gateway 的 admin 调试 RPC
+// PipelineStreamEvent 描述题目流水线流式事件。
+type PipelineStreamEvent struct {
+	Event            string
+	Message          string
+	TraceID          string
+	RawOutput        string
+	FailureStage     string
+	CandidateExcerpt string
+	RepairAttempted  bool
+	SupplementAttempted bool
+	SlotIndex        int32
+	RetryIndex       int32
+	Card             *QuestionCandidate
+	Response         *GenerateQuestionCandidatesResult
+}
+
+// PipelineStreamEmitter 描述题目流水线流式推送回调。
+type PipelineStreamEmitter func(event *PipelineStreamEvent) error
+
 type AIGatewayClient interface {
 	// RenderPrompt 渲染 Prompt 模板预览
 	RenderPrompt(ctx context.Context, scene, templateText string, variables map[string]string, runWithLLM bool) (*RenderPromptResult, error)
@@ -115,6 +134,8 @@ type AIGatewayClient interface {
 	DebugAI(ctx context.Context, scene, prompt string, params map[string]string, modelOverride string) (*DebugAIResult, error)
 	// GenerateQuestionCandidates 同步生成题目候选（FIX H5: 透传 agent_prompt/include_scraped/include_generated）
 	GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error)
+	// GenerateQuestionCandidatesStream 流式生成题目候选
+	GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, emit PipelineStreamEmitter) error
 }
 
 // RenderPromptResult Prompt 渲染结果

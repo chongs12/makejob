@@ -58,6 +58,15 @@ message InterviewResponse {
   string status = 2;
   InterviewQuestion first_question = 3;
   google.protobuf.Timestamp created_at = 4;
+  // 对齐前端 InterviewCreateResponse / InterviewHistoryItem
+  uint64 interview_id = 5;
+  uint64 async_task_id = 6;
+  string task_status = 7;
+  string task_error = 8;
+  int32 score = 9;
+  int32 total_questions = 10;
+  google.protobuf.Timestamp started_at = 11;
+  google.protobuf.Timestamp ended_at = 12;
 }
 
 message InterviewDetail {
@@ -69,6 +78,15 @@ message InterviewDetail {
   repeated InterviewMessage messages = 6;
   InterviewReport report = 7;
   google.protobuf.Timestamp created_at = 8;
+  // 对齐前端 InterviewDetailResponse
+  uint64 async_task_id = 9;
+  string task_status = 10;
+  string task_error = 11;
+  int32 score = 12;
+  int32 total_questions = 13;
+  InterviewQuestion current_question = 14;
+  google.protobuf.Timestamp started_at = 15;
+  google.protobuf.Timestamp ended_at = 16;
 }
 
 message InterviewMessage {
@@ -77,6 +95,7 @@ message InterviewMessage {
   string content = 3;
   string message_type = 4;
   google.protobuf.Timestamp created_at = 5;
+  InterviewQuestion question = 6;
 }
 
 message InterviewQuestion {
@@ -142,6 +161,7 @@ message GetNextQuestionRequest {
 message NextQuestionResponse {
   InterviewQuestion question = 1;
   bool is_last = 2;
+  int32 question_no = 3;
 }
 
 message FinishInterviewRequest {
@@ -161,6 +181,12 @@ message InterviewReport {
   string summary = 9;
   repeated CodingDiagnosis coding_diagnostics = 10;
   string status = 11;  // "generating" | "completed" | "failed"
+  // 对齐前端 InterviewReportResponse 外层包装字段
+  uint64 async_task_id = 12;
+  string task_status = 13;
+  string task_error = 14;
+  int32 duration_seconds = 15;
+  string completed_at = 16;
 }
 
 message CodingDiagnosis {
@@ -172,6 +198,8 @@ message CodingDiagnosis {
   repeated string strength_tags = 6;
   string evidence_summary = 7;
   repeated string suggestions = 8;
+  repeated string evidence = 9;
+  string process_summary = 10;
 }
 
 message SubmitCodingRequest {

@@ -1,11 +1,12 @@
 package model
 
-import "gorm.io/gorm"
+import "time"
 
 type UserFavorite struct {
-	gorm.Model
-	UserID     uint64 `gorm:"index;not null"`
-	QuestionID uint64 `gorm:"index;not null"`
+	ID        uint64    `gorm:"primaryKey;autoIncrement"`
+	UserID    uint64    `gorm:"index;not null"`
+	QuestionID uint64   `gorm:"index;not null"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
 func (UserFavorite) TableName() string { return "user_favorites" }

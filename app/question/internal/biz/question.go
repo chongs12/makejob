@@ -45,12 +45,14 @@ type NoteRepo interface {
 }
 
 type CategoryRepo interface {
-	ListByIndustry(ctx context.Context, industryCode string) ([]*Category, error)
+	ListByIndustry(ctx context.Context, industryID uint64) ([]*Category, error)
 	GetByID(ctx context.Context, id uint64) (*Category, error)
 }
 
 type IndustryRepo interface {
 	List(ctx context.Context) ([]*Industry, error)
+	GetByCode(ctx context.Context, code string) (*Industry, error)
+	GetByID(ctx context.Context, id uint64) (*Industry, error)
 }
 
 // QuizAnalyzerClient AI 答案分析客户端接口
@@ -155,10 +157,12 @@ type Category struct {
 	ID           uint64
 	Name         string
 	ParentID     uint64
+	IndustryID   uint64
 	IndustryCode string
 }
 
 type Industry struct {
+	ID   uint64
 	Code string
 	Name string
 	Icon string
@@ -179,7 +183,9 @@ type WrongQuestion struct {
 	LastAnswer  string
 }
 
+// QuestionFilter 定义题目查询与随机选题的统一筛选条件。
 type QuestionFilter struct {
+	IndustryID   uint64
 	IndustryCode string
 	CategoryID   uint64
 	Difficulty   string

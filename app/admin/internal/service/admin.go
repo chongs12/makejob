@@ -324,6 +324,93 @@ func (s *AdminService) GenerateQuestionPipeline(ctx context.Context, req *adminv
 	}, nil
 }
 
+// GenerateQuestionPipelineStream 流式生成题目候选，实时推送事件。
+func (s *AdminService) GenerateQuestionPipelineStream(req *adminv1.GenerateQuestionPipelineRequest, stream adminv1.AdminService_GenerateQuestionPipelineStreamServer) error {
+	if s.uc.AIGatewayClient() == nil {
+		return kratoserr.ServiceUnavailable("AI_GATEWAY_NOT_CONFIGURED", "AI 网关客户端未配置")
+	}
+
+	normalized, err := normalizeQuestionPipelineRequest(req)
+	if err != nil {
+		return err
+	}
+
+	// 创建事件回调
+	emit := func(event *biz.PipelineStreamEvent) error {
+		protoEvent := &adminv1.PipelineStreamEvent{
+			Event:            event.Event,
+			Message:          event.Message,
+			TraceId:          event.TraceID,
+			RawOutput:        event.RawOutput,
+			FailureStage:     event.FailureStage,
+			CandidateExcerpt: event.CandidateExcerpt,
+			RepairAttempted:  event.RepairAttempted,
+			SupplementAttempted: event.SupplementAttempted,
+			SlotIndex:        event.SlotIndex,
+			RetryIndex:       event.RetryIndex,
+		}
+
+		if event.Card != nil {
+			protoEvent.Card = &adminv1.PipelineCard{
+				Title:       event.Card.Title,
+				Content:     event.Card.Content,
+				Type:        event.Card.Type,
+				Difficulty:  event.Card.Difficulty,
+				Category:    event.Card.Category,
+				Answer:      event.Card.Answer,
+				Explanation: event.Card.Explanation,
+				Tags:        event.Card.Tags,
+				SourceType:  event.Card.SourceType,
+				Confidence:  event.Card.Confidence,
+				Solution:    event.Card.Solution,
+				JudgeConfig: event.Card.JudgeConfig,
+				SourceLabel: event.Card.SourceLabel,
+				SourceTitle: event.Card.SourceTitle,
+				SourceUrl:   event.Card.SourceURL,
+			}
+		}
+
+		if event.Response != nil {
+			resp := event.Response
+			protoEvent.Response = &adminv1.GenerateQuestionPipelineResponse{
+				IndustryCode: resp.IndustryCode,
+				Requirement:  resp.Requirement,
+				Warnings:     resp.Warnings,
+			}
+			for _, c := range resp.Candidates {
+				protoEvent.Response.Cards = append(protoEvent.Response.Cards, &adminv1.PipelineCard{
+					Title:       c.Title,
+					Content:     c.Content,
+					Type:        c.Type,
+					Difficulty:  c.Difficulty,
+					Category:    c.Category,
+					Answer:      c.Answer,
+					Explanation: c.Explanation,
+					Tags:        c.Tags,
+					SourceType:  c.SourceType,
+					Confidence:  c.Confidence,
+					Solution:    c.Solution,
+					JudgeConfig: c.JudgeConfig,
+					SourceLabel: c.SourceLabel,
+					SourceTitle: c.SourceTitle,
+					SourceUrl:   c.SourceURL,
+				})
+			}
+		}
+
+		return stream.Send(protoEvent)
+	}
+
+	return s.uc.AIGatewayClient().GenerateQuestionCandidatesStream(
+		stream.Context(),
+		normalized.GetIndustryCode(),
+		normalized.GetRequirement(),
+		normalized.GetAgentPrompt(),
+		normalized.GetCandidateCount(),
+		emit,
+	)
+}
+
 // GenerateQuestionPipelineAsync 创建异步题目流水线任务并投递到 question 服务消费队列。
 func (s *AdminService) GenerateQuestionPipelineAsync(ctx context.Context, req *adminv1.GenerateQuestionPipelineRequest) (*adminv1.PipelineTaskInfo, error) {
 	normalized, err := normalizeQuestionPipelineRequest(req)

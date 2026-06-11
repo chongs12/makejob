@@ -103,6 +103,12 @@ message QuestionDetail {
   string explanation = 14;
   bool is_favorited = 15;
   google.protobuf.Timestamp created_at = 16;
+  // 结构化 JSON 字段，由网关解析为前端期望的对象/数组
+  string options_json = 17;
+  string answer = 18;
+  string solution_json = 19;
+  string judge_config_json = 20;
+  string answer_template_json = 21;
 }
 
 message TestCase {
@@ -239,6 +245,7 @@ message PracticeRecommendationRequest {
 message PracticeRecommendationResponse {
   repeated RecommendedQuestion questions = 1;
   string reason = 2;
+  repeated string focus_tags = 3;
 }
 
 message RecommendedQuestion {
@@ -247,6 +254,27 @@ message RecommendedQuestion {
   string difficulty = 3;
   double relevance_score = 4;
   string recommend_reason = 5;
+  // 对齐前端 PracticeRecommendationItem.question 所需字段
+  string type = 6;
+  uint64 category_id = 7;
+  uint64 industry_id = 8;
+  string category_name = 9;
+  string tags = 10;
+  // 对齐前端 PracticeRecommendationItem 项级字段
+  string focus_tag = 11;
+  string topic_code = 12;
+  string topic_title = 13;
+  string topic_problem_pattern = 14;
+  repeated string related_question_sets = 15;
+  repeated string recommended_actions = 16;
+  string primary_question_set = 17;
+  string dominant_archive_phase = 18;
+  string dominant_archive_phase_label = 19;
+  string recommendation_mode = 20;
+  string source_type = 21;
+  int32 priority = 22;
+  int32 occurrence_count = 23;
+  string priority_explanation = 24;
 }
 
 message WrongQuestionRequest {
@@ -274,6 +302,11 @@ message UserPracticeStats {
   double accuracy = 3;
   repeated CategoryStat category_stats = 4;
   int32 streak_days = 5;
+  // 对齐前端 PracticeStats 接口
+  int32 correct_count = 6;
+  int32 wrong_count = 7;
+  double accuracy_rate = 8;
+  int32 today_count = 9;
 }
 
 message CategoryStat {
@@ -290,6 +323,9 @@ message RandomExamRequest {
   string industry_code = 2;
   int32 question_count = 3;
   repeated string categories = 4;
+  uint64 industry_id = 5;
+  uint64 category_id = 6;
+  string difficulty = 7;
 }
 
 message ExamResponse {
@@ -304,6 +340,9 @@ message GenerateTimedExamRequest {
   string industry_code = 2;
   int32 question_count = 3;
   int32 time_limit_minutes = 4;
+  uint64 industry_id = 5;
+  uint64 category_id = 6;
+  string difficulty = 7;
 }
 
 message GenerateTimedExamResponse {
@@ -355,12 +394,23 @@ message ListQuestionSetsResponse {
   makejob.shared.v1.PageResult page_result = 2;
 }
 
+message QuestionSetPreview {
+  uint64 id = 1;
+  string title = 2;
+  string type = 3;
+  string difficulty = 4;
+}
+
 message QuestionSetSummary {
   uint64 id = 1;
   string title = 2;
   string description = 3;
   int32 question_count = 4;
   string difficulty = 5;
+  // 对齐前端 PracticeQuestionSetSummary
+  string slug = 6;
+  repeated string focus_tags = 7;
+  repeated QuestionSetPreview questions = 8;
 }
 
 message GetQuestionSetDetailRequest {

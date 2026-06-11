@@ -286,8 +286,17 @@ type PlanDetail struct {
 	Level             string                 `protobuf:"bytes,12,opt,name=level,proto3" json:"level,omitempty"`
 	DailyStudyMinutes int32                  `protobuf:"varint,13,opt,name=daily_study_minutes,json=dailyStudyMinutes,proto3" json:"daily_study_minutes,omitempty"`
 	GoalDescription   string                 `protobuf:"bytes,14,opt,name=goal_description,json=goalDescription,proto3" json:"goal_description,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// 对齐前端 CompanionPlanDetail
+	IndustryCode  string `protobuf:"bytes,15,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
+	Phase         string `protobuf:"bytes,16,opt,name=phase,proto3" json:"phase,omitempty"`
+	PhaseGoal     string `protobuf:"bytes,17,opt,name=phase_goal,json=phaseGoal,proto3" json:"phase_goal,omitempty"`
+	AsyncTaskId   uint64 `protobuf:"varint,18,opt,name=async_task_id,json=asyncTaskId,proto3" json:"async_task_id,omitempty"`
+	TaskStatus    string `protobuf:"bytes,19,opt,name=task_status,json=taskStatus,proto3" json:"task_status,omitempty"`
+	TaskError     string `protobuf:"bytes,20,opt,name=task_error,json=taskError,proto3" json:"task_error,omitempty"`
+	StartDate     string `protobuf:"bytes,21,opt,name=start_date,json=startDate,proto3" json:"start_date,omitempty"`
+	EndDate       string `protobuf:"bytes,22,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlanDetail) Reset() {
@@ -418,6 +427,62 @@ func (x *PlanDetail) GetGoalDescription() string {
 	return ""
 }
 
+func (x *PlanDetail) GetIndustryCode() string {
+	if x != nil {
+		return x.IndustryCode
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetPhaseGoal() string {
+	if x != nil {
+		return x.PhaseGoal
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetAsyncTaskId() uint64 {
+	if x != nil {
+		return x.AsyncTaskId
+	}
+	return 0
+}
+
+func (x *PlanDetail) GetTaskStatus() string {
+	if x != nil {
+		return x.TaskStatus
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetTaskError() string {
+	if x != nil {
+		return x.TaskError
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetStartDate() string {
+	if x != nil {
+		return x.StartDate
+	}
+	return ""
+}
+
+func (x *PlanDetail) GetEndDate() string {
+	if x != nil {
+		return x.EndDate
+	}
+	return ""
+}
+
 type TaskDetail struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -432,8 +497,12 @@ type TaskDetail struct {
 	Status          string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	CompletedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	OrderIndex      int32                  `protobuf:"varint,12,opt,name=order_index,json=orderIndex,proto3" json:"order_index,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 对齐前端 CompanionPlanTask
+	SortOrder     int32  `protobuf:"varint,13,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	DueDate       string `protobuf:"bytes,14,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
+	PhaseGoal     string `protobuf:"bytes,15,opt,name=phase_goal,json=phaseGoal,proto3" json:"phase_goal,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TaskDetail) Reset() {
@@ -548,6 +617,27 @@ func (x *TaskDetail) GetOrderIndex() int32 {
 		return x.OrderIndex
 	}
 	return 0
+}
+
+func (x *TaskDetail) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+func (x *TaskDetail) GetDueDate() string {
+	if x != nil {
+		return x.DueDate
+	}
+	return ""
+}
+
+func (x *TaskDetail) GetPhaseGoal() string {
+	if x != nil {
+		return x.PhaseGoal
+	}
+	return ""
 }
 
 type ListPlansRequest struct {
@@ -1489,7 +1579,7 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\"0\n" +
 	"\x15GetCurrentPlanRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xf2\x03\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xea\x05\n" +
 	"\n" +
 	"PlanDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
@@ -1508,7 +1598,19 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\bindustry\x18\v \x01(\tR\bindustry\x12\x14\n" +
 	"\x05level\x18\f \x01(\tR\x05level\x12.\n" +
 	"\x13daily_study_minutes\x18\r \x01(\x05R\x11dailyStudyMinutes\x12)\n" +
-	"\x10goal_description\x18\x0e \x01(\tR\x0fgoalDescription\"\xfe\x02\n" +
+	"\x10goal_description\x18\x0e \x01(\tR\x0fgoalDescription\x12#\n" +
+	"\rindustry_code\x18\x0f \x01(\tR\findustryCode\x12\x14\n" +
+	"\x05phase\x18\x10 \x01(\tR\x05phase\x12\x1d\n" +
+	"\n" +
+	"phase_goal\x18\x11 \x01(\tR\tphaseGoal\x12\"\n" +
+	"\rasync_task_id\x18\x12 \x01(\x04R\vasyncTaskId\x12\x1f\n" +
+	"\vtask_status\x18\x13 \x01(\tR\n" +
+	"taskStatus\x12\x1d\n" +
+	"\n" +
+	"task_error\x18\x14 \x01(\tR\ttaskError\x12\x1d\n" +
+	"\n" +
+	"start_date\x18\x15 \x01(\tR\tstartDate\x12\x19\n" +
+	"\bend_date\x18\x16 \x01(\tR\aendDate\"\xd7\x03\n" +
 	"\n" +
 	"TaskDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
@@ -1525,7 +1627,12 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	" \x01(\tR\x06status\x12=\n" +
 	"\fcompleted_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12\x1f\n" +
 	"\vorder_index\x18\f \x01(\x05R\n" +
-	"orderIndex\"\\\n" +
+	"orderIndex\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\r \x01(\x05R\tsortOrder\x12\x19\n" +
+	"\bdue_date\x18\x0e \x01(\tR\adueDate\x12\x1d\n" +
+	"\n" +
+	"phase_goal\x18\x0f \x01(\tR\tphaseGoal\"\\\n" +
 	"\x10ListPlansRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x12\n" +
 	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +

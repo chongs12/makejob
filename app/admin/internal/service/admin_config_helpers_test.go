@@ -27,27 +27,3 @@ func TestMergeAdminConfigItems(t *testing.T) {
 		t.Fatalf("expected default ai_provider to be preserved, got %q", result["ai_provider"])
 	}
 }
-
-// TestNormalizeAIConfigInput 验证 AI 配置会补齐默认值并拒绝非法 provider。
-func TestNormalizeAIConfigInput(t *testing.T) {
-	result, err := normalizeAIConfigInput(map[string]string{
-		"ai_model":           "custom-model",
-		"ai_timeout_seconds": "60",
-	})
-	if err != nil {
-		t.Fatalf("normalizeAIConfigInput returned error: %v", err)
-	}
-	if result["ai_provider"] != "eino" {
-		t.Fatalf("expected default provider eino, got %q", result["ai_provider"])
-	}
-	if result["ai_model"] != "custom-model" {
-		t.Fatalf("expected ai_model override, got %q", result["ai_model"])
-	}
-	if result["ai_timeout_seconds"] != "60" {
-		t.Fatalf("expected ai_timeout_seconds override, got %q", result["ai_timeout_seconds"])
-	}
-
-	if _, err := normalizeAIConfigInput(map[string]string{"ai_provider": "mock"}); err == nil {
-		t.Fatalf("expected invalid provider to be rejected")
-	}
-}

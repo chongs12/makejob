@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -274,31 +275,101 @@ func (s *AIGatewayService) GenerateQuestionCandidates(ctx context.Context, req *
 		return nil, err
 	}
 
-	candidates := make([]*aiv1.QuestionCandidate, 0, len(result.Candidates))
-	for _, c := range result.Candidates {
-		candidates = append(candidates, &aiv1.QuestionCandidate{
-			Title:       c.Title,
-			Content:     c.Content,
-			Type:        c.Type,
-			Difficulty:  c.Difficulty,
-			Category:    c.Category,
-			Answer:      c.Answer,
-			Explanation: c.Explanation,
-			Tags:        c.Tags,
-			SourceType:  c.SourceType,
-			Confidence:  c.Confidence,
-			Solution:    c.Solution,
-			JudgeConfig: c.JudgeConfig,
-			SourceLabel: c.SourceLabel,
-			SourceTitle: c.SourceTitle,
-			SourceUrl:   c.SourceURL,
-		})
-	}
-
 	return &aiv1.GenerateQuestionCandidatesResponse{
 		IndustryCode: result.IndustryCode,
 		Requirement:  result.Requirement,
-		Candidates:   candidates,
+		Candidates:   toProtoCandidates(result.Candidates),
 		Warnings:     result.Warnings,
 	}, nil
+}
+
+// GenerateQuestionCandidatesStream 流式题目候选生成 handler
+func (s *AIGatewayService) GenerateQuestionCandidatesStream(req *aiv1.GenerateQuestionCandidatesRequest, stream aiv1.AIService_GenerateQuestionCandidatesStreamServer) error {
+	if s.adminUC == nil {
+		return status.Error(codes.Unimplemented, "Admin 调试用例未配置")
+	}
+
+	candidateCount := req.GetCandidateCount()
+	if candidateCount <= 0 {
+		candidateCount = 5
+	}
+
+	// 创建事件回调
+	emit := func(event *biz.QuestionPipelineStreamEvent) error {
+		protoEvent := &aiv1.QuestionPipelineStreamEvent{
+			Event:            event.Event,
+			Message:          event.Message,
+			TraceId:          event.TraceID,
+			RawOutput:        event.RawOutput,
+			FailureStage:     event.FailureStage,
+			CandidateExcerpt: event.CandidateExcerpt,
+			RepairAttempted:  event.RepairAttempted,
+			SupplementAttempted: event.SupplementAttempted,
+			SlotIndex:        event.SlotIndex,
+			RetryIndex:       event.RetryIndex,
+		}
+
+		if event.Card != nil {
+			protoEvent.Card = toProtoCandidate(event.Card)
+		}
+
+		if event.Response != nil {
+			protoEvent.Response = &aiv1.GenerateQuestionCandidatesResponse{
+				IndustryCode: event.Response.IndustryCode,
+				Requirement:  event.Response.Requirement,
+				Candidates:   toProtoCandidates(event.Response.Candidates),
+				Warnings:     event.Response.Warnings,
+			}
+		}
+
+		return stream.Send(protoEvent)
+	}
+
+	_, err := s.adminUC.GenerateQuestionCandidatesStream(
+		stream.Context(),
+		req.GetIndustryCode(),
+		req.GetRequirement(),
+		req.GetAgentPrompt(),
+		candidateCount,
+		emit,
+	)
+	return err
+}
+
+// toProtoCandidate 将单个 QuestionCandidate 转换为 proto 格式
+func toProtoCandidate(c *biz.QuestionCandidate) *aiv1.QuestionCandidate {
+	// 将 JudgeConfig 转换为 JSON 字符串
+	judgeConfigStr := ""
+	if c.JudgeConfig != nil {
+		if jcBytes, err := json.Marshal(c.JudgeConfig); err == nil {
+			judgeConfigStr = string(jcBytes)
+		}
+	}
+
+	return &aiv1.QuestionCandidate{
+		Title:       c.Title,
+		Content:     c.Content,
+		Type:        c.Type,
+		Difficulty:  c.Difficulty,
+		Category:    c.Category,
+		Answer:      c.Answer,
+		Explanation: c.Explanation,
+		Tags:        c.Tags,
+		SourceType:  c.SourceType,
+		Confidence:  c.Confidence,
+		Solution:    c.Solution,
+		JudgeConfig: judgeConfigStr,
+		SourceLabel: c.SourceLabel,
+		SourceTitle: c.SourceTitle,
+		SourceUrl:   c.SourceURL,
+	}
+}
+
+// toProtoCandidates 将 QuestionCandidate 切片转换为 proto 格式
+func toProtoCandidates(candidates []*biz.QuestionCandidate) []*aiv1.QuestionCandidate {
+	result := make([]*aiv1.QuestionCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		result = append(result, toProtoCandidate(c))
+	}
+	return result
 }

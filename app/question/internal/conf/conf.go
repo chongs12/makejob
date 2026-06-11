@@ -24,10 +24,12 @@ type Server struct {
 	GRPC *Server_GRPC `yaml:"grpc"`
 }
 type Server_HTTP struct {
-	Addr string `yaml:"addr"`
+	Addr    string `yaml:"addr"`
+	Timeout string `yaml:"timeout"`
 }
 type Server_GRPC struct {
-	Addr string `yaml:"addr"`
+	Addr    string `yaml:"addr"`
+	Timeout string `yaml:"timeout"`
 }
 
 type Data struct {

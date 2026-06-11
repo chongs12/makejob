@@ -16,6 +16,9 @@ service AIService {
   rpc RenderPrompt(RenderPromptRequest) returns (RenderPromptResponse);
   rpc DebugAI(DebugAIRequest) returns (DebugAIResponse);
   rpc GenerateQuestionCandidates(GenerateQuestionCandidatesRequest) returns (GenerateQuestionCandidatesResponse);
+
+  // === 题目流水线流式生成 ===
+  rpc GenerateQuestionCandidatesStream(GenerateQuestionCandidatesRequest) returns (stream QuestionPipelineStreamEvent);
 }
 
 message InterviewAgentRequest {
@@ -197,4 +200,20 @@ message QuestionCandidate {
   string source_label = 13;
   string source_title = 14;
   string source_url = 15;
+}
+
+// 题目流水线流式事件
+message QuestionPipelineStreamEvent {
+  string event = 1;           // status | warning | card | complete | error
+  string message = 2;         // 消息文本
+  string trace_id = 3;        // 追踪ID
+  string raw_output = 4;      // 原始输出
+  string failure_stage = 5;   // 失败阶段
+  string candidate_excerpt = 6;
+  bool repair_attempted = 7;
+  bool supplement_attempted = 8;
+  int32 slot_index = 9;       // 题卡索引
+  int32 retry_index = 10;     // 重试索引
+  QuestionCandidate card = 11; // 题卡数据
+  GenerateQuestionCandidatesResponse response = 12; // 完整响应
 }

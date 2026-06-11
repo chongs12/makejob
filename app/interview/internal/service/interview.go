@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -42,9 +43,10 @@ func (s *InterviewService) CreateInterview(ctx context.Context, req *interviewv1
 	}
 
 	resp := &interviewv1.InterviewResponse{
-		Id:        interview.ID,
-		Status:    interview.Status,
-		CreatedAt: timestamppb.New(interview.CreatedAt),
+		Id:         interview.ID,
+		InterviewId: interview.ID,
+		Status:     interview.Status,
+		CreatedAt:  timestamppb.New(interview.CreatedAt),
 	}
 
 	if firstQ != nil {
@@ -62,6 +64,7 @@ func (s *InterviewService) GetInterview(ctx context.Context, req *interviewv1.Ge
 	}
 
 	msgs := make([]*interviewv1.InterviewMessage, len(messages))
+	var currentQuestion *interviewv1.InterviewQuestion
 	for i, m := range messages {
 		msgs[i] = &interviewv1.InterviewMessage{
 			Id:          m.ID,
@@ -70,17 +73,33 @@ func (s *InterviewService) GetInterview(ctx context.Context, req *interviewv1.Ge
 			MessageType: m.MessageType,
 			CreatedAt:   timestamppb.New(m.CreatedAt),
 		}
+		// AI 出题消息携带结构化题目，供前端进行页恢复当前题
+		if m.Role == "assistant" {
+			if q := biz.DecodeQuestionContent(m.Content); q != nil && q.Question != "" {
+				pq := toProtoQuestion(q)
+				msgs[i].Question = pq
+				currentQuestion = pq
+			}
+		}
 	}
 
-	return &interviewv1.InterviewDetail{
-		Id:            interview.ID,
-		UserId:        interview.UserID,
-		IndustryCode:  interview.IndustryCode,
-		Status:        interview.Status,
-		InterviewMode: interview.InterviewMode,
-		Messages:      msgs,
-		CreatedAt:     timestamppb.New(interview.CreatedAt),
-	}, nil
+	detail := &interviewv1.InterviewDetail{
+		Id:             interview.ID,
+		UserId:         interview.UserID,
+		IndustryCode:   interview.IndustryCode,
+		Status:         interview.Status,
+		InterviewMode:  interview.InterviewMode,
+		Messages:       msgs,
+		Score:          int32(interview.OverallScore),
+		TotalQuestions: interview.QuestionCount,
+		CurrentQuestion: currentQuestion,
+		StartedAt:      timestamppb.New(interview.CreatedAt),
+		CreatedAt:      timestamppb.New(interview.CreatedAt),
+	}
+	if interview.FinishedAt != nil {
+		detail.EndedAt = timestamppb.New(*interview.FinishedAt)
+	}
+	return detail, nil
 }
 
 func (s *InterviewService) ListInterviews(ctx context.Context, req *interviewv1.ListInterviewsRequest) (*interviewv1.ListInterviewsResponse, error) {
@@ -97,11 +116,19 @@ func (s *InterviewService) ListInterviews(ctx context.Context, req *interviewv1.
 
 	items := make([]*interviewv1.InterviewResponse, len(interviews))
 	for i, iv := range interviews {
-		items[i] = &interviewv1.InterviewResponse{
-			Id:        iv.ID,
-			Status:    iv.Status,
-			CreatedAt: timestamppb.New(iv.CreatedAt),
+		item := &interviewv1.InterviewResponse{
+			Id:             iv.ID,
+			InterviewId:    iv.ID,
+			Status:         iv.Status,
+			Score:          int32(iv.OverallScore),
+			TotalQuestions: iv.QuestionCount,
+			StartedAt:      timestamppb.New(iv.CreatedAt),
+			CreatedAt:      timestamppb.New(iv.CreatedAt),
 		}
+		if iv.FinishedAt != nil {
+			item.EndedAt = timestamppb.New(*iv.FinishedAt)
+		}
+		items[i] = item
 	}
 
 	return &interviewv1.ListInterviewsResponse{
@@ -158,15 +185,20 @@ func (s *InterviewService) GetAdminInterviewStats(ctx context.Context, _ *interv
 
 // GetNextQuestion 获取下一道面试题目
 func (s *InterviewService) GetNextQuestion(ctx context.Context, req *interviewv1.GetNextQuestionRequest) (*interviewv1.NextQuestionResponse, error) {
-	_, question, err := s.uc.GetNextQuestion(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))
+	interview, question, err := s.uc.GetNextQuestion(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	return &interviewv1.NextQuestionResponse{
+	resp := &interviewv1.NextQuestionResponse{
 		Question: toProtoQuestion(question),
 		IsLast:   question == nil,
-	}, nil
+	}
+	if interview != nil {
+		resp.QuestionNo = interview.CurrentIndex + 1
+		resp.IsLast = question == nil || interview.CurrentIndex+1 >= interview.QuestionCount
+	}
+	return resp, nil
 }
 
 // FinishInterview 结束面试并触发报告生成
@@ -220,13 +252,39 @@ func (s *InterviewService) GetReport(ctx context.Context, req *interviewv1.GetRe
 				MistakeTags:     d.MistakeTags,
 				StrengthTags:    d.StrengthTags,
 				EvidenceSummary: d.EvidenceSummary,
+				Evidence:        splitEvidenceSummary(d.EvidenceSummary),
+				ProcessSummary:  d.EvidenceSummary,
 				Suggestions:     d.Suggestions,
 			}
 		}
 		report.CodingDiagnostics = diagnostics
 	}
 
+	// 对齐前端 InterviewReportResponse 的状态包装字段
+	report.TaskStatus = result.Status
+
 	return report, nil
+}
+
+// splitEvidenceSummary 将证据摘要文本拆分为前端期望的字符串数组（按换行/分号/中文分号切分）。
+func splitEvidenceSummary(summary string) []string {
+	trimmed := strings.TrimSpace(summary)
+	if trimmed == "" {
+		return []string{}
+	}
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == '\n' || r == ';' || r == '；'
+	})
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			result = append(result, s)
+		}
+	}
+	if len(result) == 0 {
+		return []string{trimmed}
+	}
+	return result
 }
 
 // SubmitCodingAnswer 提交编程题答案

@@ -94,6 +94,120 @@ type GrowthSummary struct {
 	AvgScore        float64
 	WeeklyStats     []*WeeklyStat
 	WeakTopics      []*TopicWeakness
+
+	// 对齐前端 GrowthSummaryResponse 的扩展字段
+	PracticeStats           *GrowthPracticeStats
+	StudyDays               int32
+	InterviewCount          int32
+	CompletedInterviewCount int32
+	AverageInterviewScore   float64
+	PlanCount               int32
+	CurrentPlan             *GrowthCurrentPlan
+	FocusSignals            []*GrowthFocusSignal
+	TrendSummary            *GrowthTrendSummary
+	RecentStudyLogs         []*GrowthStudyLog
+	RecentInterviews        []*GrowthInterviewSnapshot
+	RecentPlans             []*GrowthPlanSnapshot
+}
+
+// GrowthPracticeStats 练习统计详情
+type GrowthPracticeStats struct {
+	TotalAnswered int32
+	CorrectCount  int32
+	WrongCount    int32
+	AccuracyRate  float64
+	TodayCount    int32
+	StreakDays    int32
+	CategoryStats []*GrowthCategoryStat
+}
+
+// GrowthCategoryStat 分类练习统计
+type GrowthCategoryStat struct {
+	CategoryID   int32
+	CategoryName string
+	Total        int32
+	Correct      int32
+	AccuracyRate float64
+}
+
+// GrowthCurrentPlan 当前计划卡片
+type GrowthCurrentPlan struct {
+	ID                     int32
+	Title                  string
+	Status                 string
+	TotalTasks             int32
+	CompletedTasks         int32
+	Progress               float64
+	NextTaskTitle          string
+	NextTaskSource         string
+	NextTaskReason         string
+	NextTaskSourceRef      string
+	NextTaskCollectionHint string
+}
+
+// GrowthFocusSignal 学习焦点信号（详情版）
+type GrowthFocusSignal struct {
+	FocusTag                  string
+	TopicCode                 string
+	TopicTitle                string
+	TopicProblemPattern       string
+	RelatedQuestionSets       []string
+	RecommendedActions        []string
+	PrimaryQuestionSet        string
+	DominantArchivePhase      string
+	DominantArchivePhaseLabel string
+	OccurrenceCount           int32
+	ArchiveOccurrenceCount    int32
+	InterviewOccurrenceCount  int32
+	Source                    string
+	SourceLabel               string
+	Reason                    string
+}
+
+// GrowthTrendSummary 趋势摘要
+type GrowthTrendSummary struct {
+	DominantSource      string
+	DominantSourceLabel string
+	TopFocusTag         string
+	TopTopicCode        string
+	TopTopicTitle       string
+	Summary             string
+}
+
+// GrowthStudyLogSnapshot 最近学习日志快照
+type GrowthStudyLog struct {
+	ID               int32
+	DateKey          string
+	Summary          string
+	FocusTaskTitle   string
+	CompletedCount   int32
+	SkippedCount     int32
+	CompletedTitles  []string
+	SkippedTitles    []string
+	LatestActionText string
+	UpdatedAt        string
+}
+
+// GrowthInterviewSnapshot 最近面试快照
+type GrowthInterviewSnapshot struct {
+	ID             int32
+	Status         string
+	Score          int32
+	TotalQuestions int32
+	CreatedAt      string
+	EndedAt        string
+}
+
+// GrowthPlanSnapshot 最近计划快照
+type GrowthPlanSnapshot struct {
+	ID             int32
+	Title          string
+	Status         string
+	TotalTasks     int32
+	CompletedTasks int32
+	Progress       float64
+	StartDate      string
+	EndDate        string
 }
 
 // WeeklyStat 每周统计
@@ -123,6 +237,23 @@ type FocusItem struct {
 type WeeklyFocusResponse struct {
 	Items   []*FocusItem
 	Summary string
+	Themes  []*WeeklyFocusTheme
+}
+
+// WeeklyFocusTheme 本周补强主题卡片
+type WeeklyFocusTheme struct {
+	Title                     string
+	Reason                    string
+	Source                    string
+	SourceLabel               string
+	FocusTags                 []string
+	TopicCodes                []string
+	RelatedQuestionSets       []string
+	DominantArchivePhase      string
+	DominantArchivePhaseLabel string
+	OccurrenceCount           int32
+	InterviewOccurrenceCount  int32
+	Suggestions               []string
 }
 
 // StudyLog 学习记录实体
@@ -181,6 +312,7 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 	var focusSignals []*FocusSignal
 	var interviewStats *InterviewStats
 	var studyLogSummary *GrowthSummary
+	var planInfo *PlanInfo
 
 	// 并发查询本地学习日志统计
 	g.Go(func() error {
@@ -232,12 +364,26 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		return nil
 	})
 
+	// 并发调用计划服务 - 当前计划
+	g.Go(func() error {
+		var err error
+		planInfo, err = uc.planClient.GetCurrentPlan(gctx, userID)
+		if err != nil {
+			log.Context(gctx).Warnf("获取当前计划失败: %v", err)
+		}
+		return nil
+	})
+
 	_ = g.Wait() // 所有 goroutine 已做降级处理
 
 	// 组装响应
 	summary := &GrowthSummary{
-		WeeklyStats: []*WeeklyStat{},
-		WeakTopics:  []*TopicWeakness{},
+		WeeklyStats:      []*WeeklyStat{},
+		WeakTopics:       []*TopicWeakness{},
+		FocusSignals:     []*GrowthFocusSignal{},
+		RecentStudyLogs:  []*GrowthStudyLog{},
+		RecentInterviews: []*GrowthInterviewSnapshot{},
+		RecentPlans:      []*GrowthPlanSnapshot{},
 	}
 
 	// FIX G2: 从 StudyLog 统计真实学习天数，而非计划任务完成数
@@ -280,7 +426,81 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		}
 	}
 
+	// --- 对齐前端 GrowthSummaryResponse 的扩展字段填充 ---
+
+	summary.StudyDays = summary.TotalStudyDays
+	summary.InterviewCount = summary.TotalInterviews
+	summary.CompletedInterviewCount = summary.TotalInterviews
+	summary.AverageInterviewScore = summary.AvgScore
+
+	if practiceStats != nil {
+		correct := practiceStats.TotalDone * practiceStats.CorrectRate / 100
+		wrong := practiceStats.TotalDone - correct
+		if wrong < 0 {
+			wrong = 0
+		}
+		summary.PracticeStats = &GrowthPracticeStats{
+			TotalAnswered: practiceStats.TotalDone,
+			CorrectCount:  correct,
+			WrongCount:    wrong,
+			AccuracyRate:  float64(practiceStats.CorrectRate),
+			StreakDays:    practiceStats.StreakDays,
+			CategoryStats: []*GrowthCategoryStat{},
+		}
+	}
+
+	if planInfo != nil && planInfo.Title != "" {
+		summary.PlanCount = 1
+		summary.CurrentPlan = &GrowthCurrentPlan{
+			Title:          planInfo.Title,
+			Progress:       planInfo.Progress * 100,
+			CompletedTasks: planInfo.CompletedTasks,
+			TotalTasks:     planInfo.TotalTasks,
+		}
+	}
+
+	// 焦点信号详情转换
+	for _, sig := range focusSignals {
+		summary.FocusSignals = append(summary.FocusSignals, &GrowthFocusSignal{
+			FocusTag:            sig.Topic,
+			TopicTitle:          sig.Topic,
+			Source:              sig.Source,
+			SourceLabel:         focusSourceLabel(sig.Source),
+			RelatedQuestionSets: []string{},
+			RecommendedActions:  []string{},
+			OccurrenceCount:     int32(sig.Weight),
+		})
+	}
+
+	// 趋势摘要
+	if len(focusSignals) > 0 {
+		top := focusSignals[0]
+		summary.TrendSummary = &GrowthTrendSummary{
+			DominantSource:      top.Source,
+			DominantSourceLabel: focusSourceLabel(top.Source),
+			TopFocusTag:         top.Topic,
+			TopTopicTitle:       top.Topic,
+			Summary:             buildRecommendationReason(focusSignals, weakTopics, planInfo),
+		}
+	}
+
 	return summary, nil
+}
+
+// focusSourceLabel 将焦点信号来源代码转换为中文标签。
+func focusSourceLabel(source string) string {
+	switch source {
+	case "learning_archive":
+		return "最近学习档案"
+	case "interview_archive", "interview":
+		return "本场面试"
+	case "weak_topics":
+		return "薄弱知识点"
+	case "study_logs":
+		return "学习记录"
+	default:
+		return "成长信号"
+	}
 }
 
 // GetWeeklyFocus 获取本周学习重点，聚合焦点信号、弱项和计划数据生成推荐
@@ -376,7 +596,57 @@ func (uc *GrowthUseCase) GetWeeklyFocus(ctx context.Context, userID uint64) (*We
 	return &WeeklyFocusResponse{
 		Items:   items,
 		Summary: reason,
+		Themes:  buildWeeklyFocusThemes(focusSignals, weakTopics, reason),
 	}, nil
+}
+
+// buildWeeklyFocusThemes 将焦点信号与弱项主题压缩为前端本周补强主题卡片（最多 3 个）。
+func buildWeeklyFocusThemes(focusSignals []*FocusSignal, weakTopics []string, reason string) []*WeeklyFocusTheme {
+	themes := make([]*WeeklyFocusTheme, 0, 3)
+	seen := make(map[string]struct{})
+
+	for _, sig := range focusSignals {
+		if len(themes) >= 3 {
+			break
+		}
+		if _, ok := seen[sig.Topic]; ok || sig.Topic == "" {
+			continue
+		}
+		seen[sig.Topic] = struct{}{}
+		themes = append(themes, &WeeklyFocusTheme{
+			Title:               sig.Topic,
+			Reason:              reason,
+			Source:              sig.Source,
+			SourceLabel:         focusSourceLabel(sig.Source),
+			FocusTags:           []string{sig.Topic},
+			TopicCodes:          []string{},
+			RelatedQuestionSets: []string{},
+			OccurrenceCount:     int32(sig.Weight),
+			Suggestions:         []string{},
+		})
+	}
+
+	for _, topic := range weakTopics {
+		if len(themes) >= 3 {
+			break
+		}
+		if _, ok := seen[topic]; ok || topic == "" {
+			continue
+		}
+		seen[topic] = struct{}{}
+		themes = append(themes, &WeeklyFocusTheme{
+			Title:               topic,
+			Reason:              reason,
+			Source:              "weak_topics",
+			SourceLabel:         focusSourceLabel("weak_topics"),
+			FocusTags:           []string{topic},
+			TopicCodes:          []string{},
+			RelatedQuestionSets: []string{},
+			Suggestions:         []string{},
+		})
+	}
+
+	return themes
 }
 
 // buildRecommendationReason 根据焦点信号、弱项和计划生成推荐理由

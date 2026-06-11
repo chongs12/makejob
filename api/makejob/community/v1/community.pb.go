@@ -161,15 +161,24 @@ func (x *ListPostsResponse) GetPageResult() *v1.PageResult {
 }
 
 type PostSummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Category      string                 `protobuf:"bytes,3,opt,name=category,proto3" json:"category,omitempty"`
-	AuthorId      uint64                 `protobuf:"varint,4,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
-	AuthorName    string                 `protobuf:"bytes,5,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
-	LikeCount     int32                  `protobuf:"varint,6,opt,name=like_count,json=likeCount,proto3" json:"like_count,omitempty"`
-	CommentCount  int32                  `protobuf:"varint,7,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title        string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Category     string                 `protobuf:"bytes,3,opt,name=category,proto3" json:"category,omitempty"`
+	AuthorId     uint64                 `protobuf:"varint,4,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	AuthorName   string                 `protobuf:"bytes,5,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
+	LikeCount    int32                  `protobuf:"varint,6,opt,name=like_count,json=likeCount,proto3" json:"like_count,omitempty"`
+	CommentCount int32                  `protobuf:"varint,7,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// 对齐前端 CommunityPostItem
+	PostType      string                 `protobuf:"bytes,9,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"`
+	Summary       string                 `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	Tags          string                 `protobuf:"bytes,11,opt,name=tags,proto3" json:"tags,omitempty"`
+	ViewCount     int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"`
+	AuthorAvatar  string                 `protobuf:"bytes,13,opt,name=author_avatar,json=authorAvatar,proto3" json:"author_avatar,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	IsAuthor      bool                   `protobuf:"varint,15,opt,name=is_author,json=isAuthor,proto3" json:"is_author,omitempty"`
+	IsLiked       bool                   `protobuf:"varint,16,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -260,6 +269,62 @@ func (x *PostSummary) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PostSummary) GetPostType() string {
+	if x != nil {
+		return x.PostType
+	}
+	return ""
+}
+
+func (x *PostSummary) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *PostSummary) GetTags() string {
+	if x != nil {
+		return x.Tags
+	}
+	return ""
+}
+
+func (x *PostSummary) GetViewCount() int32 {
+	if x != nil {
+		return x.ViewCount
+	}
+	return 0
+}
+
+func (x *PostSummary) GetAuthorAvatar() string {
+	if x != nil {
+		return x.AuthorAvatar
+	}
+	return ""
+}
+
+func (x *PostSummary) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *PostSummary) GetIsAuthor() bool {
+	if x != nil {
+		return x.IsAuthor
+	}
+	return false
+}
+
+func (x *PostSummary) GetIsLiked() bool {
+	if x != nil {
+		return x.IsLiked
+	}
+	return false
+}
+
 type GetPostRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -305,19 +370,25 @@ func (x *GetPostRequest) GetId() uint64 {
 }
 
 type PostDetail struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
-	Category      string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
-	AuthorId      uint64                 `protobuf:"varint,5,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
-	AuthorName    string                 `protobuf:"bytes,6,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
-	AuthorAvatar  string                 `protobuf:"bytes,7,opt,name=author_avatar,json=authorAvatar,proto3" json:"author_avatar,omitempty"`
-	LikeCount     int32                  `protobuf:"varint,8,opt,name=like_count,json=likeCount,proto3" json:"like_count,omitempty"`
-	CommentCount  int32                  `protobuf:"varint,9,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
-	IsLiked       bool                   `protobuf:"varint,10,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ViewCount     int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"` // FIX B5: 浏览量字段
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title        string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Content      string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	Category     string                 `protobuf:"bytes,4,opt,name=category,proto3" json:"category,omitempty"`
+	AuthorId     uint64                 `protobuf:"varint,5,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	AuthorName   string                 `protobuf:"bytes,6,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
+	AuthorAvatar string                 `protobuf:"bytes,7,opt,name=author_avatar,json=authorAvatar,proto3" json:"author_avatar,omitempty"`
+	LikeCount    int32                  `protobuf:"varint,8,opt,name=like_count,json=likeCount,proto3" json:"like_count,omitempty"`
+	CommentCount int32                  `protobuf:"varint,9,opt,name=comment_count,json=commentCount,proto3" json:"comment_count,omitempty"`
+	IsLiked      bool                   `protobuf:"varint,10,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ViewCount    int32                  `protobuf:"varint,12,opt,name=view_count,json=viewCount,proto3" json:"view_count,omitempty"` // FIX B5: 浏览量字段
+	// 对齐前端 CommunityPostItem
+	PostType      string                 `protobuf:"bytes,13,opt,name=post_type,json=postType,proto3" json:"post_type,omitempty"`
+	Summary       string                 `protobuf:"bytes,14,opt,name=summary,proto3" json:"summary,omitempty"`
+	Tags          string                 `protobuf:"bytes,15,opt,name=tags,proto3" json:"tags,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	IsAuthor      bool                   `protobuf:"varint,17,opt,name=is_author,json=isAuthor,proto3" json:"is_author,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -434,6 +505,41 @@ func (x *PostDetail) GetViewCount() int32 {
 		return x.ViewCount
 	}
 	return 0
+}
+
+func (x *PostDetail) GetPostType() string {
+	if x != nil {
+		return x.PostType
+	}
+	return ""
+}
+
+func (x *PostDetail) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *PostDetail) GetTags() string {
+	if x != nil {
+		return x.Tags
+	}
+	return ""
+}
+
+func (x *PostDetail) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *PostDetail) GetIsAuthor() bool {
+	if x != nil {
+		return x.IsAuthor
+	}
+	return false
 }
 
 type CreatePostRequest struct {
@@ -813,13 +919,17 @@ func (x *ListCommentsResponse) GetPageResult() *v1.PageResult {
 }
 
 type Comment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	PostId        uint64                 `protobuf:"varint,2,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
-	AuthorId      uint64                 `protobuf:"varint,3,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
-	AuthorName    string                 `protobuf:"bytes,4,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
-	Content       string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	PostId     uint64                 `protobuf:"varint,2,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	AuthorId   uint64                 `protobuf:"varint,3,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	AuthorName string                 `protobuf:"bytes,4,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
+	Content    string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// 对齐前端 CommunityCommentItem
+	AuthorAvatar  string                 `protobuf:"bytes,7,opt,name=author_avatar,json=authorAvatar,proto3" json:"author_avatar,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	IsAuthor      bool                   `protobuf:"varint,9,opt,name=is_author,json=isAuthor,proto3" json:"is_author,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -894,6 +1004,27 @@ func (x *Comment) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *Comment) GetAuthorAvatar() string {
+	if x != nil {
+		return x.AuthorAvatar
+	}
+	return ""
+}
+
+func (x *Comment) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *Comment) GetIsAuthor() bool {
+	if x != nil {
+		return x.IsAuthor
+	}
+	return false
 }
 
 type CreateCommentRequest struct {
@@ -1179,7 +1310,7 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\x11ListPostsResponse\x127\n" +
 	"\x05posts\x18\x01 \x03(\v2!.makejob.community.v1.PostSummaryR\x05posts\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\x8c\x02\n" +
+	"pageResult\"\x8e\x04\n" +
 	"\vPostSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1a\n" +
@@ -1191,9 +1322,20 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"like_count\x18\x06 \x01(\x05R\tlikeCount\x12#\n" +
 	"\rcomment_count\x18\a \x01(\x05R\fcommentCount\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\" \n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1b\n" +
+	"\tpost_type\x18\t \x01(\tR\bpostType\x12\x18\n" +
+	"\asummary\x18\n" +
+	" \x01(\tR\asummary\x12\x12\n" +
+	"\x04tags\x18\v \x01(\tR\x04tags\x12\x1d\n" +
+	"\n" +
+	"view_count\x18\f \x01(\x05R\tviewCount\x12#\n" +
+	"\rauthor_avatar\x18\r \x01(\tR\fauthorAvatar\x129\n" +
+	"\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1b\n" +
+	"\tis_author\x18\x0f \x01(\bR\bisAuthor\x12\x19\n" +
+	"\bis_liked\x18\x10 \x01(\bR\aisLiked\" \n" +
 	"\x0eGetPostRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\x84\x03\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\xa7\x04\n" +
 	"\n" +
 	"PostDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
@@ -1212,7 +1354,13 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"view_count\x18\f \x01(\x05R\tviewCount\"\xad\x01\n" +
+	"view_count\x18\f \x01(\x05R\tviewCount\x12\x1b\n" +
+	"\tpost_type\x18\r \x01(\tR\bpostType\x12\x18\n" +
+	"\asummary\x18\x0e \x01(\tR\asummary\x12\x12\n" +
+	"\x04tags\x18\x0f \x01(\tR\x04tags\x129\n" +
+	"\n" +
+	"updated_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1b\n" +
+	"\tis_author\x18\x11 \x01(\bR\bisAuthor\"\xad\x01\n" +
 	"\x11CreatePostRequest\x12\x1b\n" +
 	"\tauthor_id\x18\x01 \x01(\x04R\bauthorId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
@@ -1240,7 +1388,7 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\x14ListCommentsResponse\x129\n" +
 	"\bcomments\x18\x01 \x03(\v2\x1d.makejob.community.v1.CommentR\bcomments\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\xc5\x01\n" +
+	"pageResult\"\xc2\x02\n" +
 	"\aComment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
 	"\apost_id\x18\x02 \x01(\x04R\x06postId\x12\x1b\n" +
@@ -1249,7 +1397,11 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"authorName\x12\x18\n" +
 	"\acontent\x18\x05 \x01(\tR\acontent\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"f\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12#\n" +
+	"\rauthor_avatar\x18\a \x01(\tR\fauthorAvatar\x129\n" +
+	"\n" +
+	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1b\n" +
+	"\tis_author\x18\t \x01(\bR\bisAuthor\"f\n" +
 	"\x14CreateCommentRequest\x12\x17\n" +
 	"\apost_id\x18\x01 \x01(\x04R\x06postId\x12\x1b\n" +
 	"\tauthor_id\x18\x02 \x01(\x04R\bauthorId\x12\x18\n" +
@@ -1324,38 +1476,41 @@ var file_makejob_community_v1_community_proto_depIdxs = []int32{
 	2,  // 1: makejob.community.v1.ListPostsResponse.posts:type_name -> makejob.community.v1.PostSummary
 	18, // 2: makejob.community.v1.ListPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
 	19, // 3: makejob.community.v1.PostSummary.created_at:type_name -> google.protobuf.Timestamp
-	19, // 4: makejob.community.v1.PostDetail.created_at:type_name -> google.protobuf.Timestamp
-	19, // 5: makejob.community.v1.Post.created_at:type_name -> google.protobuf.Timestamp
-	17, // 6: makejob.community.v1.ListCommentsRequest.page:type_name -> makejob.shared.v1.PageParam
-	11, // 7: makejob.community.v1.ListCommentsResponse.comments:type_name -> makejob.community.v1.Comment
-	18, // 8: makejob.community.v1.ListCommentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	19, // 9: makejob.community.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
-	17, // 10: makejob.community.v1.ListMyPostsRequest.page:type_name -> makejob.shared.v1.PageParam
-	2,  // 11: makejob.community.v1.ListMyPostsResponse.posts:type_name -> makejob.community.v1.PostSummary
-	18, // 12: makejob.community.v1.ListMyPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	0,  // 13: makejob.community.v1.CommunityService.ListPosts:input_type -> makejob.community.v1.ListPostsRequest
-	3,  // 14: makejob.community.v1.CommunityService.GetPost:input_type -> makejob.community.v1.GetPostRequest
-	5,  // 15: makejob.community.v1.CommunityService.CreatePost:input_type -> makejob.community.v1.CreatePostRequest
-	7,  // 16: makejob.community.v1.CommunityService.UpdatePost:input_type -> makejob.community.v1.UpdatePostRequest
-	8,  // 17: makejob.community.v1.CommunityService.DeletePost:input_type -> makejob.community.v1.DeletePostRequest
-	9,  // 18: makejob.community.v1.CommunityService.ListComments:input_type -> makejob.community.v1.ListCommentsRequest
-	12, // 19: makejob.community.v1.CommunityService.CreateComment:input_type -> makejob.community.v1.CreateCommentRequest
-	13, // 20: makejob.community.v1.CommunityService.ToggleLike:input_type -> makejob.community.v1.ToggleLikeRequest
-	15, // 21: makejob.community.v1.CommunityService.ListMyPosts:input_type -> makejob.community.v1.ListMyPostsRequest
-	1,  // 22: makejob.community.v1.CommunityService.ListPosts:output_type -> makejob.community.v1.ListPostsResponse
-	4,  // 23: makejob.community.v1.CommunityService.GetPost:output_type -> makejob.community.v1.PostDetail
-	6,  // 24: makejob.community.v1.CommunityService.CreatePost:output_type -> makejob.community.v1.Post
-	6,  // 25: makejob.community.v1.CommunityService.UpdatePost:output_type -> makejob.community.v1.Post
-	20, // 26: makejob.community.v1.CommunityService.DeletePost:output_type -> google.protobuf.Empty
-	10, // 27: makejob.community.v1.CommunityService.ListComments:output_type -> makejob.community.v1.ListCommentsResponse
-	11, // 28: makejob.community.v1.CommunityService.CreateComment:output_type -> makejob.community.v1.Comment
-	14, // 29: makejob.community.v1.CommunityService.ToggleLike:output_type -> makejob.community.v1.LikeResponse
-	16, // 30: makejob.community.v1.CommunityService.ListMyPosts:output_type -> makejob.community.v1.ListMyPostsResponse
-	22, // [22:31] is the sub-list for method output_type
-	13, // [13:22] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	19, // 4: makejob.community.v1.PostSummary.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 5: makejob.community.v1.PostDetail.created_at:type_name -> google.protobuf.Timestamp
+	19, // 6: makejob.community.v1.PostDetail.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 7: makejob.community.v1.Post.created_at:type_name -> google.protobuf.Timestamp
+	17, // 8: makejob.community.v1.ListCommentsRequest.page:type_name -> makejob.shared.v1.PageParam
+	11, // 9: makejob.community.v1.ListCommentsResponse.comments:type_name -> makejob.community.v1.Comment
+	18, // 10: makejob.community.v1.ListCommentsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	19, // 11: makejob.community.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
+	19, // 12: makejob.community.v1.Comment.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 13: makejob.community.v1.ListMyPostsRequest.page:type_name -> makejob.shared.v1.PageParam
+	2,  // 14: makejob.community.v1.ListMyPostsResponse.posts:type_name -> makejob.community.v1.PostSummary
+	18, // 15: makejob.community.v1.ListMyPostsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	0,  // 16: makejob.community.v1.CommunityService.ListPosts:input_type -> makejob.community.v1.ListPostsRequest
+	3,  // 17: makejob.community.v1.CommunityService.GetPost:input_type -> makejob.community.v1.GetPostRequest
+	5,  // 18: makejob.community.v1.CommunityService.CreatePost:input_type -> makejob.community.v1.CreatePostRequest
+	7,  // 19: makejob.community.v1.CommunityService.UpdatePost:input_type -> makejob.community.v1.UpdatePostRequest
+	8,  // 20: makejob.community.v1.CommunityService.DeletePost:input_type -> makejob.community.v1.DeletePostRequest
+	9,  // 21: makejob.community.v1.CommunityService.ListComments:input_type -> makejob.community.v1.ListCommentsRequest
+	12, // 22: makejob.community.v1.CommunityService.CreateComment:input_type -> makejob.community.v1.CreateCommentRequest
+	13, // 23: makejob.community.v1.CommunityService.ToggleLike:input_type -> makejob.community.v1.ToggleLikeRequest
+	15, // 24: makejob.community.v1.CommunityService.ListMyPosts:input_type -> makejob.community.v1.ListMyPostsRequest
+	1,  // 25: makejob.community.v1.CommunityService.ListPosts:output_type -> makejob.community.v1.ListPostsResponse
+	4,  // 26: makejob.community.v1.CommunityService.GetPost:output_type -> makejob.community.v1.PostDetail
+	6,  // 27: makejob.community.v1.CommunityService.CreatePost:output_type -> makejob.community.v1.Post
+	6,  // 28: makejob.community.v1.CommunityService.UpdatePost:output_type -> makejob.community.v1.Post
+	20, // 29: makejob.community.v1.CommunityService.DeletePost:output_type -> google.protobuf.Empty
+	10, // 30: makejob.community.v1.CommunityService.ListComments:output_type -> makejob.community.v1.ListCommentsResponse
+	11, // 31: makejob.community.v1.CommunityService.CreateComment:output_type -> makejob.community.v1.Comment
+	14, // 32: makejob.community.v1.CommunityService.ToggleLike:output_type -> makejob.community.v1.LikeResponse
+	16, // 33: makejob.community.v1.CommunityService.ListMyPosts:output_type -> makejob.community.v1.ListMyPostsResponse
+	25, // [25:34] is the sub-list for method output_type
+	16, // [16:25] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_makejob_community_v1_community_proto_init() }

@@ -409,9 +409,327 @@ func adaptLegacyResponseByPath(path string, value interface{}) interface{} {
 		return normalizeAdminQuestionPagePayload(value)
 	case strings.HasSuffix(path, "/admin/rag-configs"):
 		return normalizeAdminRAGConfigPayload(value)
+	case strings.HasSuffix(path, "/admin/tts-configs"):
+		return normalizeAdminTTSConfigPayload(value)
+	case strings.HasSuffix(path, "/practice-stats"):
+		return normalizePracticeStatsPayload(value)
+	case strings.Contains(path, "/questions/sets"):
+		return normalizeQuestionSetsPayload(value)
+	case strings.HasSuffix(path, "/growth/summary"), strings.HasSuffix(path, "/user/growth-summary"):
+		return normalizeGrowthSummaryPayload(value)
+	case strings.HasSuffix(path, "/growth/weekly-focus"), strings.HasSuffix(path, "/user/weekly-focus"):
+		return normalizeWeeklyFocusPayload(value)
+	case strings.Contains(path, "/interviews/") && (strings.HasSuffix(path, "/report") || strings.HasSuffix(path, "/finish")):
+		return normalizeInterviewReportPayload(value)
+	case strings.Contains(path, "/interviews/") && strings.HasSuffix(path, "/answer"):
+		return normalizeInterviewAnswerPayload(value)
+	case strings.HasSuffix(path, "/questions/recommendations"), strings.HasSuffix(path, "/practice-recommendations"):
+		return normalizePracticeRecommendationPayload(value)
+	case questionDetailPathPattern(path):
+		return normalizeQuestionDetailPayload(value)
+	case strings.HasSuffix(path, "/plans/current"), planDetailOrAdjustPath(path):
+		return normalizePlanDetailPayload(value)
+	case strings.HasSuffix(path, "/community/posts"), strings.HasSuffix(path, "/community/my/posts"):
+		return normalizeCommunityPostListPayload(value)
+	case communityPostDetailPath(path):
+		return normalizeCommunityPostPayload(value)
+	case strings.HasSuffix(path, "/comments"):
+		return normalizeCommunityCommentListPayload(value)
 	default:
 		return value
 	}
+}
+
+// communityPostDetailPath 判断是否为社区帖子详情路径 /community/posts/{id}（排除 /comments、/like）。
+func communityPostDetailPath(path string) bool {
+	idx := strings.Index(path, "/community/posts/")
+	if idx < 0 {
+		return false
+	}
+	rest := path[idx+len("/community/posts/"):]
+	return rest != "" && !strings.Contains(rest, "/")
+}
+
+// normalizeCommunityPostListPayload 处理分页后的帖子列表，逐项补齐 author/tags 结构。
+func normalizeCommunityPostListPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	if list, ok := payload["list"].([]interface{}); ok {
+		for i, item := range list {
+			list[i] = enrichCommunityPost(item)
+		}
+	}
+	return payload
+}
+
+// normalizeCommunityPostPayload 处理单个帖子详情。
+func normalizeCommunityPostPayload(value interface{}) interface{} {
+	return enrichCommunityPost(value)
+}
+
+// normalizeCommunityCommentListPayload 处理评论列表，补齐 author 结构。
+func normalizeCommunityCommentListPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		// 评论也可能以裸数组返回
+		if list, ok := value.([]interface{}); ok {
+			for i, item := range list {
+				list[i] = enrichCommunityAuthor(item)
+			}
+			return list
+		}
+		return value
+	}
+	if list, ok := payload["list"].([]interface{}); ok {
+		for i, item := range list {
+			list[i] = enrichCommunityAuthor(item)
+		}
+	}
+	return payload
+}
+
+// enrichCommunityPost 将帖子的 tags CSV 拆为数组，并补齐 author 嵌套对象与默认布尔字段。
+func enrichCommunityPost(value interface{}) interface{} {
+	post, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	enrichCommunityAuthor(post)
+	post["tags"] = splitCSVValue(post["tags"])
+	ensureBoolField(post, "is_liked")
+	ensureBoolField(post, "is_author")
+	ensureBoolField(post, "is_pinned")
+	ensureBoolField(post, "is_recommended")
+	return post
+}
+
+// enrichCommunityAuthor 基于扁平的 author_* 字段构造前端期望的嵌套 author 对象。
+func enrichCommunityAuthor(value interface{}) interface{} {
+	item, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	item["author"] = map[string]interface{}{
+		"id":       item["author_id"],
+		"username": item["author_name"],
+		"avatar":   item["author_avatar"],
+	}
+	ensureBoolField(item, "is_author")
+	return item
+}
+
+// splitCSVValue 将逗号分隔的标签字符串转换为字符串数组；空值返回空数组。
+func splitCSVValue(value interface{}) []interface{} {
+	str, _ := value.(string)
+	result := make([]interface{}, 0)
+	for _, part := range strings.Split(str, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// ensureBoolField 当布尔字段缺失时补齐为 false。
+func ensureBoolField(payload map[string]interface{}, key string) {
+	if _, ok := payload[key]; !ok {
+		payload[key] = false
+	}
+}
+
+// planDetailOrAdjustPath 判断是否为返回 PlanDetail 的计划详情/调整路径。
+func planDetailOrAdjustPath(path string) bool {
+	idx := strings.Index(path, "/plans/")
+	if idx < 0 {
+		return false
+	}
+	rest := path[idx+len("/plans/"):]
+	if rest == "" {
+		return false
+	}
+	// /plans/{id} 或 /plans/{id}/adjust
+	return !strings.Contains(rest, "/progress") && !strings.Contains(rest, "/tasks")
+}
+
+// normalizePlanDetailPayload 保证学习计划详情的 tasks 字段始终为数组，避免前端本地投影时 .map 崩溃。
+func normalizePlanDetailPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	ensureArrayField(payload, "tasks")
+	return payload
+}
+
+// questionDetailPathPattern 判断是否为题目详情路径（/questions/{数字}，排除子资源）。
+func questionDetailPathPattern(path string) bool {
+	idx := strings.Index(path, "/questions/")
+	if idx < 0 {
+		return false
+	}
+	rest := path[idx+len("/questions/"):]
+	if rest == "" || strings.Contains(rest, "/") {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeQuestionDetailPayload 将题目详情里的字符串化结构字段解析为前端编辑/作答页直接可用的对象，
+// 并补齐 tag_list 数组，避免前端 .map/可选链取值时出现解析负担。
+func normalizeQuestionDetailPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	payload["solution"] = parseJSONObjectOrNil(toString(payload["solution_json"]))
+	payload["judge_config"] = parseJSONObjectOrNil(toString(payload["judge_config_json"]))
+	payload["answer_template"] = parseJSONObjectOrNil(toString(payload["answer_template_json"]))
+	if tags, ok := payload["tags"].([]interface{}); ok {
+		payload["tag_list"] = tags
+	} else {
+		payload["tag_list"] = []interface{}{}
+	}
+	return payload
+}
+
+// normalizePracticeRecommendationPayload 将扁平的推荐响应重组为前端 PracticeRecommendationResponse 结构：
+// { focus_tags, items:[{ question:{...}, focus_tag, ... }] }。
+func normalizePracticeRecommendationPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	rawQuestions, _ := payload["questions"].([]interface{})
+	items := make([]interface{}, 0, len(rawQuestions))
+	for _, raw := range rawQuestions {
+		entry, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		question := map[string]interface{}{
+			"id":            entry["question_id"],
+			"title":         entry["title"],
+			"difficulty":    entry["difficulty"],
+			"type":          entry["type"],
+			"category_id":   entry["category_id"],
+			"industry_id":   entry["industry_id"],
+			"category_name": entry["category_name"],
+			"tags":          entry["tags"],
+		}
+		item := map[string]interface{}{
+			"question":                     question,
+			"focus_tag":                    entry["focus_tag"],
+			"topic_code":                   entry["topic_code"],
+			"topic_title":                  entry["topic_title"],
+			"topic_problem_pattern":        entry["topic_problem_pattern"],
+			"related_question_sets":        ensureArrayValue(entry["related_question_sets"]),
+			"recommended_actions":          ensureArrayValue(entry["recommended_actions"]),
+			"primary_question_set":         entry["primary_question_set"],
+			"dominant_archive_phase":       entry["dominant_archive_phase"],
+			"dominant_archive_phase_label": entry["dominant_archive_phase_label"],
+			"recommendation_mode":          entry["recommendation_mode"],
+			"reason":                       entry["recommend_reason"],
+			"source_type":                  entry["source_type"],
+			"priority":                     entry["priority"],
+			"occurrence_count":             entry["occurrence_count"],
+			"priority_explanation":         entry["priority_explanation"],
+		}
+		items = append(items, item)
+	}
+	return map[string]interface{}{
+		"focus_tags": ensureArrayValue(payload["focus_tags"]),
+		"items":      items,
+	}
+}
+
+// ensureArrayValue 返回数组值，缺失或非数组时返回空数组。
+func ensureArrayValue(value interface{}) interface{} {
+	if arr, ok := value.([]interface{}); ok {
+		return arr
+	}
+	return []interface{}{}
+}
+
+// normalizeInterviewReportPayload 将扁平的 InterviewReport 包装为前端 InterviewReportResponse 结构，
+// 即 { interview_id, status, report: {...}, duration_seconds, completed_at }。
+func normalizeInterviewReportPayload(value interface{}) interface{} {
+	flat, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	wrapped := map[string]interface{}{
+		"interview_id":     flat["interview_id"],
+		"status":           flat["status"],
+		"async_task_id":    flat["async_task_id"],
+		"task_status":      flat["task_status"],
+		"task_error":       flat["task_error"],
+		"duration_seconds": flat["duration_seconds"],
+		"completed_at":     flat["completed_at"],
+		"report":           flat,
+	}
+	return wrapped
+}
+
+// normalizeInterviewAnswerPayload 将扁平的 AnswerFeedback 重组为前端 InterviewAnswerResponse 结构，
+// 即 { feedback: {...}, next_question, is_finished }。
+func normalizeInterviewAnswerPayload(value interface{}) interface{} {
+	flat, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	nextQuestion := flat["next_question"]
+	feedback := map[string]interface{}{
+		"score":       flat["score"],
+		"is_correct":  flat["is_correct"],
+		"feedback":    flat["feedback"],
+		"key_points":  flat["key_points"],
+		"suggestions": flat["suggestions"],
+		"follow_up":   flat["follow_up"],
+	}
+	return map[string]interface{}{
+		"feedback":      feedback,
+		"next_question": nextQuestion,
+		"is_finished":   nextQuestion == nil,
+	}
+}
+
+// normalizeGrowthSummaryPayload 保证成长档案摘要里前端无条件遍历的数组字段始终存在，
+// 避免 proto omitempty 省略空数组导致前端 .map/.length 崩溃。
+func normalizeGrowthSummaryPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	ensureArrayField(payload, "focus_signals")
+	ensureArrayField(payload, "recent_study_logs")
+	ensureArrayField(payload, "recent_interviews")
+	ensureArrayField(payload, "recent_plans")
+	return payload
+}
+
+// normalizeWeeklyFocusPayload 保证本周补强主题的 themes 字段始终为数组。
+func normalizeWeeklyFocusPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	ensureArrayField(payload, "themes")
+	return payload
+}
+
+// ensureArrayField 当指定字段缺失或为 null 时补齐为空数组。
+func ensureArrayField(payload map[string]interface{}, key string) {
+	if existing, ok := payload[key]; ok && existing != nil {
+		return
+	}
+	payload[key] = []interface{}{}
 }
 
 // normalizeAdminAIConfigPayload 将 AI 配置响应修正为后台页面当前依赖的字段命名与默认支持信息。
@@ -570,6 +888,87 @@ func normalizeAdminRAGConfigPayload(value interface{}) interface{} {
 		payload["warnings"] = []string{}
 	}
 	return payload
+}
+
+// normalizeAdminTTSConfigPayload 还原 TTS 配置列表的对象形态。由于上游单字段消息会被通用解包逻辑
+// 折叠成裸数组，这里把它重新包装为前端期望的 { configs, providers, default_bindings } 结构。
+func normalizeAdminTTSConfigPayload(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case []interface{}:
+		return map[string]interface{}{
+			"configs":          typed,
+			"providers":        []interface{}{},
+			"default_bindings": map[string]interface{}{},
+		}
+	case map[string]interface{}:
+		if _, ok := typed["configs"]; !ok {
+			typed["configs"] = []interface{}{}
+		}
+		if _, ok := typed["providers"]; !ok {
+			typed["providers"] = []interface{}{}
+		}
+		if _, ok := typed["default_bindings"]; !ok {
+			typed["default_bindings"] = map[string]interface{}{}
+		}
+		return typed
+	default:
+		return map[string]interface{}{
+			"configs":          []interface{}{},
+			"providers":        []interface{}{},
+			"default_bindings": map[string]interface{}{},
+		}
+	}
+}
+
+// normalizePracticeStatsPayload 补齐被 proto omitempty 省略的零值统计字段，
+// 避免前端在未答题时读到 undefined 导致 toFixed 崩溃。
+func normalizePracticeStatsPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	ensureNumberField(payload, "accuracy_rate")
+	ensureNumberField(payload, "accuracy")
+	ensureNumberField(payload, "correct_count")
+	ensureNumberField(payload, "total_correct")
+	ensureNumberField(payload, "wrong_count")
+	ensureNumberField(payload, "today_count")
+	ensureNumberField(payload, "streak_days")
+	ensureArrayField(payload, "category_stats")
+	return payload
+}
+
+// ensureNumberField 当数值字段缺失时补齐为 0。
+func ensureNumberField(payload map[string]interface{}, key string) {
+	if _, ok := payload[key]; !ok {
+		payload[key] = 0
+	}
+}
+
+// normalizeQuestionSetsPayload 保证题集列表/详情里的 focus_tags 和 questions 字段始终为数组，
+// 避免 proto omitempty 省略空数组后前端 .length 崩溃。
+func normalizeQuestionSetsPayload(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case []interface{}:
+		// 列表响应（已被 flattenPageResult 展开为裸数组）
+		for _, item := range typed {
+			if m, ok := item.(map[string]interface{}); ok {
+				ensureArrayField(m, "focus_tags")
+				ensureArrayField(m, "questions")
+			}
+		}
+		return typed
+	case map[string]interface{}:
+		// 详情响应（QuestionSetDetail: {info, questions}）
+		if info, ok := typed["info"].(map[string]interface{}); ok {
+			ensureArrayField(info, "focus_tags")
+			ensureArrayField(info, "questions")
+		}
+		ensureArrayField(typed, "questions")
+		return typed
+	default:
+		return value
+	}
 }
 
 // mapLegacyRAGConfigKey 将当前 RAG 配置键映射回旧后台字段名，减少前端已有表单改动。
@@ -2379,13 +2778,17 @@ func (gw *Gateway) handleGetPracticeRecommendations(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// handleGetRandomExam 接收题卡筛选条件并转发到题库微服务。
 func (gw *Gateway) handleGetRandomExam(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
 		return
 	}
 	var req struct {
+		IndustryID    uint64   `json:"industry_id"`
 		IndustryCode  string   `json:"industry_code"`
+		CategoryID    uint64   `json:"category_id"`
+		Difficulty    string   `json:"difficulty"`
 		QuestionCount int32    `json:"question_count"`
 		Categories    []string `json:"categories"`
 	}
@@ -2394,8 +2797,13 @@ func (gw *Gateway) handleGetRandomExam(c *gin.Context) {
 		return
 	}
 	resp, err := gw.questionClient.GetRandomExam(c.Request.Context(), &questionv1.RandomExamRequest{
-		UserId: userID, IndustryCode: req.IndustryCode,
-		QuestionCount: req.QuestionCount, Categories: req.Categories,
+		UserId:        userID,
+		IndustryId:    req.IndustryID,
+		IndustryCode:  req.IndustryCode,
+		CategoryId:    req.CategoryID,
+		Difficulty:    req.Difficulty,
+		QuestionCount: req.QuestionCount,
+		Categories:    req.Categories,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -2446,7 +2854,10 @@ func (gw *Gateway) handleGenerateTimedExam(c *gin.Context) {
 		return
 	}
 	var req struct {
+		IndustryID       uint64 `json:"industry_id"`
 		IndustryCode     string `json:"industry_code"`
+		CategoryID       uint64 `json:"category_id"`
+		Difficulty       string `json:"difficulty"`
 		QuestionCount    int32  `json:"question_count"`
 		Count            int32  `json:"count"`
 		TimeLimitMinutes int32  `json:"time_limit_minutes"`
@@ -2461,7 +2872,10 @@ func (gw *Gateway) handleGenerateTimedExam(c *gin.Context) {
 	}
 	resp, err := gw.questionClient.GenerateTimedExam(c.Request.Context(), &questionv1.GenerateTimedExamRequest{
 		UserId:           userID,
+		IndustryId:       req.IndustryID,
 		IndustryCode:     req.IndustryCode,
+		CategoryId:       req.CategoryID,
+		Difficulty:       req.Difficulty,
 		QuestionCount:    questionCount,
 		TimeLimitMinutes: req.TimeLimitMinutes,
 	})
@@ -3806,6 +4220,31 @@ func normalizeQuestionPipelineGenerateResponsePayload(resp *adminv1.GenerateQues
 	return normalized
 }
 
+// normalizeQuestionPipelineCardPayload 将 PipelineCard 转换为前端期望的 JSON 格式。
+func normalizeQuestionPipelineCardPayload(card *adminv1.PipelineCard) map[string]interface{} {
+	if card == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"id":            card.GetId(),
+		"title":         card.GetTitle(),
+		"content":       card.GetContent(),
+		"type":          card.GetType(),
+		"difficulty":    card.GetDifficulty(),
+		"category":      card.GetCategory(),
+		"answer":        card.GetAnswer(),
+		"solution":      card.GetSolution(),
+		"explanation":   card.GetExplanation(),
+		"tags":          card.GetTags(),
+		"judge_config":  card.GetJudgeConfig(),
+		"confidence":    card.GetConfidence(),
+		"source_type":   card.GetSourceType(),
+		"source_label":  card.GetSourceLabel(),
+		"source_title":  card.GetSourceTitle(),
+		"source_url":    card.GetSourceUrl(),
+	}
+}
+
 // streamQuestionPipelineGenerateResponse 将同步生成结果拆成前端已有的 SSE 事件序列，避免额外改动页面协议。
 func streamQuestionPipelineGenerateResponse(c *gin.Context, flusher http.Flusher, payload map[string]interface{}) error {
 	if err := writeQuestionPipelineSSEEvent(c, flusher, "status", gin.H{"message": "模型生成完成，正在整理候选题卡"}); err != nil {
@@ -3864,11 +4303,8 @@ func (gw *Gateway) handleAdminGenerateQuestionPipelineAsync(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。
 // handleAdminGenerateQuestionPipelineDirectStream 兼容前端直连 POST SSE 生成接口，
-// 底层仍复用同步生成 RPC，再由网关拆成 status/card/warning/complete 事件流。
-// handleAdminGenerateQuestionPipelineDirectStream 兼容前端直连 POST SSE 生成接口，
-// 底层仍复用同步生成 RPC，再由网关拆成 status/card/warning/complete 事件流。
+// 订阅 Admin Service 的 gRPC 流，实时转换为 SSE 事件推送给前端。
 func (gw *Gateway) handleAdminGenerateQuestionPipelineDirectStream(c *gin.Context) {
 	req, err := bindQuestionPipelineGenerateRequest(c)
 	if err != nil {
@@ -3879,16 +4315,73 @@ func (gw *Gateway) handleAdminGenerateQuestionPipelineDirectStream(c *gin.Contex
 	if !ok {
 		return
 	}
-	if err := writeQuestionPipelineSSEEvent(c, flusher, "status", gin.H{"message": "已提交生成请求，正在等待模型返回结果"}); err != nil {
-		return
-	}
 
-	resp, err := gw.adminClient.GenerateQuestionPipeline(c.Request.Context(), req)
+	// 订阅 Admin Service 的 gRPC 流
+	stream, err := gw.adminClient.GenerateQuestionPipelineStream(c.Request.Context(), req)
 	if err != nil {
 		_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{"message": grpcErrorMessage(err)})
 		return
 	}
-	_ = streamQuestionPipelineGenerateResponse(c, flusher, normalizeQuestionPipelineGenerateResponsePayload(resp))
+
+	// 接收并转发事件
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			// EOF 表示流结束
+			if err.Error() == "EOF" {
+				break
+			}
+			_ = writeQuestionPipelineSSEEvent(c, flusher, "error", gin.H{"message": grpcErrorMessage(err)})
+			return
+		}
+
+		// 构建 SSE 事件载荷
+		payload := gin.H{
+			"event":   event.GetEvent(),
+			"message": event.GetMessage(),
+		}
+
+		// 添加可选字段
+		if event.GetTraceId() != "" {
+			payload["trace_id"] = event.GetTraceId()
+		}
+		if event.GetRawOutput() != "" {
+			payload["raw_output"] = event.GetRawOutput()
+		}
+		if event.GetFailureStage() != "" {
+			payload["failure_stage"] = event.GetFailureStage()
+		}
+		if event.GetCandidateExcerpt() != "" {
+			payload["candidate_excerpt"] = event.GetCandidateExcerpt()
+		}
+		if event.GetRepairAttempted() {
+			payload["repair_attempted"] = true
+		}
+		if event.GetSupplementAttempted() {
+			payload["supplement_attempted"] = true
+		}
+		if event.GetSlotIndex() > 0 {
+			payload["slot_index"] = event.GetSlotIndex()
+		}
+		if event.GetRetryIndex() > 0 {
+			payload["retry_index"] = event.GetRetryIndex()
+		}
+
+		// 添加题卡数据
+		if event.GetCard() != nil {
+			payload["card"] = normalizeQuestionPipelineCardPayload(event.GetCard())
+		}
+
+		// 添加完整响应
+		if event.GetResponse() != nil {
+			payload["response"] = normalizeQuestionPipelineGenerateResponsePayload(event.GetResponse())
+		}
+
+		// 写入 SSE 事件
+		if err := writeQuestionPipelineSSEEvent(c, flusher, event.GetEvent(), payload); err != nil {
+			return
+		}
+	}
 }
 
 // handleAdminGenerateQuestionPipelineStream 以 SSE 形式持续推送异步题目流水线任务进度。

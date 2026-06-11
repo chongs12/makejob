@@ -1,6 +1,8 @@
 package server
 
 import (
+	"time"
+
 	"makejob/app/ai_gateway/internal/conf"
 	"makejob/app/ai_gateway/internal/service"
 	"makejob/pkg/auth"
@@ -31,6 +33,15 @@ func NewGRPCServer(
 
 	if cfg.GRPC != nil && cfg.GRPC.Addr != "" {
 		opts = append(opts, kratosgrpc.Address(cfg.GRPC.Addr))
+	}
+
+	// 设置 gRPC 超时，默认 3 分钟（AI 调用耗时较长）
+	if cfg.GRPC != nil && cfg.GRPC.Timeout != "" {
+		if d, err := time.ParseDuration(cfg.GRPC.Timeout); err == nil {
+			opts = append(opts, kratosgrpc.Timeout(d))
+		}
+	} else {
+		opts = append(opts, kratosgrpc.Timeout(3*time.Minute))
 	}
 
 	srv := kratosgrpc.NewServer(opts...)

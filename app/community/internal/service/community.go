@@ -45,15 +45,7 @@ func (s *CommunityService) ListPosts(ctx context.Context, req *communityv1.ListP
 	}
 	items := make([]*communityv1.PostSummary, len(posts))
 	for i, p := range posts {
-		items[i] = &communityv1.PostSummary{
-			Id:         uint64(p.ID),
-			Title:      p.Title,
-			Category:   p.Category,
-			AuthorId:   p.AuthorID,
-			AuthorName: p.AuthorName,
-			LikeCount:  p.LikeCount,
-			CreatedAt:  timestamppb.New(p.CreatedAt),
-		}
+		items[i] = toProtoPostSummary(p)
 	}
 	return &communityv1.ListPostsResponse{
 		Posts: items,
@@ -63,6 +55,25 @@ func (s *CommunityService) ListPosts(ctx context.Context, req *communityv1.ListP
 			PageSize: pageSize,
 		},
 	}, nil
+}
+
+// toProtoPostSummary 将帖子领域实体转换为列表摘要，补齐前端列表卡片所需字段。
+func toProtoPostSummary(p *biz.Post) *communityv1.PostSummary {
+	return &communityv1.PostSummary{
+		Id:           uint64(p.ID),
+		Title:        p.Title,
+		Category:     p.Category,
+		AuthorId:     p.AuthorID,
+		AuthorName:   p.AuthorName,
+		LikeCount:    p.LikeCount,
+		CommentCount: p.CommentCount,
+		CreatedAt:    timestamppb.New(p.CreatedAt),
+		PostType:     p.PostType,
+		Summary:      p.Summary,
+		Tags:         p.Tags,
+		ViewCount:    p.ViewCount,
+		UpdatedAt:    timestamppb.New(p.UpdatedAt),
+	}
 }
 
 func (s *CommunityService) CreatePost(ctx context.Context, req *communityv1.CreatePostRequest) (*communityv1.Post, error) {
@@ -88,15 +99,20 @@ func (s *CommunityService) GetPost(ctx context.Context, req *communityv1.GetPost
 		return nil, err
 	}
 	return &communityv1.PostDetail{
-		Id:         uint64(post.ID),
-		Title:      post.Title,
-		Content:    post.Content,
-		Category:   post.Category,
-		AuthorId:   post.AuthorID,
-		AuthorName: post.AuthorName,
-		LikeCount:  post.LikeCount,
-		ViewCount:  post.ViewCount,
-		CreatedAt:  timestamppb.New(post.CreatedAt),
+		Id:           uint64(post.ID),
+		Title:        post.Title,
+		Content:      post.Content,
+		Category:     post.Category,
+		AuthorId:     post.AuthorID,
+		AuthorName:   post.AuthorName,
+		LikeCount:    post.LikeCount,
+		CommentCount: post.CommentCount,
+		ViewCount:    post.ViewCount,
+		CreatedAt:    timestamppb.New(post.CreatedAt),
+		PostType:     post.PostType,
+		Summary:      post.Summary,
+		Tags:         post.Tags,
+		UpdatedAt:    timestamppb.New(post.UpdatedAt),
 	}, nil
 }
 
@@ -194,15 +210,7 @@ func (s *CommunityService) ListMyPosts(ctx context.Context, req *communityv1.Lis
 	}
 	items := make([]*communityv1.PostSummary, len(posts))
 	for i, p := range posts {
-		items[i] = &communityv1.PostSummary{
-			Id:         uint64(p.ID),
-			Title:      p.Title,
-			Category:   p.Category,
-			AuthorId:   p.AuthorID,
-			AuthorName: p.AuthorName,
-			LikeCount:  p.LikeCount,
-			CreatedAt:  timestamppb.New(p.CreatedAt),
-		}
+		items[i] = toProtoPostSummary(p)
 	}
 	return &communityv1.ListMyPostsResponse{
 		Posts: items,

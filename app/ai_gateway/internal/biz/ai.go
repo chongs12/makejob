@@ -43,13 +43,29 @@ func (PromptTemplate) TableName() string { return "prompt_templates" }
 // FIX: 嵌入model.BaseModel，移除手写的ID和CreatedAt字段
 type AICallLog struct {
 	model.BaseModel
-	Scene        string `gorm:"size:50;not null;index"`
-	Model        string `gorm:"size:100"`
-	InputTokens  int    `gorm:"not null;default:0"`
-	OutputTokens int    `gorm:"not null;default:0"`
-	LatencyMs    int64  `gorm:"not null;default:0"`
-	Status       string `gorm:"size:20"`
-	ErrorMsg     string `gorm:"type:text"`
+	TraceID            string `gorm:"size:64;not null;index;comment:调用链路ID"`
+	TaskID             *uint  `gorm:"index;comment:关联异步任务ID"`
+	Source             string `gorm:"size:32;not null;index;comment:调用来源"`
+	Scene              string `gorm:"size:50;not null;index;comment:场景"`
+	IndustryID         *uint  `gorm:"index;comment:行业ID"`
+	PromptSource       string `gorm:"size:64;comment:Prompt来源"`
+	SelectedPromptID   *uint  `gorm:"index;comment:命中的Prompt模板ID"`
+	SelectedPromptName string `gorm:"size:255;comment:命中的Prompt模板名称"`
+	RenderedPrompt     string `gorm:"type:text;comment:渲染后的Prompt"`
+	RequestMessages    string `gorm:"type:text;comment:请求消息JSON"`
+	RuntimeConfig      string `gorm:"type:text;comment:运行时配置JSON"`
+	SceneConfig        string `gorm:"type:text;comment:场景配置JSON"`
+	Provider           string `gorm:"size:64;comment:Provider"`
+	Model              string `gorm:"size:128;comment:模型"`
+	UserInput          string `gorm:"type:text;comment:用户输入"`
+	ModelOutput        string `gorm:"type:text;comment:模型输出"`
+	ModelError         string `gorm:"type:text;comment:模型错误"`
+	LatencyMs          int64  `gorm:"not null;default:0;comment:耗时毫秒"`
+	IsSuccess          bool   `gorm:"not null;default:false;index;comment:是否成功"`
+	InputTokens        int    `gorm:"not null;default:0;comment:输入token数"`
+	OutputTokens       int    `gorm:"not null;default:0;comment:输出token数"`
+	Status             string `gorm:"size:20;comment:状态"`
+	ErrorMsg           string `gorm:"type:text;comment:错误信息"`
 }
 
 func (AICallLog) TableName() string { return "ai_call_logs" }

@@ -22,6 +22,112 @@ message GrowthSummary {
   double avg_score = 5;
   repeated WeeklyStat weekly_stats = 6;
   repeated TopicWeakness weak_topics = 7;
+
+  // 以下字段对齐前端 GrowthSummaryResponse
+  GrowthPracticeStats practice_stats = 8;
+  int32 study_days = 9;
+  int32 interview_count = 10;
+  int32 completed_interview_count = 11;
+  double average_interview_score = 12;
+  int32 plan_count = 13;
+  GrowthCurrentPlan current_plan = 14;
+  repeated GrowthFocusSignal focus_signals = 15;
+  GrowthTrendSummary trend_summary = 16;
+  repeated GrowthStudyLog recent_study_logs = 17;
+  repeated GrowthInterviewSnapshot recent_interviews = 18;
+  repeated GrowthPlanSnapshot recent_plans = 19;
+}
+
+message GrowthCategoryStat {
+  int32 category_id = 1;
+  string category_name = 2;
+  int32 total = 3;
+  int32 correct = 4;
+  double accuracy_rate = 5;
+}
+
+message GrowthPracticeStats {
+  int32 total_answered = 1;
+  int32 correct_count = 2;
+  int32 wrong_count = 3;
+  double accuracy_rate = 4;
+  int32 today_count = 5;
+  int32 streak_days = 6;
+  repeated GrowthCategoryStat category_stats = 7;
+}
+
+message GrowthCurrentPlan {
+  int32 id = 1;
+  string title = 2;
+  string status = 3;
+  int32 total_tasks = 4;
+  int32 completed_tasks = 5;
+  double progress = 6;
+  string next_task_title = 7;
+  string next_task_source = 8;
+  string next_task_reason = 9;
+  string next_task_source_ref = 10;
+  string next_task_collection_hint = 11;
+}
+
+message GrowthFocusSignal {
+  string focus_tag = 1;
+  string topic_code = 2;
+  string topic_title = 3;
+  string topic_problem_pattern = 4;
+  repeated string related_question_sets = 5;
+  repeated string recommended_actions = 6;
+  string primary_question_set = 7;
+  string dominant_archive_phase = 8;
+  string dominant_archive_phase_label = 9;
+  int32 occurrence_count = 10;
+  int32 archive_occurrence_count = 11;
+  int32 interview_occurrence_count = 12;
+  string source = 13;
+  string source_label = 14;
+  string reason = 15;
+}
+
+message GrowthTrendSummary {
+  string dominant_source = 1;
+  string dominant_source_label = 2;
+  string top_focus_tag = 3;
+  string top_topic_code = 4;
+  string top_topic_title = 5;
+  string summary = 6;
+}
+
+message GrowthStudyLog {
+  int32 id = 1;
+  string date_key = 2;
+  string summary = 3;
+  string focus_task_title = 4;
+  int32 completed_count = 5;
+  int32 skipped_count = 6;
+  repeated string completed_titles = 7;
+  repeated string skipped_titles = 8;
+  string latest_action_text = 9;
+  string updated_at = 10;
+}
+
+message GrowthInterviewSnapshot {
+  int32 id = 1;
+  string status = 2;
+  int32 score = 3;
+  int32 total_questions = 4;
+  string created_at = 5;
+  string ended_at = 6;
+}
+
+message GrowthPlanSnapshot {
+  int32 id = 1;
+  string title = 2;
+  string status = 3;
+  int32 total_tasks = 4;
+  int32 completed_tasks = 5;
+  double progress = 6;
+  string start_date = 7;
+  string end_date = 8;
 }
 
 message WeeklyStat {
@@ -40,6 +146,23 @@ message TopicWeakness {
 message WeeklyFocus {
   repeated FocusItem items = 1;
   string summary = 2;
+  // 对齐前端 WeeklyFocusResponse.themes
+  repeated WeeklyFocusTheme themes = 3;
+}
+
+message WeeklyFocusTheme {
+  string title = 1;
+  string reason = 2;
+  string source = 3;
+  string source_label = 4;
+  repeated string focus_tags = 5;
+  repeated string topic_codes = 6;
+  repeated string related_question_sets = 7;
+  string dominant_archive_phase = 8;
+  string dominant_archive_phase_label = 9;
+  int32 occurrence_count = 10;
+  int32 interview_occurrence_count = 11;
+  repeated string suggestions = 12;
 }
 
 message FocusItem {

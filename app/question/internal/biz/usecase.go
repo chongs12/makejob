@@ -87,8 +87,10 @@ func (uc *QuestionUseCase) CreateQuestion(ctx context.Context, question *Questio
 			return err
 		}
 		question.CategoryName = category.Name
-		if question.IndustryCode == "" {
-			question.IndustryCode = category.IndustryCode
+		if question.IndustryCode == "" && category.IndustryID > 0 {
+			if industry, err := uc.industryRepo.GetByID(ctx, category.IndustryID); err == nil {
+				question.IndustryCode = industry.Code
+			}
 		}
 	}
 	if err := uc.questionRepo.Create(ctx, question); err != nil {
@@ -109,8 +111,10 @@ func (uc *QuestionUseCase) UpdateQuestion(ctx context.Context, question *Questio
 			return err
 		}
 		question.CategoryName = category.Name
-		if question.IndustryCode == "" {
-			question.IndustryCode = category.IndustryCode
+		if question.IndustryCode == "" && category.IndustryID > 0 {
+			if industry, err := uc.industryRepo.GetByID(ctx, category.IndustryID); err == nil {
+				question.IndustryCode = industry.Code
+			}
 		}
 	}
 	if err := uc.questionRepo.Update(ctx, question); err != nil {
@@ -218,12 +222,16 @@ func (uc *QuestionUseCase) DeleteFavorite(ctx context.Context, userID, questionI
 	return uc.favoriteRepo.Delete(ctx, userID, questionID)
 }
 
-func (uc *QuestionUseCase) ListCategories(ctx context.Context, industryCode string) ([]*Category, error) {
-	return uc.categoryRepo.ListByIndustry(ctx, industryCode)
+func (uc *QuestionUseCase) ListCategories(ctx context.Context, industryID uint64) ([]*Category, error) {
+	return uc.categoryRepo.ListByIndustry(ctx, industryID)
 }
 
 func (uc *QuestionUseCase) ListIndustries(ctx context.Context) ([]*Industry, error) {
 	return uc.industryRepo.List(ctx)
+}
+
+func (uc *QuestionUseCase) GetIndustryByCode(ctx context.Context, code string) (*Industry, error) {
+	return uc.industryRepo.GetByCode(ctx, code)
 }
 
 func (uc *QuestionUseCase) GetUserPracticeStats(ctx context.Context, userID uint64) (int32, int32, float64, []*CategoryStat, error) {
@@ -401,18 +409,43 @@ func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, langu
 	return resp, nil
 }
 
+// GenerateTimedExamRequest 定义限时考试生成所需的筛选参数。
+type GenerateTimedExamRequest struct {
+	UserID           uint64
+	IndustryID       uint64
+	IndustryCode     string
+	CategoryID       uint64
+	Difficulty       string
+	QuestionCount    int32
+	TimeLimitMinutes int32
+}
+
+// GetRandomExamRequest 定义随机组卷所需的筛选参数。
+type GetRandomExamRequest struct {
+	IndustryID    uint64
+	IndustryCode  string
+	CategoryID    uint64
+	Difficulty    string
+	QuestionCount int32
+}
+
 // GenerateTimedExam 生成限时考试
-func (uc *QuestionUseCase) GenerateTimedExam(ctx context.Context, userID uint64, industryCode string, questionCount, timeLimitMin int32) (*Exam, []*Question, error) {
-	if questionCount <= 0 {
-		questionCount = 10
+func (uc *QuestionUseCase) GenerateTimedExam(ctx context.Context, req *GenerateTimedExamRequest) (*Exam, []*Question, error) {
+	if req.QuestionCount <= 0 {
+		req.QuestionCount = 10
 	}
-	if timeLimitMin <= 0 {
-		timeLimitMin = questionCount * 5
+	if req.TimeLimitMinutes <= 0 {
+		req.TimeLimitMinutes = req.QuestionCount * 5
 	}
 
 	// 随机选题
-	filter := &QuestionFilter{IndustryCode: industryCode}
-	questions, err := uc.questionRepo.RandomSelect(ctx, filter, questionCount)
+	filter := &QuestionFilter{
+		IndustryID:   req.IndustryID,
+		IndustryCode: req.IndustryCode,
+		CategoryID:   req.CategoryID,
+		Difficulty:   req.Difficulty,
+	}
+	questions, err := uc.questionRepo.RandomSelect(ctx, filter, req.QuestionCount)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -427,10 +460,10 @@ func (uc *QuestionUseCase) GenerateTimedExam(ctx context.Context, userID uint64,
 	}
 
 	exam := &Exam{
-		UserID:       userID,
-		IndustryCode: industryCode,
+		UserID:       req.UserID,
+		IndustryCode: req.IndustryCode,
 		QuestionIDs:  qIDs,
-		TimeLimitMin: timeLimitMin,
+		TimeLimitMin: req.TimeLimitMinutes,
 		Status:       "pending",
 	}
 	if err := uc.examRepo.Create(ctx, exam); err != nil {
@@ -530,12 +563,18 @@ func (uc *QuestionUseCase) SubmitExam(ctx context.Context, examID, userID uint64
 	return result, nil
 }
 
-func (uc *QuestionUseCase) GetRandomExam(ctx context.Context, industryCode string, questionCount int32) ([]*Question, error) {
-	if questionCount <= 0 {
-		questionCount = 10
+// GetRandomExam 按筛选条件随机组装一套题卡。
+func (uc *QuestionUseCase) GetRandomExam(ctx context.Context, req *GetRandomExamRequest) ([]*Question, error) {
+	if req.QuestionCount <= 0 {
+		req.QuestionCount = 10
 	}
-	filter := &QuestionFilter{IndustryCode: industryCode}
-	return uc.questionRepo.RandomSelect(ctx, filter, questionCount)
+	filter := &QuestionFilter{
+		IndustryID:   req.IndustryID,
+		IndustryCode: req.IndustryCode,
+		CategoryID:   req.CategoryID,
+		Difficulty:   req.Difficulty,
+	}
+	return uc.questionRepo.RandomSelect(ctx, filter, req.QuestionCount)
 }
 
 // ListQuestionSets 获取题集列表
@@ -554,6 +593,11 @@ func (uc *QuestionUseCase) GetQuestionSetDetail(ctx context.Context, setID uint6
 		return nil, nil, err
 	}
 	return set, questions, nil
+}
+
+// GetQuestionSetQuestions 获取题集内的题目列表（不含题集元数据）。
+func (uc *QuestionUseCase) GetQuestionSetQuestions(ctx context.Context, setID uint64) ([]*Question, error) {
+	return uc.questionSetRepo.GetQuestions(ctx, setID)
 }
 
 // ListMistakeTopics 获取用户错题知识点聚合

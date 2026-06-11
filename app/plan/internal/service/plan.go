@@ -181,7 +181,7 @@ func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTas
 		taskDetails = append(taskDetails, toProtoTaskDetail(task))
 	}
 
-	return &planv1.PlanDetail{
+	detail := &planv1.PlanDetail{
 		Id:                plan.ID,
 		Title:             plan.Title,
 		Description:       plan.Description,
@@ -193,10 +193,17 @@ func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTas
 		Tasks:             taskDetails,
 		CreatedAt:         timestamppb.New(plan.CreatedAt),
 		Industry:          plan.Industry,
+		IndustryCode:      plan.Industry,
 		Level:             plan.Level,
 		DailyStudyMinutes: plan.DailyStudyMinutes,
 		GoalDescription:   plan.Description,
+		TaskStatus:        plan.Status,
+		StartDate:         plan.CreatedAt.Format("2006-01-02"),
 	}
+	if plan.DurationDays > 0 {
+		detail.EndDate = plan.CreatedAt.AddDate(0, 0, int(plan.DurationDays)).Format("2006-01-02")
+	}
+	return detail
 }
 
 // toProtoPlanSummary 将 LearningPlan 转换为 PlanSummary。
@@ -225,6 +232,7 @@ func toProtoTaskDetail(task *biz.LearningTask) *planv1.TaskDetail {
 		Priority:        task.Priority,
 		Status:          task.Status,
 		OrderIndex:      task.SortOrder,
+		SortOrder:       task.SortOrder,
 	}
 	if task.CompletedAt != nil {
 		detail.CompletedAt = timestamppb.New(*task.CompletedAt)

@@ -20,84 +20,85 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AdminService_GetDashboard_FullMethodName                  = "/makejob.admin.v1.AdminService/GetDashboard"
-	AdminService_ListUsers_FullMethodName                     = "/makejob.admin.v1.AdminService/ListUsers"
-	AdminService_UpdateUserRole_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateUserRole"
-	AdminService_DisableUser_FullMethodName                   = "/makejob.admin.v1.AdminService/DisableUser"
-	AdminService_AdminListQuestions_FullMethodName            = "/makejob.admin.v1.AdminService/AdminListQuestions"
-	AdminService_CreateQuestion_FullMethodName                = "/makejob.admin.v1.AdminService/CreateQuestion"
-	AdminService_UpdateQuestion_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateQuestion"
-	AdminService_DeleteQuestion_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteQuestion"
-	AdminService_BatchImportQuestions_FullMethodName          = "/makejob.admin.v1.AdminService/BatchImportQuestions"
-	AdminService_GetQuestionTagTaxonomy_FullMethodName        = "/makejob.admin.v1.AdminService/GetQuestionTagTaxonomy"
-	AdminService_GenerateQuestionPipeline_FullMethodName      = "/makejob.admin.v1.AdminService/GenerateQuestionPipeline"
-	AdminService_GenerateQuestionPipelineAsync_FullMethodName = "/makejob.admin.v1.AdminService/GenerateQuestionPipelineAsync"
-	AdminService_ImportQuestionPipeline_FullMethodName        = "/makejob.admin.v1.AdminService/ImportQuestionPipeline"
-	AdminService_AdminListCategories_FullMethodName           = "/makejob.admin.v1.AdminService/AdminListCategories"
-	AdminService_CreateCategory_FullMethodName                = "/makejob.admin.v1.AdminService/CreateCategory"
-	AdminService_UpdateCategory_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateCategory"
-	AdminService_DeleteCategory_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteCategory"
-	AdminService_AdminListIndustries_FullMethodName           = "/makejob.admin.v1.AdminService/AdminListIndustries"
-	AdminService_CreateIndustry_FullMethodName                = "/makejob.admin.v1.AdminService/CreateIndustry"
-	AdminService_UpdateIndustry_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateIndustry"
-	AdminService_ListPromptTemplates_FullMethodName           = "/makejob.admin.v1.AdminService/ListPromptTemplates"
-	AdminService_SavePromptTemplate_FullMethodName            = "/makejob.admin.v1.AdminService/SavePromptTemplate"
-	AdminService_CreatePrompt_FullMethodName                  = "/makejob.admin.v1.AdminService/CreatePrompt"
-	AdminService_UpdatePrompt_FullMethodName                  = "/makejob.admin.v1.AdminService/UpdatePrompt"
-	AdminService_DeletePrompt_FullMethodName                  = "/makejob.admin.v1.AdminService/DeletePrompt"
-	AdminService_TestRenderPrompt_FullMethodName              = "/makejob.admin.v1.AdminService/TestRenderPrompt"
-	AdminService_GetAIConfigs_FullMethodName                  = "/makejob.admin.v1.AdminService/GetAIConfigs"
-	AdminService_UpdateAIConfigs_FullMethodName               = "/makejob.admin.v1.AdminService/UpdateAIConfigs"
-	AdminService_ListAIPresets_FullMethodName                 = "/makejob.admin.v1.AdminService/ListAIPresets"
-	AdminService_SaveAIPreset_FullMethodName                  = "/makejob.admin.v1.AdminService/SaveAIPreset"
-	AdminService_CreateAIPreset_FullMethodName                = "/makejob.admin.v1.AdminService/CreateAIPreset"
-	AdminService_UpdateAIPreset_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateAIPreset"
-	AdminService_DeleteAIPreset_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteAIPreset"
-	AdminService_ApplyAIPreset_FullMethodName                 = "/makejob.admin.v1.AdminService/ApplyAIPreset"
-	AdminService_DebugAI_FullMethodName                       = "/makejob.admin.v1.AdminService/DebugAI"
-	AdminService_ListAICallLogs_FullMethodName                = "/makejob.admin.v1.AdminService/ListAICallLogs"
-	AdminService_GetAICallLog_FullMethodName                  = "/makejob.admin.v1.AdminService/GetAICallLog"
-	AdminService_ListLive2DModels_FullMethodName              = "/makejob.admin.v1.AdminService/ListLive2DModels"
-	AdminService_CreateLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/CreateLive2DModel"
-	AdminService_UpdateLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/UpdateLive2DModel"
-	AdminService_DeleteLive2DModel_FullMethodName             = "/makejob.admin.v1.AdminService/DeleteLive2DModel"
-	AdminService_ListSelectableLive2DModels_FullMethodName    = "/makejob.admin.v1.AdminService/ListSelectableLive2DModels"
-	AdminService_GetCurrentLive2DModel_FullMethodName         = "/makejob.admin.v1.AdminService/GetCurrentLive2DModel"
-	AdminService_ImportLive2DPackage_FullMethodName           = "/makejob.admin.v1.AdminService/ImportLive2DPackage"
-	AdminService_ImportLive2DBackground_FullMethodName        = "/makejob.admin.v1.AdminService/ImportLive2DBackground"
-	AdminService_ListTTSConfigs_FullMethodName                = "/makejob.admin.v1.AdminService/ListTTSConfigs"
-	AdminService_CreateTTSConfig_FullMethodName               = "/makejob.admin.v1.AdminService/CreateTTSConfig"
-	AdminService_UpdateTTSConfig_FullMethodName               = "/makejob.admin.v1.AdminService/UpdateTTSConfig"
-	AdminService_DeleteTTSConfig_FullMethodName               = "/makejob.admin.v1.AdminService/DeleteTTSConfig"
-	AdminService_UpdateTTSSceneDefaults_FullMethodName        = "/makejob.admin.v1.AdminService/UpdateTTSSceneDefaults"
-	AdminService_GetRAGConfigs_FullMethodName                 = "/makejob.admin.v1.AdminService/GetRAGConfigs"
-	AdminService_UpdateRAGConfigs_FullMethodName              = "/makejob.admin.v1.AdminService/UpdateRAGConfigs"
-	AdminService_TestRAGConnection_FullMethodName             = "/makejob.admin.v1.AdminService/TestRAGConnection"
-	AdminService_IndexAllQuestions_FullMethodName             = "/makejob.admin.v1.AdminService/IndexAllQuestions"
-	AdminService_IndexQuestions_FullMethodName                = "/makejob.admin.v1.AdminService/IndexQuestions"
-	AdminService_DeleteRAGIndex_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteRAGIndex"
-	AdminService_SearchRAGQuestions_FullMethodName            = "/makejob.admin.v1.AdminService/SearchRAGQuestions"
-	AdminService_ListRAGDocuments_FullMethodName              = "/makejob.admin.v1.AdminService/ListRAGDocuments"
-	AdminService_GetRAGDocumentStats_FullMethodName           = "/makejob.admin.v1.AdminService/GetRAGDocumentStats"
-	AdminService_GetRAGDocument_FullMethodName                = "/makejob.admin.v1.AdminService/GetRAGDocument"
-	AdminService_CreateRAGDocument_FullMethodName             = "/makejob.admin.v1.AdminService/CreateRAGDocument"
-	AdminService_UpdateRAGDocument_FullMethodName             = "/makejob.admin.v1.AdminService/UpdateRAGDocument"
-	AdminService_DeleteRAGDocument_FullMethodName             = "/makejob.admin.v1.AdminService/DeleteRAGDocument"
-	AdminService_BatchImportRAGDocuments_FullMethodName       = "/makejob.admin.v1.AdminService/BatchImportRAGDocuments"
-	AdminService_SyncRAGDocumentsToVectorDB_FullMethodName    = "/makejob.admin.v1.AdminService/SyncRAGDocumentsToVectorDB"
-	AdminService_SyncAllPendingRAGDocuments_FullMethodName    = "/makejob.admin.v1.AdminService/SyncAllPendingRAGDocuments"
-	AdminService_GetScraperSources_FullMethodName             = "/makejob.admin.v1.AdminService/GetScraperSources"
-	AdminService_ScraperSearch_FullMethodName                 = "/makejob.admin.v1.AdminService/ScraperSearch"
-	AdminService_ScraperFetch_FullMethodName                  = "/makejob.admin.v1.AdminService/ScraperFetch"
-	AdminService_ScraperClean_FullMethodName                  = "/makejob.admin.v1.AdminService/ScraperClean"
-	AdminService_ScraperImport_FullMethodName                 = "/makejob.admin.v1.AdminService/ScraperImport"
-	AdminService_ScraperImportAsync_FullMethodName            = "/makejob.admin.v1.AdminService/ScraperImportAsync"
-	AdminService_ListScraperTasks_FullMethodName              = "/makejob.admin.v1.AdminService/ListScraperTasks"
-	AdminService_GetScraperTask_FullMethodName                = "/makejob.admin.v1.AdminService/GetScraperTask"
-	AdminService_UpdateQuestionPipelineTask_FullMethodName    = "/makejob.admin.v1.AdminService/UpdateQuestionPipelineTask"
-	AdminService_RetryScraperTask_FullMethodName              = "/makejob.admin.v1.AdminService/RetryScraperTask"
-	AdminService_GetAdminConfig_FullMethodName                = "/makejob.admin.v1.AdminService/GetAdminConfig"
-	AdminService_SetAdminConfig_FullMethodName                = "/makejob.admin.v1.AdminService/SetAdminConfig"
+	AdminService_GetDashboard_FullMethodName                   = "/makejob.admin.v1.AdminService/GetDashboard"
+	AdminService_ListUsers_FullMethodName                      = "/makejob.admin.v1.AdminService/ListUsers"
+	AdminService_UpdateUserRole_FullMethodName                 = "/makejob.admin.v1.AdminService/UpdateUserRole"
+	AdminService_DisableUser_FullMethodName                    = "/makejob.admin.v1.AdminService/DisableUser"
+	AdminService_AdminListQuestions_FullMethodName             = "/makejob.admin.v1.AdminService/AdminListQuestions"
+	AdminService_CreateQuestion_FullMethodName                 = "/makejob.admin.v1.AdminService/CreateQuestion"
+	AdminService_UpdateQuestion_FullMethodName                 = "/makejob.admin.v1.AdminService/UpdateQuestion"
+	AdminService_DeleteQuestion_FullMethodName                 = "/makejob.admin.v1.AdminService/DeleteQuestion"
+	AdminService_BatchImportQuestions_FullMethodName           = "/makejob.admin.v1.AdminService/BatchImportQuestions"
+	AdminService_GetQuestionTagTaxonomy_FullMethodName         = "/makejob.admin.v1.AdminService/GetQuestionTagTaxonomy"
+	AdminService_GenerateQuestionPipeline_FullMethodName       = "/makejob.admin.v1.AdminService/GenerateQuestionPipeline"
+	AdminService_GenerateQuestionPipelineStream_FullMethodName = "/makejob.admin.v1.AdminService/GenerateQuestionPipelineStream"
+	AdminService_GenerateQuestionPipelineAsync_FullMethodName  = "/makejob.admin.v1.AdminService/GenerateQuestionPipelineAsync"
+	AdminService_ImportQuestionPipeline_FullMethodName         = "/makejob.admin.v1.AdminService/ImportQuestionPipeline"
+	AdminService_AdminListCategories_FullMethodName            = "/makejob.admin.v1.AdminService/AdminListCategories"
+	AdminService_CreateCategory_FullMethodName                 = "/makejob.admin.v1.AdminService/CreateCategory"
+	AdminService_UpdateCategory_FullMethodName                 = "/makejob.admin.v1.AdminService/UpdateCategory"
+	AdminService_DeleteCategory_FullMethodName                 = "/makejob.admin.v1.AdminService/DeleteCategory"
+	AdminService_AdminListIndustries_FullMethodName            = "/makejob.admin.v1.AdminService/AdminListIndustries"
+	AdminService_CreateIndustry_FullMethodName                 = "/makejob.admin.v1.AdminService/CreateIndustry"
+	AdminService_UpdateIndustry_FullMethodName                 = "/makejob.admin.v1.AdminService/UpdateIndustry"
+	AdminService_ListPromptTemplates_FullMethodName            = "/makejob.admin.v1.AdminService/ListPromptTemplates"
+	AdminService_SavePromptTemplate_FullMethodName             = "/makejob.admin.v1.AdminService/SavePromptTemplate"
+	AdminService_CreatePrompt_FullMethodName                   = "/makejob.admin.v1.AdminService/CreatePrompt"
+	AdminService_UpdatePrompt_FullMethodName                   = "/makejob.admin.v1.AdminService/UpdatePrompt"
+	AdminService_DeletePrompt_FullMethodName                   = "/makejob.admin.v1.AdminService/DeletePrompt"
+	AdminService_TestRenderPrompt_FullMethodName               = "/makejob.admin.v1.AdminService/TestRenderPrompt"
+	AdminService_GetAIConfigs_FullMethodName                   = "/makejob.admin.v1.AdminService/GetAIConfigs"
+	AdminService_UpdateAIConfigs_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateAIConfigs"
+	AdminService_ListAIPresets_FullMethodName                  = "/makejob.admin.v1.AdminService/ListAIPresets"
+	AdminService_SaveAIPreset_FullMethodName                   = "/makejob.admin.v1.AdminService/SaveAIPreset"
+	AdminService_CreateAIPreset_FullMethodName                 = "/makejob.admin.v1.AdminService/CreateAIPreset"
+	AdminService_UpdateAIPreset_FullMethodName                 = "/makejob.admin.v1.AdminService/UpdateAIPreset"
+	AdminService_DeleteAIPreset_FullMethodName                 = "/makejob.admin.v1.AdminService/DeleteAIPreset"
+	AdminService_ApplyAIPreset_FullMethodName                  = "/makejob.admin.v1.AdminService/ApplyAIPreset"
+	AdminService_DebugAI_FullMethodName                        = "/makejob.admin.v1.AdminService/DebugAI"
+	AdminService_ListAICallLogs_FullMethodName                 = "/makejob.admin.v1.AdminService/ListAICallLogs"
+	AdminService_GetAICallLog_FullMethodName                   = "/makejob.admin.v1.AdminService/GetAICallLog"
+	AdminService_ListLive2DModels_FullMethodName               = "/makejob.admin.v1.AdminService/ListLive2DModels"
+	AdminService_CreateLive2DModel_FullMethodName              = "/makejob.admin.v1.AdminService/CreateLive2DModel"
+	AdminService_UpdateLive2DModel_FullMethodName              = "/makejob.admin.v1.AdminService/UpdateLive2DModel"
+	AdminService_DeleteLive2DModel_FullMethodName              = "/makejob.admin.v1.AdminService/DeleteLive2DModel"
+	AdminService_ListSelectableLive2DModels_FullMethodName     = "/makejob.admin.v1.AdminService/ListSelectableLive2DModels"
+	AdminService_GetCurrentLive2DModel_FullMethodName          = "/makejob.admin.v1.AdminService/GetCurrentLive2DModel"
+	AdminService_ImportLive2DPackage_FullMethodName            = "/makejob.admin.v1.AdminService/ImportLive2DPackage"
+	AdminService_ImportLive2DBackground_FullMethodName         = "/makejob.admin.v1.AdminService/ImportLive2DBackground"
+	AdminService_ListTTSConfigs_FullMethodName                 = "/makejob.admin.v1.AdminService/ListTTSConfigs"
+	AdminService_CreateTTSConfig_FullMethodName                = "/makejob.admin.v1.AdminService/CreateTTSConfig"
+	AdminService_UpdateTTSConfig_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateTTSConfig"
+	AdminService_DeleteTTSConfig_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteTTSConfig"
+	AdminService_UpdateTTSSceneDefaults_FullMethodName         = "/makejob.admin.v1.AdminService/UpdateTTSSceneDefaults"
+	AdminService_GetRAGConfigs_FullMethodName                  = "/makejob.admin.v1.AdminService/GetRAGConfigs"
+	AdminService_UpdateRAGConfigs_FullMethodName               = "/makejob.admin.v1.AdminService/UpdateRAGConfigs"
+	AdminService_TestRAGConnection_FullMethodName              = "/makejob.admin.v1.AdminService/TestRAGConnection"
+	AdminService_IndexAllQuestions_FullMethodName              = "/makejob.admin.v1.AdminService/IndexAllQuestions"
+	AdminService_IndexQuestions_FullMethodName                 = "/makejob.admin.v1.AdminService/IndexQuestions"
+	AdminService_DeleteRAGIndex_FullMethodName                 = "/makejob.admin.v1.AdminService/DeleteRAGIndex"
+	AdminService_SearchRAGQuestions_FullMethodName             = "/makejob.admin.v1.AdminService/SearchRAGQuestions"
+	AdminService_ListRAGDocuments_FullMethodName               = "/makejob.admin.v1.AdminService/ListRAGDocuments"
+	AdminService_GetRAGDocumentStats_FullMethodName            = "/makejob.admin.v1.AdminService/GetRAGDocumentStats"
+	AdminService_GetRAGDocument_FullMethodName                 = "/makejob.admin.v1.AdminService/GetRAGDocument"
+	AdminService_CreateRAGDocument_FullMethodName              = "/makejob.admin.v1.AdminService/CreateRAGDocument"
+	AdminService_UpdateRAGDocument_FullMethodName              = "/makejob.admin.v1.AdminService/UpdateRAGDocument"
+	AdminService_DeleteRAGDocument_FullMethodName              = "/makejob.admin.v1.AdminService/DeleteRAGDocument"
+	AdminService_BatchImportRAGDocuments_FullMethodName        = "/makejob.admin.v1.AdminService/BatchImportRAGDocuments"
+	AdminService_SyncRAGDocumentsToVectorDB_FullMethodName     = "/makejob.admin.v1.AdminService/SyncRAGDocumentsToVectorDB"
+	AdminService_SyncAllPendingRAGDocuments_FullMethodName     = "/makejob.admin.v1.AdminService/SyncAllPendingRAGDocuments"
+	AdminService_GetScraperSources_FullMethodName              = "/makejob.admin.v1.AdminService/GetScraperSources"
+	AdminService_ScraperSearch_FullMethodName                  = "/makejob.admin.v1.AdminService/ScraperSearch"
+	AdminService_ScraperFetch_FullMethodName                   = "/makejob.admin.v1.AdminService/ScraperFetch"
+	AdminService_ScraperClean_FullMethodName                   = "/makejob.admin.v1.AdminService/ScraperClean"
+	AdminService_ScraperImport_FullMethodName                  = "/makejob.admin.v1.AdminService/ScraperImport"
+	AdminService_ScraperImportAsync_FullMethodName             = "/makejob.admin.v1.AdminService/ScraperImportAsync"
+	AdminService_ListScraperTasks_FullMethodName               = "/makejob.admin.v1.AdminService/ListScraperTasks"
+	AdminService_GetScraperTask_FullMethodName                 = "/makejob.admin.v1.AdminService/GetScraperTask"
+	AdminService_UpdateQuestionPipelineTask_FullMethodName     = "/makejob.admin.v1.AdminService/UpdateQuestionPipelineTask"
+	AdminService_RetryScraperTask_FullMethodName               = "/makejob.admin.v1.AdminService/RetryScraperTask"
+	AdminService_GetAdminConfig_FullMethodName                 = "/makejob.admin.v1.AdminService/GetAdminConfig"
+	AdminService_SetAdminConfig_FullMethodName                 = "/makejob.admin.v1.AdminService/SetAdminConfig"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -119,6 +120,7 @@ type AdminServiceClient interface {
 	GetQuestionTagTaxonomy(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*QuestionTagTaxonomyResponse, error)
 	// === 题目流水线 ===
 	GenerateQuestionPipeline(ctx context.Context, in *GenerateQuestionPipelineRequest, opts ...grpc.CallOption) (*GenerateQuestionPipelineResponse, error)
+	GenerateQuestionPipelineStream(ctx context.Context, in *GenerateQuestionPipelineRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PipelineStreamEvent], error)
 	GenerateQuestionPipelineAsync(ctx context.Context, in *GenerateQuestionPipelineRequest, opts ...grpc.CallOption) (*PipelineTaskInfo, error)
 	ImportQuestionPipeline(ctx context.Context, in *ImportQuestionPipelineRequest, opts ...grpc.CallOption) (*BatchImportQuestionsResponse, error)
 	// === 分类管理 ===
@@ -318,6 +320,25 @@ func (c *adminServiceClient) GenerateQuestionPipeline(ctx context.Context, in *G
 	}
 	return out, nil
 }
+
+func (c *adminServiceClient) GenerateQuestionPipelineStream(ctx context.Context, in *GenerateQuestionPipelineRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PipelineStreamEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AdminService_ServiceDesc.Streams[0], AdminService_GenerateQuestionPipelineStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GenerateQuestionPipelineRequest, PipelineStreamEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AdminService_GenerateQuestionPipelineStreamClient = grpc.ServerStreamingClient[PipelineStreamEvent]
 
 func (c *adminServiceClient) GenerateQuestionPipelineAsync(ctx context.Context, in *GenerateQuestionPipelineRequest, opts ...grpc.CallOption) (*PipelineTaskInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -1008,6 +1029,7 @@ type AdminServiceServer interface {
 	GetQuestionTagTaxonomy(context.Context, *emptypb.Empty) (*QuestionTagTaxonomyResponse, error)
 	// === 题目流水线 ===
 	GenerateQuestionPipeline(context.Context, *GenerateQuestionPipelineRequest) (*GenerateQuestionPipelineResponse, error)
+	GenerateQuestionPipelineStream(*GenerateQuestionPipelineRequest, grpc.ServerStreamingServer[PipelineStreamEvent]) error
 	GenerateQuestionPipelineAsync(context.Context, *GenerateQuestionPipelineRequest) (*PipelineTaskInfo, error)
 	ImportQuestionPipeline(context.Context, *ImportQuestionPipelineRequest) (*BatchImportQuestionsResponse, error)
 	// === 分类管理 ===
@@ -1130,6 +1152,9 @@ func (UnimplementedAdminServiceServer) GetQuestionTagTaxonomy(context.Context, *
 }
 func (UnimplementedAdminServiceServer) GenerateQuestionPipeline(context.Context, *GenerateQuestionPipelineRequest) (*GenerateQuestionPipelineResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateQuestionPipeline not implemented")
+}
+func (UnimplementedAdminServiceServer) GenerateQuestionPipelineStream(*GenerateQuestionPipelineRequest, grpc.ServerStreamingServer[PipelineStreamEvent]) error {
+	return status.Error(codes.Unimplemented, "method GenerateQuestionPipelineStream not implemented")
 }
 func (UnimplementedAdminServiceServer) GenerateQuestionPipelineAsync(context.Context, *GenerateQuestionPipelineRequest) (*PipelineTaskInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateQuestionPipelineAsync not implemented")
@@ -1550,6 +1575,17 @@ func _AdminService_GenerateQuestionPipeline_Handler(srv interface{}, ctx context
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _AdminService_GenerateQuestionPipelineStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GenerateQuestionPipelineRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AdminServiceServer).GenerateQuestionPipelineStream(m, &grpc.GenericServerStream[GenerateQuestionPipelineRequest, PipelineStreamEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AdminService_GenerateQuestionPipelineStreamServer = grpc.ServerStreamingServer[PipelineStreamEvent]
 
 func _AdminService_GenerateQuestionPipelineAsync_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GenerateQuestionPipelineRequest)
@@ -3077,6 +3113,12 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AdminService_SetAdminConfig_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GenerateQuestionPipelineStream",
+			Handler:       _AdminService_GenerateQuestionPipelineStream_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "makejob/admin/v1/admin.proto",
 }

@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AIService_InterviewAgent_FullMethodName             = "/makejob.ai.v1.AIService/InterviewAgent"
-	AIService_PlanAgent_FullMethodName                  = "/makejob.ai.v1.AIService/PlanAgent"
-	AIService_CompanionAgent_FullMethodName             = "/makejob.ai.v1.AIService/CompanionAgent"
-	AIService_QuizAnalyzer_FullMethodName               = "/makejob.ai.v1.AIService/QuizAnalyzer"
-	AIService_ResumeParser_FullMethodName               = "/makejob.ai.v1.AIService/ResumeParser"
-	AIService_Live2DDirector_FullMethodName             = "/makejob.ai.v1.AIService/Live2DDirector"
-	AIService_RenderPrompt_FullMethodName               = "/makejob.ai.v1.AIService/RenderPrompt"
-	AIService_DebugAI_FullMethodName                    = "/makejob.ai.v1.AIService/DebugAI"
-	AIService_GenerateQuestionCandidates_FullMethodName = "/makejob.ai.v1.AIService/GenerateQuestionCandidates"
+	AIService_InterviewAgent_FullMethodName                   = "/makejob.ai.v1.AIService/InterviewAgent"
+	AIService_PlanAgent_FullMethodName                        = "/makejob.ai.v1.AIService/PlanAgent"
+	AIService_CompanionAgent_FullMethodName                   = "/makejob.ai.v1.AIService/CompanionAgent"
+	AIService_QuizAnalyzer_FullMethodName                     = "/makejob.ai.v1.AIService/QuizAnalyzer"
+	AIService_ResumeParser_FullMethodName                     = "/makejob.ai.v1.AIService/ResumeParser"
+	AIService_Live2DDirector_FullMethodName                   = "/makejob.ai.v1.AIService/Live2DDirector"
+	AIService_RenderPrompt_FullMethodName                     = "/makejob.ai.v1.AIService/RenderPrompt"
+	AIService_DebugAI_FullMethodName                          = "/makejob.ai.v1.AIService/DebugAI"
+	AIService_GenerateQuestionCandidates_FullMethodName       = "/makejob.ai.v1.AIService/GenerateQuestionCandidates"
+	AIService_GenerateQuestionCandidatesStream_FullMethodName = "/makejob.ai.v1.AIService/GenerateQuestionCandidatesStream"
 )
 
 // AIServiceClient is the client API for AIService service.
@@ -44,6 +45,8 @@ type AIServiceClient interface {
 	RenderPrompt(ctx context.Context, in *RenderPromptRequest, opts ...grpc.CallOption) (*RenderPromptResponse, error)
 	DebugAI(ctx context.Context, in *DebugAIRequest, opts ...grpc.CallOption) (*DebugAIResponse, error)
 	GenerateQuestionCandidates(ctx context.Context, in *GenerateQuestionCandidatesRequest, opts ...grpc.CallOption) (*GenerateQuestionCandidatesResponse, error)
+	// === 题目流水线流式生成 ===
+	GenerateQuestionCandidatesStream(ctx context.Context, in *GenerateQuestionCandidatesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QuestionPipelineStreamEvent], error)
 }
 
 type aIServiceClient struct {
@@ -144,6 +147,25 @@ func (c *aIServiceClient) GenerateQuestionCandidates(ctx context.Context, in *Ge
 	return out, nil
 }
 
+func (c *aIServiceClient) GenerateQuestionCandidatesStream(ctx context.Context, in *GenerateQuestionCandidatesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[QuestionPipelineStreamEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AIService_ServiceDesc.Streams[0], AIService_GenerateQuestionCandidatesStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GenerateQuestionCandidatesRequest, QuestionPipelineStreamEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AIService_GenerateQuestionCandidatesStreamClient = grpc.ServerStreamingClient[QuestionPipelineStreamEvent]
+
 // AIServiceServer is the server API for AIService service.
 // All implementations must embed UnimplementedAIServiceServer
 // for forward compatibility.
@@ -158,6 +180,8 @@ type AIServiceServer interface {
 	RenderPrompt(context.Context, *RenderPromptRequest) (*RenderPromptResponse, error)
 	DebugAI(context.Context, *DebugAIRequest) (*DebugAIResponse, error)
 	GenerateQuestionCandidates(context.Context, *GenerateQuestionCandidatesRequest) (*GenerateQuestionCandidatesResponse, error)
+	// === 题目流水线流式生成 ===
+	GenerateQuestionCandidatesStream(*GenerateQuestionCandidatesRequest, grpc.ServerStreamingServer[QuestionPipelineStreamEvent]) error
 	mustEmbedUnimplementedAIServiceServer()
 }
 
@@ -194,6 +218,9 @@ func (UnimplementedAIServiceServer) DebugAI(context.Context, *DebugAIRequest) (*
 }
 func (UnimplementedAIServiceServer) GenerateQuestionCandidates(context.Context, *GenerateQuestionCandidatesRequest) (*GenerateQuestionCandidatesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateQuestionCandidates not implemented")
+}
+func (UnimplementedAIServiceServer) GenerateQuestionCandidatesStream(*GenerateQuestionCandidatesRequest, grpc.ServerStreamingServer[QuestionPipelineStreamEvent]) error {
+	return status.Error(codes.Unimplemented, "method GenerateQuestionCandidatesStream not implemented")
 }
 func (UnimplementedAIServiceServer) mustEmbedUnimplementedAIServiceServer() {}
 func (UnimplementedAIServiceServer) testEmbeddedByValue()                   {}
@@ -378,6 +405,17 @@ func _AIService_GenerateQuestionCandidates_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIService_GenerateQuestionCandidatesStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GenerateQuestionCandidatesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AIServiceServer).GenerateQuestionCandidatesStream(m, &grpc.GenericServerStream[GenerateQuestionCandidatesRequest, QuestionPipelineStreamEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AIService_GenerateQuestionCandidatesStreamServer = grpc.ServerStreamingServer[QuestionPipelineStreamEvent]
+
 // AIService_ServiceDesc is the grpc.ServiceDesc for AIService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -422,6 +460,12 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AIService_GenerateQuestionCandidates_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GenerateQuestionCandidatesStream",
+			Handler:       _AIService_GenerateQuestionCandidatesStream_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "makejob/ai/v1/ai.proto",
 }

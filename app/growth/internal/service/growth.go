@@ -51,7 +51,153 @@ func (s *GrowthService) GetGrowthSummary(ctx context.Context, req *growthv1.User
 		AvgScore:        summary.AvgScore,
 		WeeklyStats:     weeklyStats,
 		WeakTopics:      weakTopics,
+
+		PracticeStats:           toPracticeStatsProto(summary.PracticeStats),
+		StudyDays:               summary.StudyDays,
+		InterviewCount:          summary.InterviewCount,
+		CompletedInterviewCount: summary.CompletedInterviewCount,
+		AverageInterviewScore:   summary.AverageInterviewScore,
+		PlanCount:               summary.PlanCount,
+		CurrentPlan:             toCurrentPlanProto(summary.CurrentPlan),
+		FocusSignals:            toFocusSignalsProto(summary.FocusSignals),
+		TrendSummary:            toTrendSummaryProto(summary.TrendSummary),
+		RecentStudyLogs:         toStudyLogsProto(summary.RecentStudyLogs),
+		RecentInterviews:        toInterviewSnapshotsProto(summary.RecentInterviews),
+		RecentPlans:             toPlanSnapshotsProto(summary.RecentPlans),
 	}, nil
+}
+
+func toPracticeStatsProto(s *biz.GrowthPracticeStats) *growthv1.GrowthPracticeStats {
+	if s == nil {
+		return nil
+	}
+	cats := make([]*growthv1.GrowthCategoryStat, 0, len(s.CategoryStats))
+	for _, c := range s.CategoryStats {
+		cats = append(cats, &growthv1.GrowthCategoryStat{
+			CategoryId:   c.CategoryID,
+			CategoryName: c.CategoryName,
+			Total:        c.Total,
+			Correct:      c.Correct,
+			AccuracyRate: c.AccuracyRate,
+		})
+	}
+	return &growthv1.GrowthPracticeStats{
+		TotalAnswered: s.TotalAnswered,
+		CorrectCount:  s.CorrectCount,
+		WrongCount:    s.WrongCount,
+		AccuracyRate:  s.AccuracyRate,
+		TodayCount:    s.TodayCount,
+		StreakDays:    s.StreakDays,
+		CategoryStats: cats,
+	}
+}
+
+func toCurrentPlanProto(p *biz.GrowthCurrentPlan) *growthv1.GrowthCurrentPlan {
+	if p == nil {
+		return nil
+	}
+	return &growthv1.GrowthCurrentPlan{
+		Id:                     p.ID,
+		Title:                  p.Title,
+		Status:                 p.Status,
+		TotalTasks:             p.TotalTasks,
+		CompletedTasks:         p.CompletedTasks,
+		Progress:               p.Progress,
+		NextTaskTitle:          p.NextTaskTitle,
+		NextTaskSource:         p.NextTaskSource,
+		NextTaskReason:         p.NextTaskReason,
+		NextTaskSourceRef:      p.NextTaskSourceRef,
+		NextTaskCollectionHint: p.NextTaskCollectionHint,
+	}
+}
+
+func toFocusSignalsProto(signals []*biz.GrowthFocusSignal) []*growthv1.GrowthFocusSignal {
+	result := make([]*growthv1.GrowthFocusSignal, 0, len(signals))
+	for _, s := range signals {
+		result = append(result, &growthv1.GrowthFocusSignal{
+			FocusTag:                  s.FocusTag,
+			TopicCode:                 s.TopicCode,
+			TopicTitle:                s.TopicTitle,
+			TopicProblemPattern:       s.TopicProblemPattern,
+			RelatedQuestionSets:       s.RelatedQuestionSets,
+			RecommendedActions:        s.RecommendedActions,
+			PrimaryQuestionSet:        s.PrimaryQuestionSet,
+			DominantArchivePhase:      s.DominantArchivePhase,
+			DominantArchivePhaseLabel: s.DominantArchivePhaseLabel,
+			OccurrenceCount:           s.OccurrenceCount,
+			ArchiveOccurrenceCount:    s.ArchiveOccurrenceCount,
+			InterviewOccurrenceCount:  s.InterviewOccurrenceCount,
+			Source:                    s.Source,
+			SourceLabel:               s.SourceLabel,
+			Reason:                    s.Reason,
+		})
+	}
+	return result
+}
+
+func toTrendSummaryProto(t *biz.GrowthTrendSummary) *growthv1.GrowthTrendSummary {
+	if t == nil {
+		return nil
+	}
+	return &growthv1.GrowthTrendSummary{
+		DominantSource:      t.DominantSource,
+		DominantSourceLabel: t.DominantSourceLabel,
+		TopFocusTag:         t.TopFocusTag,
+		TopTopicCode:        t.TopTopicCode,
+		TopTopicTitle:       t.TopTopicTitle,
+		Summary:             t.Summary,
+	}
+}
+
+func toStudyLogsProto(logs []*biz.GrowthStudyLog) []*growthv1.GrowthStudyLog {
+	result := make([]*growthv1.GrowthStudyLog, 0, len(logs))
+	for _, l := range logs {
+		result = append(result, &growthv1.GrowthStudyLog{
+			Id:               l.ID,
+			DateKey:          l.DateKey,
+			Summary:          l.Summary,
+			FocusTaskTitle:   l.FocusTaskTitle,
+			CompletedCount:   l.CompletedCount,
+			SkippedCount:     l.SkippedCount,
+			CompletedTitles:  l.CompletedTitles,
+			SkippedTitles:    l.SkippedTitles,
+			LatestActionText: l.LatestActionText,
+			UpdatedAt:        l.UpdatedAt,
+		})
+	}
+	return result
+}
+
+func toInterviewSnapshotsProto(items []*biz.GrowthInterviewSnapshot) []*growthv1.GrowthInterviewSnapshot {
+	result := make([]*growthv1.GrowthInterviewSnapshot, 0, len(items))
+	for _, i := range items {
+		result = append(result, &growthv1.GrowthInterviewSnapshot{
+			Id:             i.ID,
+			Status:         i.Status,
+			Score:          i.Score,
+			TotalQuestions: i.TotalQuestions,
+			CreatedAt:      i.CreatedAt,
+			EndedAt:        i.EndedAt,
+		})
+	}
+	return result
+}
+
+func toPlanSnapshotsProto(items []*biz.GrowthPlanSnapshot) []*growthv1.GrowthPlanSnapshot {
+	result := make([]*growthv1.GrowthPlanSnapshot, 0, len(items))
+	for _, p := range items {
+		result = append(result, &growthv1.GrowthPlanSnapshot{
+			Id:             p.ID,
+			Title:          p.Title,
+			Status:         p.Status,
+			TotalTasks:     p.TotalTasks,
+			CompletedTasks: p.CompletedTasks,
+			Progress:       p.Progress,
+			StartDate:      p.StartDate,
+			EndDate:        p.EndDate,
+		})
+	}
+	return result
 }
 
 // GetWeeklyFocus 获取本周学习重点
@@ -72,7 +218,29 @@ func (s *GrowthService) GetWeeklyFocus(ctx context.Context, req *growthv1.UserID
 	return &growthv1.WeeklyFocus{
 		Items:   items,
 		Summary: resp.Summary,
+		Themes:  toWeeklyFocusThemesProto(resp.Themes),
 	}, nil
+}
+
+func toWeeklyFocusThemesProto(themes []*biz.WeeklyFocusTheme) []*growthv1.WeeklyFocusTheme {
+	result := make([]*growthv1.WeeklyFocusTheme, 0, len(themes))
+	for _, t := range themes {
+		result = append(result, &growthv1.WeeklyFocusTheme{
+			Title:                     t.Title,
+			Reason:                    t.Reason,
+			Source:                    t.Source,
+			SourceLabel:               t.SourceLabel,
+			FocusTags:                 t.FocusTags,
+			TopicCodes:                t.TopicCodes,
+			RelatedQuestionSets:       t.RelatedQuestionSets,
+			DominantArchivePhase:      t.DominantArchivePhase,
+			DominantArchivePhaseLabel: t.DominantArchivePhaseLabel,
+			OccurrenceCount:           t.OccurrenceCount,
+			InterviewOccurrenceCount:  t.InterviewOccurrenceCount,
+			Suggestions:               t.Suggestions,
+		})
+	}
+	return result
 }
 
 // SyncStudyLog 同步学习记录
