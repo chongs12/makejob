@@ -390,11 +390,11 @@ func (c *noopAIGatewayClient) DebugAI(_ context.Context, _, _ string, _ map[stri
 	return nil, fmt.Errorf("AI Gateway 服务未配置")
 }
 
-func (c *noopAIGatewayClient) GenerateQuestionCandidates(_ context.Context, _, _, _ string, _ int32, _ string, _, _ bool, _ []string) (*biz.GenerateQuestionCandidatesResult, error) {
+func (c *noopAIGatewayClient) GenerateQuestionCandidates(_ context.Context, _, _, _ string, _ int32, _ string, _, _ bool, _ []string, _ string, _ []string) (*biz.GenerateQuestionCandidatesResult, error) {
 	return nil, fmt.Errorf("AI Gateway 服务未配置")
 }
 
-func (c *noopAIGatewayClient) GenerateQuestionCandidatesStream(_ context.Context, _, _, _ string, _ int32, _ biz.PipelineStreamEmitter) error {
+func (c *noopAIGatewayClient) GenerateQuestionCandidatesStream(_ context.Context, _, _, _ string, _ int32, _ string, _, _ bool, _ []string, _ string, _ []string, _ biz.PipelineStreamEmitter) error {
 	return fmt.Errorf("AI Gateway 服务未配置")
 }
 
@@ -441,7 +441,7 @@ func (c *aiGatewayClient) DebugAI(ctx context.Context, scene, prompt string, par
 }
 
 // GenerateQuestionCandidates 调用 AI Gateway 的 GenerateQuestionCandidates RPC（FIX H5: 透传所有字段）
-func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*biz.GenerateQuestionCandidatesResult, error) {
+func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string, industryName string, categories []string) (*biz.GenerateQuestionCandidatesResult, error) {
 	// 先从原始 context 中提取认证信息
 	accessToken := auth.GetAccessTokenFromContext(ctx)
 	if accessToken == "" {
@@ -467,6 +467,8 @@ func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, indust
 		AgentPrompt:      agentPrompt,
 		IncludeScraped:   includeScraped,
 		IncludeGenerated: includeGenerated,
+		IndustryName:     industryName,
+		Categories:       categories,
 	})
 	if err != nil {
 		return nil, err
@@ -475,6 +477,7 @@ func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, indust
 	candidates := make([]*biz.QuestionCandidate, 0, len(resp.Candidates))
 	for _, c := range resp.Candidates {
 		candidates = append(candidates, &biz.QuestionCandidate{
+			ID:          c.Id,
 			Title:       c.Title,
 			Content:     c.Content,
 			Type:        c.Type,
@@ -502,7 +505,7 @@ func (c *aiGatewayClient) GenerateQuestionCandidates(ctx context.Context, indust
 }
 
 // GenerateQuestionCandidatesStream 调用 AI Gateway 的 GenerateQuestionCandidatesStream RPC（流式）
-func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, emit biz.PipelineStreamEmitter) error {
+func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string, industryName string, categories []string, emit biz.PipelineStreamEmitter) error {
 	// 先从原始 context 中提取认证信息
 	accessToken := auth.GetAccessTokenFromContext(ctx)
 	if accessToken == "" {
@@ -519,10 +522,16 @@ func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, 
 	}
 
 	stream, err := c.client.GenerateQuestionCandidatesStream(aiCtx, &aiv1.GenerateQuestionCandidatesRequest{
-		IndustryCode:   industryCode,
-		Requirement:    requirement,
-		CandidateCount: candidateCount,
-		AgentPrompt:    agentPrompt,
+		IndustryCode:     industryCode,
+		Requirement:      requirement,
+		CandidateCount:   candidateCount,
+		AgentPrompt:      agentPrompt,
+		GenerationMode:   generationMode,
+		IncludeScraped:   includeScraped,
+		IncludeGenerated: includeGenerated,
+		Sources:          sources,
+		IndustryName:     industryName,
+		Categories:       categories,
 	})
 	if err != nil {
 		return err
@@ -554,6 +563,7 @@ func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, 
 
 		if event.GetCard() != nil {
 			streamEvent.Card = &biz.QuestionCandidate{
+				ID:          event.GetCard().GetId(),
 				Title:       event.GetCard().GetTitle(),
 				Content:     event.GetCard().GetContent(),
 				Type:        event.GetCard().GetType(),
@@ -581,6 +591,7 @@ func (c *aiGatewayClient) GenerateQuestionCandidatesStream(ctx context.Context, 
 			}
 			for _, c := range resp.GetCandidates() {
 				streamEvent.Response.Candidates = append(streamEvent.Response.Candidates, &biz.QuestionCandidate{
+					ID:          c.GetId(),
 					Title:       c.GetTitle(),
 					Content:     c.GetContent(),
 					Type:        c.GetType(),

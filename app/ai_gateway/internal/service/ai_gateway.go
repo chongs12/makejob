@@ -270,6 +270,8 @@ func (s *AIGatewayService) GenerateQuestionCandidates(ctx context.Context, req *
 		req.GetIncludeScraped(),
 		req.GetIncludeGenerated(),
 		req.GetSources(),
+		req.GetIndustryName(),
+		req.GetCategories(),
 	)
 	if err != nil {
 		return nil, err
@@ -331,6 +333,8 @@ func (s *AIGatewayService) GenerateQuestionCandidatesStream(req *aiv1.GenerateQu
 		req.GetRequirement(),
 		req.GetAgentPrompt(),
 		candidateCount,
+		req.GetIndustryName(),
+		req.GetCategories(),
 		emit,
 	)
 	return err
@@ -347,6 +351,7 @@ func toProtoCandidate(c *biz.QuestionCandidate) *aiv1.QuestionCandidate {
 	}
 
 	return &aiv1.QuestionCandidate{
+		Id:          c.ID,
 		Title:       c.Title,
 		Content:     c.Content,
 		Type:        c.Type,

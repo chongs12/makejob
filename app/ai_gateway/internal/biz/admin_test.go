@@ -91,12 +91,14 @@ func TestGenerateQuestionCandidatesUsesCustomAgentPrompt(t *testing.T) {
 		context.Background(),
 		"go_backend",
 		"need go questions",
-		"generate {{candidate_count}} cards for {{industry_code}}",
+		"generate cards",
 		3,
 		"direct_single",
 		true,
 		true,
 		[]string{"boss"},
+		"Go后端",
+		[]string{"Go基础", "并发编程"},
 	)
 	if err != nil {
 		t.Fatalf("expected custom agent_prompt to bypass prompt repo error, got %v", err)

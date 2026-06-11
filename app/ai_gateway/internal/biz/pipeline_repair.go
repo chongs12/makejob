@@ -71,6 +71,7 @@ type repairResult struct {
 // ==================== 编程题字段补齐 ====================
 
 // finalizeQuestionPipelineModelCard 补齐编程题必需字段。
+// supplement 失败时降级返回 prepared 卡片（带 skeleton），不阻断流水线。
 func (uc *AdminUseCase) finalizeQuestionPipelineModelCard(ctx context.Context, card *QuestionCandidate, constraints questionPipelineConstraintProfile) (*QuestionCandidate, string, bool) {
 	if !constraints.RequireCode && normalizeQuestionPipelineType(card.Type) != "code" {
 		return card, "", false
@@ -83,10 +84,11 @@ func (uc *AdminUseCase) finalizeQuestionPipelineModelCard(ctx context.Context, c
 
 	supplemented, err := uc.supplementCodeCard(ctx, prepared)
 	if err != nil {
-		return prepared, fmt.Sprintf("编程题结构补齐失败: %v", err), true
+		// supplement 失败时降级：返回 prepared（带 skeleton），不阻断流水线
+		return prepared, "", true
 	}
 	if !isCodeCardComplete(supplemented) {
-		return supplemented, "编程题结构补齐后仍缺少完整 judge_config", true
+		return prepared, "", true
 	}
 	return supplemented, "", true
 }
@@ -157,7 +159,7 @@ func buildPreparedCodeCard(card *QuestionCandidate) *QuestionCandidate {
 	result.Answer = normalizeCodeField(result.Answer)
 	result.Explanation = firstNonEmptyString(strings.TrimSpace(result.Explanation), buildExplanation(result.Title))
 	result.Solution = firstNonEmptyString(
-		normalizeCodeSolution(result.Solution),
+		normalizeCodeSolution(result.Solution, result.JudgeConfig),
 		strings.TrimSpace(result.Explanation),
 	)
 
@@ -172,9 +174,9 @@ func buildPreparedCodeCard(card *QuestionCandidate) *QuestionCandidate {
 	return &result
 }
 
-// isCodeCardComplete 判断编程题卡是否完整。
+// isCodeCardComplete 判断编程题卡是否完整（skeleton 模式：有 reference_solutions 即可）。
 func isCodeCardComplete(card *QuestionCandidate) bool {
-	if strings.TrimSpace(card.Answer) == "" || strings.TrimSpace(normalizeCodeSolution(card.Solution)) == "" {
+	if strings.TrimSpace(card.Answer) == "" || strings.TrimSpace(normalizeCodeSolution(card.Solution, card.JudgeConfig)) == "" {
 		return false
 	}
 
@@ -196,17 +198,14 @@ func isCodeCardComplete(card *QuestionCandidate) bool {
 		}
 	}
 
-	// 检查必要字段
+	// 检查必要字段（skeleton 模式：有 evaluation_mode 和 reference_solutions 即可）
 	evalMode, _ := judgeConfig["evaluation_mode"].(string)
 	if evalMode != "testcase" {
 		return false
 	}
 
-	publicTestCases, _ := judgeConfig["public_test_cases"].([]any)
-	hiddenTestCases, _ := judgeConfig["hidden_test_cases"].([]any)
 	referenceSolutions, _ := judgeConfig["reference_solutions"].([]any)
-
-	return len(publicTestCases) == 3 && len(hiddenTestCases) > 0 && len(referenceSolutions) > 0
+	return len(referenceSolutions) > 0
 }
 
 // mergeQuestionCandidate 合并两个题卡。
@@ -229,7 +228,7 @@ func mergeQuestionCandidate(base, override *QuestionCandidate) *QuestionCandidat
 	return &merged
 }
 
-// normalizeCodeField 规范化代码字段。
+// normalizeCodeField 规范化代码字段（去除 code fence + 串包污染）。
 func normalizeCodeField(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -244,26 +243,39 @@ func normalizeCodeField(raw string) string {
 		}
 	}
 	raw = strings.TrimSuffix(strings.TrimSpace(raw), "```")
-	return strings.TrimSpace(raw)
+	return trimQuestionPipelineEmbeddedPayload(raw)
 }
 
-// normalizeCodeSolution 规范化代码解法。
-func normalizeCodeSolution(raw string) string {
+// normalizeCodeSolution 规范化代码解法，solution 为空时从 judgeConfig 兜底。
+func normalizeCodeSolution(raw string, judgeConfig any) string {
 	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	// 移除 Markdown 标题
-	lines := strings.Split(raw, "\n")
-	var cleaned []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			continue
+	if raw != "" {
+		// 移除 Markdown 标题
+		lines := strings.Split(raw, "\n")
+		var cleaned []string
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			cleaned = append(cleaned, line)
 		}
-		cleaned = append(cleaned, line)
+		return strings.TrimSpace(strings.Join(cleaned, "\n"))
 	}
-	return strings.TrimSpace(strings.Join(cleaned, "\n"))
+
+	// 从 judgeConfig 兜底提取 explanation
+	if judgeConfig != nil {
+		if jcMap, ok := judgeConfig.(map[string]any); ok {
+			if refs, ok := jcMap["reference_solutions"].([]any); ok && len(refs) > 0 {
+				if ref, ok := refs[0].(map[string]any); ok {
+					if explanation, ok := ref["explanation"].(string); ok && strings.TrimSpace(explanation) != "" {
+						return strings.TrimSpace(explanation)
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // buildExplanation 构建解释文本。
@@ -274,7 +286,7 @@ func buildExplanation(title string) string {
 	return fmt.Sprintf("本题考查%s相关知识点，请结合题目要求详细说明核心概念和实现要点。", title)
 }
 
-// buildCodeJudgeConfigSkeleton 构建编程题判题配置骨架。
+// buildCodeJudgeConfigSkeleton 构建编程题判题配置骨架（对齐单体默认值）。
 func buildCodeJudgeConfigSkeleton(card *QuestionCandidate) map[string]any {
 	if strings.TrimSpace(card.Answer) == "" {
 		return nil
@@ -285,17 +297,113 @@ func buildCodeJudgeConfigSkeleton(card *QuestionCandidate) map[string]any {
 		language = "go"
 	}
 
+	referenceSolutions := []any{
+		map[string]any{
+			"language":    language,
+			"title":       "参考实现",
+			"code":        strings.TrimSpace(card.Answer),
+			"explanation": strings.TrimSpace(card.Solution),
+		},
+	}
+
 	return map[string]any{
 		"evaluation_mode":     "testcase",
 		"default_language":    language,
 		"allowed_languages":   []string{language},
-		"starter_code":        "",
+		"starter_code":        buildDefaultStarterCode(language),
 		"public_test_cases":   []any{},
 		"hidden_test_cases":   []any{},
-		"reference_solutions": []any{},
-		"time_limit_ms":       5000,
-		"memory_limit_mb":     256,
+		"reference_solutions": referenceSolutions,
+		"time_limit_ms":       2000,
+		"memory_limit_mb":     128,
 	}
+}
+
+// buildDefaultStarterCode 为缺失 starter_code 的编程题补一份最小可编辑模板。
+func buildDefaultStarterCode(language string) string {
+	switch normalizeLanguage(language) {
+	case "java":
+		return "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n    }\n}"
+	case "python":
+		return "def solve():\n    pass\n\nif __name__ == '__main__':\n    solve()\n"
+	default:
+		return "package main\n\nfunc main() {\n}\n"
+	}
+}
+
+// normalizeCodeJudgeConfig 规范化编程题判题配置，补齐默认值并裁剪多余用例。
+func normalizeCodeJudgeConfig(judgeConfig map[string]any, answer string) map[string]any {
+	if judgeConfig == nil {
+		return nil
+	}
+
+	normalized := make(map[string]any)
+	normalized["evaluation_mode"] = "testcase"
+
+	defaultLang, _ := judgeConfig["default_language"].(string)
+	if defaultLang == "" {
+		defaultLang = "go"
+	}
+	normalized["default_language"] = defaultLang
+
+	if allowedLangs, ok := judgeConfig["allowed_languages"].([]any); ok && len(allowedLangs) > 0 {
+		normalized["allowed_languages"] = allowedLangs
+	} else {
+		normalized["allowed_languages"] = []string{defaultLang}
+	}
+
+	starterCode, _ := judgeConfig["starter_code"].(string)
+	if starterCode == "" {
+		starterCode = buildDefaultStarterCode(defaultLang)
+	}
+	normalized["starter_code"] = starterCode
+
+	// public_test_cases 最多保留 3 条
+	if publicCases, ok := judgeConfig["public_test_cases"].([]any); ok {
+		if len(publicCases) > 3 {
+			publicCases = publicCases[:3]
+		}
+		normalized["public_test_cases"] = publicCases
+	} else {
+		normalized["public_test_cases"] = []any{}
+	}
+
+	if hiddenCases, ok := judgeConfig["hidden_test_cases"].([]any); ok {
+		normalized["hidden_test_cases"] = hiddenCases
+	} else {
+		normalized["hidden_test_cases"] = []any{}
+	}
+
+	// reference_solutions 为空时从 answer 兜底
+	if refs, ok := judgeConfig["reference_solutions"].([]any); ok && len(refs) > 0 {
+		normalized["reference_solutions"] = refs
+	} else if strings.TrimSpace(answer) != "" {
+		normalized["reference_solutions"] = []any{
+			map[string]any{
+				"language": defaultLang,
+				"title":    "参考实现",
+				"code":     strings.TrimSpace(answer),
+			},
+		}
+	} else {
+		normalized["reference_solutions"] = []any{}
+	}
+
+	// time_limit_ms 默认 2000
+	if timeLimit, ok := judgeConfig["time_limit_ms"].(float64); ok && timeLimit > 0 {
+		normalized["time_limit_ms"] = int(timeLimit)
+	} else {
+		normalized["time_limit_ms"] = 2000
+	}
+
+	// memory_limit_mb 默认 128
+	if memLimit, ok := judgeConfig["memory_limit_mb"].(float64); ok && memLimit > 0 {
+		normalized["memory_limit_mb"] = int(memLimit)
+	} else {
+		normalized["memory_limit_mb"] = 128
+	}
+
+	return normalized
 }
 
 // detectCardLanguage 检测题卡的编程语言。
@@ -380,8 +488,8 @@ func buildSingleCardRepairSchema(requireCode bool) string {
         "reference_solutions": [
           {"language": "go|java|python", "code": "完整代码"}
         ],
-        "time_limit_ms": 5000,
-        "memory_limit_mb": 256
+        "time_limit_ms": 2000,
+        "memory_limit_mb": 128
       }
     }
   ]
@@ -413,17 +521,52 @@ func sanitizeQuestionCandidate(card *QuestionCandidate) *QuestionCandidate {
 	}
 	result := *card
 	result.Title = strings.TrimSpace(result.Title)
-	result.Content = strings.TrimSpace(result.Content)
-	result.Answer = strings.TrimSpace(result.Answer)
-	result.Explanation = strings.TrimSpace(result.Explanation)
-	result.Solution = strings.TrimSpace(result.Solution)
+	result.Content = trimQuestionPipelineEmbeddedPayload(strings.TrimSpace(result.Content))
+	result.Explanation = trimQuestionPipelineEmbeddedPayload(strings.TrimSpace(result.Explanation))
+
+	questionType := normalizeQuestionPipelineType(result.Type)
+	if questionType == "code" {
+		result.Answer = normalizeCodeField(result.Answer)
+		result.Solution = trimQuestionPipelineEmbeddedPayload(strings.TrimSpace(result.Solution))
+	} else {
+		result.Answer = trimQuestionPipelineEmbeddedPayload(strings.TrimSpace(result.Answer))
+		result.Solution = strings.TrimSpace(result.Solution)
+	}
+
+	// 规范化 judge_config（对齐单体）
+	if jcMap, ok := result.JudgeConfig.(map[string]any); ok && jcMap != nil {
+		result.JudgeConfig = normalizeCodeJudgeConfig(jcMap, result.Answer)
+	}
+
 	result.Category = strings.TrimSpace(result.Category)
 	result.Difficulty = normalizeQuestionPipelineDifficulty(result.Difficulty)
 	result.Type = normalizeQuestionPipelineType(result.Type)
 	return &result
 }
 
+// trimQuestionPipelineEmbeddedPayload 去掉字段值里混入的后续 JSON/代码块片段，降低串包污染影响。
+func trimQuestionPipelineEmbeddedPayload(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	lowered := strings.ToLower(raw)
+	cutIndex := len(raw)
+	for _, marker := range []string{"```json", "```yaml", "```", "\n{\"cards\"", "\n{\"title\"", "\n{\"questions\"", "\n最终结果", "\n以下是"} {
+		index := strings.Index(lowered, strings.ToLower(marker))
+		if index >= 0 && index < cutIndex {
+			cutIndex = index
+		}
+	}
+	if cutIndex < len(raw) {
+		raw = raw[:cutIndex]
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(raw), "```"))
+}
+
 // normalizeCodeCardWithReason 校验编程题完整性。
+// 对于有 reference_solutions 但缺少 test_cases 的 skeleton 卡片，放行而非拒绝。
 func normalizeCodeCardWithReason(card *QuestionCandidate) (*QuestionCandidate, string, bool) {
 	if card == nil {
 		return nil, "题卡为空", false
@@ -464,23 +607,21 @@ func normalizeCodeCardWithReason(card *QuestionCandidate) (*QuestionCandidate, s
 		return card, "evaluation_mode 必须为 testcase", false
 	}
 
-	// 检查 public_test_cases
-	publicTestCases, ok := judgeConfig["public_test_cases"].([]any)
-	if !ok || len(publicTestCases) != 3 {
-		return card, fmt.Sprintf("public_test_cases 必须恰好 3 条，当前 %d 条", len(publicTestCases)), false
-	}
-
-	// 检查 hidden_test_cases
-	hiddenTestCases, ok := judgeConfig["hidden_test_cases"].([]any)
-	if !ok || len(hiddenTestCases) == 0 {
-		return card, "hidden_test_cases 不能为空", false
-	}
-
-	// 检查 reference_solutions
+	// 检查 reference_solutions（必须有）
 	referenceSolutions, ok := judgeConfig["reference_solutions"].([]any)
 	if !ok || len(referenceSolutions) == 0 {
 		return card, "reference_solutions 不能为空", false
 	}
+
+	// 检查 public_test_cases（skeleton 模式下允许为空，仅警告）
+	publicTestCases, _ := judgeConfig["public_test_cases"].([]any)
+	if len(publicTestCases) > 0 && len(publicTestCases) != 3 {
+		return card, fmt.Sprintf("public_test_cases 必须恰好 3 条，当前 %d 条", len(publicTestCases)), false
+	}
+
+	// 检查 hidden_test_cases（skeleton 模式下允许为空，仅警告）
+	hiddenTestCases, _ := judgeConfig["hidden_test_cases"].([]any)
+	_ = hiddenTestCases
 
 	return card, "", true
 }

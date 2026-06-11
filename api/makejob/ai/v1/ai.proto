@@ -175,6 +175,8 @@ message GenerateQuestionCandidatesRequest {
   string agent_prompt = 6;             // 自定义 agent prompt
   bool include_scraped = 7;            // 是否包含爬虫数据
   bool include_generated = 8;          // 是否包含 AI 生成数据
+  string industry_name = 9;            // 行业名称（由 Admin Service 查询后传入）
+  repeated string categories = 10;     // 分类名称列表
 }
 
 message GenerateQuestionCandidatesResponse {
@@ -185,6 +187,7 @@ message GenerateQuestionCandidatesResponse {
 }
 
 message QuestionCandidate {
+  string id = 16;
   string title = 1;
   string content = 2;
   string type = 3;

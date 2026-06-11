@@ -132,10 +132,10 @@ type AIGatewayClient interface {
 	RenderPrompt(ctx context.Context, scene, templateText string, variables map[string]string, runWithLLM bool) (*RenderPromptResult, error)
 	// DebugAI 执行 AI 调试调用
 	DebugAI(ctx context.Context, scene, prompt string, params map[string]string, modelOverride string) (*DebugAIResult, error)
-	// GenerateQuestionCandidates 同步生成题目候选（FIX H5: 透传 agent_prompt/include_scraped/include_generated）
-	GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error)
+	// GenerateQuestionCandidates 同步生成题目候选
+	GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string, industryName string, categories []string) (*GenerateQuestionCandidatesResult, error)
 	// GenerateQuestionCandidatesStream 流式生成题目候选
-	GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, emit PipelineStreamEmitter) error
+	GenerateQuestionCandidatesStream(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string, industryName string, categories []string, emit PipelineStreamEmitter) error
 }
 
 // RenderPromptResult Prompt 渲染结果
@@ -168,6 +168,7 @@ type GenerateQuestionCandidatesResult struct {
 
 // QuestionCandidate 题目候选（FIX H6: 补齐与 PipelineCard 对齐的字段）
 type QuestionCandidate struct {
+	ID          string
 	Title       string
 	Content     string
 	Type        string

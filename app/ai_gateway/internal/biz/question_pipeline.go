@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,21 +103,52 @@ func extractLanguageCounts(agentPrompt string) (map[string]int, []string) {
 	counts := make(map[string]int)
 	order := make([]string, 0)
 
-	re := regexp.MustCompile(`(\d+)\s*(?:道|题|个)?\s*(go|golang|java|python|c\+\+)`)
-	matches := re.FindAllStringSubmatch(strings.ToLower(agentPrompt), -1)
+	re := regexp.MustCompile(`(?i)(?:必须|至少|恰好|其中必须有|其中有|至少有|确保有)?\s*([0-9一二两三四五六七八九十]+)\s*(?:个|道|张)?(?:题|题卡)[^。\n]{0,12}?(?:是|为)?\s*(java|go|golang)`)
+	matches := re.FindAllStringSubmatch(agentPrompt, -1)
 	for _, match := range matches {
-		count := 0
-		fmt.Sscanf(match[1], "%d", &count)
-		language := normalizeLanguage(match[2])
-		if count > 0 && language != "" {
-			if _, exists := counts[language]; !exists {
-				order = append(order, language)
-			}
-			counts[language] += count
+		if len(match) < 3 {
+			continue
 		}
+		count := parseQuestionPipelineCountToken(match[1])
+		language := normalizeLanguage(match[2])
+		if count <= 0 || language == "" {
+			continue
+		}
+		if _, exists := counts[language]; !exists {
+			order = append(order, language)
+		}
+		counts[language] += count
 	}
 
 	return counts, order
+}
+
+// parseQuestionPipelineCountToken 将阿拉伯数字或常见中文数字转换为数量。
+func parseQuestionPipelineCountToken(token string) int {
+	switch strings.TrimSpace(strings.ToLower(token)) {
+	case "1", "一", "一个":
+		return 1
+	case "2", "二", "两", "两个":
+		return 2
+	case "3", "三", "三个":
+		return 3
+	case "4", "四", "四个":
+		return 4
+	case "5", "五", "五个":
+		return 5
+	case "6", "六", "六个":
+		return 6
+	case "7", "七", "七个":
+		return 7
+	case "8", "八", "八个":
+		return 8
+	case "9", "九", "九个":
+		return 9
+	case "10", "十", "十个":
+		return 10
+	default:
+		return 0
+	}
 }
 
 // extractRemainingLanguage 解析"其他是 Go"之类的剩余题卡语言约束。
@@ -173,6 +205,7 @@ func buildConstraintSummary(profile questionPipelineConstraintProfile) string {
 	if profile.RemainingLanguage != "" {
 		parts = append(parts, fmt.Sprintf("其他题卡使用 %s 语言。", strings.ToUpper(profile.RemainingLanguage)))
 	}
+	parts = append(parts, "如果无法满足约束，宁可少输出，也不要补无关题凑数。")
 	return strings.Join(parts, "\n")
 }
 
@@ -200,10 +233,48 @@ func buildAgentPrompt(agentPrompt string) string {
 
 // buildTargetLanguageLabel 构建目标语言标签。
 func buildTargetLanguageLabel(language string) string {
-	if language == "" {
-		return "不限"
+	switch strings.TrimSpace(language) {
+	case "go":
+		return "本轮必须生成 Go 语言特性或 Go 核心机制相关题卡。"
+	case "java":
+		return "本轮必须生成 Java 相关题卡，用于满足显式语言配额。"
+	default:
+		return "未指定单独语言配额，本轮遵循整体需求与智能体指令。"
 	}
-	return strings.ToUpper(language)
+}
+
+// isPipelineMockOutput 判断当前模型输出是否来自仓库内置的 Mock Provider。
+func isPipelineMockOutput(raw string) bool {
+	normalized := strings.TrimSpace(raw)
+	if normalized == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"作为一个Mock AI",
+		"这是一个Mock流式响应",
+		"实际集成后将连接真实的AI模型",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyPipelineCardDefaults 为题卡填充默认的来源和置信度字段。
+func applyPipelineCardDefaults(card *QuestionCandidate) {
+	if card.Confidence == 0 {
+		card.Confidence = 0.94
+	}
+	if card.SourceType == "" {
+		card.SourceType = "generated"
+	}
+	if card.SourceLabel == "" {
+		card.SourceLabel = "AI 智能体生成"
+	}
+	if card.SourceTitle == "" {
+		card.SourceTitle = "智能体候选题卡"
+	}
 }
 
 // buildExistingCardsExcerpt 构建已生成题卡摘要。
@@ -339,18 +410,34 @@ func (uc *AdminUseCase) generateSingleCard(
 
 	attempt := &questionPipelineSingleCardAttempt{}
 
+	// 应用运行时覆盖参数（对齐单体 compact 模式）
+	effectiveCfg := *cfg
+	if constraints.RequireCode {
+		effectiveCfg.MaxTokens = 2600
+		effectiveCfg.Temperature = 0.2
+	} else {
+		effectiveCfg.MaxTokens = 1400
+		effectiveCfg.Temperature = 0.4
+	}
+
 	// 创建独立的 context，避免上游超时影响
 	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	messages := []Message{{Role: "user", Content: prompt}}
-	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
+	resp, err := uc.llm.Chat(llmCtx, messages, &effectiveCfg)
 	if err != nil {
 		attempt.FailureStage = "model_call"
 		return attempt, fmt.Errorf("模型调用失败: %w", err)
 	}
 
 	attempt.TraceOutput = resp.Content
+
+	// 检测 Mock Provider 输出
+	if isPipelineMockOutput(resp.Content) {
+		attempt.FailureStage = "provider"
+		return attempt, fmt.Errorf("当前调用实际返回了 Mock Provider 输出，请检查 AI 配置中的主 provider、fallback provider 与 API Key")
+	}
 
 	// 第一步：解析结果（使用复刻单体架构的完整解析逻辑）
 	modelCard, rawCandidate, decodeErr := decodeQuestionPipelineSingleCardResponse(resp.Content)
@@ -400,6 +487,12 @@ func (uc *AdminUseCase) generateSingleCard(
 		finalizedCard = checkedCard
 	}
 
+	// 第七步：应用卡片默认值（对齐单体）
+	applyPipelineCardDefaults(finalizedCard)
+
+	// 第八步：补充标签（对齐单体 buildQuestionPipelineTags）
+	finalizedCard.Tags = buildPipelineTags(finalizedCard.Tags, requirement)
+
 	attempt.Cards = []*QuestionCandidate{finalizedCard}
 	attempt.FailureStage = ""
 	return attempt, nil
@@ -431,8 +524,10 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesDirect(
 	requirement string,
 	agentPrompt string,
 	candidateCount int32,
+	industryName string,
+	categories []string,
 ) (*GenerateQuestionCandidatesResult, error) {
-	return uc.GenerateQuestionCandidatesStream(ctx, industryCode, requirement, agentPrompt, candidateCount, nil)
+	return uc.GenerateQuestionCandidatesStream(ctx, industryCode, requirement, agentPrompt, candidateCount, industryName, categories, nil)
 }
 
 // GenerateQuestionCandidatesStream 逐张生成题卡，支持流式事件推送。
@@ -442,6 +537,8 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 	requirement string,
 	agentPrompt string,
 	candidateCount int32,
+	industryName string,
+	categories []string,
 	emit QuestionPipelineStreamEmitter,
 ) (*GenerateQuestionCandidatesResult, error) {
 	const scene = "question_generator"
@@ -481,11 +578,13 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 	constraints := buildConstraintProfile(requirement, agentPrompt, int(candidateCount))
 	targetLanguages := buildTargetLanguages(constraints, int(candidateCount))
 
-	// 获取行业信息（简化：使用 industryCode 作为名称）
-	industryName := industryCode
-
-	// 获取分类信息（简化）
-	categories := make([]string, 0)
+	// 使用传入的行业名称和分类列表
+	if industryName == "" {
+		industryName = industryCode
+	}
+	if categories == nil {
+		categories = make([]string, 0)
+	}
 
 	// 推送开始生成状态
 	if emit != nil {
@@ -553,7 +652,7 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 			if err != nil {
 				warning := fmt.Sprintf("第 %d 张题卡生成失败: %v", slot+1, err)
 				warnings = append(warnings, warning)
-				log.Warnf(warning)
+				log.Warnf("%s", warning)
 
 				// 推送警告事件
 				if emit != nil {
@@ -572,12 +671,17 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 				continue
 			}
 
-			// 检查是否重复
+			// 检查是否重复（对齐单体：title+answer 复合 key）
+			newCard := attempt.Cards[0]
 			isDuplicate := false
-			for _, existing := range cards {
-				if existing.Title == attempt.Cards[0].Title {
-					isDuplicate = true
-					break
+			newKey := strings.ToLower(strings.TrimSpace(newCard.Title)) + "||" + strings.ToLower(strings.TrimSpace(newCard.Answer))
+			if newKey != "||" {
+				for _, existing := range cards {
+					existKey := strings.ToLower(strings.TrimSpace(existing.Title)) + "||" + strings.ToLower(strings.TrimSpace(existing.Answer))
+					if existKey == newKey {
+						isDuplicate = true
+						break
+					}
 				}
 			}
 			if isDuplicate {
@@ -660,6 +764,11 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 		return nil, ErrParseFailed
 	}
 
+	// 后处理：去重、过滤、约束强制执行（对齐单体）
+	cards = dedupeQuestionPipelineCards(cards)
+	cards = filterQuestionPipelineCardsByIntent(cards, constraints)
+	cards = enforceQuestionPipelineCardConstraints(cards, constraints)
+
 	result := &GenerateQuestionCandidatesResult{
 		IndustryCode: industryCode,
 		Requirement:  requirement,
@@ -678,4 +787,168 @@ func (uc *AdminUseCase) GenerateQuestionCandidatesStream(
 	}
 
 	return result, nil
+}
+
+// ==================== 后处理：去重、过滤、约束 ====================
+
+// dedupeQuestionPipelineCards 按 title+answer 复合 key 去重，按 confidence 降序排列。
+func dedupeQuestionPipelineCards(cards []*QuestionCandidate) []*QuestionCandidate {
+	seen := make(map[string]bool, len(cards))
+	filtered := make([]*QuestionCandidate, 0, len(cards))
+	for _, card := range cards {
+		key := strings.ToLower(strings.TrimSpace(card.Title)) + "||" + strings.ToLower(strings.TrimSpace(card.Answer))
+		if key == "||" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		filtered = append(filtered, card)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return filtered[i].Confidence > filtered[j].Confidence
+	})
+	return filtered
+}
+
+// filterQuestionPipelineCardsByIntent 当需求聚焦语言特性时，过滤掉泛项目类题卡。
+func filterQuestionPipelineCardsByIntent(cards []*QuestionCandidate, constraints questionPipelineConstraintProfile) []*QuestionCandidate {
+	if !constraints.ExcludeProjectCards && !constraints.GoFeatureOnly {
+		return cards
+	}
+	filtered := make([]*QuestionCandidate, 0, len(cards))
+	for _, card := range cards {
+		if shouldDropQuestionPipelineProjectCard(card, constraints) {
+			continue
+		}
+		filtered = append(filtered, card)
+	}
+	// 如果过滤后为空且没有硬约束，返回原始卡片
+	if len(filtered) == 0 && !constraints.RequireCode && !constraints.RequireSubjective {
+		return cards
+	}
+	if len(filtered) == 0 {
+		return cards
+	}
+	return filtered
+}
+
+// shouldDropQuestionPipelineProjectCard 判断是否应丢弃泛项目类题卡。
+func shouldDropQuestionPipelineProjectCard(card *QuestionCandidate, constraints questionPipelineConstraintProfile) bool {
+	if constraints.ExcludeProjectCards && isQuestionPipelineGenericProjectCard(card) {
+		return true
+	}
+	if constraints.GoFeatureOnly && !matchesQuestionPipelineLanguageFocus(card, "go") {
+		return true
+	}
+	return false
+}
+
+// isQuestionPipelineGenericProjectCard 判断是否为泛项目类题卡。
+func isQuestionPipelineGenericProjectCard(card *QuestionCandidate) bool {
+	combined := strings.ToLower(card.Title + " " + card.Content + " " + card.Category)
+	projectKeywords := []string{"项目经历", "职业规划", "微服务治理", "行为面试", "项目管理", "团队协作"}
+	for _, kw := range projectKeywords {
+		if strings.Contains(combined, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesQuestionPipelineLanguageFocus 判断题卡是否匹配目标语言焦点。
+func matchesQuestionPipelineLanguageFocus(card *QuestionCandidate, language string) bool {
+	if language == "" {
+		return true
+	}
+	combined := strings.ToLower(card.Title + " " + card.Content + " " + card.Answer + " " + strings.Join(card.Tags, " "))
+	switch language {
+	case "go":
+		return strings.Contains(combined, "go") || strings.Contains(combined, "golang") || strings.Contains(combined, "goroutine") || strings.Contains(combined, "channel")
+	case "java":
+		return strings.Contains(combined, "java") || strings.Contains(combined, "jvm") || strings.Contains(combined, "spring")
+	case "python":
+		return strings.Contains(combined, "python") || strings.Contains(combined, "py")
+	}
+	return false
+}
+
+// enforceQuestionPipelineCardConstraints 对题卡执行硬约束强制检查。
+func enforceQuestionPipelineCardConstraints(cards []*QuestionCandidate, constraints questionPipelineConstraintProfile) []*QuestionCandidate {
+	if !constraints.RequireCode && !constraints.RequireSubjective && !constraints.GoFeatureOnly && !constraints.ExcludeProjectCards {
+		return cards
+	}
+	filtered := make([]*QuestionCandidate, 0, len(cards))
+	for _, card := range cards {
+		if constraints.RequireCode && normalizeQuestionPipelineType(card.Type) != "code" {
+			card.Type = "code"
+		}
+		if constraints.RequireSubjective && normalizeQuestionPipelineType(card.Type) != "subjective" {
+			card.Type = "subjective"
+		}
+		if constraints.ExcludeProjectCards && isQuestionPipelineGenericProjectCard(card) {
+			continue
+		}
+		if constraints.GoFeatureOnly && !matchesQuestionPipelineLanguageFocus(card, "go") {
+			continue
+		}
+		filtered = append(filtered, card)
+	}
+	if len(filtered) == 0 {
+		return cards
+	}
+	return filtered
+}
+
+// buildPipelineTags 合并标签并从需求中提取关键词补充（对齐单体 buildQuestionPipelineTags）。
+func buildPipelineTags(tags []string, requirement string) []string {
+	merged := make([]string, 0, len(tags)+2)
+	merged = append(merged, tags...)
+
+	for _, topic := range extractTopicsFromRequirement(requirement) {
+		if len([]rune(topic)) > 18 {
+			continue
+		}
+		merged = append(merged, topic)
+		if len(merged) >= 6 {
+			break
+		}
+	}
+
+	return deduplicateStrings(merged)
+}
+
+// extractTopicsFromRequirement 从岗位要求中提炼关键词主题。
+func extractTopicsFromRequirement(requirement string) []string {
+	parts := strings.FieldsFunc(requirement, func(r rune) bool {
+		return r == '，' || r == ',' || r == '；' || r == ';' || r == '、' || r == '\n' || r == '\r'
+	})
+
+	topics := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		topics = append(topics, trimmed)
+	}
+
+	if len(topics) == 0 {
+		return []string{strings.TrimSpace(requirement)}
+	}
+
+	return topics
+}
+
+// deduplicateStrings 字符串切片去重。
+func deduplicateStrings(items []string) []string {
+	seen := make(map[string]bool, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	return result
 }

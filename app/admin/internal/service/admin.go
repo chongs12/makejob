@@ -279,6 +279,25 @@ func (s *AdminService) GenerateQuestionPipeline(ctx context.Context, req *adminv
 		return nil, err
 	}
 
+	// 加载行业名称
+	industryName := normalized.GetIndustryCode()
+	if industry, err := s.uc.GetIndustryByCode(ctx, normalized.GetIndustryCode()); err == nil && industry != nil {
+		industryName = industry.Name
+	}
+
+	// 加载分类列表
+	var categories []string
+	if allCats, err := s.uc.ListCategories(ctx); err == nil {
+		industry, _ := s.uc.GetIndustryByCode(ctx, normalized.GetIndustryCode())
+		if industry != nil {
+			for _, cat := range allCats {
+				if cat.IndustryID == industry.ID {
+					categories = append(categories, cat.Name)
+				}
+			}
+		}
+	}
+
 	result, err := s.uc.AIGatewayClient().GenerateQuestionCandidates(
 		ctx,
 		normalized.GetIndustryCode(),
@@ -289,6 +308,8 @@ func (s *AdminService) GenerateQuestionPipeline(ctx context.Context, req *adminv
 		normalized.GetIncludeScraped(),
 		normalized.GetIncludeGenerated(),
 		normalized.GetSources(),
+		industryName,
+		categories,
 	)
 	if err != nil {
 		return nil, err
@@ -297,6 +318,7 @@ func (s *AdminService) GenerateQuestionPipeline(ctx context.Context, req *adminv
 	cards := make([]*adminv1.PipelineCard, 0, len(result.Candidates))
 	for _, c := range result.Candidates {
 		cards = append(cards, &adminv1.PipelineCard{
+			Id:          c.ID,
 			Title:       c.Title,
 			Content:     c.Content,
 			Type:        c.Type,
@@ -335,6 +357,25 @@ func (s *AdminService) GenerateQuestionPipelineStream(req *adminv1.GenerateQuest
 		return err
 	}
 
+	// 加载行业名称
+	industryName := normalized.GetIndustryCode()
+	if industry, err := s.uc.GetIndustryByCode(stream.Context(), normalized.GetIndustryCode()); err == nil && industry != nil {
+		industryName = industry.Name
+	}
+
+	// 加载分类列表
+	var categories []string
+	if allCats, err := s.uc.ListCategories(stream.Context()); err == nil {
+		industry, _ := s.uc.GetIndustryByCode(stream.Context(), normalized.GetIndustryCode())
+		if industry != nil {
+			for _, cat := range allCats {
+				if cat.IndustryID == industry.ID {
+					categories = append(categories, cat.Name)
+				}
+			}
+		}
+	}
+
 	// 创建事件回调
 	emit := func(event *biz.PipelineStreamEvent) error {
 		protoEvent := &adminv1.PipelineStreamEvent{
@@ -352,6 +393,7 @@ func (s *AdminService) GenerateQuestionPipelineStream(req *adminv1.GenerateQuest
 
 		if event.Card != nil {
 			protoEvent.Card = &adminv1.PipelineCard{
+				Id:          event.Card.ID,
 				Title:       event.Card.Title,
 				Content:     event.Card.Content,
 				Type:        event.Card.Type,
@@ -379,6 +421,7 @@ func (s *AdminService) GenerateQuestionPipelineStream(req *adminv1.GenerateQuest
 			}
 			for _, c := range resp.Candidates {
 				protoEvent.Response.Cards = append(protoEvent.Response.Cards, &adminv1.PipelineCard{
+					Id:          c.ID,
 					Title:       c.Title,
 					Content:     c.Content,
 					Type:        c.Type,
@@ -407,6 +450,12 @@ func (s *AdminService) GenerateQuestionPipelineStream(req *adminv1.GenerateQuest
 		normalized.GetRequirement(),
 		normalized.GetAgentPrompt(),
 		normalized.GetCandidateCount(),
+		normalized.GetGenerationMode(),
+		normalized.GetIncludeScraped(),
+		normalized.GetIncludeGenerated(),
+		normalized.GetSources(),
+		industryName,
+		categories,
 		emit,
 	)
 }
@@ -1867,7 +1916,7 @@ func normalizeQuestionPipelineRequest(req *adminv1.GenerateQuestionPipelineReque
 	}
 	candidateCount := req.GetCandidateCount()
 	if candidateCount <= 0 {
-		candidateCount = 5
+		candidateCount = 8
 	}
 	generationMode := strings.TrimSpace(req.GetGenerationMode())
 	if generationMode == "" {

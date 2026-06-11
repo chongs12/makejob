@@ -1376,6 +1376,8 @@ type GenerateQuestionCandidatesRequest struct {
 	AgentPrompt      string                 `protobuf:"bytes,6,opt,name=agent_prompt,json=agentPrompt,proto3" json:"agent_prompt,omitempty"`                 // 自定义 agent prompt
 	IncludeScraped   bool                   `protobuf:"varint,7,opt,name=include_scraped,json=includeScraped,proto3" json:"include_scraped,omitempty"`       // 是否包含爬虫数据
 	IncludeGenerated bool                   `protobuf:"varint,8,opt,name=include_generated,json=includeGenerated,proto3" json:"include_generated,omitempty"` // 是否包含 AI 生成数据
+	IndustryName     string                 `protobuf:"bytes,9,opt,name=industry_name,json=industryName,proto3" json:"industry_name,omitempty"`              // 行业名称（由 Admin Service 查询后传入）
+	Categories       []string               `protobuf:"bytes,10,rep,name=categories,proto3" json:"categories,omitempty"`                                     // 分类名称列表
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1466,6 +1468,20 @@ func (x *GenerateQuestionCandidatesRequest) GetIncludeGenerated() bool {
 	return false
 }
 
+func (x *GenerateQuestionCandidatesRequest) GetIndustryName() string {
+	if x != nil {
+		return x.IndustryName
+	}
+	return ""
+}
+
+func (x *GenerateQuestionCandidatesRequest) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
 type GenerateQuestionCandidatesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	IndustryCode  string                 `protobuf:"bytes,1,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
@@ -1536,6 +1552,7 @@ func (x *GenerateQuestionCandidatesResponse) GetWarnings() []string {
 
 type QuestionCandidate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,16,opt,name=id,proto3" json:"id,omitempty"`
 	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
 	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
@@ -1583,6 +1600,13 @@ func (x *QuestionCandidate) ProtoReflect() protoreflect.Message {
 // Deprecated: Use QuestionCandidate.ProtoReflect.Descriptor instead.
 func (*QuestionCandidate) Descriptor() ([]byte, []int) {
 	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *QuestionCandidate) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
 }
 
 func (x *QuestionCandidate) GetTitle() string {
@@ -1966,7 +1990,7 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\routput_tokens\x18\x05 \x01(\x05R\foutputTokens\x12\x1d\n" +
 	"\n" +
 	"latency_ms\x18\x06 \x01(\x03R\tlatencyMs\x12\x14\n" +
-	"\x05error\x18\a \x01(\tR\x05error\"\xcf\x02\n" +
+	"\x05error\x18\a \x01(\tR\x05error\"\x94\x03\n" +
 	"!GenerateQuestionCandidatesRequest\x12#\n" +
 	"\rindustry_code\x18\x01 \x01(\tR\findustryCode\x12 \n" +
 	"\vrequirement\x18\x02 \x01(\tR\vrequirement\x12'\n" +
@@ -1975,15 +1999,21 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\asources\x18\x05 \x03(\tR\asources\x12!\n" +
 	"\fagent_prompt\x18\x06 \x01(\tR\vagentPrompt\x12'\n" +
 	"\x0finclude_scraped\x18\a \x01(\bR\x0eincludeScraped\x12+\n" +
-	"\x11include_generated\x18\b \x01(\bR\x10includeGenerated\"\xc9\x01\n" +
+	"\x11include_generated\x18\b \x01(\bR\x10includeGenerated\x12#\n" +
+	"\rindustry_name\x18\t \x01(\tR\findustryName\x12\x1e\n" +
+	"\n" +
+	"categories\x18\n" +
+	" \x03(\tR\n" +
+	"categories\"\xc9\x01\n" +
 	"\"GenerateQuestionCandidatesResponse\x12#\n" +
 	"\rindustry_code\x18\x01 \x01(\tR\findustryCode\x12 \n" +
 	"\vrequirement\x18\x02 \x01(\tR\vrequirement\x12@\n" +
 	"\n" +
 	"candidates\x18\x03 \x03(\v2 .makejob.ai.v1.QuestionCandidateR\n" +
 	"candidates\x12\x1a\n" +
-	"\bwarnings\x18\x04 \x03(\tR\bwarnings\"\xc6\x03\n" +
-	"\x11QuestionCandidate\x12\x14\n" +
+	"\bwarnings\x18\x04 \x03(\tR\bwarnings\"\xd6\x03\n" +
+	"\x11QuestionCandidate\x12\x0e\n" +
+	"\x02id\x18\x10 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12\x1e\n" +

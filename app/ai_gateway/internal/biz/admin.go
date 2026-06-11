@@ -174,9 +174,9 @@ type GenerateQuestionCandidatesResult struct {
 
 // GenerateQuestionCandidates 同步生成题目候选。
 // 采用逐张生成模式（复刻单体架构），每张题卡独立调用 AI，带上下文避免重复。
-func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string) (*GenerateQuestionCandidatesResult, error) {
+func (uc *AdminUseCase) GenerateQuestionCandidates(ctx context.Context, industryCode, requirement, agentPrompt string, candidateCount int32, generationMode string, includeScraped, includeGenerated bool, sources []string, industryName string, categories []string) (*GenerateQuestionCandidatesResult, error) {
 	// 使用逐张生成模式
-	return uc.GenerateQuestionCandidatesDirect(ctx, industryCode, requirement, agentPrompt, candidateCount)
+	return uc.GenerateQuestionCandidatesDirect(ctx, industryCode, requirement, agentPrompt, candidateCount, industryName, categories)
 }
 
 // saveLog 记录 LLM 调用日志
