@@ -11,6 +11,7 @@ type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	Data   *Data   `yaml:"data"`
 	JWT    *JWT    `yaml:"jwt"`
+	DependentServices *DependentServices `yaml:"dependent_services"`
 }
 
 type Server struct {
@@ -44,6 +45,12 @@ type JWT struct {
 	Secret        string `yaml:"secret"`
 	ExpireHours   int    `yaml:"expire_hours"`
 	ServiceSecret string `yaml:"service_secret"`
+}
+
+// DependentServices 下游依赖服务地址配置
+type DependentServices struct {
+	QuestionAddr  string `yaml:"question_addr"`
+	InterviewAddr string `yaml:"interview_addr"`
 }
 
 // Load 从 YAML 文件加载配置

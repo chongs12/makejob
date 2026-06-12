@@ -63,8 +63,8 @@ type QuestionServiceClient interface {
 	SubmitAnswer(ctx context.Context, in *SubmitAnswerRequest, opts ...grpc.CallOption) (*SubmitAnswerResponse, error)
 	RunCode(ctx context.Context, in *RunCodeRequest, opts ...grpc.CallOption) (*RunCodeResponse, error)
 	// --- 收藏/笔记 ---
-	CreateFavorite(ctx context.Context, in *CreateFavoriteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	DeleteFavorite(ctx context.Context, in *DeleteFavoriteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CreateFavorite(ctx context.Context, in *CreateFavoriteRequest, opts ...grpc.CallOption) (*FavoriteResponse, error)
+	DeleteFavorite(ctx context.Context, in *DeleteFavoriteRequest, opts ...grpc.CallOption) (*FavoriteResponse, error)
 	ListFavorites(ctx context.Context, in *ListFavoritesRequest, opts ...grpc.CallOption) (*FavoriteListResponse, error)
 	CreateNote(ctx context.Context, in *CreateNoteRequest, opts ...grpc.CallOption) (*NoteResponse, error)
 	UpdateNote(ctx context.Context, in *UpdateNoteRequest, opts ...grpc.CallOption) (*NoteResponse, error)
@@ -161,9 +161,9 @@ func (c *questionServiceClient) RunCode(ctx context.Context, in *RunCodeRequest,
 	return out, nil
 }
 
-func (c *questionServiceClient) CreateFavorite(ctx context.Context, in *CreateFavoriteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *questionServiceClient) CreateFavorite(ctx context.Context, in *CreateFavoriteRequest, opts ...grpc.CallOption) (*FavoriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(FavoriteResponse)
 	err := c.cc.Invoke(ctx, QuestionService_CreateFavorite_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -171,9 +171,9 @@ func (c *questionServiceClient) CreateFavorite(ctx context.Context, in *CreateFa
 	return out, nil
 }
 
-func (c *questionServiceClient) DeleteFavorite(ctx context.Context, in *DeleteFavoriteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *questionServiceClient) DeleteFavorite(ctx context.Context, in *DeleteFavoriteRequest, opts ...grpc.CallOption) (*FavoriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(FavoriteResponse)
 	err := c.cc.Invoke(ctx, QuestionService_DeleteFavorite_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -394,8 +394,8 @@ type QuestionServiceServer interface {
 	SubmitAnswer(context.Context, *SubmitAnswerRequest) (*SubmitAnswerResponse, error)
 	RunCode(context.Context, *RunCodeRequest) (*RunCodeResponse, error)
 	// --- 收藏/笔记 ---
-	CreateFavorite(context.Context, *CreateFavoriteRequest) (*emptypb.Empty, error)
-	DeleteFavorite(context.Context, *DeleteFavoriteRequest) (*emptypb.Empty, error)
+	CreateFavorite(context.Context, *CreateFavoriteRequest) (*FavoriteResponse, error)
+	DeleteFavorite(context.Context, *DeleteFavoriteRequest) (*FavoriteResponse, error)
 	ListFavorites(context.Context, *ListFavoritesRequest) (*FavoriteListResponse, error)
 	CreateNote(context.Context, *CreateNoteRequest) (*NoteResponse, error)
 	UpdateNote(context.Context, *UpdateNoteRequest) (*NoteResponse, error)
@@ -450,10 +450,10 @@ func (UnimplementedQuestionServiceServer) SubmitAnswer(context.Context, *SubmitA
 func (UnimplementedQuestionServiceServer) RunCode(context.Context, *RunCodeRequest) (*RunCodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RunCode not implemented")
 }
-func (UnimplementedQuestionServiceServer) CreateFavorite(context.Context, *CreateFavoriteRequest) (*emptypb.Empty, error) {
+func (UnimplementedQuestionServiceServer) CreateFavorite(context.Context, *CreateFavoriteRequest) (*FavoriteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateFavorite not implemented")
 }
-func (UnimplementedQuestionServiceServer) DeleteFavorite(context.Context, *DeleteFavoriteRequest) (*emptypb.Empty, error) {
+func (UnimplementedQuestionServiceServer) DeleteFavorite(context.Context, *DeleteFavoriteRequest) (*FavoriteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteFavorite not implemented")
 }
 func (UnimplementedQuestionServiceServer) ListFavorites(context.Context, *ListFavoritesRequest) (*FavoriteListResponse, error) {

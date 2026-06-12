@@ -75,11 +75,12 @@ func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.Interview
 	}
 	if resp.Question != "" {
 		result.Question = &biz.InterviewQuestion{
-			Question:   resp.Question,
-			Topic:      resp.Topic,
-			Difficulty: resp.Difficulty,
-			Type:       resp.Type,
-			Hints:      resp.Hints,
+			Question:        resp.Question,
+			Topic:           resp.Topic,
+			Difficulty:      resp.Difficulty,
+			Type:            resp.Type,
+			Hints:           resp.Hints,
+			Live2DDirective: result.Live2DDirective,
 		}
 	}
 	if resp.Feedback != "" || resp.Score > 0 {

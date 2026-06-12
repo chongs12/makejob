@@ -1477,13 +1477,22 @@ func (x *FocusItem) GetSuggestion() string {
 }
 
 type SyncStudyLogRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	UserId          uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Action          string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
-	RefId           uint64                 `protobuf:"varint,3,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
-	DurationSeconds int32                  `protobuf:"varint,4,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	UserId           uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Action           string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	RefId            uint64                 `protobuf:"varint,3,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	DurationSeconds  int32                  `protobuf:"varint,4,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	DateKey          string                 `protobuf:"bytes,5,opt,name=date_key,json=dateKey,proto3" json:"date_key,omitempty"`
+	PlanId           uint64                 `protobuf:"varint,6,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	Summary          string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	FocusTaskTitle   string                 `protobuf:"bytes,8,opt,name=focus_task_title,json=focusTaskTitle,proto3" json:"focus_task_title,omitempty"`
+	CompletedCount   int32                  `protobuf:"varint,9,opt,name=completed_count,json=completedCount,proto3" json:"completed_count,omitempty"`
+	SkippedCount     int32                  `protobuf:"varint,10,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
+	CompletedTitles  []string               `protobuf:"bytes,11,rep,name=completed_titles,json=completedTitles,proto3" json:"completed_titles,omitempty"`
+	SkippedTitles    []string               `protobuf:"bytes,12,rep,name=skipped_titles,json=skippedTitles,proto3" json:"skipped_titles,omitempty"`
+	LatestActionText string                 `protobuf:"bytes,13,opt,name=latest_action_text,json=latestActionText,proto3" json:"latest_action_text,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SyncStudyLogRequest) Reset() {
@@ -1544,15 +1553,87 @@ func (x *SyncStudyLogRequest) GetDurationSeconds() int32 {
 	return 0
 }
 
+func (x *SyncStudyLogRequest) GetDateKey() string {
+	if x != nil {
+		return x.DateKey
+	}
+	return ""
+}
+
+func (x *SyncStudyLogRequest) GetPlanId() uint64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *SyncStudyLogRequest) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *SyncStudyLogRequest) GetFocusTaskTitle() string {
+	if x != nil {
+		return x.FocusTaskTitle
+	}
+	return ""
+}
+
+func (x *SyncStudyLogRequest) GetCompletedCount() int32 {
+	if x != nil {
+		return x.CompletedCount
+	}
+	return 0
+}
+
+func (x *SyncStudyLogRequest) GetSkippedCount() int32 {
+	if x != nil {
+		return x.SkippedCount
+	}
+	return 0
+}
+
+func (x *SyncStudyLogRequest) GetCompletedTitles() []string {
+	if x != nil {
+		return x.CompletedTitles
+	}
+	return nil
+}
+
+func (x *SyncStudyLogRequest) GetSkippedTitles() []string {
+	if x != nil {
+		return x.SkippedTitles
+	}
+	return nil
+}
+
+func (x *SyncStudyLogRequest) GetLatestActionText() string {
+	if x != nil {
+		return x.LatestActionText
+	}
+	return ""
+}
+
 type StudyLog struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	UserId        uint64                 `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Action        string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
-	RefId         uint64                 `protobuf:"varint,4,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId           uint64                 `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Action           string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
+	RefId            uint64                 `protobuf:"varint,4,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	DateKey          string                 `protobuf:"bytes,6,opt,name=date_key,json=dateKey,proto3" json:"date_key,omitempty"`
+	Summary          string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	FocusTaskTitle   string                 `protobuf:"bytes,8,opt,name=focus_task_title,json=focusTaskTitle,proto3" json:"focus_task_title,omitempty"`
+	CompletedCount   int32                  `protobuf:"varint,9,opt,name=completed_count,json=completedCount,proto3" json:"completed_count,omitempty"`
+	SkippedCount     int32                  `protobuf:"varint,10,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
+	CompletedTitles  []string               `protobuf:"bytes,11,rep,name=completed_titles,json=completedTitles,proto3" json:"completed_titles,omitempty"`
+	SkippedTitles    []string               `protobuf:"bytes,12,rep,name=skipped_titles,json=skippedTitles,proto3" json:"skipped_titles,omitempty"`
+	LatestActionText string                 `protobuf:"bytes,13,opt,name=latest_action_text,json=latestActionText,proto3" json:"latest_action_text,omitempty"`
+	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *StudyLog) Reset() {
@@ -1616,6 +1697,69 @@ func (x *StudyLog) GetRefId() uint64 {
 func (x *StudyLog) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *StudyLog) GetDateKey() string {
+	if x != nil {
+		return x.DateKey
+	}
+	return ""
+}
+
+func (x *StudyLog) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *StudyLog) GetFocusTaskTitle() string {
+	if x != nil {
+		return x.FocusTaskTitle
+	}
+	return ""
+}
+
+func (x *StudyLog) GetCompletedCount() int32 {
+	if x != nil {
+		return x.CompletedCount
+	}
+	return 0
+}
+
+func (x *StudyLog) GetSkippedCount() int32 {
+	if x != nil {
+		return x.SkippedCount
+	}
+	return 0
+}
+
+func (x *StudyLog) GetCompletedTitles() []string {
+	if x != nil {
+		return x.CompletedTitles
+	}
+	return nil
+}
+
+func (x *StudyLog) GetSkippedTitles() []string {
+	if x != nil {
+		return x.SkippedTitles
+	}
+	return nil
+}
+
+func (x *StudyLog) GetLatestActionText() string {
+	if x != nil {
+		return x.LatestActionText
+	}
+	return ""
+}
+
+func (x *StudyLog) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
 	}
 	return nil
 }
@@ -1777,19 +1921,40 @@ const file_makejob_growth_v1_growth_proto_rawDesc = "" +
 	"\x06weight\x18\x03 \x01(\x01R\x06weight\x12\x1e\n" +
 	"\n" +
 	"suggestion\x18\x04 \x01(\tR\n" +
-	"suggestion\"\x88\x01\n" +
+	"suggestion\"\xce\x03\n" +
 	"\x13SyncStudyLogRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x15\n" +
 	"\x06ref_id\x18\x03 \x01(\x04R\x05refId\x12)\n" +
-	"\x10duration_seconds\x18\x04 \x01(\x05R\x0fdurationSeconds\"\x9d\x01\n" +
+	"\x10duration_seconds\x18\x04 \x01(\x05R\x0fdurationSeconds\x12\x19\n" +
+	"\bdate_key\x18\x05 \x01(\tR\adateKey\x12\x17\n" +
+	"\aplan_id\x18\x06 \x01(\x04R\x06planId\x12\x18\n" +
+	"\asummary\x18\a \x01(\tR\asummary\x12(\n" +
+	"\x10focus_task_title\x18\b \x01(\tR\x0efocusTaskTitle\x12'\n" +
+	"\x0fcompleted_count\x18\t \x01(\x05R\x0ecompletedCount\x12#\n" +
+	"\rskipped_count\x18\n" +
+	" \x01(\x05R\fskippedCount\x12)\n" +
+	"\x10completed_titles\x18\v \x03(\tR\x0fcompletedTitles\x12%\n" +
+	"\x0eskipped_titles\x18\f \x03(\tR\rskippedTitles\x12,\n" +
+	"\x12latest_action_text\x18\r \x01(\tR\x10latestActionText\"\x85\x04\n" +
 	"\bStudyLog\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12\x16\n" +
 	"\x06action\x18\x03 \x01(\tR\x06action\x12\x15\n" +
 	"\x06ref_id\x18\x04 \x01(\x04R\x05refId\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\x90\x02\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x19\n" +
+	"\bdate_key\x18\x06 \x01(\tR\adateKey\x12\x18\n" +
+	"\asummary\x18\a \x01(\tR\asummary\x12(\n" +
+	"\x10focus_task_title\x18\b \x01(\tR\x0efocusTaskTitle\x12'\n" +
+	"\x0fcompleted_count\x18\t \x01(\x05R\x0ecompletedCount\x12#\n" +
+	"\rskipped_count\x18\n" +
+	" \x01(\x05R\fskippedCount\x12)\n" +
+	"\x10completed_titles\x18\v \x03(\tR\x0fcompletedTitles\x12%\n" +
+	"\x0eskipped_titles\x18\f \x03(\tR\rskippedTitles\x12,\n" +
+	"\x12latest_action_text\x18\r \x01(\tR\x10latestActionText\x129\n" +
+	"\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt2\x90\x02\n" +
 	"\rGrowthService\x12V\n" +
 	"\x10GetGrowthSummary\x12 .makejob.growth.v1.UserIDRequest\x1a .makejob.growth.v1.GrowthSummary\x12R\n" +
 	"\x0eGetWeeklyFocus\x12 .makejob.growth.v1.UserIDRequest\x1a\x1e.makejob.growth.v1.WeeklyFocus\x12S\n" +
@@ -1842,17 +2007,18 @@ var file_makejob_growth_v1_growth_proto_depIdxs = []int32{
 	14, // 10: makejob.growth.v1.WeeklyFocus.items:type_name -> makejob.growth.v1.FocusItem
 	13, // 11: makejob.growth.v1.WeeklyFocus.themes:type_name -> makejob.growth.v1.WeeklyFocusTheme
 	17, // 12: makejob.growth.v1.StudyLog.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 13: makejob.growth.v1.GrowthService.GetGrowthSummary:input_type -> makejob.growth.v1.UserIDRequest
-	0,  // 14: makejob.growth.v1.GrowthService.GetWeeklyFocus:input_type -> makejob.growth.v1.UserIDRequest
-	15, // 15: makejob.growth.v1.GrowthService.SyncStudyLog:input_type -> makejob.growth.v1.SyncStudyLogRequest
-	1,  // 16: makejob.growth.v1.GrowthService.GetGrowthSummary:output_type -> makejob.growth.v1.GrowthSummary
-	12, // 17: makejob.growth.v1.GrowthService.GetWeeklyFocus:output_type -> makejob.growth.v1.WeeklyFocus
-	16, // 18: makejob.growth.v1.GrowthService.SyncStudyLog:output_type -> makejob.growth.v1.StudyLog
-	16, // [16:19] is the sub-list for method output_type
-	13, // [13:16] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	17, // 13: makejob.growth.v1.StudyLog.updated_at:type_name -> google.protobuf.Timestamp
+	0,  // 14: makejob.growth.v1.GrowthService.GetGrowthSummary:input_type -> makejob.growth.v1.UserIDRequest
+	0,  // 15: makejob.growth.v1.GrowthService.GetWeeklyFocus:input_type -> makejob.growth.v1.UserIDRequest
+	15, // 16: makejob.growth.v1.GrowthService.SyncStudyLog:input_type -> makejob.growth.v1.SyncStudyLogRequest
+	1,  // 17: makejob.growth.v1.GrowthService.GetGrowthSummary:output_type -> makejob.growth.v1.GrowthSummary
+	12, // 18: makejob.growth.v1.GrowthService.GetWeeklyFocus:output_type -> makejob.growth.v1.WeeklyFocus
+	16, // 19: makejob.growth.v1.GrowthService.SyncStudyLog:output_type -> makejob.growth.v1.StudyLog
+	17, // [17:20] is the sub-list for method output_type
+	14, // [14:17] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_makejob_growth_v1_growth_proto_init() }

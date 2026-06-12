@@ -43,9 +43,15 @@ func (s *CommunityService) ListPosts(ctx context.Context, req *communityv1.ListP
 	if err != nil {
 		return nil, err
 	}
+	userID := auth.GetUserIDFromContext(ctx)
 	items := make([]*communityv1.PostSummary, len(posts))
 	for i, p := range posts {
-		items[i] = toProtoPostSummary(p)
+		summary := toProtoPostSummary(p)
+		if userID > 0 {
+			summary.IsLiked = s.uc.IsLiked(ctx, uint64(p.ID))
+			summary.IsAuthor = userID == p.AuthorID
+		}
+		items[i] = summary
 	}
 	return &communityv1.ListPostsResponse{
 		Posts: items,
@@ -60,19 +66,21 @@ func (s *CommunityService) ListPosts(ctx context.Context, req *communityv1.ListP
 // toProtoPostSummary 将帖子领域实体转换为列表摘要，补齐前端列表卡片所需字段。
 func toProtoPostSummary(p *biz.Post) *communityv1.PostSummary {
 	return &communityv1.PostSummary{
-		Id:           uint64(p.ID),
-		Title:        p.Title,
-		Category:     p.Category,
-		AuthorId:     p.AuthorID,
-		AuthorName:   p.AuthorName,
-		LikeCount:    p.LikeCount,
-		CommentCount: p.CommentCount,
-		CreatedAt:    timestamppb.New(p.CreatedAt),
-		PostType:     p.PostType,
-		Summary:      p.Summary,
-		Tags:         p.Tags,
-		ViewCount:    p.ViewCount,
-		UpdatedAt:    timestamppb.New(p.UpdatedAt),
+		Id:            uint64(p.ID),
+		Title:         p.Title,
+		Category:      p.Category,
+		AuthorId:      p.AuthorID,
+		AuthorName:    p.AuthorName,
+		LikeCount:     p.LikeCount,
+		CommentCount:  p.CommentCount,
+		CreatedAt:     timestamppb.New(p.CreatedAt),
+		PostType:      p.PostType,
+		Summary:       p.Summary,
+		Tags:          p.Tags,
+		ViewCount:     p.ViewCount,
+		UpdatedAt:     timestamppb.New(p.UpdatedAt),
+		IsPinned:      p.IsPinned,
+		IsRecommended: p.IsRecommended,
 	}
 }
 
@@ -98,21 +106,30 @@ func (s *CommunityService) GetPost(ctx context.Context, req *communityv1.GetPost
 	if err != nil {
 		return nil, err
 	}
+
+	userID := auth.GetUserIDFromContext(ctx)
+	isLiked := userID > 0 && s.uc.IsLiked(ctx, req.Id)
+	isAuthor := userID > 0 && userID == post.AuthorID
+
 	return &communityv1.PostDetail{
-		Id:           uint64(post.ID),
-		Title:        post.Title,
-		Content:      post.Content,
-		Category:     post.Category,
-		AuthorId:     post.AuthorID,
-		AuthorName:   post.AuthorName,
-		LikeCount:    post.LikeCount,
-		CommentCount: post.CommentCount,
-		ViewCount:    post.ViewCount,
-		CreatedAt:    timestamppb.New(post.CreatedAt),
-		PostType:     post.PostType,
-		Summary:      post.Summary,
-		Tags:         post.Tags,
-		UpdatedAt:    timestamppb.New(post.UpdatedAt),
+		Id:            uint64(post.ID),
+		Title:         post.Title,
+		Content:       post.Content,
+		Category:      post.Category,
+		AuthorId:      post.AuthorID,
+		AuthorName:    post.AuthorName,
+		LikeCount:     post.LikeCount,
+		CommentCount:  post.CommentCount,
+		ViewCount:     post.ViewCount,
+		CreatedAt:     timestamppb.New(post.CreatedAt),
+		PostType:      post.PostType,
+		Summary:       post.Summary,
+		Tags:          post.Tags,
+		UpdatedAt:     timestamppb.New(post.UpdatedAt),
+		IsLiked:       isLiked,
+		IsAuthor:      isAuthor,
+		IsPinned:      post.IsPinned,
+		IsRecommended: post.IsRecommended,
 	}, nil
 }
 
@@ -138,6 +155,7 @@ func (s *CommunityService) ListComments(ctx context.Context, req *communityv1.Li
 	if err != nil {
 		return nil, err
 	}
+	userID := auth.GetUserIDFromContext(ctx)
 	items := make([]*communityv1.Comment, len(comments))
 	for i, c := range comments {
 		items[i] = &communityv1.Comment{
@@ -146,6 +164,7 @@ func (s *CommunityService) ListComments(ctx context.Context, req *communityv1.Li
 			AuthorId:  c.AuthorID,
 			Content:   c.Content,
 			CreatedAt: timestamppb.New(c.CreatedAt),
+			IsAuthor:  userID > 0 && userID == c.AuthorID,
 		}
 	}
 	return &communityv1.ListCommentsResponse{

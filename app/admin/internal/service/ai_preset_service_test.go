@@ -37,7 +37,7 @@ func TestUpdateAIPresetPreservesExistingFields(t *testing.T) {
 			IsActive: true,
 		},
 	}
-	svc := NewAdminService(biz.NewAdminUseCase(repo, nil, nil, nil))
+	svc := NewAdminService(biz.NewAdminUseCase(repo, nil, nil, nil, nil), nil)
 
 	resp, err := svc.UpdateAIPreset(context.Background(), &adminv1.UpdateAIPresetRequest{
 		Id:      8,

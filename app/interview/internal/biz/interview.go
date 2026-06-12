@@ -148,15 +148,16 @@ type InterviewAgentResponse struct {
 }
 
 type InterviewQuestion struct {
-	Question    string
-	Topic       string
-	Difficulty  string
-	Type        string
-	Hints       string
-	Language    string
-	StarterCode string
-	EditorMode  string
-	EvalMode    string
+	Question        string
+	Topic           string
+	Difficulty      string
+	Type            string
+	Hints           string
+	Language        string
+	StarterCode     string
+	EditorMode      string
+	EvalMode        string
+	Live2DDirective *Live2DDirective
 }
 
 type AnswerFeedback struct {
@@ -222,8 +223,12 @@ type Industry struct {
 }
 
 type InterviewStats struct {
-	TotalInterviews int32
-	AvgScore        float64
+	TotalInterviews        int32
+	AvgScore               float64
+	TotalQuestionsAnswered int32
+	AvgAccuracy            float64
+	CompletedInterviews    int32
+	TodayCount             int32
 }
 
 type CreateInterviewRequest struct {

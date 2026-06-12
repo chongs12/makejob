@@ -66,6 +66,26 @@ type TransactionRepo interface {
 	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 }
 
+// QuestionClient 题目服务客户端接口，用于查询用户当天练习量
+type QuestionClient interface {
+	GetUserPracticeStats(ctx context.Context, userID uint64) (*PracticeStats, error)
+}
+
+// InterviewClient 面试服务客户端接口，用于查询用户当天面试量
+type InterviewClient interface {
+	GetUserInterviewStats(ctx context.Context, userID uint64) (*InterviewUsage, error)
+}
+
+// PracticeStats 练习统计（精简版，仅含当天用量）
+type PracticeStats struct {
+	TodayCount int32
+}
+
+// InterviewUsage 面试用量（精简版）
+type InterviewUsage struct {
+	TodayCount int32
+}
+
 // MembershipPlan 套餐定义
 type MembershipPlan struct {
 	PlanType     string
@@ -83,19 +103,21 @@ var (
 	ErrMembershipNotFound = kratosErr.NotFound("MEMBERSHIP_NOT_FOUND", "会员信息不存在")
 )
 
-// MembershipUseCase 会员业务用例（FIX I8: 套餐配置从全局变量移入 UseCase 结构体）
+// MembershipUseCase 会员业务用例
 type MembershipUseCase struct {
 	orderRepo      OrderRepo
 	membershipRepo MembershipRepo
 	txRepo         TransactionRepo
-	rng            *rand.Rand       // FIX I7: 使用显式种子的随机数生成器
-	plans          []MembershipPlan // FIX I8: 套餐列表
+	questionClient QuestionClient
+	interviewClient InterviewClient
+	rng            *rand.Rand
+	plans          []MembershipPlan
 	priceMap       map[string]float64
 	daysMap        map[string]int
 }
 
 // NewMembershipUseCase 创建会员业务用例
-func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo, txRepo TransactionRepo) *MembershipUseCase {
+func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo, txRepo TransactionRepo, questionClient QuestionClient, interviewClient InterviewClient) *MembershipUseCase {
 	plans := []MembershipPlan{
 		{PlanType: "monthly", Name: "月度会员", Price: 29.9, DurationDays: 30, Features: []string{"unlimited_practice", "unlimited_interview", "advanced_ai"}},
 		{PlanType: "quarterly", Name: "季度会员", Price: 79.9, DurationDays: 90, Features: []string{"unlimited_practice", "unlimited_interview", "advanced_ai"}},
@@ -112,14 +134,31 @@ func NewMembershipUseCase(orderRepo OrderRepo, membershipRepo MembershipRepo, tx
 		"yearly":    365,
 	}
 	return &MembershipUseCase{
-		orderRepo:      orderRepo,
-		membershipRepo: membershipRepo,
-		txRepo:         txRepo,
-		rng:            rand.New(rand.NewSource(time.Now().UnixNano())), // FIX I7
-		plans:          plans,
-		priceMap:       priceMap,
-		daysMap:        daysMap,
+		orderRepo:       orderRepo,
+		membershipRepo:  membershipRepo,
+		txRepo:          txRepo,
+		questionClient:  questionClient,
+		interviewClient: interviewClient,
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		plans:           plans,
+		priceMap:        priceMap,
+		daysMap:         daysMap,
 	}
+}
+
+// GetUsage 查询用户当天的练习和面试用量。
+func (uc *MembershipUseCase) GetUsage(ctx context.Context, userID uint64) (practiceToday, interviewToday int32) {
+	if uc.questionClient != nil {
+		if stats, err := uc.questionClient.GetUserPracticeStats(ctx, userID); err == nil {
+			practiceToday = stats.TodayCount
+		}
+	}
+	if uc.interviewClient != nil {
+		if stats, err := uc.interviewClient.GetUserInterviewStats(ctx, userID); err == nil {
+			interviewToday = stats.TodayCount
+		}
+	}
+	return
 }
 
 // CreateOrder 创建会员订单，生成唯一订单号
@@ -275,4 +314,12 @@ func getFeatureAccess(level string, feature string) (bool, string) {
 	default:
 		return true, ""
 	}
+}
+
+// GetDailyLimits 根据会员等级返回每日限额。免费用户: 练习20/面试2，付费用户: 9999（视为无限）。
+func GetDailyLimits(level string) (practiceLimit, interviewLimit int32) {
+	if level == "free" {
+		return 20, 2
+	}
+	return 9999, 9999
 }

@@ -67,6 +67,8 @@ message InterviewResponse {
   int32 total_questions = 10;
   google.protobuf.Timestamp started_at = 11;
   google.protobuf.Timestamp ended_at = 12;
+  string industry_code = 13;
+  string interview_mode = 14;
 }
 
 message InterviewDetail {
@@ -140,6 +142,8 @@ message SubmitAnswerRequest {
   int32 question_index = 3;
   string answer = 4;
   string language = 5;
+  string final_code = 6;
+  string question_type = 7;
 }
 
 message AnswerFeedback {
@@ -244,6 +248,9 @@ message InterviewStats {
   double avg_score = 2;
   int32 total_questions_answered = 3;
   double avg_accuracy = 4;
+  int32 completed_interviews = 5;
+  // 当天完成的面试数量，供 membership 服务查询日限额用量
+  int32 today_count = 6;
 }
 
 // --- 实时语音面试消息 ---

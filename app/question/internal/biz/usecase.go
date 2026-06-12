@@ -191,6 +191,24 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		return nil, kratosErr.InternalServer("AI_ANALYZE_FAILED", "AI 分析失败").WithCause(err)
 	}
 
+	// 填充题目自身的 evaluation_mode
+	resp.EvaluationMode = question.EvaluationMode
+
+	// 编程题：运行代码获取 judge_summary
+	if question.EvaluationMode == "testcase" || question.Type == "code" || question.Type == "coding" {
+		judgeSummary := uc.runCodeForJudgeSummary(ctx, question, answer, language)
+		if judgeSummary != nil {
+			resp.JudgeSummary = judgeSummary
+			// 用代码运行结果覆盖 AI 判分
+			resp.IsCorrect = judgeSummary.AllPassed
+			if judgeSummary.AllPassed {
+				resp.Score = 100
+			} else if judgeSummary.TotalCases > 0 {
+				resp.Score = float64(judgeSummary.PassedCases) / float64(judgeSummary.TotalCases) * 100
+			}
+		}
+	}
+
 	// 保存答题记录
 	record := &UserQuestionRecord{
 		UserID:     userID,
@@ -205,6 +223,67 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 	}
 
 	return resp, nil
+}
+
+// runCodeForJudgeSummary 运行代码并构建判题摘要。
+func (uc *QuestionUseCase) runCodeForJudgeSummary(ctx context.Context, question *Question, code, language string) *JudgeSummary {
+	if uc.codeRunner == nil {
+		return nil
+	}
+
+	// 从题目解析测试用例
+	var testCases []CodeTestCase
+	if question.TestCasesJSON != "" {
+		var cases []struct {
+			Input          string `json:"input"`
+			ExpectedOutput string `json:"expected_output"`
+			Description    string `json:"description"`
+		}
+		if err := json.Unmarshal([]byte(question.TestCasesJSON), &cases); err == nil {
+			for _, tc := range cases {
+				testCases = append(testCases, CodeTestCase{
+					Input:          tc.Input,
+					ExpectedOutput: tc.ExpectedOutput,
+				})
+			}
+		}
+	}
+	if len(testCases) == 0 {
+		return nil
+	}
+
+	lang := language
+	if lang == "" {
+		lang = question.Language
+	}
+
+	resp, err := uc.codeRunner.Execute(ctx, &CodeRunnerRequest{
+		Language:  lang,
+		Code:      code,
+		TestCases: testCases,
+		TimeoutMs: 10000,
+	})
+	if err != nil {
+		log.Warnf("代码运行失败: question_id=%d, err=%v", question.ID, err)
+		return nil
+	}
+
+	results := make([]JudgeCaseResult, 0, len(resp.TestResults))
+	for _, tr := range resp.TestResults {
+		results = append(results, JudgeCaseResult{
+			Input:          tr.Input,
+			ExpectedOutput: tr.ExpectedOutput,
+			ActualOutput:   tr.ActualOutput,
+			Passed:         tr.Passed,
+		})
+	}
+
+	return &JudgeSummary{
+		AllPassed:   resp.TestCasesPassed == resp.TotalTestCases,
+		TotalCases:  resp.TotalTestCases,
+		PassedCases: resp.TestCasesPassed,
+		Results:     results,
+	}
 }
 
 func (uc *QuestionUseCase) CreateFavorite(ctx context.Context, userID, questionID uint64) error {
@@ -222,6 +301,12 @@ func (uc *QuestionUseCase) DeleteFavorite(ctx context.Context, userID, questionI
 	return uc.favoriteRepo.Delete(ctx, userID, questionID)
 }
 
+// IsFavorited 查询当前用户是否收藏了指定题目。
+func (uc *QuestionUseCase) IsFavorited(ctx context.Context, userID, questionID uint64) bool {
+	exists, _ := uc.favoriteRepo.Exists(ctx, userID, questionID)
+	return exists
+}
+
 func (uc *QuestionUseCase) ListCategories(ctx context.Context, industryID uint64) ([]*Category, error) {
 	return uc.categoryRepo.ListByIndustry(ctx, industryID)
 }
@@ -234,10 +319,10 @@ func (uc *QuestionUseCase) GetIndustryByCode(ctx context.Context, code string) (
 	return uc.industryRepo.GetByCode(ctx, code)
 }
 
-func (uc *QuestionUseCase) GetUserPracticeStats(ctx context.Context, userID uint64) (int32, int32, float64, []*CategoryStat, error) {
+func (uc *QuestionUseCase) GetUserPracticeStats(ctx context.Context, userID uint64) (int32, int32, float64, []*CategoryStat, int32, error) {
 	stats, err := uc.recordRepo.GetCategoryStats(ctx, userID)
 	if err != nil {
-		return 0, 0, 0, nil, err
+		return 0, 0, 0, nil, 0, err
 	}
 
 	var totalAnswered, totalCorrect int32
@@ -251,7 +336,9 @@ func (uc *QuestionUseCase) GetUserPracticeStats(ctx context.Context, userID uint
 		accuracy = float64(totalCorrect) / float64(totalAnswered)
 	}
 
-	return totalAnswered, totalCorrect, accuracy, stats, nil
+	todayCount, _ := uc.recordRepo.GetTodayCount(ctx, userID)
+
+	return totalAnswered, totalCorrect, accuracy, stats, todayCount, nil
 }
 
 func (uc *QuestionUseCase) GetWrongQuestions(ctx context.Context, userID uint64, page, pageSize int32) ([]*WrongQuestion, int64, error) {

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -283,18 +284,32 @@ func toBiz(m *model.MockInterview) *biz.Interview {
 // GetStats SQL 聚合查询面试统计（FIX I3: 避免全量加载）
 func (r *interviewRepo) GetStats(ctx context.Context, userID uint64) (*biz.InterviewStats, error) {
 	var stats struct {
-		Total int64
-		Avg   float64
+		Total          int64
+		Avg            float64
+		TotalQuestions int64
+		Completed      int64
 	}
 	if err := r.db.WithContext(ctx).Model(&model.MockInterview{}).
 		Where("user_id = ?", userID).
-		Select("COUNT(*) as total, COALESCE(AVG(overall_score), 0) as avg").
+		Select("COUNT(*) as total, COALESCE(AVG(overall_score), 0) as avg, COALESCE(SUM(current_index), 0) as total_questions, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed").
 		Scan(&stats).Error; err != nil {
 		return nil, err
 	}
+
+	// 查询当天完成的面试数量
+	today := time.Now().Format("2006-01-02")
+	var todayCount int64
+	r.db.WithContext(ctx).Model(&model.MockInterview{}).
+		Where("user_id = ? AND status = 'completed' AND DATE(finished_at) = ?", userID, today).
+		Count(&todayCount)
+
 	return &biz.InterviewStats{
-		TotalInterviews: int32(stats.Total),
-		AvgScore:        stats.Avg,
+		TotalInterviews:        int32(stats.Total),
+		AvgScore:               stats.Avg,
+		TotalQuestionsAnswered: int32(stats.TotalQuestions),
+		AvgAccuracy:            stats.Avg / 100,
+		CompletedInterviews:    int32(stats.Completed),
+		TodayCount:             int32(todayCount),
 	}, nil
 }
 

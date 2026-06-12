@@ -66,5 +66,20 @@ func (c *codeRunnerClient) Execute(ctx context.Context, req *biz.CodeRunnerReque
 		TestCasesPassed: resp.PassedCount,
 		TotalTestCases:  resp.TotalCount,
 		ExecutionTimeMs: resp.ExecutionTimeMs,
+		TestResults:     toBizTestResults(resp.TestResults),
 	}, nil
+}
+
+// toBizTestResults 将 proto 测试结果转换为 biz 层结构。
+func toBizTestResults(results []*coderunnerv1.TestResult) []biz.CodeTestResult {
+	bizResults := make([]biz.CodeTestResult, 0, len(results))
+	for _, r := range results {
+		bizResults = append(bizResults, biz.CodeTestResult{
+			Input:          r.Input,
+			ExpectedOutput: r.ExpectedOutput,
+			ActualOutput:   r.ActualOutput,
+			Passed:         r.Passed,
+		})
+	}
+	return bizResults
 }

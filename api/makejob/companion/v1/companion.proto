@@ -14,12 +14,39 @@ message CompanionChatRequest {
   uint64 user_id = 1;
   string message = 2;
   string context_type = 3;
+  repeated CompanionChatMessage messages = 4;
+  string live2d_model_key = 5;
+  CompanionChatContext context = 6;
+}
+
+message CompanionChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message CompanionChatContext {
+  string current_plan_title = 1;
+  double current_plan_progress = 2;
+  repeated string today_goals = 3;
+  repeated string active_goals = 4;
+  string focused_task_title = 5;
+  string focused_task_description = 6;
+  int32 completed_today_count = 7;
+  int32 skipped_today_count = 8;
+  string latest_task_action = 9;
 }
 
 message CompanionChatResponse {
   string reply = 1;
   string emotion = 2;
   repeated string suggestions = 3;
+  string content = 4;
+  string mood = 5;
+  string action = 6;
+  string audio_url = 7;
+  int32 audio_duration = 8;
+  string audio_format = 9;
+  int32 audio_sample_rate = 10;
 }
 
 message GetCompanionStateRequest {

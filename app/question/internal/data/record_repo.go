@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -167,4 +168,14 @@ func (r *recordRepo) GetMistakeTopics(ctx context.Context, userID uint64) ([]*bi
 		}
 	}
 	return topics, nil
+}
+
+// GetTodayCount 查询用户今天练习的题目数量。
+func (r *recordRepo) GetTodayCount(ctx context.Context, userID uint64) (int32, error) {
+	var count int64
+	today := time.Now().Format("2006-01-02")
+	err := r.db.WithContext(ctx).Model(&model.UserQuestionRecord{}).
+		Where("user_id = ? AND DATE(created_at) = ?", userID, today).
+		Count(&count).Error
+	return int32(count), err
 }

@@ -18,8 +18,8 @@ service QuestionService {
   rpc RunCode(RunCodeRequest) returns (RunCodeResponse);
 
   // --- 收藏/笔记 ---
-  rpc CreateFavorite(CreateFavoriteRequest) returns (google.protobuf.Empty);
-  rpc DeleteFavorite(DeleteFavoriteRequest) returns (google.protobuf.Empty);
+  rpc CreateFavorite(CreateFavoriteRequest) returns (FavoriteResponse);
+  rpc DeleteFavorite(DeleteFavoriteRequest) returns (FavoriteResponse);
   rpc ListFavorites(ListFavoritesRequest) returns (FavoriteListResponse);
   rpc CreateNote(CreateNoteRequest) returns (NoteResponse);
   rpc UpdateNote(UpdateNoteRequest) returns (NoteResponse);
@@ -80,6 +80,9 @@ message QuestionSummary {
   string type = 4;
   string industry_code = 5;
   string category_name = 6;
+  uint64 category_id = 7;
+  uint64 industry_id = 8;
+  repeated string tags = 9;
 }
 
 message GetQuestionRequest {
@@ -164,6 +167,23 @@ message SubmitAnswerResponse {
   string correct_answer = 4;
   string explanation = 5;
   repeated string key_points = 6;
+  string evaluation_mode = 7;
+  JudgeSummary judge_summary = 8;
+}
+
+message JudgeSummary {
+  bool all_passed = 1;
+  int32 total_cases = 2;
+  int32 passed_cases = 3;
+  repeated JudgeCaseResult results = 4;
+}
+
+message JudgeCaseResult {
+  string input = 1;
+  string expected_output = 2;
+  string actual_output = 3;
+  bool passed = 4;
+  string description = 5;
 }
 
 message RunCodeRequest {
@@ -196,6 +216,10 @@ message DeleteFavoriteRequest {
 message ListFavoritesRequest {
   uint64 user_id = 1;
   makejob.shared.v1.PageParam page = 2;
+}
+
+message FavoriteResponse {
+  bool is_favorited = 1;
 }
 
 message FavoriteListResponse {

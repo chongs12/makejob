@@ -25,6 +25,8 @@ type RecordRepo interface {
 	GetWrongQuestions(ctx context.Context, userID uint64, page, pageSize int32) ([]*WrongQuestion, int64, error)
 	// GetMistakeTopics 聚合查询用户各分类的错误统计
 	GetMistakeTopics(ctx context.Context, userID uint64) ([]*MistakeTopic, error)
+	// GetTodayCount 查询用户今天练习的题目数量
+	GetTodayCount(ctx context.Context, userID uint64) (int32, error)
 }
 
 type FavoriteRepo interface {
@@ -200,12 +202,31 @@ type QuizAnalyzerRequest struct {
 }
 
 type QuizAnalyzerResponse struct {
-	Score         float64
-	IsCorrect     bool
-	Feedback      string
-	KeyPoints     []string
-	Suggestions   string
-	CorrectAnswer string
+	Score          float64
+	IsCorrect      bool
+	Feedback       string
+	KeyPoints      []string
+	Suggestions    string
+	CorrectAnswer  string
+	EvaluationMode string
+	JudgeSummary   *JudgeSummary
+}
+
+// JudgeSummary 编程题判题摘要
+type JudgeSummary struct {
+	AllPassed   bool
+	TotalCases  int32
+	PassedCases int32
+	Results     []JudgeCaseResult
+}
+
+// JudgeCaseResult 单个判题用例结果
+type JudgeCaseResult struct {
+	Input          string
+	ExpectedOutput string
+	ActualOutput   string
+	Passed         bool
+	Description    string
 }
 
 // CodeRunnerRequest 代码运行请求
@@ -230,6 +251,15 @@ type CodeRunnerResponse struct {
 	TestCasesPassed int32
 	TotalTestCases  int32
 	ExecutionTimeMs int64
+	TestResults     []CodeTestResult
+}
+
+// CodeTestResult 单个测试用例结果
+type CodeTestResult struct {
+	Input          string
+	ExpectedOutput string
+	ActualOutput   string
+	Passed         bool
 }
 
 // Exam 考试实体

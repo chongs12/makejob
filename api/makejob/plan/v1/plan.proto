@@ -84,6 +84,9 @@ message TaskDetail {
   int32 sort_order = 13;
   string due_date = 14;
   string phase_goal = 15;
+  string source = 16;
+  string source_label = 17;
+  string reason = 18;
 }
 
 message ListPlansRequest {
@@ -104,6 +107,7 @@ message PlanSummary {
   float progress = 4;
   google.protobuf.Timestamp created_at = 5;
   string industry = 6;
+  int32 duration_days = 7;
 }
 
 message UpdateTaskStatusRequest {

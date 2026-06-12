@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -29,7 +31,10 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 		return nil, kratosErr.BadRequest("USER_ID_REQUIRED", "用户 ID 不能为空")
 	}
 
-	result, err := s.uc.Chat(ctx, userID, req.GetMessage(), req.GetContextType())
+	// 构建富上下文消息：将 plan/goal 信息注入到 message 中供 AI 参考
+	message := buildEnrichedMessage(req)
+
+	result, err := s.uc.Chat(ctx, userID, message, req.GetContextType())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -37,8 +42,67 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 	return &companionv1.CompanionChatResponse{
 		Reply:       result.Reply,
 		Emotion:     result.Emotion,
+		Action:      result.Action,
 		Suggestions: result.Suggestions,
+		AudioUrl:    result.AudioURL,
 	}, nil
+}
+
+// buildEnrichedMessage 将前端传入的 messages 数组和 context 对象合并为单个富文本消息。
+func buildEnrichedMessage(req *companionv1.CompanionChatRequest) string {
+	var parts []string
+
+	// 注入上下文信息
+	ctx := req.GetContext()
+	if ctx != nil {
+		var contextParts []string
+		if ctx.CurrentPlanTitle != "" {
+			contextParts = append(contextParts, fmt.Sprintf("当前计划：%s（进度 %.0f%%）", ctx.CurrentPlanTitle, ctx.CurrentPlanProgress*100))
+		}
+		if len(ctx.TodayGoals) > 0 {
+			contextParts = append(contextParts, fmt.Sprintf("今日目标：%s", strings.Join(ctx.TodayGoals, "、")))
+		}
+		if len(ctx.ActiveGoals) > 0 {
+			contextParts = append(contextParts, fmt.Sprintf("进行中任务：%s", strings.Join(ctx.ActiveGoals, "、")))
+		}
+		if ctx.FocusedTaskTitle != "" {
+			contextParts = append(contextParts, fmt.Sprintf("聚焦任务：%s", ctx.FocusedTaskTitle))
+		}
+		if ctx.CompletedTodayCount > 0 || ctx.SkippedTodayCount > 0 {
+			contextParts = append(contextParts, fmt.Sprintf("今日完成 %d 项，跳过 %d 项", ctx.CompletedTodayCount, ctx.SkippedTodayCount))
+		}
+		if ctx.LatestTaskAction != "" {
+			contextParts = append(contextParts, fmt.Sprintf("最近操作：%s", ctx.LatestTaskAction))
+		}
+		if len(contextParts) > 0 {
+			parts = append(parts, "[用户学习上下文]\n"+strings.Join(contextParts, "\n"))
+		}
+	}
+
+	// 注入对话历史
+	messages := req.GetMessages()
+	if len(messages) > 0 {
+		var historyParts []string
+		for _, m := range messages {
+			role := m.GetRole()
+			if role == "user" {
+				historyParts = append(historyParts, "用户: "+m.GetContent())
+			} else if role == "assistant" {
+				historyParts = append(historyParts, "助手: "+m.GetContent())
+			}
+		}
+		if len(historyParts) > 0 {
+			parts = append(parts, "[对话历史]\n"+strings.Join(historyParts, "\n"))
+		}
+	}
+
+	// 最后一条用户消息作为主消息
+	mainMessage := req.GetMessage()
+	if mainMessage != "" {
+		parts = append(parts, mainMessage)
+	}
+
+	return strings.Join(parts, "\n\n")
 }
 
 // GetCompanionState 查询陪伴助手状态

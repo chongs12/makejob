@@ -501,6 +501,9 @@ type TaskDetail struct {
 	SortOrder     int32  `protobuf:"varint,13,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
 	DueDate       string `protobuf:"bytes,14,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
 	PhaseGoal     string `protobuf:"bytes,15,opt,name=phase_goal,json=phaseGoal,proto3" json:"phase_goal,omitempty"`
+	Source        string `protobuf:"bytes,16,opt,name=source,proto3" json:"source,omitempty"`
+	SourceLabel   string `protobuf:"bytes,17,opt,name=source_label,json=sourceLabel,proto3" json:"source_label,omitempty"`
+	Reason        string `protobuf:"bytes,18,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -640,6 +643,27 @@ func (x *TaskDetail) GetPhaseGoal() string {
 	return ""
 }
 
+func (x *TaskDetail) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *TaskDetail) GetSourceLabel() string {
+	if x != nil {
+		return x.SourceLabel
+	}
+	return ""
+}
+
+func (x *TaskDetail) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 type ListPlansRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -760,6 +784,7 @@ type PlanSummary struct {
 	Progress      float32                `protobuf:"fixed32,4,opt,name=progress,proto3" json:"progress,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	Industry      string                 `protobuf:"bytes,6,opt,name=industry,proto3" json:"industry,omitempty"`
+	DurationDays  int32                  `protobuf:"varint,7,opt,name=duration_days,json=durationDays,proto3" json:"duration_days,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -834,6 +859,13 @@ func (x *PlanSummary) GetIndustry() string {
 		return x.Industry
 	}
 	return ""
+}
+
+func (x *PlanSummary) GetDurationDays() int32 {
+	if x != nil {
+		return x.DurationDays
+	}
+	return 0
 }
 
 type UpdateTaskStatusRequest struct {
@@ -1610,7 +1642,7 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"task_error\x18\x14 \x01(\tR\ttaskError\x12\x1d\n" +
 	"\n" +
 	"start_date\x18\x15 \x01(\tR\tstartDate\x12\x19\n" +
-	"\bend_date\x18\x16 \x01(\tR\aendDate\"\xd7\x03\n" +
+	"\bend_date\x18\x16 \x01(\tR\aendDate\"\xaa\x04\n" +
 	"\n" +
 	"TaskDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
@@ -1632,14 +1664,17 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"sort_order\x18\r \x01(\x05R\tsortOrder\x12\x19\n" +
 	"\bdue_date\x18\x0e \x01(\tR\adueDate\x12\x1d\n" +
 	"\n" +
-	"phase_goal\x18\x0f \x01(\tR\tphaseGoal\"\\\n" +
+	"phase_goal\x18\x0f \x01(\tR\tphaseGoal\x12\x16\n" +
+	"\x06source\x18\x10 \x01(\tR\x06source\x12!\n" +
+	"\fsource_label\x18\x11 \x01(\tR\vsourceLabel\x12\x16\n" +
+	"\x06reason\x18\x12 \x01(\tR\x06reason\"\\\n" +
 	"\x10ListPlansRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x12\n" +
 	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"]\n" +
 	"\x11ListPlansResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.makejob.plan.v1.PlanSummaryR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total\"\xbe\x01\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"\xe3\x01\n" +
 	"\vPlanSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -1647,7 +1682,8 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\bprogress\x18\x04 \x01(\x02R\bprogress\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1a\n" +
-	"\bindustry\x18\x06 \x01(\tR\bindustry\"|\n" +
+	"\bindustry\x18\x06 \x01(\tR\bindustry\x12#\n" +
+	"\rduration_days\x18\a \x01(\x05R\fdurationDays\"|\n" +
 	"\x17UpdateTaskStatusRequest\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\x04R\x06taskId\x12\x17\n" +

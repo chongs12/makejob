@@ -199,6 +199,8 @@ func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTas
 		GoalDescription:   plan.Description,
 		TaskStatus:        plan.Status,
 		StartDate:         plan.CreatedAt.Format("2006-01-02"),
+		Phase:             plan.Phase,
+		PhaseGoal:         plan.PhaseGoal,
 	}
 	if plan.DurationDays > 0 {
 		detail.EndDate = plan.CreatedAt.AddDate(0, 0, int(plan.DurationDays)).Format("2006-01-02")
@@ -209,12 +211,13 @@ func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTas
 // toProtoPlanSummary 将 LearningPlan 转换为 PlanSummary。
 func toProtoPlanSummary(plan *biz.LearningPlan) *planv1.PlanSummary {
 	return &planv1.PlanSummary{
-		Id:        plan.ID,
-		Title:     plan.Title,
-		Status:    plan.Status,
-		Progress:  biz.CalculatePlanProgress(plan.CompletedTasks, plan.TotalTasks),
-		CreatedAt: timestamppb.New(plan.CreatedAt),
-		Industry:  plan.Industry,
+		Id:           plan.ID,
+		Title:        plan.Title,
+		Status:       plan.Status,
+		Progress:     biz.CalculatePlanProgress(plan.CompletedTasks, plan.TotalTasks),
+		CreatedAt:    timestamppb.New(plan.CreatedAt),
+		Industry:     plan.Industry,
+		DurationDays: plan.DurationDays,
 	}
 }
 
@@ -233,6 +236,10 @@ func toProtoTaskDetail(task *biz.LearningTask) *planv1.TaskDetail {
 		Status:          task.Status,
 		OrderIndex:      task.SortOrder,
 		SortOrder:       task.SortOrder,
+		PhaseGoal:       biz.PhaseGoalMap[task.Phase],
+		Source:          task.Source,
+		SourceLabel:     task.SourceLabel,
+		Reason:          task.Reason,
 	}
 	if task.CompletedAt != nil {
 		detail.CompletedAt = timestamppb.New(*task.CompletedAt)

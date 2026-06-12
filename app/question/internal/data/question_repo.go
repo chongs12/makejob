@@ -237,14 +237,20 @@ func (r *questionRepo) RandomSelect(ctx context.Context, filter *biz.QuestionFil
 	questions := make([]*biz.Question, len(models))
 	for i, m := range models {
 		questions[i] = &biz.Question{
-			ID:           uint64(m.ID),
-			Title:        m.Title,
-			Content:      m.Content,
-			Difficulty:   m.Difficulty,
-			Type:         m.Type,
-			IndustryID:   m.IndustryID,
-			IndustryCode: m.IndustryCode,
-			CategoryID:   m.CategoryID,
+			ID:                 uint64(m.ID),
+			Title:              m.Title,
+			Content:            m.Content,
+			Difficulty:         m.Difficulty,
+			Type:               m.Type,
+			IndustryID:         m.IndustryID,
+			IndustryCode:       m.IndustryCode,
+			CategoryID:         m.CategoryID,
+			OptionsJSON:        m.OptionsJSON,
+			Answer:             m.Answer,
+			SolutionJSON:       m.SolutionJSON,
+			JudgeConfigJSON:    m.JudgeConfigJSON,
+			AnswerTemplateJSON: m.AnswerTemplateJSON,
+			Tags:               splitQuestionTags(m.Tags),
 		}
 	}
 	return questions, nil

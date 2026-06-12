@@ -191,6 +191,8 @@ type InterviewResponse struct {
 	TotalQuestions int32                  `protobuf:"varint,10,opt,name=total_questions,json=totalQuestions,proto3" json:"total_questions,omitempty"`
 	StartedAt      *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	EndedAt        *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
+	IndustryCode   string                 `protobuf:"bytes,13,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
+	InterviewMode  string                 `protobuf:"bytes,14,opt,name=interview_mode,json=interviewMode,proto3" json:"interview_mode,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -307,6 +309,20 @@ func (x *InterviewResponse) GetEndedAt() *timestamppb.Timestamp {
 		return x.EndedAt
 	}
 	return nil
+}
+
+func (x *InterviewResponse) GetIndustryCode() string {
+	if x != nil {
+		return x.IndustryCode
+	}
+	return ""
+}
+
+func (x *InterviewResponse) GetInterviewMode() string {
+	if x != nil {
+		return x.InterviewMode
+	}
+	return ""
 }
 
 type InterviewDetail struct {
@@ -901,6 +917,8 @@ type SubmitAnswerRequest struct {
 	QuestionIndex int32                  `protobuf:"varint,3,opt,name=question_index,json=questionIndex,proto3" json:"question_index,omitempty"`
 	Answer        string                 `protobuf:"bytes,4,opt,name=answer,proto3" json:"answer,omitempty"`
 	Language      string                 `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
+	FinalCode     string                 `protobuf:"bytes,6,opt,name=final_code,json=finalCode,proto3" json:"final_code,omitempty"`
+	QuestionType  string                 `protobuf:"bytes,7,opt,name=question_type,json=questionType,proto3" json:"question_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -966,6 +984,20 @@ func (x *SubmitAnswerRequest) GetAnswer() string {
 func (x *SubmitAnswerRequest) GetLanguage() string {
 	if x != nil {
 		return x.Language
+	}
+	return ""
+}
+
+func (x *SubmitAnswerRequest) GetFinalCode() string {
+	if x != nil {
+		return x.FinalCode
+	}
+	return ""
+}
+
+func (x *SubmitAnswerRequest) GetQuestionType() string {
+	if x != nil {
+		return x.QuestionType
 	}
 	return ""
 }
@@ -1889,8 +1921,11 @@ type InterviewStats struct {
 	AvgScore               float64                `protobuf:"fixed64,2,opt,name=avg_score,json=avgScore,proto3" json:"avg_score,omitempty"`
 	TotalQuestionsAnswered int32                  `protobuf:"varint,3,opt,name=total_questions_answered,json=totalQuestionsAnswered,proto3" json:"total_questions_answered,omitempty"`
 	AvgAccuracy            float64                `protobuf:"fixed64,4,opt,name=avg_accuracy,json=avgAccuracy,proto3" json:"avg_accuracy,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	CompletedInterviews    int32                  `protobuf:"varint,5,opt,name=completed_interviews,json=completedInterviews,proto3" json:"completed_interviews,omitempty"`
+	// 当天完成的面试数量，供 membership 服务查询日限额用量
+	TodayCount    int32 `protobuf:"varint,6,opt,name=today_count,json=todayCount,proto3" json:"today_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InterviewStats) Reset() {
@@ -1947,6 +1982,20 @@ func (x *InterviewStats) GetTotalQuestionsAnswered() int32 {
 func (x *InterviewStats) GetAvgAccuracy() float64 {
 	if x != nil {
 		return x.AvgAccuracy
+	}
+	return 0
+}
+
+func (x *InterviewStats) GetCompletedInterviews() int32 {
+	if x != nil {
+		return x.CompletedInterviews
+	}
+	return 0
+}
+
+func (x *InterviewStats) GetTodayCount() int32 {
+	if x != nil {
+		return x.TodayCount
 	}
 	return 0
 }
@@ -2490,7 +2539,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\x0einterview_mode\x18\a \x01(\tR\rinterviewMode\x12\x1f\n" +
 	"\vresume_text\x18\b \x01(\tR\n" +
 	"resumeText\x12'\n" +
-	"\x0fjob_description\x18\t \x01(\tR\x0ejobDescription\"\xfe\x03\n" +
+	"\x0fjob_description\x18\t \x01(\tR\x0ejobDescription\"\xca\x04\n" +
 	"\x11InterviewResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12N\n" +
@@ -2508,7 +2557,9 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	" \x01(\x05R\x0etotalQuestions\x129\n" +
 	"\n" +
 	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x125\n" +
-	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\"\xc5\x05\n" +
+	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12#\n" +
+	"\rindustry_code\x18\r \x01(\tR\findustryCode\x12%\n" +
+	"\x0einterview_mode\x18\x0e \x01(\tR\rinterviewMode\"\xc5\x05\n" +
 	"\x0fInterviewDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12#\n" +
@@ -2575,13 +2626,16 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\x06weight\x18\x02 \x01(\x01R\x06weight\"E\n" +
 	"\x17Live2DParameterOverride\x12\x14\n" +
 	"\x05param\x18\x01 \x01(\tR\x05param\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value\"\xac\x01\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value\"\xf0\x01\n" +
 	"\x13SubmitAnswerRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12%\n" +
 	"\x0equestion_index\x18\x03 \x01(\x05R\rquestionIndex\x12\x16\n" +
 	"\x06answer\x18\x04 \x01(\tR\x06answer\x12\x1a\n" +
-	"\blanguage\x18\x05 \x01(\tR\blanguage\"\x8d\x02\n" +
+	"\blanguage\x18\x05 \x01(\tR\blanguage\x12\x1d\n" +
+	"\n" +
+	"final_code\x18\x06 \x01(\tR\tfinalCode\x12#\n" +
+	"\rquestion_type\x18\a \x01(\tR\fquestionType\"\x8d\x02\n" +
 	"\x0eAnswerFeedback\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x01R\x05score\x12\x1d\n" +
 	"\n" +
@@ -2668,12 +2722,15 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"pageResult\"N\n" +
 	"\x10GetReportRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xb5\x01\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\x89\x02\n" +
 	"\x0eInterviewStats\x12)\n" +
 	"\x10total_interviews\x18\x01 \x01(\x05R\x0ftotalInterviews\x12\x1b\n" +
 	"\tavg_score\x18\x02 \x01(\x01R\bavgScore\x128\n" +
 	"\x18total_questions_answered\x18\x03 \x01(\x05R\x16totalQuestionsAnswered\x12!\n" +
-	"\favg_accuracy\x18\x04 \x01(\x01R\vavgAccuracy\"6\n" +
+	"\favg_accuracy\x18\x04 \x01(\x01R\vavgAccuracy\x121\n" +
+	"\x14completed_interviews\x18\x05 \x01(\x05R\x13completedInterviews\x12\x1f\n" +
+	"\vtoday_count\x18\x06 \x01(\x05R\n" +
+	"todayCount\"6\n" +
 	"\x11IsRealtimeRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\"5\n" +
 	"\x12IsRealtimeResponse\x12\x1f\n" +

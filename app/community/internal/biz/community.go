@@ -42,6 +42,7 @@ type CommunityRepo interface {
 	CreateComment(ctx context.Context, comment *Comment) error
 	ListComments(ctx context.Context, postID uint64, page, pageSize int32) ([]*Comment, int64, error)
 	IncrementLikeCount(ctx context.Context, postID uint64, delta int32) error
+	IncrementCommentCount(ctx context.Context, postID uint64, delta int32) error
 	IncrementViewCount(ctx context.Context, postID uint64) error // FIX B5: 浏览量自增
 	ListByAuthorID(ctx context.Context, authorID uint64, page, pageSize int32) ([]*Post, int64, error)
 	// RunInTransaction FIX B4: 在事务中执行 fn，fn 内所有 repo 操作共享同一事务
@@ -58,20 +59,22 @@ type BaseModel struct {
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
-// Post 帖子领域实体（FIX B6: 添加 GORM tag、BaseModel、TableName、PostType、ViewCount）
+// Post 帖子领域实体
 type Post struct {
 	BaseModel
-	AuthorID     uint64 `gorm:"index;not null"`
-	Title        string `gorm:"size:200;not null"`
-	Content      string `gorm:"type:text"`
-	Summary      string `gorm:"size:500"`
-	Tags         string `gorm:"size:500"`
-	PostType     string `gorm:"size:20;not null;default:'discussion'"` // FIX B6: discussion/article/question
-	Category     string `gorm:"size:50"`
-	AuthorName   string `gorm:"size:100"`
-	LikeCount    int32  `gorm:"not null;default:0"`
-	CommentCount int32  `gorm:"not null;default:0"`
-	ViewCount    int32  `gorm:"not null;default:0"` // FIX B6: 浏览量字段
+	AuthorID      uint64 `gorm:"index;not null"`
+	Title         string `gorm:"size:200;not null"`
+	Content       string `gorm:"type:text"`
+	Summary       string `gorm:"size:500"`
+	Tags          string `gorm:"size:500"`
+	PostType      string `gorm:"size:20;not null;default:'discussion'"`
+	Category      string `gorm:"size:50"`
+	AuthorName    string `gorm:"size:100"`
+	LikeCount     int32  `gorm:"not null;default:0"`
+	CommentCount  int32  `gorm:"not null;default:0"`
+	ViewCount     int32  `gorm:"not null;default:0"`
+	IsPinned      bool   `gorm:"not null;default:false"`
+	IsRecommended bool   `gorm:"not null;default:false"`
 }
 
 // TableName 返回帖子表名（FIX B6: 符合全局规范）
@@ -195,7 +198,7 @@ func (uc *CommunityUseCase) DeletePost(ctx context.Context, id, authorID uint64)
 	return uc.repo.DeletePostWithAssociations(ctx, id, authorID)
 }
 
-// CreateComment 创建评论
+// CreateComment 创建评论并在事务中原子递增帖子评论计数。
 func (uc *CommunityUseCase) CreateComment(ctx context.Context, postID, authorID uint64, content string) (*Comment, error) {
 	post, err := uc.repo.GetPost(ctx, postID)
 	if err != nil {
@@ -209,10 +212,18 @@ func (uc *CommunityUseCase) CreateComment(ctx context.Context, postID, authorID 
 		AuthorID: authorID,
 		Content:  content,
 	}
-	if err := uc.repo.CreateComment(ctx, comment); err != nil {
-		return nil, err
-	}
-	return comment, nil
+	var result *Comment
+	err = uc.repo.RunInTransaction(ctx, func(txCtx context.Context) error {
+		if err := uc.repo.CreateComment(txCtx, comment); err != nil {
+			return err
+		}
+		if err := uc.repo.IncrementCommentCount(txCtx, postID, 1); err != nil {
+			return err
+		}
+		result = comment
+		return nil
+	})
+	return result, err
 }
 
 // ListComments 获取评论列表
@@ -330,4 +341,14 @@ func (uc *CommunityUseCase) ToggleLike(ctx context.Context, postID uint64) (bool
 func (uc *CommunityUseCase) ListMyPosts(ctx context.Context, page, pageSize int32) ([]*Post, int64, error) {
 	userID := auth.GetUserIDFromContext(ctx)
 	return uc.repo.ListByAuthorID(ctx, userID, page, pageSize)
+}
+
+// IsLiked 查询当前用户是否点赞了指定帖子。
+func (uc *CommunityUseCase) IsLiked(ctx context.Context, postID uint64) bool {
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		return false
+	}
+	existing, _ := uc.likeRepo.GetByPostAndUser(ctx, postID, userID)
+	return existing != nil
 }

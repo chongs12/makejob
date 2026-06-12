@@ -42,6 +42,9 @@ func NewInterceptor(secret string, opts ...Option) *Interceptor {
 			"/makejob.community.v1.CommunityService/ListPosts":      true,
 			"/makejob.community.v1.CommunityService/GetPost":        true,
 			"/makejob.community.v1.CommunityService/ListComments":   true,
+			// Admin 服务公开方法（Live2D 模型列表供前台公开访问）
+			"/makejob.admin.v1.AdminService/ListSelectableLive2DModels": true,
+			"/makejob.admin.v1.AdminService/GetCurrentLive2DModel":     true,
 		},
 	}
 	for _, opt := range opts {

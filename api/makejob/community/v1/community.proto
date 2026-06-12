@@ -50,6 +50,8 @@ message PostSummary {
   google.protobuf.Timestamp updated_at = 14;
   bool is_author = 15;
   bool is_liked = 16;
+  bool is_pinned = 17;
+  bool is_recommended = 18;
 }
 
 message GetPostRequest {
@@ -75,6 +77,8 @@ message PostDetail {
   string tags = 15;
   google.protobuf.Timestamp updated_at = 16;
   bool is_author = 17;
+  bool is_pinned = 18;
+  bool is_recommended = 19;
 }
 
 message CreatePostRequest {

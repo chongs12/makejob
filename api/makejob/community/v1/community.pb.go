@@ -179,6 +179,8 @@ type PostSummary struct {
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	IsAuthor      bool                   `protobuf:"varint,15,opt,name=is_author,json=isAuthor,proto3" json:"is_author,omitempty"`
 	IsLiked       bool                   `protobuf:"varint,16,opt,name=is_liked,json=isLiked,proto3" json:"is_liked,omitempty"`
+	IsPinned      bool                   `protobuf:"varint,17,opt,name=is_pinned,json=isPinned,proto3" json:"is_pinned,omitempty"`
+	IsRecommended bool                   `protobuf:"varint,18,opt,name=is_recommended,json=isRecommended,proto3" json:"is_recommended,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -325,6 +327,20 @@ func (x *PostSummary) GetIsLiked() bool {
 	return false
 }
 
+func (x *PostSummary) GetIsPinned() bool {
+	if x != nil {
+		return x.IsPinned
+	}
+	return false
+}
+
+func (x *PostSummary) GetIsRecommended() bool {
+	if x != nil {
+		return x.IsRecommended
+	}
+	return false
+}
+
 type GetPostRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -389,6 +405,8 @@ type PostDetail struct {
 	Tags          string                 `protobuf:"bytes,15,opt,name=tags,proto3" json:"tags,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	IsAuthor      bool                   `protobuf:"varint,17,opt,name=is_author,json=isAuthor,proto3" json:"is_author,omitempty"`
+	IsPinned      bool                   `protobuf:"varint,18,opt,name=is_pinned,json=isPinned,proto3" json:"is_pinned,omitempty"`
+	IsRecommended bool                   `protobuf:"varint,19,opt,name=is_recommended,json=isRecommended,proto3" json:"is_recommended,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -538,6 +556,20 @@ func (x *PostDetail) GetUpdatedAt() *timestamppb.Timestamp {
 func (x *PostDetail) GetIsAuthor() bool {
 	if x != nil {
 		return x.IsAuthor
+	}
+	return false
+}
+
+func (x *PostDetail) GetIsPinned() bool {
+	if x != nil {
+		return x.IsPinned
+	}
+	return false
+}
+
+func (x *PostDetail) GetIsRecommended() bool {
+	if x != nil {
+		return x.IsRecommended
 	}
 	return false
 }
@@ -1310,7 +1342,7 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\x11ListPostsResponse\x127\n" +
 	"\x05posts\x18\x01 \x03(\v2!.makejob.community.v1.PostSummaryR\x05posts\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\x8e\x04\n" +
+	"pageResult\"\xd2\x04\n" +
 	"\vPostSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1a\n" +
@@ -1333,9 +1365,11 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1b\n" +
 	"\tis_author\x18\x0f \x01(\bR\bisAuthor\x12\x19\n" +
-	"\bis_liked\x18\x10 \x01(\bR\aisLiked\" \n" +
+	"\bis_liked\x18\x10 \x01(\bR\aisLiked\x12\x1b\n" +
+	"\tis_pinned\x18\x11 \x01(\bR\bisPinned\x12%\n" +
+	"\x0eis_recommended\x18\x12 \x01(\bR\risRecommended\" \n" +
 	"\x0eGetPostRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\xa7\x04\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\xeb\x04\n" +
 	"\n" +
 	"PostDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
@@ -1360,7 +1394,9 @@ const file_makejob_community_v1_community_proto_rawDesc = "" +
 	"\x04tags\x18\x0f \x01(\tR\x04tags\x129\n" +
 	"\n" +
 	"updated_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1b\n" +
-	"\tis_author\x18\x11 \x01(\bR\bisAuthor\"\xad\x01\n" +
+	"\tis_author\x18\x11 \x01(\bR\bisAuthor\x12\x1b\n" +
+	"\tis_pinned\x18\x12 \x01(\bR\bisPinned\x12%\n" +
+	"\x0eis_recommended\x18\x13 \x01(\bR\risRecommended\"\xad\x01\n" +
 	"\x11CreatePostRequest\x12\x1b\n" +
 	"\tauthor_id\x18\x01 \x01(\x04R\bauthorId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +

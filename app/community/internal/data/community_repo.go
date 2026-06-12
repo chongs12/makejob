@@ -134,6 +134,12 @@ func (r *communityRepo) IncrementLikeCount(ctx context.Context, postID uint64, d
 		Update("like_count", gorm.Expr("like_count + ?", delta)).Error
 }
 
+// IncrementCommentCount 原子递增帖子评论计数。
+func (r *communityRepo) IncrementCommentCount(ctx context.Context, postID uint64, delta int32) error {
+	return r.getDB(ctx).WithContext(ctx).Model(&biz.Post{}).Where("id = ?", postID).
+		Update("comment_count", gorm.Expr("comment_count + ?", delta)).Error
+}
+
 // ListByAuthorID 按作者 ID 分页查询帖子列表
 func (r *communityRepo) ListByAuthorID(ctx context.Context, authorID uint64, page, pageSize int32) ([]*biz.Post, int64, error) {
 	var posts []*biz.Post

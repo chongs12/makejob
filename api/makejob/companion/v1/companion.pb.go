@@ -23,12 +23,15 @@ const (
 )
 
 type CompanionChatRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	ContextType   string                 `protobuf:"bytes,3,opt,name=context_type,json=contextType,proto3" json:"context_type,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	UserId         uint64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Message        string                  `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	ContextType    string                  `protobuf:"bytes,3,opt,name=context_type,json=contextType,proto3" json:"context_type,omitempty"`
+	Messages       []*CompanionChatMessage `protobuf:"bytes,4,rep,name=messages,proto3" json:"messages,omitempty"`
+	Live2DModelKey string                  `protobuf:"bytes,5,opt,name=live2d_model_key,json=live2dModelKey,proto3" json:"live2d_model_key,omitempty"`
+	Context        *CompanionChatContext   `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CompanionChatRequest) Reset() {
@@ -82,18 +85,206 @@ func (x *CompanionChatRequest) GetContextType() string {
 	return ""
 }
 
-type CompanionChatResponse struct {
+func (x *CompanionChatRequest) GetMessages() []*CompanionChatMessage {
+	if x != nil {
+		return x.Messages
+	}
+	return nil
+}
+
+func (x *CompanionChatRequest) GetLive2DModelKey() string {
+	if x != nil {
+		return x.Live2DModelKey
+	}
+	return ""
+}
+
+func (x *CompanionChatRequest) GetContext() *CompanionChatContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type CompanionChatMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reply         string                 `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
-	Emotion       string                 `protobuf:"bytes,2,opt,name=emotion,proto3" json:"emotion,omitempty"`
-	Suggestions   []string               `protobuf:"bytes,3,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
+	Role          string                 `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`
+	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *CompanionChatMessage) Reset() {
+	*x = CompanionChatMessage{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompanionChatMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompanionChatMessage) ProtoMessage() {}
+
+func (x *CompanionChatMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompanionChatMessage.ProtoReflect.Descriptor instead.
+func (*CompanionChatMessage) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CompanionChatMessage) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *CompanionChatMessage) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type CompanionChatContext struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	CurrentPlanTitle       string                 `protobuf:"bytes,1,opt,name=current_plan_title,json=currentPlanTitle,proto3" json:"current_plan_title,omitempty"`
+	CurrentPlanProgress    float64                `protobuf:"fixed64,2,opt,name=current_plan_progress,json=currentPlanProgress,proto3" json:"current_plan_progress,omitempty"`
+	TodayGoals             []string               `protobuf:"bytes,3,rep,name=today_goals,json=todayGoals,proto3" json:"today_goals,omitempty"`
+	ActiveGoals            []string               `protobuf:"bytes,4,rep,name=active_goals,json=activeGoals,proto3" json:"active_goals,omitempty"`
+	FocusedTaskTitle       string                 `protobuf:"bytes,5,opt,name=focused_task_title,json=focusedTaskTitle,proto3" json:"focused_task_title,omitempty"`
+	FocusedTaskDescription string                 `protobuf:"bytes,6,opt,name=focused_task_description,json=focusedTaskDescription,proto3" json:"focused_task_description,omitempty"`
+	CompletedTodayCount    int32                  `protobuf:"varint,7,opt,name=completed_today_count,json=completedTodayCount,proto3" json:"completed_today_count,omitempty"`
+	SkippedTodayCount      int32                  `protobuf:"varint,8,opt,name=skipped_today_count,json=skippedTodayCount,proto3" json:"skipped_today_count,omitempty"`
+	LatestTaskAction       string                 `protobuf:"bytes,9,opt,name=latest_task_action,json=latestTaskAction,proto3" json:"latest_task_action,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *CompanionChatContext) Reset() {
+	*x = CompanionChatContext{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompanionChatContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompanionChatContext) ProtoMessage() {}
+
+func (x *CompanionChatContext) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompanionChatContext.ProtoReflect.Descriptor instead.
+func (*CompanionChatContext) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CompanionChatContext) GetCurrentPlanTitle() string {
+	if x != nil {
+		return x.CurrentPlanTitle
+	}
+	return ""
+}
+
+func (x *CompanionChatContext) GetCurrentPlanProgress() float64 {
+	if x != nil {
+		return x.CurrentPlanProgress
+	}
+	return 0
+}
+
+func (x *CompanionChatContext) GetTodayGoals() []string {
+	if x != nil {
+		return x.TodayGoals
+	}
+	return nil
+}
+
+func (x *CompanionChatContext) GetActiveGoals() []string {
+	if x != nil {
+		return x.ActiveGoals
+	}
+	return nil
+}
+
+func (x *CompanionChatContext) GetFocusedTaskTitle() string {
+	if x != nil {
+		return x.FocusedTaskTitle
+	}
+	return ""
+}
+
+func (x *CompanionChatContext) GetFocusedTaskDescription() string {
+	if x != nil {
+		return x.FocusedTaskDescription
+	}
+	return ""
+}
+
+func (x *CompanionChatContext) GetCompletedTodayCount() int32 {
+	if x != nil {
+		return x.CompletedTodayCount
+	}
+	return 0
+}
+
+func (x *CompanionChatContext) GetSkippedTodayCount() int32 {
+	if x != nil {
+		return x.SkippedTodayCount
+	}
+	return 0
+}
+
+func (x *CompanionChatContext) GetLatestTaskAction() string {
+	if x != nil {
+		return x.LatestTaskAction
+	}
+	return ""
+}
+
+type CompanionChatResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Reply           string                 `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
+	Emotion         string                 `protobuf:"bytes,2,opt,name=emotion,proto3" json:"emotion,omitempty"`
+	Suggestions     []string               `protobuf:"bytes,3,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
+	Content         string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	Mood            string                 `protobuf:"bytes,5,opt,name=mood,proto3" json:"mood,omitempty"`
+	Action          string                 `protobuf:"bytes,6,opt,name=action,proto3" json:"action,omitempty"`
+	AudioUrl        string                 `protobuf:"bytes,7,opt,name=audio_url,json=audioUrl,proto3" json:"audio_url,omitempty"`
+	AudioDuration   int32                  `protobuf:"varint,8,opt,name=audio_duration,json=audioDuration,proto3" json:"audio_duration,omitempty"`
+	AudioFormat     string                 `protobuf:"bytes,9,opt,name=audio_format,json=audioFormat,proto3" json:"audio_format,omitempty"`
+	AudioSampleRate int32                  `protobuf:"varint,10,opt,name=audio_sample_rate,json=audioSampleRate,proto3" json:"audio_sample_rate,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
 func (x *CompanionChatResponse) Reset() {
 	*x = CompanionChatResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[1]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +296,7 @@ func (x *CompanionChatResponse) String() string {
 func (*CompanionChatResponse) ProtoMessage() {}
 
 func (x *CompanionChatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[1]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +309,7 @@ func (x *CompanionChatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionChatResponse.ProtoReflect.Descriptor instead.
 func (*CompanionChatResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{1}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CompanionChatResponse) GetReply() string {
@@ -142,6 +333,55 @@ func (x *CompanionChatResponse) GetSuggestions() []string {
 	return nil
 }
 
+func (x *CompanionChatResponse) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *CompanionChatResponse) GetMood() string {
+	if x != nil {
+		return x.Mood
+	}
+	return ""
+}
+
+func (x *CompanionChatResponse) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *CompanionChatResponse) GetAudioUrl() string {
+	if x != nil {
+		return x.AudioUrl
+	}
+	return ""
+}
+
+func (x *CompanionChatResponse) GetAudioDuration() int32 {
+	if x != nil {
+		return x.AudioDuration
+	}
+	return 0
+}
+
+func (x *CompanionChatResponse) GetAudioFormat() string {
+	if x != nil {
+		return x.AudioFormat
+	}
+	return ""
+}
+
+func (x *CompanionChatResponse) GetAudioSampleRate() int32 {
+	if x != nil {
+		return x.AudioSampleRate
+	}
+	return 0
+}
+
 type GetCompanionStateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -151,7 +391,7 @@ type GetCompanionStateRequest struct {
 
 func (x *GetCompanionStateRequest) Reset() {
 	*x = GetCompanionStateRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[2]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -163,7 +403,7 @@ func (x *GetCompanionStateRequest) String() string {
 func (*GetCompanionStateRequest) ProtoMessage() {}
 
 func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[2]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -176,7 +416,7 @@ func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCompanionStateRequest.ProtoReflect.Descriptor instead.
 func (*GetCompanionStateRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{2}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetCompanionStateRequest) GetUserId() uint64 {
@@ -197,7 +437,7 @@ type CompanionState struct {
 
 func (x *CompanionState) Reset() {
 	*x = CompanionState{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[3]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -209,7 +449,7 @@ func (x *CompanionState) String() string {
 func (*CompanionState) ProtoMessage() {}
 
 func (x *CompanionState) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[3]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -222,7 +462,7 @@ func (x *CompanionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionState.ProtoReflect.Descriptor instead.
 func (*CompanionState) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{3}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CompanionState) GetEmotion() string {
@@ -256,7 +496,7 @@ type SynthesizeSpeechRequest struct {
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -268,7 +508,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -281,7 +521,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SynthesizeSpeechRequest) GetText() string {
@@ -308,7 +548,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +560,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +573,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudioData() []byte {
@@ -354,15 +594,40 @@ var File_makejob_companion_v1_companion_proto protoreflect.FileDescriptor
 
 const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\n" +
-	"$makejob/companion/v1/companion.proto\x12\x14makejob.companion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"l\n" +
+	"$makejob/companion/v1/companion.proto\x12\x14makejob.companion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa4\x02\n" +
 	"\x14CompanionChatRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12!\n" +
-	"\fcontext_type\x18\x03 \x01(\tR\vcontextType\"i\n" +
+	"\fcontext_type\x18\x03 \x01(\tR\vcontextType\x12F\n" +
+	"\bmessages\x18\x04 \x03(\v2*.makejob.companion.v1.CompanionChatMessageR\bmessages\x12(\n" +
+	"\x10live2d_model_key\x18\x05 \x01(\tR\x0elive2dModelKey\x12D\n" +
+	"\acontext\x18\x06 \x01(\v2*.makejob.companion.v1.CompanionChatContextR\acontext\"D\n" +
+	"\x14CompanionChatMessage\x12\x12\n" +
+	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\"\xb6\x03\n" +
+	"\x14CompanionChatContext\x12,\n" +
+	"\x12current_plan_title\x18\x01 \x01(\tR\x10currentPlanTitle\x122\n" +
+	"\x15current_plan_progress\x18\x02 \x01(\x01R\x13currentPlanProgress\x12\x1f\n" +
+	"\vtoday_goals\x18\x03 \x03(\tR\n" +
+	"todayGoals\x12!\n" +
+	"\factive_goals\x18\x04 \x03(\tR\vactiveGoals\x12,\n" +
+	"\x12focused_task_title\x18\x05 \x01(\tR\x10focusedTaskTitle\x128\n" +
+	"\x18focused_task_description\x18\x06 \x01(\tR\x16focusedTaskDescription\x122\n" +
+	"\x15completed_today_count\x18\a \x01(\x05R\x13completedTodayCount\x12.\n" +
+	"\x13skipped_today_count\x18\b \x01(\x05R\x11skippedTodayCount\x12,\n" +
+	"\x12latest_task_action\x18\t \x01(\tR\x10latestTaskAction\"\xc2\x02\n" +
 	"\x15CompanionChatResponse\x12\x14\n" +
 	"\x05reply\x18\x01 \x01(\tR\x05reply\x12\x18\n" +
 	"\aemotion\x18\x02 \x01(\tR\aemotion\x12 \n" +
-	"\vsuggestions\x18\x03 \x03(\tR\vsuggestions\"3\n" +
+	"\vsuggestions\x18\x03 \x03(\tR\vsuggestions\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x12\x12\n" +
+	"\x04mood\x18\x05 \x01(\tR\x04mood\x12\x16\n" +
+	"\x06action\x18\x06 \x01(\tR\x06action\x12\x1b\n" +
+	"\taudio_url\x18\a \x01(\tR\baudioUrl\x12%\n" +
+	"\x0eaudio_duration\x18\b \x01(\x05R\raudioDuration\x12!\n" +
+	"\faudio_format\x18\t \x01(\tR\vaudioFormat\x12*\n" +
+	"\x11audio_sample_rate\x18\n" +
+	" \x01(\x05R\x0faudioSampleRate\"3\n" +
 	"\x18GetCompanionStateRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\x8b\x01\n" +
 	"\x0eCompanionState\x12\x18\n" +
@@ -394,29 +659,33 @@ func file_makejob_companion_v1_companion_proto_rawDescGZIP() []byte {
 	return file_makejob_companion_v1_companion_proto_rawDescData
 }
 
-var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_makejob_companion_v1_companion_proto_goTypes = []any{
 	(*CompanionChatRequest)(nil),     // 0: makejob.companion.v1.CompanionChatRequest
-	(*CompanionChatResponse)(nil),    // 1: makejob.companion.v1.CompanionChatResponse
-	(*GetCompanionStateRequest)(nil), // 2: makejob.companion.v1.GetCompanionStateRequest
-	(*CompanionState)(nil),           // 3: makejob.companion.v1.CompanionState
-	(*SynthesizeSpeechRequest)(nil),  // 4: makejob.companion.v1.SynthesizeSpeechRequest
-	(*SynthesizeSpeechResponse)(nil), // 5: makejob.companion.v1.SynthesizeSpeechResponse
-	(*timestamppb.Timestamp)(nil),    // 6: google.protobuf.Timestamp
+	(*CompanionChatMessage)(nil),     // 1: makejob.companion.v1.CompanionChatMessage
+	(*CompanionChatContext)(nil),     // 2: makejob.companion.v1.CompanionChatContext
+	(*CompanionChatResponse)(nil),    // 3: makejob.companion.v1.CompanionChatResponse
+	(*GetCompanionStateRequest)(nil), // 4: makejob.companion.v1.GetCompanionStateRequest
+	(*CompanionState)(nil),           // 5: makejob.companion.v1.CompanionState
+	(*SynthesizeSpeechRequest)(nil),  // 6: makejob.companion.v1.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil), // 7: makejob.companion.v1.SynthesizeSpeechResponse
+	(*timestamppb.Timestamp)(nil),    // 8: google.protobuf.Timestamp
 }
 var file_makejob_companion_v1_companion_proto_depIdxs = []int32{
-	6, // 0: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
-	0, // 1: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
-	2, // 2: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
-	4, // 3: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
-	1, // 4: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
-	3, // 5: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
-	5, // 6: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 0: makejob.companion.v1.CompanionChatRequest.messages:type_name -> makejob.companion.v1.CompanionChatMessage
+	2, // 1: makejob.companion.v1.CompanionChatRequest.context:type_name -> makejob.companion.v1.CompanionChatContext
+	8, // 2: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
+	0, // 3: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
+	4, // 4: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
+	6, // 5: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
+	3, // 6: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
+	5, // 7: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
+	7, // 8: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_makejob_companion_v1_companion_proto_init() }
@@ -430,7 +699,7 @@ func file_makejob_companion_v1_companion_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_companion_v1_companion_proto_rawDesc), len(file_makejob_companion_v1_companion_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

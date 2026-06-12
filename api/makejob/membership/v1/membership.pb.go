@@ -67,12 +67,16 @@ func (x *UserIDRequest) GetUserId() uint64 {
 }
 
 type MembershipStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Level         string                 `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"` // "free" or "pro"
-	ExpireAt      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
-	IsActive      bool                   `protobuf:"varint,3,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Level               string                 `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"` // "free" or "pro"
+	ExpireAt            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
+	IsActive            bool                   `protobuf:"varint,3,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	DailyPracticeLimit  int32                  `protobuf:"varint,4,opt,name=daily_practice_limit,json=dailyPracticeLimit,proto3" json:"daily_practice_limit,omitempty"`    // 每日练习限制
+	DailyInterviewLimit int32                  `protobuf:"varint,5,opt,name=daily_interview_limit,json=dailyInterviewLimit,proto3" json:"daily_interview_limit,omitempty"` // 每日面试限制
+	PracticeUsedToday   int32                  `protobuf:"varint,6,opt,name=practice_used_today,json=practiceUsedToday,proto3" json:"practice_used_today,omitempty"`       // 今日已练习数
+	InterviewUsedToday  int32                  `protobuf:"varint,7,opt,name=interview_used_today,json=interviewUsedToday,proto3" json:"interview_used_today,omitempty"`    // 今日已面试数
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *MembershipStatus) Reset() {
@@ -124,6 +128,34 @@ func (x *MembershipStatus) GetIsActive() bool {
 		return x.IsActive
 	}
 	return false
+}
+
+func (x *MembershipStatus) GetDailyPracticeLimit() int32 {
+	if x != nil {
+		return x.DailyPracticeLimit
+	}
+	return 0
+}
+
+func (x *MembershipStatus) GetDailyInterviewLimit() int32 {
+	if x != nil {
+		return x.DailyInterviewLimit
+	}
+	return 0
+}
+
+func (x *MembershipStatus) GetPracticeUsedToday() int32 {
+	if x != nil {
+		return x.PracticeUsedToday
+	}
+	return 0
+}
+
+func (x *MembershipStatus) GetInterviewUsedToday() int32 {
+	if x != nil {
+		return x.InterviewUsedToday
+	}
+	return 0
 }
 
 type MembershipPlan struct {
@@ -828,11 +860,15 @@ const file_makejob_membership_v1_membership_proto_rawDesc = "" +
 	"\n" +
 	"&makejob/membership/v1/membership.proto\x12\x15makejob.membership.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"(\n" +
 	"\rUserIDRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x04R\x06userId\"~\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xc6\x02\n" +
 	"\x10MembershipStatus\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\tR\x05level\x127\n" +
 	"\texpire_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bexpireAt\x12\x1b\n" +
-	"\tis_active\x18\x03 \x01(\bR\bisActive\"\x98\x01\n" +
+	"\tis_active\x18\x03 \x01(\bR\bisActive\x120\n" +
+	"\x14daily_practice_limit\x18\x04 \x01(\x05R\x12dailyPracticeLimit\x122\n" +
+	"\x15daily_interview_limit\x18\x05 \x01(\x05R\x13dailyInterviewLimit\x12.\n" +
+	"\x13practice_used_today\x18\x06 \x01(\x05R\x11practiceUsedToday\x120\n" +
+	"\x14interview_used_today\x18\a \x01(\x05R\x12interviewUsedToday\"\x98\x01\n" +
 	"\x0eMembershipPlan\x12\x1b\n" +
 	"\tplan_type\x18\x01 \x01(\tR\bplanType\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +

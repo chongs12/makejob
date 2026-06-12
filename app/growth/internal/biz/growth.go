@@ -17,6 +17,8 @@ type GrowthRepo interface {
 	GetStudyLogStats(ctx context.Context, userID uint64) (*GrowthSummary, error)
 	UpsertStudyLog(ctx context.Context, log *StudyLog) error
 	GetWeeklyFocusItems(ctx context.Context, userID uint64) ([]*FocusItem, error)
+	GetWeeklyStats(ctx context.Context, userID uint64, weeks int) ([]*WeeklyStat, error)
+	GetRecentStudyLogs(ctx context.Context, userID uint64, limit int) ([]*GrowthStudyLog, error)
 }
 
 // --- 下游服务客户端接口 ---
@@ -30,6 +32,7 @@ type QuestionClient interface {
 // PlanClient 计划服务客户端接口
 type PlanClient interface {
 	GetCurrentPlan(ctx context.Context, userID uint64) (*PlanInfo, error)
+	GetRecentPlans(ctx context.Context, userID uint64, limit int) ([]*GrowthPlanSnapshot, error)
 }
 
 // LearningArchiveClient 学习档案服务客户端接口
@@ -41,6 +44,7 @@ type LearningArchiveClient interface {
 // InterviewClient 面试服务客户端接口
 type InterviewClient interface {
 	GetInterviewStats(ctx context.Context, userID uint64) (*InterviewStats, error)
+	GetRecentInterviews(ctx context.Context, userID uint64, limit int) ([]*GrowthInterviewSnapshot, error)
 }
 
 // --- 下游服务响应结构体 ---
@@ -50,6 +54,7 @@ type PracticeStats struct {
 	TotalDone   int32
 	CorrectRate int32
 	StreakDays  int32
+	TodayCount  int32
 }
 
 // PlanInfo 当前计划信息
@@ -69,9 +74,10 @@ type FocusSignal struct {
 
 // InterviewStats 面试统计
 type InterviewStats struct {
-	TotalInterviews int32
-	AvgScore        float64
-	LatestScore     float64
+	TotalInterviews     int32
+	AvgScore            float64
+	LatestScore         float64
+	CompletedInterviews int32
 }
 
 // QuestionSetBrief 题目集简要信息
@@ -258,17 +264,23 @@ type WeeklyFocusTheme struct {
 
 // StudyLog 学习记录实体
 type StudyLog struct {
-	ID              uint64
-	UserID          uint64
-	DateKey         string    // YYYY-MM-DD 格式
-	PlanID          uint64
-	Summary         string
-	Action          string    // practice/interview/study/review
-	RefID           uint64
-	RefType         string    // question/interview/plan_task
-	DurationMinutes int32
-	Source          string    // app/web/api
-	CreatedAt       time.Time
+	ID               uint64
+	UserID           uint64
+	DateKey          string    // YYYY-MM-DD 格式
+	PlanID           uint64
+	Summary          string
+	Action           string    // practice/interview/study/review
+	RefID            uint64
+	RefType          string    // question/interview/plan_task
+	DurationMinutes  int32
+	Source           string    // app/web/api
+	FocusTaskTitle   string
+	CompletedCount   int32
+	SkippedCount     int32
+	CompletedTitles  []string
+	SkippedTitles    []string
+	LatestActionText string
+	CreatedAt        time.Time
 }
 
 // GrowthUseCase 成长业务用例
@@ -313,6 +325,10 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 	var interviewStats *InterviewStats
 	var studyLogSummary *GrowthSummary
 	var planInfo *PlanInfo
+	var weeklyStats []*WeeklyStat
+	var recentStudyLogs []*GrowthStudyLog
+	var recentInterviews []*GrowthInterviewSnapshot
+	var recentPlans []*GrowthPlanSnapshot
 
 	// 并发查询本地学习日志统计
 	g.Go(func() error {
@@ -374,16 +390,56 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		return nil
 	})
 
+	// 并发查询周统计数据
+	g.Go(func() error {
+		var err error
+		weeklyStats, err = uc.repo.GetWeeklyStats(gctx, userID, 8)
+		if err != nil {
+			log.Context(gctx).Warnf("获取周统计失败: %v", err)
+		}
+		return nil
+	})
+
+	// 并发查询最近学习日志
+	g.Go(func() error {
+		var err error
+		recentStudyLogs, err = uc.repo.GetRecentStudyLogs(gctx, userID, 5)
+		if err != nil {
+			log.Context(gctx).Warnf("获取最近学习日志失败: %v", err)
+		}
+		return nil
+	})
+
+	// 并发获取最近面试
+	g.Go(func() error {
+		var err error
+		recentInterviews, err = uc.interviewClient.GetRecentInterviews(gctx, userID, 5)
+		if err != nil {
+			log.Context(gctx).Warnf("获取最近面试失败: %v", err)
+		}
+		return nil
+	})
+
+	// 并发获取最近计划
+	g.Go(func() error {
+		var err error
+		recentPlans, err = uc.planClient.GetRecentPlans(gctx, userID, 3)
+		if err != nil {
+			log.Context(gctx).Warnf("获取最近计划失败: %v", err)
+		}
+		return nil
+	})
+
 	_ = g.Wait() // 所有 goroutine 已做降级处理
 
 	// 组装响应
 	summary := &GrowthSummary{
-		WeeklyStats:      []*WeeklyStat{},
+		WeeklyStats:      weeklyStats,
 		WeakTopics:       []*TopicWeakness{},
 		FocusSignals:     []*GrowthFocusSignal{},
-		RecentStudyLogs:  []*GrowthStudyLog{},
-		RecentInterviews: []*GrowthInterviewSnapshot{},
-		RecentPlans:      []*GrowthPlanSnapshot{},
+		RecentStudyLogs:  recentStudyLogs,
+		RecentInterviews: recentInterviews,
+		RecentPlans:      recentPlans,
 	}
 
 	// FIX G2: 从 StudyLog 统计真实学习天数，而非计划任务完成数
@@ -430,7 +486,9 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 
 	summary.StudyDays = summary.TotalStudyDays
 	summary.InterviewCount = summary.TotalInterviews
-	summary.CompletedInterviewCount = summary.TotalInterviews
+	if interviewStats != nil {
+		summary.CompletedInterviewCount = interviewStats.CompletedInterviews
+	}
 	summary.AverageInterviewScore = summary.AvgScore
 
 	if practiceStats != nil {
@@ -445,6 +503,7 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 			WrongCount:    wrong,
 			AccuracyRate:  float64(practiceStats.CorrectRate),
 			StreakDays:    practiceStats.StreakDays,
+			TodayCount:    practiceStats.TodayCount,
 			CategoryStats: []*GrowthCategoryStat{},
 		}
 	}

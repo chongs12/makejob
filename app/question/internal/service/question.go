@@ -11,6 +11,7 @@ import (
 	questionv1 "makejob/api/makejob/question/v1"
 	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/app/question/internal/biz"
+	"makejob/pkg/auth"
 )
 
 type QuestionService struct {
@@ -49,6 +50,9 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 			Type:         q.Type,
 			IndustryCode: q.IndustryCode,
 			CategoryName: q.CategoryName,
+			CategoryId:   q.CategoryID,
+			IndustryId:   q.IndustryID,
+			Tags:         q.Tags,
 		}
 	}
 
@@ -67,6 +71,13 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 	if err != nil {
 		return nil, err
 	}
+
+	// 查询当前用户是否收藏了该题目
+	var isFavorited bool
+	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
+		isFavorited = s.uc.IsFavorited(ctx, userID, req.Id)
+	}
+
 	return &questionv1.QuestionDetail{
 		Id:                 q.ID,
 		Title:              q.Title,
@@ -87,6 +98,7 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		SolutionJson:       q.SolutionJSON,
 		JudgeConfigJson:    q.JudgeConfigJSON,
 		AnswerTemplateJson: q.AnswerTemplateJSON,
+		IsFavorited:        isFavorited,
 	}, nil
 }
 
@@ -157,12 +169,14 @@ func (s *QuestionService) SubmitAnswer(ctx context.Context, req *questionv1.Subm
 	}
 
 	return &questionv1.SubmitAnswerResponse{
-		IsCorrect:     resp.IsCorrect,
-		Score:         resp.Score,
-		Feedback:      resp.Feedback,
-		CorrectAnswer: resp.CorrectAnswer,
-		Explanation:   resp.Suggestions,
-		KeyPoints:     resp.KeyPoints,
+		IsCorrect:      resp.IsCorrect,
+		Score:          resp.Score,
+		Feedback:       resp.Feedback,
+		CorrectAnswer:  resp.CorrectAnswer,
+		Explanation:    resp.Suggestions,
+		KeyPoints:      resp.KeyPoints,
+		EvaluationMode: resp.EvaluationMode,
+		JudgeSummary:   toProtoJudgeSummary(resp.JudgeSummary),
 	}, nil
 }
 
@@ -181,18 +195,18 @@ func (s *QuestionService) RunCode(ctx context.Context, req *questionv1.RunCodeRe
 	}, nil
 }
 
-func (s *QuestionService) CreateFavorite(ctx context.Context, req *questionv1.CreateFavoriteRequest) (*emptypb.Empty, error) {
+func (s *QuestionService) CreateFavorite(ctx context.Context, req *questionv1.CreateFavoriteRequest) (*questionv1.FavoriteResponse, error) {
 	if err := s.uc.CreateFavorite(ctx, req.UserId, req.QuestionId); err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, nil
+	return &questionv1.FavoriteResponse{IsFavorited: true}, nil
 }
 
-func (s *QuestionService) DeleteFavorite(ctx context.Context, req *questionv1.DeleteFavoriteRequest) (*emptypb.Empty, error) {
+func (s *QuestionService) DeleteFavorite(ctx context.Context, req *questionv1.DeleteFavoriteRequest) (*questionv1.FavoriteResponse, error) {
 	if err := s.uc.DeleteFavorite(ctx, req.UserId, req.QuestionId); err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, nil
+	return &questionv1.FavoriteResponse{IsFavorited: false}, nil
 }
 
 func (s *QuestionService) ListFavorites(ctx context.Context, req *questionv1.ListFavoritesRequest) (*questionv1.FavoriteListResponse, error) {
@@ -375,7 +389,7 @@ func (s *QuestionService) GetWrongQuestions(ctx context.Context, req *questionv1
 }
 
 func (s *QuestionService) GetUserPracticeStats(ctx context.Context, req *questionv1.UserIDRequest) (*questionv1.UserPracticeStats, error) {
-	totalAnswered, totalCorrect, accuracy, categoryStats, err := s.uc.GetUserPracticeStats(ctx, req.UserId)
+	totalAnswered, totalCorrect, accuracy, categoryStats, todayCount, err := s.uc.GetUserPracticeStats(ctx, req.UserId)
 	if err != nil {
 		return nil, err
 	}
@@ -403,6 +417,7 @@ func (s *QuestionService) GetUserPracticeStats(ctx context.Context, req *questio
 		CorrectCount:  correctCount,
 		WrongCount:    wrongCount,
 		AccuracyRate:  accuracy,
+		TodayCount:    todayCount,
 	}, nil
 }
 
@@ -827,4 +842,27 @@ func splitProtoTags(raw string) []string {
 		}
 	}
 	return tags
+}
+
+// toProtoJudgeSummary 将 biz 层判题摘要转换为 proto 格式。
+func toProtoJudgeSummary(summary *biz.JudgeSummary) *questionv1.JudgeSummary {
+	if summary == nil {
+		return nil
+	}
+	results := make([]*questionv1.JudgeCaseResult, 0, len(summary.Results))
+	for _, r := range summary.Results {
+		results = append(results, &questionv1.JudgeCaseResult{
+			Input:          r.Input,
+			ExpectedOutput: r.ExpectedOutput,
+			ActualOutput:   r.ActualOutput,
+			Passed:         r.Passed,
+			Description:    r.Description,
+		})
+	}
+	return &questionv1.JudgeSummary{
+		AllPassed:   summary.AllPassed,
+		TotalCases:  summary.TotalCases,
+		PassedCases: summary.PassedCases,
+		Results:     results,
+	}
 }

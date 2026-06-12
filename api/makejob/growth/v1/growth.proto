@@ -177,6 +177,15 @@ message SyncStudyLogRequest {
   string action = 2;
   uint64 ref_id = 3;
   int32 duration_seconds = 4;
+  string date_key = 5;
+  uint64 plan_id = 6;
+  string summary = 7;
+  string focus_task_title = 8;
+  int32 completed_count = 9;
+  int32 skipped_count = 10;
+  repeated string completed_titles = 11;
+  repeated string skipped_titles = 12;
+  string latest_action_text = 13;
 }
 
 message StudyLog {
@@ -185,4 +194,13 @@ message StudyLog {
   string action = 3;
   uint64 ref_id = 4;
   google.protobuf.Timestamp created_at = 5;
+  string date_key = 6;
+  string summary = 7;
+  string focus_task_title = 8;
+  int32 completed_count = 9;
+  int32 skipped_count = 10;
+  repeated string completed_titles = 11;
+  repeated string skipped_titles = 12;
+  string latest_action_text = 13;
+  google.protobuf.Timestamp updated_at = 14;
 }

@@ -46,6 +46,8 @@ type LearningPlan struct {
 	Status            string         `gorm:"size:20;not null;default:'generating'"`
 	CompletedTasks    int32          `gorm:"not null;default:0"`
 	TotalTasks        int32          `gorm:"not null;default:0"`
+	Phase             string         `gorm:"size:50"`
+	PhaseGoal         string         `gorm:"size:500"`
 	CreatedAt         time.Time      `gorm:"not null;autoCreateTime"`
 	UpdatedAt         time.Time      `gorm:"not null;autoUpdateTime"`
 	DeletedAt         gorm.DeletedAt `gorm:"index"`
@@ -54,6 +56,57 @@ type LearningPlan struct {
 // TableName 指定学习计划表名
 func (LearningPlan) TableName() string {
 	return "learning_plans"
+}
+
+// CalculatePhase 根据任务完成进度计算当前学习阶段。
+// foundation（基础）: 0-33%, drill（刷题）: 34-66%, mock（模拟）: 67-100%
+func CalculatePhase(completed, total int32) string {
+	if total <= 0 {
+		return "foundation"
+	}
+	ratio := float64(completed) / float64(total)
+	if ratio < 0.34 {
+		return "foundation"
+	}
+	if ratio < 0.67 {
+		return "drill"
+	}
+	return "mock"
+}
+
+// PhaseGoalMap 各阶段目标描述。
+var PhaseGoalMap = map[string]string{
+	"foundation": "夯实基础：掌握核心概念与基本用法",
+	"drill":      "强化刷题：通过大量练习提升解题速度与准确率",
+	"mock":       "模拟实战：模拟真实面试场景，查漏补缺",
+}
+
+// buildTaskSourceLabel 根据任务类型和阶段生成来源标签。
+func buildTaskSourceLabel(taskType, phase string) string {
+	switch taskType {
+	case "practice":
+		return "刷题练习"
+	case "interview":
+		return "模拟面试"
+	case "review":
+		return "复习巩固"
+	case "study":
+		if phase == "foundation" {
+			return "基础学习"
+		}
+		return "进阶学习"
+	default:
+		return "AI 智能生成"
+	}
+}
+
+// buildTaskReason 根据任务标题和阶段生成推荐原因。
+func buildTaskReason(title, phase string) string {
+	phaseLabel := PhaseGoalMap[phase]
+	if phaseLabel != "" {
+		return fmt.Sprintf("本任务属于%s阶段：%s", phase, phaseLabel)
+	}
+	return "根据学习计划智能推荐"
 }
 
 // LearningTask 学习任务实体
@@ -70,6 +123,9 @@ type LearningTask struct {
 	Status          string         `gorm:"size:20;not null;default:'pending'"`
 	CompletedAt     *time.Time     `gorm:"default:null"`
 	SortOrder       int32          `gorm:"not null;default:0"`
+	Source          string         `gorm:"size:50"`
+	SourceLabel     string         `gorm:"size:100"`
+	Reason          string         `gorm:"size:500"`
 	CreatedAt       time.Time      `gorm:"not null;autoCreateTime"`
 	UpdatedAt       time.Time      `gorm:"not null;autoUpdateTime"`
 	DeletedAt       gorm.DeletedAt `gorm:"index"`
@@ -426,6 +482,9 @@ func (uc *PlanUseCase) GeneratePlan(ctx context.Context, planID, userID uint64, 
 				Priority:        priority,
 				Status:          "pending",
 				SortOrder:       sortOrder,
+				Source:          "ai_generated",
+				SourceLabel:     buildTaskSourceLabel(taskType, task.Phase),
+				Reason:          buildTaskReason(task.Title, task.Phase),
 			})
 		}
 
@@ -437,6 +496,10 @@ func (uc *PlanUseCase) GeneratePlan(ctx context.Context, planID, userID uint64, 
 
 		plan.TotalTasks = int32(len(tasks))
 		plan.Status = "active"
+		plan.Phase = CalculatePhase(0, plan.TotalTasks)
+		if goal, ok := PhaseGoalMap[plan.Phase]; ok {
+			plan.PhaseGoal = goal
+		}
 		return uc.repo.Update(txCtx, plan)
 	})
 }
@@ -557,6 +620,10 @@ func (uc *PlanUseCase) UpdateTaskStatus(ctx context.Context, userID, planID, tas
 
 		plan.CompletedTasks = completedCount
 		plan.TotalTasks = totalTasks
+		plan.Phase = CalculatePhase(completedCount, totalTasks)
+		if goal, ok := PhaseGoalMap[plan.Phase]; ok {
+			plan.PhaseGoal = goal
+		}
 		if totalTasks > 0 && completedCount >= totalTasks {
 			plan.Status = "completed"
 		} else if plan.Status == "completed" {
@@ -723,6 +790,9 @@ func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, re
 			Priority:        priority,
 			Status:          "pending",
 			SortOrder:       task.SortOrder,
+			Source:          "plan_adjustment",
+			SourceLabel:     "计划调整",
+			Reason:          reason,
 		})
 	}
 

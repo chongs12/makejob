@@ -13,6 +13,25 @@ const TOKEN_KEY = 'makejob.web.access-token'
 const REFRESH_TOKEN_KEY = 'makejob.web.refresh-token'
 const USER_KEY = 'makejob.web.user'
 
+/**
+ * 检查 JWT 是否已过期。解析 payload 中的 exp 字段，与当前时间比较。
+ */
+function isTokenExpired(token: string | null): boolean {
+  if (!token) {
+    return true
+  }
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) {
+      return true
+    }
+    const payload = JSON.parse(atob(parts[1]))
+    return typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()
+  } catch {
+    return true
+  }
+}
+
 interface AuthState {
   accessToken: string | null
   refreshToken: string | null
@@ -171,6 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   /**
    * 初始化前台登录态，只从本地缓存恢复，不主动阻塞页面渲染。
+   * 会检查 JWT 是否过期，过期则清空 token 避免后续 API 调用触发 401 级联。
    */
   initAuth() {
     if (get().initialized) {
@@ -186,6 +206,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const accessToken = readToken()
     const refreshToken = readRefreshToken()
     const user = readStoredUser()
+
+    // 检查 JWT 是否过期，过期则不设置 token，避免页面渲染后触发 401 级联
+    if (isTokenExpired(accessToken)) {
+      set({
+        accessToken: null,
+        refreshToken,
+        user: null,
+        initialized: true,
+        profileLoaded: false,
+      })
+      return
+    }
 
     set({
       accessToken,

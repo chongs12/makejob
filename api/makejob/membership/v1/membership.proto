@@ -23,6 +23,10 @@ message MembershipStatus {
   string level = 1;           // "free" or "pro"
   google.protobuf.Timestamp expire_at = 2;
   bool is_active = 3;
+  int32 daily_practice_limit = 4;     // 每日练习限制
+  int32 daily_interview_limit = 5;    // 每日面试限制
+  int32 practice_used_today = 6;      // 今日已练习数
+  int32 interview_used_today = 7;     // 今日已面试数
 }
 
 message MembershipPlan {

@@ -43,10 +43,13 @@ func (s *InterviewService) CreateInterview(ctx context.Context, req *interviewv1
 	}
 
 	resp := &interviewv1.InterviewResponse{
-		Id:         interview.ID,
-		InterviewId: interview.ID,
-		Status:     interview.Status,
-		CreatedAt:  timestamppb.New(interview.CreatedAt),
+		Id:             interview.ID,
+		InterviewId:    interview.ID,
+		Status:         interview.Status,
+		CreatedAt:      timestamppb.New(interview.CreatedAt),
+		IndustryCode:   interview.IndustryCode,
+		InterviewMode:  interview.InterviewMode,
+		TotalQuestions: interview.QuestionCount,
 	}
 
 	if firstQ != nil {
@@ -124,6 +127,8 @@ func (s *InterviewService) ListInterviews(ctx context.Context, req *interviewv1.
 			TotalQuestions: iv.QuestionCount,
 			StartedAt:      timestamppb.New(iv.CreatedAt),
 			CreatedAt:      timestamppb.New(iv.CreatedAt),
+			IndustryCode:   iv.IndustryCode,
+			InterviewMode:  iv.InterviewMode,
 		}
 		if iv.FinishedAt != nil {
 			item.EndedAt = timestamppb.New(*iv.FinishedAt)
@@ -169,8 +174,12 @@ func (s *InterviewService) GetInterviewStats(ctx context.Context, req *interview
 		return nil, toGRPCError(err)
 	}
 	return &interviewv1.InterviewStats{
-		TotalInterviews: stats.TotalInterviews,
-		AvgScore:        stats.AvgScore,
+		TotalInterviews:        stats.TotalInterviews,
+		AvgScore:               stats.AvgScore,
+		TotalQuestionsAnswered: stats.TotalQuestionsAnswered,
+		AvgAccuracy:            stats.AvgAccuracy,
+		CompletedInterviews:    stats.CompletedInterviews,
+		TodayCount:             stats.TodayCount,
 	}, nil
 }
 
@@ -203,14 +212,25 @@ func (s *InterviewService) GetNextQuestion(ctx context.Context, req *interviewv1
 
 // FinishInterview 结束面试并触发报告生成
 func (s *InterviewService) FinishInterview(ctx context.Context, req *interviewv1.FinishInterviewRequest) (*interviewv1.InterviewReport, error) {
-	err := s.uc.FinishInterview(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))
+	interview, err := s.uc.FinishInterview(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
-	return &interviewv1.InterviewReport{
+
+	report := &interviewv1.InterviewReport{
 		InterviewId: req.InterviewId,
 		Status:      "generating",
-	}, nil
+	}
+
+	// 填充时长和完成时间
+	if interview.FinishedAt != nil {
+		report.CompletedAt = interview.FinishedAt.Format("2006-01-02T15:04:05Z07:00")
+		if !interview.CreatedAt.IsZero() {
+			report.DurationSeconds = int32(interview.FinishedAt.Sub(interview.CreatedAt).Seconds())
+		}
+	}
+
+	return report, nil
 }
 
 // GetReport 获取面试报告
@@ -406,6 +426,12 @@ func toProtoQuestion(q *biz.InterviewQuestion) *interviewv1.InterviewQuestion {
 	}
 	if q.EvalMode != "" {
 		pq.EvaluationMode = q.EvalMode
+	}
+	if q.Live2DDirective != nil {
+		pq.Live2DDirective = &interviewv1.Live2DDirective{
+			Emotion: q.Live2DDirective.Emotion,
+			Action:  q.Live2DDirective.Action,
+		}
 	}
 	return pq
 }

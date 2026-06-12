@@ -11,6 +11,7 @@ import (
 	interviewv1 "makejob/api/makejob/interview/v1"
 	planv1 "makejob/api/makejob/plan/v1"
 	questionv1 "makejob/api/makejob/question/v1"
+	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/app/growth/internal/biz"
 	"makejob/app/growth/internal/conf"
 )
@@ -55,6 +56,7 @@ func (c *questionClient) GetUserPracticeStats(ctx context.Context, userID uint64
 		TotalDone:   resp.GetTotalAnswered(),
 		CorrectRate: int32(resp.GetAccuracy() * 100),
 		StreakDays:  resp.GetStreakDays(),
+		TodayCount:  resp.GetTodayCount(),
 	}, nil
 }
 
@@ -121,6 +123,32 @@ func (c *planClient) GetCurrentPlan(ctx context.Context, userID uint64) (*biz.Pl
 		CompletedTasks: resp.GetCompletedTasks(),
 		TotalTasks:     resp.GetTotalTasks(),
 	}, nil
+}
+
+// GetRecentPlans 获取最近计划列表。
+func (c *planClient) GetRecentPlans(ctx context.Context, userID uint64, limit int) ([]*biz.GrowthPlanSnapshot, error) {
+	resp, err := c.client.ListPlans(ctx, &planv1.ListPlansRequest{
+		UserId:   userID,
+		Page:     1,
+		PageSize: int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetRecentPlans 调用失败: %w", err)
+	}
+	snapshots := make([]*biz.GrowthPlanSnapshot, 0, len(resp.GetItems()))
+	for _, item := range resp.GetItems() {
+		snap := &biz.GrowthPlanSnapshot{
+			ID:       int32(item.GetId()),
+			Title:    item.GetTitle(),
+			Status:   item.GetStatus(),
+			Progress: float64(item.GetProgress()),
+		}
+		if item.GetCreatedAt() != nil {
+			snap.StartDate = item.GetCreatedAt().AsTime().Format("2006-01-02")
+		}
+		snapshots = append(snapshots, snap)
+	}
+	return snapshots, nil
 }
 
 // --- LearningArchiveClient 实现 ---
@@ -218,8 +246,40 @@ func (c *interviewClient) GetInterviewStats(ctx context.Context, userID uint64) 
 		return nil, fmt.Errorf("GetInterviewStats 调用失败: %w", err)
 	}
 	return &biz.InterviewStats{
-		TotalInterviews: resp.GetTotalInterviews(),
-		AvgScore:        resp.GetAvgScore(),
-		LatestScore:     0, // 当前 proto 未提供 LatestScore 字段
+		TotalInterviews:     resp.GetTotalInterviews(),
+		AvgScore:            resp.GetAvgScore(),
+		LatestScore:         0,
+		CompletedInterviews: resp.GetCompletedInterviews(),
 	}, nil
+}
+
+// GetRecentInterviews 获取最近面试列表。
+func (c *interviewClient) GetRecentInterviews(ctx context.Context, userID uint64, limit int) ([]*biz.GrowthInterviewSnapshot, error) {
+	resp, err := c.client.ListInterviews(ctx, &interviewv1.ListInterviewsRequest{
+		UserId: userID,
+		Page: &sharedv1.PageParam{
+			Page:     1,
+			PageSize: int32(limit),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetRecentInterviews 调用失败: %w", err)
+	}
+	snapshots := make([]*biz.GrowthInterviewSnapshot, 0, len(resp.GetInterviews()))
+	for _, item := range resp.GetInterviews() {
+		snap := &biz.GrowthInterviewSnapshot{
+			ID:             int32(item.GetInterviewId()),
+			Status:         item.GetStatus(),
+			Score:          item.GetScore(),
+			TotalQuestions: item.GetTotalQuestions(),
+		}
+		if item.GetCreatedAt() != nil {
+			snap.CreatedAt = item.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05")
+		}
+		if item.GetEndedAt() != nil {
+			snap.EndedAt = item.GetEndedAt().AsTime().Format("2006-01-02 15:04:05")
+		}
+		snapshots = append(snapshots, snap)
+	}
+	return snapshots, nil
 }

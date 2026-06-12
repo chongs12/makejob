@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -249,21 +251,50 @@ func (s *GrowthService) SyncStudyLog(ctx context.Context, req *growthv1.SyncStud
 	durationSeconds := req.GetDurationSeconds()
 	durationMinutes := durationSeconds / 60
 
+	// 如果没有指定日期，使用今天
+	dateKey := strings.TrimSpace(req.GetDateKey())
+	if dateKey == "" {
+		dateKey = time.Now().Format("2006-01-02")
+	}
+
+	// 如果没有指定 action，使用默认值
+	action := strings.TrimSpace(req.GetAction())
+	if action == "" {
+		action = "study"
+	}
+
 	log := &biz.StudyLog{
-		UserID:          req.GetUserId(),
-		Action:          req.GetAction(),
-		RefID:           req.GetRefId(),
-		DurationMinutes: durationMinutes,
+		UserID:           req.GetUserId(),
+		Action:           action,
+		RefID:            req.GetRefId(),
+		DurationMinutes:  durationMinutes,
+		DateKey:          dateKey,
+		PlanID:           req.GetPlanId(),
+		Summary:          strings.TrimSpace(req.GetSummary()),
+		FocusTaskTitle:   strings.TrimSpace(req.GetFocusTaskTitle()),
+		CompletedCount:   req.GetCompletedCount(),
+		SkippedCount:     req.GetSkippedCount(),
+		CompletedTitles:  req.GetCompletedTitles(),
+		SkippedTitles:    req.GetSkippedTitles(),
+		LatestActionText: strings.TrimSpace(req.GetLatestActionText()),
 	}
 	saved, err := s.uc.SyncStudyLog(ctx, log)
 	if err != nil {
 		return nil, err
 	}
 	return &growthv1.StudyLog{
-		Id:        saved.ID,
-		UserId:    saved.UserID,
-		Action:    saved.Action,
-		RefId:     saved.RefID,
-		CreatedAt: timestamppb.New(saved.CreatedAt),
+		Id:               saved.ID,
+		UserId:           saved.UserID,
+		Action:           saved.Action,
+		RefId:            saved.RefID,
+		CreatedAt:        timestamppb.New(saved.CreatedAt),
+		DateKey:          saved.DateKey,
+		Summary:          saved.Summary,
+		FocusTaskTitle:   saved.FocusTaskTitle,
+		CompletedCount:   saved.CompletedCount,
+		SkippedCount:     saved.SkippedCount,
+		CompletedTitles:  saved.CompletedTitles,
+		SkippedTitles:    saved.SkippedTitles,
+		LatestActionText: saved.LatestActionText,
 	}, nil
 }

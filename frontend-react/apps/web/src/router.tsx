@@ -28,11 +28,18 @@ interface RouterContext {
 
 /**
  * 初始化前台登录态并返回最新的访问令牌，避免路由守卫读取到旧快照。
+ * 如果 access token 过期但 refresh token 存在，会尝试同步刷新。
  */
-function getLatestAccessToken(): string | null {
+async function getLatestAccessToken(): Promise<string | null> {
   const authStore = useAuthStore.getState()
   authStore.initAuth()
-  return useAuthStore.getState().accessToken
+  let state = useAuthStore.getState()
+  // 如果 access token 为空但 refresh token 存在，等待刷新完成
+  if (!state.accessToken && state.refreshToken) {
+    await state.refreshSession()
+    state = useAuthStore.getState()
+  }
+  return state.accessToken
 }
 
 /**
@@ -495,7 +502,7 @@ const communityCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'community/create',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -509,7 +516,7 @@ const communityMineRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'community/mine',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -523,7 +530,7 @@ const communityEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'community/$postId/edit',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -556,7 +563,7 @@ const practiceEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/editor/$questionId',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -570,7 +577,7 @@ const practiceWrongRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/wrong',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -584,7 +591,7 @@ const practiceFavoritesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/favorites',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -598,7 +605,7 @@ const practiceNotesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'practice/notes',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -624,7 +631,7 @@ const interviewSessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -638,7 +645,7 @@ const interviewReportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId/report',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -657,6 +664,22 @@ const companionRoute = createRoute({
 const companionRoomRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'companion/room',
+  beforeLoad: async ({ location }) => {
+    if (!await getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+
+    const ready = await useAuthStore.getState().ensureProfile()
+    if (!ready) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
   component: CompanionWorkspacePageRoute,
 })
 
@@ -664,7 +687,7 @@ const growthRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'growth',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
@@ -695,7 +718,7 @@ const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'workspace',
   beforeLoad: async ({ location }) => {
-    if (!getLatestAccessToken()) {
+    if (!await getLatestAccessToken()) {
       throw redirect({
         to: '/auth/login',
         search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),

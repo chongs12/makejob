@@ -2939,6 +2939,7 @@ func (gw *Gateway) handleCreateInterview(c *gin.Context) {
 		InterviewMode  string   `json:"interview_mode"`
 		ResumeText     string   `json:"resume_text"`
 		JobDescription string   `json:"job_description"`
+		Live2DModelKey string   `json:"live2d_model_key"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2948,6 +2949,7 @@ func (gw *Gateway) handleCreateInterview(c *gin.Context) {
 		UserId: userID, IndustryCode: req.IndustryCode, Difficulty: req.Difficulty,
 		Topics: req.Topics, QuestionCount: req.QuestionCount, InterviewMode: req.InterviewMode,
 		ResumeText: req.ResumeText, JobDescription: req.JobDescription,
+		Live2DModelKey: req.Live2DModelKey,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -3006,6 +3008,8 @@ func (gw *Gateway) handleSubmitInterviewAnswer(c *gin.Context) {
 		QuestionIndex int32  `json:"question_index"`
 		Answer        string `json:"answer"`
 		Language      string `json:"language"`
+		FinalCode     string `json:"final_code"`
+		QuestionType  string `json:"question_type"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -3014,6 +3018,7 @@ func (gw *Gateway) handleSubmitInterviewAnswer(c *gin.Context) {
 	resp, err := gw.interviewClient.SubmitAnswer(c.Request.Context(), &interviewv1.SubmitAnswerRequest{
 		InterviewId: interviewID, UserId: userID,
 		QuestionIndex: req.QuestionIndex, Answer: req.Answer, Language: req.Language,
+		FinalCode: req.FinalCode, QuestionType: req.QuestionType,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -3293,16 +3298,37 @@ func (gw *Gateway) handleSyncStudyLog(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Action          string `json:"action"`
-		RefID           uint64 `json:"ref_id"`
-		DurationSeconds int32  `json:"duration_seconds"`
+		Action           string   `json:"action"`
+		RefID            uint64   `json:"ref_id"`
+		DurationSeconds  int32    `json:"duration_seconds"`
+		DateKey          string   `json:"date_key"`
+		PlanID           uint64   `json:"plan_id"`
+		Summary          string   `json:"summary"`
+		FocusTaskTitle   string   `json:"focus_task_title"`
+		CompletedCount   int32    `json:"completed_count"`
+		SkippedCount     int32    `json:"skipped_count"`
+		CompletedTitles  []string `json:"completed_titles"`
+		SkippedTitles    []string `json:"skipped_titles"`
+		LatestActionText string   `json:"latest_action_text"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	resp, err := gw.growthClient.SyncStudyLog(c.Request.Context(), &growthv1.SyncStudyLogRequest{
-		UserId: userID, Action: req.Action, RefId: req.RefID, DurationSeconds: req.DurationSeconds,
+		UserId:           userID,
+		Action:           req.Action,
+		RefId:            req.RefID,
+		DurationSeconds:  req.DurationSeconds,
+		DateKey:          req.DateKey,
+		PlanId:           req.PlanID,
+		Summary:          req.Summary,
+		FocusTaskTitle:   req.FocusTaskTitle,
+		CompletedCount:   req.CompletedCount,
+		SkippedCount:     req.SkippedCount,
+		CompletedTitles:  req.CompletedTitles,
+		SkippedTitles:    req.SkippedTitles,
+		LatestActionText: req.LatestActionText,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -3568,16 +3594,84 @@ func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 	if !ok {
 		return
 	}
+
 	var req struct {
+		Messages      []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		Live2DModelKey string `json:"live2d_model_key"`
+		Context        struct {
+			CurrentPlanTitle       string   `json:"current_plan_title"`
+			CurrentPlanProgress    float64  `json:"current_plan_progress"`
+			TodayGoals             []string `json:"today_goals"`
+			ActiveGoals            []string `json:"active_goals"`
+			FocusedTaskTitle       string   `json:"focused_task_title"`
+			FocusedTaskDescription string   `json:"focused_task_description"`
+			CompletedTodayCount    int32    `json:"completed_today_count"`
+			SkippedTodayCount      int32    `json:"skipped_today_count"`
+			LatestTaskAction       string   `json:"latest_task_action"`
+		} `json:"context"`
+		// 兼容旧格式
 		Message     string `json:"message"`
 		ContextType string `json:"context_type"`
 	}
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// 构建 proto 消息列表
+	var protoMessages []*companionv1.CompanionChatMessage
+	for _, m := range req.Messages {
+		if m.Content != "" {
+			protoMessages = append(protoMessages, &companionv1.CompanionChatMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			})
+		}
+	}
+
+	// 如果没有 messages 但有 message（旧格式），转换为 messages 数组
+	if len(protoMessages) == 0 && req.Message != "" {
+		protoMessages = append(protoMessages, &companionv1.CompanionChatMessage{
+			Role:    "user",
+			Content: req.Message,
+		})
+	}
+
+	// 取最后一条 user 消息作为 message 字段
+	message := req.Message
+	if message == "" && len(req.Messages) > 0 {
+		for i := len(req.Messages) - 1; i >= 0; i-- {
+			if req.Messages[i].Role == "user" && req.Messages[i].Content != "" {
+				message = req.Messages[i].Content
+				break
+			}
+		}
+	}
+
+	// 构建 context
+	protoContext := &companionv1.CompanionChatContext{
+		CurrentPlanTitle:       req.Context.CurrentPlanTitle,
+		CurrentPlanProgress:    req.Context.CurrentPlanProgress,
+		TodayGoals:             req.Context.TodayGoals,
+		ActiveGoals:            req.Context.ActiveGoals,
+		FocusedTaskTitle:       req.Context.FocusedTaskTitle,
+		FocusedTaskDescription: req.Context.FocusedTaskDescription,
+		CompletedTodayCount:    req.Context.CompletedTodayCount,
+		SkippedTodayCount:      req.Context.SkippedTodayCount,
+		LatestTaskAction:       req.Context.LatestTaskAction,
+	}
+
 	resp, err := gw.companionClient.Chat(c.Request.Context(), &companionv1.CompanionChatRequest{
-		UserId: userID, Message: req.Message, ContextType: req.ContextType,
+		UserId:         userID,
+		Message:        message,
+		ContextType:    req.ContextType,
+		Messages:       protoMessages,
+		Live2DModelKey: req.Live2DModelKey,
+		Context:        protoContext,
 	})
 	if err != nil {
 		grpcErr(c, err)

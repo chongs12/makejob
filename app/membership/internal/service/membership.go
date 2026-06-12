@@ -28,10 +28,16 @@ func (s *MembershipService) GetMembershipStatus(ctx context.Context, req *member
 		return &membershipv1.MembershipStatus{Level: "free", IsActive: false}, nil
 	}
 	isActive := m.Level != "free"
+	practiceLimit, interviewLimit := biz.GetDailyLimits(m.Level)
+	practiceToday, interviewToday := s.uc.GetUsage(ctx, req.UserId)
 	return &membershipv1.MembershipStatus{
-		Level:    m.Level,
-		ExpireAt: toProtoTimestamp(m.ExpiresAt),
-		IsActive: isActive,
+		Level:               m.Level,
+		ExpireAt:            toProtoTimestamp(m.ExpiresAt),
+		IsActive:            isActive,
+		DailyPracticeLimit:  practiceLimit,
+		DailyInterviewLimit: interviewLimit,
+		PracticeUsedToday:   practiceToday,
+		InterviewUsedToday:  interviewToday,
 	}, nil
 }
 

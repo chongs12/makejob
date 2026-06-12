@@ -72,13 +72,23 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	}
 	_ = ind
 
+	// 补充默认值：resume_driven 模式下前端可能不传 difficulty 和 question_count
+	difficulty := strings.TrimSpace(req.Difficulty)
+	if difficulty == "" {
+		difficulty = "medium"
+	}
+	questionCount := req.QuestionCount
+	if questionCount <= 0 {
+		questionCount = 5
+	}
+
 	interview := &Interview{
 		UserID:         req.UserID,
 		IndustryCode:   req.IndustryCode,
-		Difficulty:     req.Difficulty,
+		Difficulty:     difficulty,
 		Status:         "ongoing",
 		InterviewMode:  req.InterviewMode,
-		QuestionCount:  req.QuestionCount,
+		QuestionCount:  questionCount,
 		CurrentIndex:   0,
 		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
@@ -90,7 +100,7 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		// 首题生成依赖外部 AI，必须放在事务外执行，避免长事务占用数据库连接。
 		aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
 			IndustryCode: req.IndustryCode,
-			Difficulty:   req.Difficulty,
+			Difficulty:   difficulty,
 			ResumeText:   req.ResumeText,
 			JobDesc:      req.JobDescription,
 		})
@@ -512,19 +522,20 @@ func (uc *InterviewUseCase) PersistCodingArchive(ctx context.Context, interviewI
 }
 
 // FinishInterview 结束面试并触发报告生成
-func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, userID uint64) error {
+// FinishInterview 结束面试并触发报告生成，返回更新后的面试实体。
+func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, userID uint64) (*Interview, error) {
 	// 获取面试记录
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
-		return ErrInterviewNotFound
+		return nil, ErrInterviewNotFound
 	}
 	// 验证面试归属
 	if interview.UserID != userID {
-		return ErrUnauthorized
+		return nil, ErrUnauthorized
 	}
 	// 验证面试状态为进行中
 	if interview.Status != "ongoing" {
-		return ErrInterviewNotOngoing
+		return nil, ErrInterviewNotOngoing
 	}
 
 	// 更新状态为报告生成中
@@ -532,7 +543,7 @@ func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, us
 	interview.Status = "report_generating"
 	interview.FinishedAt = &now
 	if err := uc.repo.Update(ctx, interview); err != nil {
-		return kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
+		return nil, kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
 	}
 
 	// 发布报告生成 MQ 消息
@@ -542,7 +553,7 @@ func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, us
 		}
 	}
 
-	return nil
+	return interview, nil
 }
 
 // GetReportResult 面试报告查询结果

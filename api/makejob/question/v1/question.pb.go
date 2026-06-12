@@ -204,6 +204,9 @@ type QuestionSummary struct {
 	Type          string                 `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
 	IndustryCode  string                 `protobuf:"bytes,5,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
 	CategoryName  string                 `protobuf:"bytes,6,opt,name=category_name,json=categoryName,proto3" json:"category_name,omitempty"`
+	CategoryId    uint64                 `protobuf:"varint,7,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	IndustryId    uint64                 `protobuf:"varint,8,opt,name=industry_id,json=industryId,proto3" json:"industry_id,omitempty"`
+	Tags          []string               `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -278,6 +281,27 @@ func (x *QuestionSummary) GetCategoryName() string {
 		return x.CategoryName
 	}
 	return ""
+}
+
+func (x *QuestionSummary) GetCategoryId() uint64 {
+	if x != nil {
+		return x.CategoryId
+	}
+	return 0
+}
+
+func (x *QuestionSummary) GetIndustryId() uint64 {
+	if x != nil {
+		return x.IndustryId
+	}
+	return 0
+}
+
+func (x *QuestionSummary) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
 }
 
 type GetQuestionRequest struct {
@@ -978,15 +1002,17 @@ func (x *SubmitAnswerRequest) GetLanguage() string {
 }
 
 type SubmitAnswerResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	IsCorrect     bool                   `protobuf:"varint,1,opt,name=is_correct,json=isCorrect,proto3" json:"is_correct,omitempty"`
-	Score         float64                `protobuf:"fixed64,2,opt,name=score,proto3" json:"score,omitempty"`
-	Feedback      string                 `protobuf:"bytes,3,opt,name=feedback,proto3" json:"feedback,omitempty"`
-	CorrectAnswer string                 `protobuf:"bytes,4,opt,name=correct_answer,json=correctAnswer,proto3" json:"correct_answer,omitempty"`
-	Explanation   string                 `protobuf:"bytes,5,opt,name=explanation,proto3" json:"explanation,omitempty"`
-	KeyPoints     []string               `protobuf:"bytes,6,rep,name=key_points,json=keyPoints,proto3" json:"key_points,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	IsCorrect      bool                   `protobuf:"varint,1,opt,name=is_correct,json=isCorrect,proto3" json:"is_correct,omitempty"`
+	Score          float64                `protobuf:"fixed64,2,opt,name=score,proto3" json:"score,omitempty"`
+	Feedback       string                 `protobuf:"bytes,3,opt,name=feedback,proto3" json:"feedback,omitempty"`
+	CorrectAnswer  string                 `protobuf:"bytes,4,opt,name=correct_answer,json=correctAnswer,proto3" json:"correct_answer,omitempty"`
+	Explanation    string                 `protobuf:"bytes,5,opt,name=explanation,proto3" json:"explanation,omitempty"`
+	KeyPoints      []string               `protobuf:"bytes,6,rep,name=key_points,json=keyPoints,proto3" json:"key_points,omitempty"`
+	EvaluationMode string                 `protobuf:"bytes,7,opt,name=evaluation_mode,json=evaluationMode,proto3" json:"evaluation_mode,omitempty"`
+	JudgeSummary   *JudgeSummary          `protobuf:"bytes,8,opt,name=judge_summary,json=judgeSummary,proto3" json:"judge_summary,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SubmitAnswerResponse) Reset() {
@@ -1061,6 +1087,164 @@ func (x *SubmitAnswerResponse) GetKeyPoints() []string {
 	return nil
 }
 
+func (x *SubmitAnswerResponse) GetEvaluationMode() string {
+	if x != nil {
+		return x.EvaluationMode
+	}
+	return ""
+}
+
+func (x *SubmitAnswerResponse) GetJudgeSummary() *JudgeSummary {
+	if x != nil {
+		return x.JudgeSummary
+	}
+	return nil
+}
+
+type JudgeSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AllPassed     bool                   `protobuf:"varint,1,opt,name=all_passed,json=allPassed,proto3" json:"all_passed,omitempty"`
+	TotalCases    int32                  `protobuf:"varint,2,opt,name=total_cases,json=totalCases,proto3" json:"total_cases,omitempty"`
+	PassedCases   int32                  `protobuf:"varint,3,opt,name=passed_cases,json=passedCases,proto3" json:"passed_cases,omitempty"`
+	Results       []*JudgeCaseResult     `protobuf:"bytes,4,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JudgeSummary) Reset() {
+	*x = JudgeSummary{}
+	mi := &file_makejob_question_v1_question_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JudgeSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JudgeSummary) ProtoMessage() {}
+
+func (x *JudgeSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_question_v1_question_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JudgeSummary.ProtoReflect.Descriptor instead.
+func (*JudgeSummary) Descriptor() ([]byte, []int) {
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *JudgeSummary) GetAllPassed() bool {
+	if x != nil {
+		return x.AllPassed
+	}
+	return false
+}
+
+func (x *JudgeSummary) GetTotalCases() int32 {
+	if x != nil {
+		return x.TotalCases
+	}
+	return 0
+}
+
+func (x *JudgeSummary) GetPassedCases() int32 {
+	if x != nil {
+		return x.PassedCases
+	}
+	return 0
+}
+
+func (x *JudgeSummary) GetResults() []*JudgeCaseResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type JudgeCaseResult struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Input          string                 `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
+	ExpectedOutput string                 `protobuf:"bytes,2,opt,name=expected_output,json=expectedOutput,proto3" json:"expected_output,omitempty"`
+	ActualOutput   string                 `protobuf:"bytes,3,opt,name=actual_output,json=actualOutput,proto3" json:"actual_output,omitempty"`
+	Passed         bool                   `protobuf:"varint,4,opt,name=passed,proto3" json:"passed,omitempty"`
+	Description    string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JudgeCaseResult) Reset() {
+	*x = JudgeCaseResult{}
+	mi := &file_makejob_question_v1_question_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JudgeCaseResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JudgeCaseResult) ProtoMessage() {}
+
+func (x *JudgeCaseResult) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_question_v1_question_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JudgeCaseResult.ProtoReflect.Descriptor instead.
+func (*JudgeCaseResult) Descriptor() ([]byte, []int) {
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *JudgeCaseResult) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *JudgeCaseResult) GetExpectedOutput() string {
+	if x != nil {
+		return x.ExpectedOutput
+	}
+	return ""
+}
+
+func (x *JudgeCaseResult) GetActualOutput() string {
+	if x != nil {
+		return x.ActualOutput
+	}
+	return ""
+}
+
+func (x *JudgeCaseResult) GetPassed() bool {
+	if x != nil {
+		return x.Passed
+	}
+	return false
+}
+
+func (x *JudgeCaseResult) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 type RunCodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	QuestionId    uint64                 `protobuf:"varint,1,opt,name=question_id,json=questionId,proto3" json:"question_id,omitempty"`
@@ -1072,7 +1256,7 @@ type RunCodeRequest struct {
 
 func (x *RunCodeRequest) Reset() {
 	*x = RunCodeRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[15]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1084,7 +1268,7 @@ func (x *RunCodeRequest) String() string {
 func (*RunCodeRequest) ProtoMessage() {}
 
 func (x *RunCodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[15]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1097,7 +1281,7 @@ func (x *RunCodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunCodeRequest.ProtoReflect.Descriptor instead.
 func (*RunCodeRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{15}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RunCodeRequest) GetQuestionId() uint64 {
@@ -1135,7 +1319,7 @@ type RunCodeResponse struct {
 
 func (x *RunCodeResponse) Reset() {
 	*x = RunCodeResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[16]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +1331,7 @@ func (x *RunCodeResponse) String() string {
 func (*RunCodeResponse) ProtoMessage() {}
 
 func (x *RunCodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[16]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +1344,7 @@ func (x *RunCodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunCodeResponse.ProtoReflect.Descriptor instead.
 func (*RunCodeResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{16}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RunCodeResponse) GetSuccess() bool {
@@ -1215,7 +1399,7 @@ type CreateFavoriteRequest struct {
 
 func (x *CreateFavoriteRequest) Reset() {
 	*x = CreateFavoriteRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[17]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1411,7 @@ func (x *CreateFavoriteRequest) String() string {
 func (*CreateFavoriteRequest) ProtoMessage() {}
 
 func (x *CreateFavoriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[17]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1424,7 @@ func (x *CreateFavoriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFavoriteRequest.ProtoReflect.Descriptor instead.
 func (*CreateFavoriteRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{17}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CreateFavoriteRequest) GetUserId() uint64 {
@@ -1267,7 +1451,7 @@ type DeleteFavoriteRequest struct {
 
 func (x *DeleteFavoriteRequest) Reset() {
 	*x = DeleteFavoriteRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[18]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1279,7 +1463,7 @@ func (x *DeleteFavoriteRequest) String() string {
 func (*DeleteFavoriteRequest) ProtoMessage() {}
 
 func (x *DeleteFavoriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[18]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1292,7 +1476,7 @@ func (x *DeleteFavoriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFavoriteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFavoriteRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{18}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DeleteFavoriteRequest) GetUserId() uint64 {
@@ -1319,7 +1503,7 @@ type ListFavoritesRequest struct {
 
 func (x *ListFavoritesRequest) Reset() {
 	*x = ListFavoritesRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[19]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1515,7 @@ func (x *ListFavoritesRequest) String() string {
 func (*ListFavoritesRequest) ProtoMessage() {}
 
 func (x *ListFavoritesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[19]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1528,7 @@ func (x *ListFavoritesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFavoritesRequest.ProtoReflect.Descriptor instead.
 func (*ListFavoritesRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{19}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListFavoritesRequest) GetUserId() uint64 {
@@ -1361,6 +1545,50 @@ func (x *ListFavoritesRequest) GetPage() *v1.PageParam {
 	return nil
 }
 
+type FavoriteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	IsFavorited   bool                   `protobuf:"varint,1,opt,name=is_favorited,json=isFavorited,proto3" json:"is_favorited,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FavoriteResponse) Reset() {
+	*x = FavoriteResponse{}
+	mi := &file_makejob_question_v1_question_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FavoriteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FavoriteResponse) ProtoMessage() {}
+
+func (x *FavoriteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_question_v1_question_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FavoriteResponse.ProtoReflect.Descriptor instead.
+func (*FavoriteResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *FavoriteResponse) GetIsFavorited() bool {
+	if x != nil {
+		return x.IsFavorited
+	}
+	return false
+}
+
 type FavoriteListResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Questions     []*QuestionSummary     `protobuf:"bytes,1,rep,name=questions,proto3" json:"questions,omitempty"`
@@ -1371,7 +1599,7 @@ type FavoriteListResponse struct {
 
 func (x *FavoriteListResponse) Reset() {
 	*x = FavoriteListResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[20]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1611,7 @@ func (x *FavoriteListResponse) String() string {
 func (*FavoriteListResponse) ProtoMessage() {}
 
 func (x *FavoriteListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[20]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1624,7 @@ func (x *FavoriteListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FavoriteListResponse.ProtoReflect.Descriptor instead.
 func (*FavoriteListResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{20}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *FavoriteListResponse) GetQuestions() []*QuestionSummary {
@@ -1424,7 +1652,7 @@ type CreateNoteRequest struct {
 
 func (x *CreateNoteRequest) Reset() {
 	*x = CreateNoteRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[21]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1436,7 +1664,7 @@ func (x *CreateNoteRequest) String() string {
 func (*CreateNoteRequest) ProtoMessage() {}
 
 func (x *CreateNoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[21]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1449,7 +1677,7 @@ func (x *CreateNoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNoteRequest.ProtoReflect.Descriptor instead.
 func (*CreateNoteRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{21}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CreateNoteRequest) GetUserId() uint64 {
@@ -1486,7 +1714,7 @@ type NoteResponse struct {
 
 func (x *NoteResponse) Reset() {
 	*x = NoteResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[22]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1498,7 +1726,7 @@ func (x *NoteResponse) String() string {
 func (*NoteResponse) ProtoMessage() {}
 
 func (x *NoteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[22]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1511,7 +1739,7 @@ func (x *NoteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoteResponse.ProtoReflect.Descriptor instead.
 func (*NoteResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{22}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *NoteResponse) GetId() uint64 {
@@ -1560,7 +1788,7 @@ type UpdateNoteRequest struct {
 
 func (x *UpdateNoteRequest) Reset() {
 	*x = UpdateNoteRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[23]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1800,7 @@ func (x *UpdateNoteRequest) String() string {
 func (*UpdateNoteRequest) ProtoMessage() {}
 
 func (x *UpdateNoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[23]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1813,7 @@ func (x *UpdateNoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateNoteRequest.ProtoReflect.Descriptor instead.
 func (*UpdateNoteRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{23}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UpdateNoteRequest) GetId() uint64 {
@@ -1620,7 +1848,7 @@ type ListNotesRequest struct {
 
 func (x *ListNotesRequest) Reset() {
 	*x = ListNotesRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[24]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1632,7 +1860,7 @@ func (x *ListNotesRequest) String() string {
 func (*ListNotesRequest) ProtoMessage() {}
 
 func (x *ListNotesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[24]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1645,7 +1873,7 @@ func (x *ListNotesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNotesRequest.ProtoReflect.Descriptor instead.
 func (*ListNotesRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{24}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListNotesRequest) GetUserId() uint64 {
@@ -1679,7 +1907,7 @@ type NoteListResponse struct {
 
 func (x *NoteListResponse) Reset() {
 	*x = NoteListResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[25]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1691,7 +1919,7 @@ func (x *NoteListResponse) String() string {
 func (*NoteListResponse) ProtoMessage() {}
 
 func (x *NoteListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[25]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1704,7 +1932,7 @@ func (x *NoteListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoteListResponse.ProtoReflect.Descriptor instead.
 func (*NoteListResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{25}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *NoteListResponse) GetNotes() []*NoteResponse {
@@ -1732,7 +1960,7 @@ type PracticeRecommendationRequest struct {
 
 func (x *PracticeRecommendationRequest) Reset() {
 	*x = PracticeRecommendationRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[26]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1744,7 +1972,7 @@ func (x *PracticeRecommendationRequest) String() string {
 func (*PracticeRecommendationRequest) ProtoMessage() {}
 
 func (x *PracticeRecommendationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[26]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1757,7 +1985,7 @@ func (x *PracticeRecommendationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PracticeRecommendationRequest.ProtoReflect.Descriptor instead.
 func (*PracticeRecommendationRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{26}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *PracticeRecommendationRequest) GetUserId() uint64 {
@@ -1785,7 +2013,7 @@ type PracticeRecommendationResponse struct {
 
 func (x *PracticeRecommendationResponse) Reset() {
 	*x = PracticeRecommendationResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[27]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1797,7 +2025,7 @@ func (x *PracticeRecommendationResponse) String() string {
 func (*PracticeRecommendationResponse) ProtoMessage() {}
 
 func (x *PracticeRecommendationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[27]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1810,7 +2038,7 @@ func (x *PracticeRecommendationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PracticeRecommendationResponse.ProtoReflect.Descriptor instead.
 func (*PracticeRecommendationResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{27}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *PracticeRecommendationResponse) GetQuestions() []*RecommendedQuestion {
@@ -1868,7 +2096,7 @@ type RecommendedQuestion struct {
 
 func (x *RecommendedQuestion) Reset() {
 	*x = RecommendedQuestion{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[28]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1880,7 +2108,7 @@ func (x *RecommendedQuestion) String() string {
 func (*RecommendedQuestion) ProtoMessage() {}
 
 func (x *RecommendedQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[28]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1893,7 +2121,7 @@ func (x *RecommendedQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecommendedQuestion.ProtoReflect.Descriptor instead.
 func (*RecommendedQuestion) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{28}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RecommendedQuestion) GetQuestionId() uint64 {
@@ -2075,7 +2303,7 @@ type WrongQuestionRequest struct {
 
 func (x *WrongQuestionRequest) Reset() {
 	*x = WrongQuestionRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[29]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2087,7 +2315,7 @@ func (x *WrongQuestionRequest) String() string {
 func (*WrongQuestionRequest) ProtoMessage() {}
 
 func (x *WrongQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[29]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2100,7 +2328,7 @@ func (x *WrongQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrongQuestionRequest.ProtoReflect.Descriptor instead.
 func (*WrongQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{29}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *WrongQuestionRequest) GetUserId() uint64 {
@@ -2134,7 +2362,7 @@ type WrongQuestionListResponse struct {
 
 func (x *WrongQuestionListResponse) Reset() {
 	*x = WrongQuestionListResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[30]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2146,7 +2374,7 @@ func (x *WrongQuestionListResponse) String() string {
 func (*WrongQuestionListResponse) ProtoMessage() {}
 
 func (x *WrongQuestionListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[30]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2159,7 +2387,7 @@ func (x *WrongQuestionListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrongQuestionListResponse.ProtoReflect.Descriptor instead.
 func (*WrongQuestionListResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{30}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *WrongQuestionListResponse) GetEntries() []*WrongQuestionEntry {
@@ -2189,7 +2417,7 @@ type WrongQuestionEntry struct {
 
 func (x *WrongQuestionEntry) Reset() {
 	*x = WrongQuestionEntry{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[31]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2201,7 +2429,7 @@ func (x *WrongQuestionEntry) String() string {
 func (*WrongQuestionEntry) ProtoMessage() {}
 
 func (x *WrongQuestionEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[31]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2214,7 +2442,7 @@ func (x *WrongQuestionEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrongQuestionEntry.ProtoReflect.Descriptor instead.
 func (*WrongQuestionEntry) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{31}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *WrongQuestionEntry) GetQuestionId() uint64 {
@@ -2270,7 +2498,7 @@ type UserPracticeStats struct {
 
 func (x *UserPracticeStats) Reset() {
 	*x = UserPracticeStats{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[32]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2282,7 +2510,7 @@ func (x *UserPracticeStats) String() string {
 func (*UserPracticeStats) ProtoMessage() {}
 
 func (x *UserPracticeStats) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[32]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2295,7 +2523,7 @@ func (x *UserPracticeStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserPracticeStats.ProtoReflect.Descriptor instead.
 func (*UserPracticeStats) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{32}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UserPracticeStats) GetTotalAnswered() int32 {
@@ -2373,7 +2601,7 @@ type CategoryStat struct {
 
 func (x *CategoryStat) Reset() {
 	*x = CategoryStat{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[33]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2385,7 +2613,7 @@ func (x *CategoryStat) String() string {
 func (*CategoryStat) ProtoMessage() {}
 
 func (x *CategoryStat) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[33]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2398,7 +2626,7 @@ func (x *CategoryStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CategoryStat.ProtoReflect.Descriptor instead.
 func (*CategoryStat) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{33}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CategoryStat) GetCategoryName() string {
@@ -2444,7 +2672,7 @@ type RandomExamRequest struct {
 
 func (x *RandomExamRequest) Reset() {
 	*x = RandomExamRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[34]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2456,7 +2684,7 @@ func (x *RandomExamRequest) String() string {
 func (*RandomExamRequest) ProtoMessage() {}
 
 func (x *RandomExamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[34]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2469,7 +2697,7 @@ func (x *RandomExamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RandomExamRequest.ProtoReflect.Descriptor instead.
 func (*RandomExamRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{34}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *RandomExamRequest) GetUserId() uint64 {
@@ -2531,7 +2759,7 @@ type ExamResponse struct {
 
 func (x *ExamResponse) Reset() {
 	*x = ExamResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[35]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2543,7 +2771,7 @@ func (x *ExamResponse) String() string {
 func (*ExamResponse) ProtoMessage() {}
 
 func (x *ExamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[35]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2556,7 +2784,7 @@ func (x *ExamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExamResponse.ProtoReflect.Descriptor instead.
 func (*ExamResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{35}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ExamResponse) GetQuestions() []*QuestionDetail {
@@ -2588,7 +2816,7 @@ type GenerateTimedExamRequest struct {
 
 func (x *GenerateTimedExamRequest) Reset() {
 	*x = GenerateTimedExamRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[36]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2600,7 +2828,7 @@ func (x *GenerateTimedExamRequest) String() string {
 func (*GenerateTimedExamRequest) ProtoMessage() {}
 
 func (x *GenerateTimedExamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[36]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2613,7 +2841,7 @@ func (x *GenerateTimedExamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTimedExamRequest.ProtoReflect.Descriptor instead.
 func (*GenerateTimedExamRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{36}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GenerateTimedExamRequest) GetUserId() uint64 {
@@ -2678,7 +2906,7 @@ type GenerateTimedExamResponse struct {
 
 func (x *GenerateTimedExamResponse) Reset() {
 	*x = GenerateTimedExamResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[37]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2690,7 +2918,7 @@ func (x *GenerateTimedExamResponse) String() string {
 func (*GenerateTimedExamResponse) ProtoMessage() {}
 
 func (x *GenerateTimedExamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[37]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2703,7 +2931,7 @@ func (x *GenerateTimedExamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTimedExamResponse.ProtoReflect.Descriptor instead.
 func (*GenerateTimedExamResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{37}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GenerateTimedExamResponse) GetExamId() uint64 {
@@ -2752,7 +2980,7 @@ type SubmitExamRequest struct {
 
 func (x *SubmitExamRequest) Reset() {
 	*x = SubmitExamRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[38]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2764,7 +2992,7 @@ func (x *SubmitExamRequest) String() string {
 func (*SubmitExamRequest) ProtoMessage() {}
 
 func (x *SubmitExamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[38]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2777,7 +3005,7 @@ func (x *SubmitExamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitExamRequest.ProtoReflect.Descriptor instead.
 func (*SubmitExamRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{38}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SubmitExamRequest) GetExamId() uint64 {
@@ -2814,7 +3042,7 @@ type SubmitExamResponse struct {
 
 func (x *SubmitExamResponse) Reset() {
 	*x = SubmitExamResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[39]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2826,7 +3054,7 @@ func (x *SubmitExamResponse) String() string {
 func (*SubmitExamResponse) ProtoMessage() {}
 
 func (x *SubmitExamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[39]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2839,7 +3067,7 @@ func (x *SubmitExamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitExamResponse.ProtoReflect.Descriptor instead.
 func (*SubmitExamResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{39}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SubmitExamResponse) GetExamId() uint64 {
@@ -2890,7 +3118,7 @@ type QuestionResult struct {
 
 func (x *QuestionResult) Reset() {
 	*x = QuestionResult{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[40]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2902,7 +3130,7 @@ func (x *QuestionResult) String() string {
 func (*QuestionResult) ProtoMessage() {}
 
 func (x *QuestionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[40]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2915,7 +3143,7 @@ func (x *QuestionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionResult.ProtoReflect.Descriptor instead.
 func (*QuestionResult) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{40}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *QuestionResult) GetQuestionId() uint64 {
@@ -2963,7 +3191,7 @@ type DeleteNoteRequest struct {
 
 func (x *DeleteNoteRequest) Reset() {
 	*x = DeleteNoteRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[41]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2975,7 +3203,7 @@ func (x *DeleteNoteRequest) String() string {
 func (*DeleteNoteRequest) ProtoMessage() {}
 
 func (x *DeleteNoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[41]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2988,7 +3216,7 @@ func (x *DeleteNoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNoteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNoteRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{41}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DeleteNoteRequest) GetNoteId() uint64 {
@@ -3015,7 +3243,7 @@ type ListQuestionSetsRequest struct {
 
 func (x *ListQuestionSetsRequest) Reset() {
 	*x = ListQuestionSetsRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[42]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3027,7 +3255,7 @@ func (x *ListQuestionSetsRequest) String() string {
 func (*ListQuestionSetsRequest) ProtoMessage() {}
 
 func (x *ListQuestionSetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[42]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3040,7 +3268,7 @@ func (x *ListQuestionSetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionSetsRequest.ProtoReflect.Descriptor instead.
 func (*ListQuestionSetsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{42}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListQuestionSetsRequest) GetIndustryCode() string {
@@ -3067,7 +3295,7 @@ type ListQuestionSetsResponse struct {
 
 func (x *ListQuestionSetsResponse) Reset() {
 	*x = ListQuestionSetsResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[43]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3079,7 +3307,7 @@ func (x *ListQuestionSetsResponse) String() string {
 func (*ListQuestionSetsResponse) ProtoMessage() {}
 
 func (x *ListQuestionSetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[43]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3092,7 +3320,7 @@ func (x *ListQuestionSetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionSetsResponse.ProtoReflect.Descriptor instead.
 func (*ListQuestionSetsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{43}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ListQuestionSetsResponse) GetItems() []*QuestionSetSummary {
@@ -3121,7 +3349,7 @@ type QuestionSetPreview struct {
 
 func (x *QuestionSetPreview) Reset() {
 	*x = QuestionSetPreview{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[44]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3133,7 +3361,7 @@ func (x *QuestionSetPreview) String() string {
 func (*QuestionSetPreview) ProtoMessage() {}
 
 func (x *QuestionSetPreview) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[44]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3146,7 +3374,7 @@ func (x *QuestionSetPreview) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionSetPreview.ProtoReflect.Descriptor instead.
 func (*QuestionSetPreview) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{44}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *QuestionSetPreview) GetId() uint64 {
@@ -3194,7 +3422,7 @@ type QuestionSetSummary struct {
 
 func (x *QuestionSetSummary) Reset() {
 	*x = QuestionSetSummary{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[45]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3206,7 +3434,7 @@ func (x *QuestionSetSummary) String() string {
 func (*QuestionSetSummary) ProtoMessage() {}
 
 func (x *QuestionSetSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[45]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3219,7 +3447,7 @@ func (x *QuestionSetSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionSetSummary.ProtoReflect.Descriptor instead.
 func (*QuestionSetSummary) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{45}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *QuestionSetSummary) GetId() uint64 {
@@ -3287,7 +3515,7 @@ type GetQuestionSetDetailRequest struct {
 
 func (x *GetQuestionSetDetailRequest) Reset() {
 	*x = GetQuestionSetDetailRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[46]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3299,7 +3527,7 @@ func (x *GetQuestionSetDetailRequest) String() string {
 func (*GetQuestionSetDetailRequest) ProtoMessage() {}
 
 func (x *GetQuestionSetDetailRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[46]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3312,7 +3540,7 @@ func (x *GetQuestionSetDetailRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQuestionSetDetailRequest.ProtoReflect.Descriptor instead.
 func (*GetQuestionSetDetailRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{46}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetQuestionSetDetailRequest) GetSetId() uint64 {
@@ -3332,7 +3560,7 @@ type QuestionSetDetail struct {
 
 func (x *QuestionSetDetail) Reset() {
 	*x = QuestionSetDetail{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[47]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3344,7 +3572,7 @@ func (x *QuestionSetDetail) String() string {
 func (*QuestionSetDetail) ProtoMessage() {}
 
 func (x *QuestionSetDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[47]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3357,7 +3585,7 @@ func (x *QuestionSetDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionSetDetail.ProtoReflect.Descriptor instead.
 func (*QuestionSetDetail) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{47}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *QuestionSetDetail) GetInfo() *QuestionSetSummary {
@@ -3384,7 +3612,7 @@ type ListMistakeTopicsRequest struct {
 
 func (x *ListMistakeTopicsRequest) Reset() {
 	*x = ListMistakeTopicsRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[48]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3396,7 +3624,7 @@ func (x *ListMistakeTopicsRequest) String() string {
 func (*ListMistakeTopicsRequest) ProtoMessage() {}
 
 func (x *ListMistakeTopicsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[48]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3409,7 +3637,7 @@ func (x *ListMistakeTopicsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMistakeTopicsRequest.ProtoReflect.Descriptor instead.
 func (*ListMistakeTopicsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{48}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ListMistakeTopicsRequest) GetUserId() uint64 {
@@ -3435,7 +3663,7 @@ type ListMistakeTopicsResponse struct {
 
 func (x *ListMistakeTopicsResponse) Reset() {
 	*x = ListMistakeTopicsResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[49]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3447,7 +3675,7 @@ func (x *ListMistakeTopicsResponse) String() string {
 func (*ListMistakeTopicsResponse) ProtoMessage() {}
 
 func (x *ListMistakeTopicsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[49]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3460,7 +3688,7 @@ func (x *ListMistakeTopicsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMistakeTopicsResponse.ProtoReflect.Descriptor instead.
 func (*ListMistakeTopicsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{49}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListMistakeTopicsResponse) GetTopics() []*MistakeTopic {
@@ -3483,7 +3711,7 @@ type MistakeTopic struct {
 
 func (x *MistakeTopic) Reset() {
 	*x = MistakeTopic{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[50]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3495,7 +3723,7 @@ func (x *MistakeTopic) String() string {
 func (*MistakeTopic) ProtoMessage() {}
 
 func (x *MistakeTopic) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[50]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3508,7 +3736,7 @@ func (x *MistakeTopic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MistakeTopic.ProtoReflect.Descriptor instead.
 func (*MistakeTopic) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{50}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *MistakeTopic) GetTopic() string {
@@ -3558,7 +3786,7 @@ type MistakeQuestion struct {
 
 func (x *MistakeQuestion) Reset() {
 	*x = MistakeQuestion{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[51]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3570,7 +3798,7 @@ func (x *MistakeQuestion) String() string {
 func (*MistakeQuestion) ProtoMessage() {}
 
 func (x *MistakeQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[51]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3583,7 +3811,7 @@ func (x *MistakeQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MistakeQuestion.ProtoReflect.Descriptor instead.
 func (*MistakeQuestion) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{51}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *MistakeQuestion) GetQuestionId() uint64 {
@@ -3623,7 +3851,7 @@ type GetMistakeTopicRequest struct {
 
 func (x *GetMistakeTopicRequest) Reset() {
 	*x = GetMistakeTopicRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[52]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3635,7 +3863,7 @@ func (x *GetMistakeTopicRequest) String() string {
 func (*GetMistakeTopicRequest) ProtoMessage() {}
 
 func (x *GetMistakeTopicRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[52]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3648,7 +3876,7 @@ func (x *GetMistakeTopicRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMistakeTopicRequest.ProtoReflect.Descriptor instead.
 func (*GetMistakeTopicRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{52}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetMistakeTopicRequest) GetCode() string {
@@ -3675,7 +3903,7 @@ type MistakeTopicCard struct {
 
 func (x *MistakeTopicCard) Reset() {
 	*x = MistakeTopicCard{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[53]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3687,7 +3915,7 @@ func (x *MistakeTopicCard) String() string {
 func (*MistakeTopicCard) ProtoMessage() {}
 
 func (x *MistakeTopicCard) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[53]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3700,7 +3928,7 @@ func (x *MistakeTopicCard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MistakeTopicCard.ProtoReflect.Descriptor instead.
 func (*MistakeTopicCard) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{53}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *MistakeTopicCard) GetCode() string {
@@ -3777,7 +4005,7 @@ type AdminListQuestionsRequest struct {
 
 func (x *AdminListQuestionsRequest) Reset() {
 	*x = AdminListQuestionsRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[54]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3789,7 +4017,7 @@ func (x *AdminListQuestionsRequest) String() string {
 func (*AdminListQuestionsRequest) ProtoMessage() {}
 
 func (x *AdminListQuestionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[54]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3802,7 +4030,7 @@ func (x *AdminListQuestionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminListQuestionsRequest.ProtoReflect.Descriptor instead.
 func (*AdminListQuestionsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{54}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *AdminListQuestionsRequest) GetPage() *v1.PageParam {
@@ -3836,7 +4064,7 @@ type AdminListQuestionsResponse struct {
 
 func (x *AdminListQuestionsResponse) Reset() {
 	*x = AdminListQuestionsResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[55]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3848,7 +4076,7 @@ func (x *AdminListQuestionsResponse) String() string {
 func (*AdminListQuestionsResponse) ProtoMessage() {}
 
 func (x *AdminListQuestionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[55]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3861,7 +4089,7 @@ func (x *AdminListQuestionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminListQuestionsResponse.ProtoReflect.Descriptor instead.
 func (*AdminListQuestionsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{55}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *AdminListQuestionsResponse) GetQuestions() []*AdminQuestionInfo {
@@ -3905,7 +4133,7 @@ type AdminQuestionInfo struct {
 
 func (x *AdminQuestionInfo) Reset() {
 	*x = AdminQuestionInfo{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[56]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3917,7 +4145,7 @@ func (x *AdminQuestionInfo) String() string {
 func (*AdminQuestionInfo) ProtoMessage() {}
 
 func (x *AdminQuestionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[56]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3930,7 +4158,7 @@ func (x *AdminQuestionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminQuestionInfo.ProtoReflect.Descriptor instead.
 func (*AdminQuestionInfo) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{56}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *AdminQuestionInfo) GetId() uint64 {
@@ -4088,7 +4316,7 @@ type AdminCreateQuestionRequest struct {
 
 func (x *AdminCreateQuestionRequest) Reset() {
 	*x = AdminCreateQuestionRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[57]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4100,7 +4328,7 @@ func (x *AdminCreateQuestionRequest) String() string {
 func (*AdminCreateQuestionRequest) ProtoMessage() {}
 
 func (x *AdminCreateQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[57]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4113,7 +4341,7 @@ func (x *AdminCreateQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminCreateQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AdminCreateQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{57}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *AdminCreateQuestionRequest) GetCategoryId() uint64 {
@@ -4223,7 +4451,7 @@ type AdminCreateQuestionResponse struct {
 
 func (x *AdminCreateQuestionResponse) Reset() {
 	*x = AdminCreateQuestionResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[58]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4235,7 +4463,7 @@ func (x *AdminCreateQuestionResponse) String() string {
 func (*AdminCreateQuestionResponse) ProtoMessage() {}
 
 func (x *AdminCreateQuestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[58]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4248,7 +4476,7 @@ func (x *AdminCreateQuestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminCreateQuestionResponse.ProtoReflect.Descriptor instead.
 func (*AdminCreateQuestionResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{58}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *AdminCreateQuestionResponse) GetId() uint64 {
@@ -4281,7 +4509,7 @@ type AdminUpdateQuestionRequest struct {
 
 func (x *AdminUpdateQuestionRequest) Reset() {
 	*x = AdminUpdateQuestionRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[59]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4293,7 +4521,7 @@ func (x *AdminUpdateQuestionRequest) String() string {
 func (*AdminUpdateQuestionRequest) ProtoMessage() {}
 
 func (x *AdminUpdateQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[59]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4306,7 +4534,7 @@ func (x *AdminUpdateQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminUpdateQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AdminUpdateQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{59}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *AdminUpdateQuestionRequest) GetId() uint64 {
@@ -4422,7 +4650,7 @@ type AdminUpdateQuestionResponse struct {
 
 func (x *AdminUpdateQuestionResponse) Reset() {
 	*x = AdminUpdateQuestionResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[60]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4434,7 +4662,7 @@ func (x *AdminUpdateQuestionResponse) String() string {
 func (*AdminUpdateQuestionResponse) ProtoMessage() {}
 
 func (x *AdminUpdateQuestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[60]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4447,7 +4675,7 @@ func (x *AdminUpdateQuestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminUpdateQuestionResponse.ProtoReflect.Descriptor instead.
 func (*AdminUpdateQuestionResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{60}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{63}
 }
 
 type AdminDeleteQuestionRequest struct {
@@ -4459,7 +4687,7 @@ type AdminDeleteQuestionRequest struct {
 
 func (x *AdminDeleteQuestionRequest) Reset() {
 	*x = AdminDeleteQuestionRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[61]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4471,7 +4699,7 @@ func (x *AdminDeleteQuestionRequest) String() string {
 func (*AdminDeleteQuestionRequest) ProtoMessage() {}
 
 func (x *AdminDeleteQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[61]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4484,7 +4712,7 @@ func (x *AdminDeleteQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminDeleteQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AdminDeleteQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{61}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *AdminDeleteQuestionRequest) GetId() uint64 {
@@ -4502,7 +4730,7 @@ type AdminDeleteQuestionResponse struct {
 
 func (x *AdminDeleteQuestionResponse) Reset() {
 	*x = AdminDeleteQuestionResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[62]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4514,7 +4742,7 @@ func (x *AdminDeleteQuestionResponse) String() string {
 func (*AdminDeleteQuestionResponse) ProtoMessage() {}
 
 func (x *AdminDeleteQuestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[62]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4527,7 +4755,7 @@ func (x *AdminDeleteQuestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminDeleteQuestionResponse.ProtoReflect.Descriptor instead.
 func (*AdminDeleteQuestionResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{62}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{65}
 }
 
 type GetAdminQuestionStatsRequest struct {
@@ -4538,7 +4766,7 @@ type GetAdminQuestionStatsRequest struct {
 
 func (x *GetAdminQuestionStatsRequest) Reset() {
 	*x = GetAdminQuestionStatsRequest{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[63]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4550,7 +4778,7 @@ func (x *GetAdminQuestionStatsRequest) String() string {
 func (*GetAdminQuestionStatsRequest) ProtoMessage() {}
 
 func (x *GetAdminQuestionStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[63]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4563,7 +4791,7 @@ func (x *GetAdminQuestionStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAdminQuestionStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetAdminQuestionStatsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{63}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{66}
 }
 
 type AdminQuestionStatsResponse struct {
@@ -4575,7 +4803,7 @@ type AdminQuestionStatsResponse struct {
 
 func (x *AdminQuestionStatsResponse) Reset() {
 	*x = AdminQuestionStatsResponse{}
-	mi := &file_makejob_question_v1_question_proto_msgTypes[64]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4587,7 +4815,7 @@ func (x *AdminQuestionStatsResponse) String() string {
 func (*AdminQuestionStatsResponse) ProtoMessage() {}
 
 func (x *AdminQuestionStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_question_v1_question_proto_msgTypes[64]
+	mi := &file_makejob_question_v1_question_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4600,7 +4828,7 @@ func (x *AdminQuestionStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminQuestionStatsResponse.ProtoReflect.Descriptor instead.
 func (*AdminQuestionStatsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{64}
+	return file_makejob_question_v1_question_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *AdminQuestionStatsResponse) GetTotalQuestions() int64 {
@@ -4629,7 +4857,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x15ListQuestionsResponse\x12B\n" +
 	"\tquestions\x18\x01 \x03(\v2$.makejob.question.v1.QuestionSummaryR\tquestions\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\xb5\x01\n" +
+	"pageResult\"\x8b\x02\n" +
 	"\x0fQuestionSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1e\n" +
@@ -4638,7 +4866,12 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"difficulty\x12\x12\n" +
 	"\x04type\x18\x04 \x01(\tR\x04type\x12#\n" +
 	"\rindustry_code\x18\x05 \x01(\tR\findustryCode\x12#\n" +
-	"\rcategory_name\x18\x06 \x01(\tR\fcategoryName\"$\n" +
+	"\rcategory_name\x18\x06 \x01(\tR\fcategoryName\x12\x1f\n" +
+	"\vcategory_id\x18\a \x01(\x04R\n" +
+	"categoryId\x12\x1f\n" +
+	"\vindustry_id\x18\b \x01(\x04R\n" +
+	"industryId\x12\x12\n" +
+	"\x04tags\x18\t \x03(\tR\x04tags\"$\n" +
 	"\x12GetQuestionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"\x8b\x06\n" +
 	"\x0eQuestionDetail\x12\x0e\n" +
@@ -4700,7 +4933,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"questionId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12\x16\n" +
 	"\x06answer\x18\x03 \x01(\tR\x06answer\x12\x1a\n" +
-	"\blanguage\x18\x04 \x01(\tR\blanguage\"\xcf\x01\n" +
+	"\blanguage\x18\x04 \x01(\tR\blanguage\"\xc0\x02\n" +
 	"\x14SubmitAnswerResponse\x12\x1d\n" +
 	"\n" +
 	"is_correct\x18\x01 \x01(\bR\tisCorrect\x12\x14\n" +
@@ -4709,7 +4942,22 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x0ecorrect_answer\x18\x04 \x01(\tR\rcorrectAnswer\x12 \n" +
 	"\vexplanation\x18\x05 \x01(\tR\vexplanation\x12\x1d\n" +
 	"\n" +
-	"key_points\x18\x06 \x03(\tR\tkeyPoints\"a\n" +
+	"key_points\x18\x06 \x03(\tR\tkeyPoints\x12'\n" +
+	"\x0fevaluation_mode\x18\a \x01(\tR\x0eevaluationMode\x12F\n" +
+	"\rjudge_summary\x18\b \x01(\v2!.makejob.question.v1.JudgeSummaryR\fjudgeSummary\"\xb1\x01\n" +
+	"\fJudgeSummary\x12\x1d\n" +
+	"\n" +
+	"all_passed\x18\x01 \x01(\bR\tallPassed\x12\x1f\n" +
+	"\vtotal_cases\x18\x02 \x01(\x05R\n" +
+	"totalCases\x12!\n" +
+	"\fpassed_cases\x18\x03 \x01(\x05R\vpassedCases\x12>\n" +
+	"\aresults\x18\x04 \x03(\v2$.makejob.question.v1.JudgeCaseResultR\aresults\"\xaf\x01\n" +
+	"\x0fJudgeCaseResult\x12\x14\n" +
+	"\x05input\x18\x01 \x01(\tR\x05input\x12'\n" +
+	"\x0fexpected_output\x18\x02 \x01(\tR\x0eexpectedOutput\x12#\n" +
+	"\ractual_output\x18\x03 \x01(\tR\factualOutput\x12\x16\n" +
+	"\x06passed\x18\x04 \x01(\bR\x06passed\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\"a\n" +
 	"\x0eRunCodeRequest\x12\x1f\n" +
 	"\vquestion_id\x18\x01 \x01(\x04R\n" +
 	"questionId\x12\x1a\n" +
@@ -4732,7 +4980,9 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"questionId\"a\n" +
 	"\x14ListFavoritesRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x120\n" +
-	"\x04page\x18\x02 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\"\x9a\x01\n" +
+	"\x04page\x18\x02 \x01(\v2\x1c.makejob.shared.v1.PageParamR\x04page\"5\n" +
+	"\x10FavoriteResponse\x12!\n" +
+	"\fis_favorited\x18\x01 \x01(\bR\visFavorited\"\x9a\x01\n" +
 	"\x14FavoriteListResponse\x12B\n" +
 	"\tquestions\x18\x01 \x03(\v2$.makejob.question.v1.QuestionSummaryR\tquestions\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
@@ -5057,16 +5307,16 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x1bAdminDeleteQuestionResponse\"\x1e\n" +
 	"\x1cGetAdminQuestionStatsRequest\"E\n" +
 	"\x1aAdminQuestionStatsResponse\x12'\n" +
-	"\x0ftotal_questions\x18\x01 \x01(\x03R\x0etotalQuestions2\xe8\x16\n" +
+	"\x0ftotal_questions\x18\x01 \x01(\x03R\x0etotalQuestions2\x86\x17\n" +
 	"\x0fQuestionService\x12f\n" +
 	"\rListQuestions\x12).makejob.question.v1.ListQuestionsRequest\x1a*.makejob.question.v1.ListQuestionsResponse\x12[\n" +
 	"\vGetQuestion\x12'.makejob.question.v1.GetQuestionRequest\x1a#.makejob.question.v1.QuestionDetail\x12g\n" +
 	"\x0eListCategories\x12*.makejob.question.v1.ListCategoriesRequest\x1a).makejob.question.v1.CategoryTreeResponse\x12S\n" +
 	"\x0eListIndustries\x12\x16.google.protobuf.Empty\x1a).makejob.question.v1.IndustryListResponse\x12c\n" +
 	"\fSubmitAnswer\x12(.makejob.question.v1.SubmitAnswerRequest\x1a).makejob.question.v1.SubmitAnswerResponse\x12T\n" +
-	"\aRunCode\x12#.makejob.question.v1.RunCodeRequest\x1a$.makejob.question.v1.RunCodeResponse\x12T\n" +
-	"\x0eCreateFavorite\x12*.makejob.question.v1.CreateFavoriteRequest\x1a\x16.google.protobuf.Empty\x12T\n" +
-	"\x0eDeleteFavorite\x12*.makejob.question.v1.DeleteFavoriteRequest\x1a\x16.google.protobuf.Empty\x12e\n" +
+	"\aRunCode\x12#.makejob.question.v1.RunCodeRequest\x1a$.makejob.question.v1.RunCodeResponse\x12c\n" +
+	"\x0eCreateFavorite\x12*.makejob.question.v1.CreateFavoriteRequest\x1a%.makejob.question.v1.FavoriteResponse\x12c\n" +
+	"\x0eDeleteFavorite\x12*.makejob.question.v1.DeleteFavoriteRequest\x1a%.makejob.question.v1.FavoriteResponse\x12e\n" +
 	"\rListFavorites\x12).makejob.question.v1.ListFavoritesRequest\x1a).makejob.question.v1.FavoriteListResponse\x12W\n" +
 	"\n" +
 	"CreateNote\x12&.makejob.question.v1.CreateNoteRequest\x1a!.makejob.question.v1.NoteResponse\x12W\n" +
@@ -5104,7 +5354,7 @@ func file_makejob_question_v1_question_proto_rawDescGZIP() []byte {
 	return file_makejob_question_v1_question_proto_rawDescData
 }
 
-var file_makejob_question_v1_question_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
+var file_makejob_question_v1_question_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
 var file_makejob_question_v1_question_proto_goTypes = []any{
 	(*UserIDRequest)(nil),                  // 0: makejob.question.v1.UserIDRequest
 	(*ListQuestionsRequest)(nil),           // 1: makejob.question.v1.ListQuestionsRequest
@@ -5121,167 +5371,172 @@ var file_makejob_question_v1_question_proto_goTypes = []any{
 	(*IndustryInfo)(nil),                   // 12: makejob.question.v1.IndustryInfo
 	(*SubmitAnswerRequest)(nil),            // 13: makejob.question.v1.SubmitAnswerRequest
 	(*SubmitAnswerResponse)(nil),           // 14: makejob.question.v1.SubmitAnswerResponse
-	(*RunCodeRequest)(nil),                 // 15: makejob.question.v1.RunCodeRequest
-	(*RunCodeResponse)(nil),                // 16: makejob.question.v1.RunCodeResponse
-	(*CreateFavoriteRequest)(nil),          // 17: makejob.question.v1.CreateFavoriteRequest
-	(*DeleteFavoriteRequest)(nil),          // 18: makejob.question.v1.DeleteFavoriteRequest
-	(*ListFavoritesRequest)(nil),           // 19: makejob.question.v1.ListFavoritesRequest
-	(*FavoriteListResponse)(nil),           // 20: makejob.question.v1.FavoriteListResponse
-	(*CreateNoteRequest)(nil),              // 21: makejob.question.v1.CreateNoteRequest
-	(*NoteResponse)(nil),                   // 22: makejob.question.v1.NoteResponse
-	(*UpdateNoteRequest)(nil),              // 23: makejob.question.v1.UpdateNoteRequest
-	(*ListNotesRequest)(nil),               // 24: makejob.question.v1.ListNotesRequest
-	(*NoteListResponse)(nil),               // 25: makejob.question.v1.NoteListResponse
-	(*PracticeRecommendationRequest)(nil),  // 26: makejob.question.v1.PracticeRecommendationRequest
-	(*PracticeRecommendationResponse)(nil), // 27: makejob.question.v1.PracticeRecommendationResponse
-	(*RecommendedQuestion)(nil),            // 28: makejob.question.v1.RecommendedQuestion
-	(*WrongQuestionRequest)(nil),           // 29: makejob.question.v1.WrongQuestionRequest
-	(*WrongQuestionListResponse)(nil),      // 30: makejob.question.v1.WrongQuestionListResponse
-	(*WrongQuestionEntry)(nil),             // 31: makejob.question.v1.WrongQuestionEntry
-	(*UserPracticeStats)(nil),              // 32: makejob.question.v1.UserPracticeStats
-	(*CategoryStat)(nil),                   // 33: makejob.question.v1.CategoryStat
-	(*RandomExamRequest)(nil),              // 34: makejob.question.v1.RandomExamRequest
-	(*ExamResponse)(nil),                   // 35: makejob.question.v1.ExamResponse
-	(*GenerateTimedExamRequest)(nil),       // 36: makejob.question.v1.GenerateTimedExamRequest
-	(*GenerateTimedExamResponse)(nil),      // 37: makejob.question.v1.GenerateTimedExamResponse
-	(*SubmitExamRequest)(nil),              // 38: makejob.question.v1.SubmitExamRequest
-	(*SubmitExamResponse)(nil),             // 39: makejob.question.v1.SubmitExamResponse
-	(*QuestionResult)(nil),                 // 40: makejob.question.v1.QuestionResult
-	(*DeleteNoteRequest)(nil),              // 41: makejob.question.v1.DeleteNoteRequest
-	(*ListQuestionSetsRequest)(nil),        // 42: makejob.question.v1.ListQuestionSetsRequest
-	(*ListQuestionSetsResponse)(nil),       // 43: makejob.question.v1.ListQuestionSetsResponse
-	(*QuestionSetPreview)(nil),             // 44: makejob.question.v1.QuestionSetPreview
-	(*QuestionSetSummary)(nil),             // 45: makejob.question.v1.QuestionSetSummary
-	(*GetQuestionSetDetailRequest)(nil),    // 46: makejob.question.v1.GetQuestionSetDetailRequest
-	(*QuestionSetDetail)(nil),              // 47: makejob.question.v1.QuestionSetDetail
-	(*ListMistakeTopicsRequest)(nil),       // 48: makejob.question.v1.ListMistakeTopicsRequest
-	(*ListMistakeTopicsResponse)(nil),      // 49: makejob.question.v1.ListMistakeTopicsResponse
-	(*MistakeTopic)(nil),                   // 50: makejob.question.v1.MistakeTopic
-	(*MistakeQuestion)(nil),                // 51: makejob.question.v1.MistakeQuestion
-	(*GetMistakeTopicRequest)(nil),         // 52: makejob.question.v1.GetMistakeTopicRequest
-	(*MistakeTopicCard)(nil),               // 53: makejob.question.v1.MistakeTopicCard
-	(*AdminListQuestionsRequest)(nil),      // 54: makejob.question.v1.AdminListQuestionsRequest
-	(*AdminListQuestionsResponse)(nil),     // 55: makejob.question.v1.AdminListQuestionsResponse
-	(*AdminQuestionInfo)(nil),              // 56: makejob.question.v1.AdminQuestionInfo
-	(*AdminCreateQuestionRequest)(nil),     // 57: makejob.question.v1.AdminCreateQuestionRequest
-	(*AdminCreateQuestionResponse)(nil),    // 58: makejob.question.v1.AdminCreateQuestionResponse
-	(*AdminUpdateQuestionRequest)(nil),     // 59: makejob.question.v1.AdminUpdateQuestionRequest
-	(*AdminUpdateQuestionResponse)(nil),    // 60: makejob.question.v1.AdminUpdateQuestionResponse
-	(*AdminDeleteQuestionRequest)(nil),     // 61: makejob.question.v1.AdminDeleteQuestionRequest
-	(*AdminDeleteQuestionResponse)(nil),    // 62: makejob.question.v1.AdminDeleteQuestionResponse
-	(*GetAdminQuestionStatsRequest)(nil),   // 63: makejob.question.v1.GetAdminQuestionStatsRequest
-	(*AdminQuestionStatsResponse)(nil),     // 64: makejob.question.v1.AdminQuestionStatsResponse
-	nil,                                    // 65: makejob.question.v1.SubmitExamRequest.AnswersEntry
-	(*v1.PageParam)(nil),                   // 66: makejob.shared.v1.PageParam
-	(*v1.PageResult)(nil),                  // 67: makejob.shared.v1.PageResult
-	(*timestamppb.Timestamp)(nil),          // 68: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                  // 69: google.protobuf.Empty
+	(*JudgeSummary)(nil),                   // 15: makejob.question.v1.JudgeSummary
+	(*JudgeCaseResult)(nil),                // 16: makejob.question.v1.JudgeCaseResult
+	(*RunCodeRequest)(nil),                 // 17: makejob.question.v1.RunCodeRequest
+	(*RunCodeResponse)(nil),                // 18: makejob.question.v1.RunCodeResponse
+	(*CreateFavoriteRequest)(nil),          // 19: makejob.question.v1.CreateFavoriteRequest
+	(*DeleteFavoriteRequest)(nil),          // 20: makejob.question.v1.DeleteFavoriteRequest
+	(*ListFavoritesRequest)(nil),           // 21: makejob.question.v1.ListFavoritesRequest
+	(*FavoriteResponse)(nil),               // 22: makejob.question.v1.FavoriteResponse
+	(*FavoriteListResponse)(nil),           // 23: makejob.question.v1.FavoriteListResponse
+	(*CreateNoteRequest)(nil),              // 24: makejob.question.v1.CreateNoteRequest
+	(*NoteResponse)(nil),                   // 25: makejob.question.v1.NoteResponse
+	(*UpdateNoteRequest)(nil),              // 26: makejob.question.v1.UpdateNoteRequest
+	(*ListNotesRequest)(nil),               // 27: makejob.question.v1.ListNotesRequest
+	(*NoteListResponse)(nil),               // 28: makejob.question.v1.NoteListResponse
+	(*PracticeRecommendationRequest)(nil),  // 29: makejob.question.v1.PracticeRecommendationRequest
+	(*PracticeRecommendationResponse)(nil), // 30: makejob.question.v1.PracticeRecommendationResponse
+	(*RecommendedQuestion)(nil),            // 31: makejob.question.v1.RecommendedQuestion
+	(*WrongQuestionRequest)(nil),           // 32: makejob.question.v1.WrongQuestionRequest
+	(*WrongQuestionListResponse)(nil),      // 33: makejob.question.v1.WrongQuestionListResponse
+	(*WrongQuestionEntry)(nil),             // 34: makejob.question.v1.WrongQuestionEntry
+	(*UserPracticeStats)(nil),              // 35: makejob.question.v1.UserPracticeStats
+	(*CategoryStat)(nil),                   // 36: makejob.question.v1.CategoryStat
+	(*RandomExamRequest)(nil),              // 37: makejob.question.v1.RandomExamRequest
+	(*ExamResponse)(nil),                   // 38: makejob.question.v1.ExamResponse
+	(*GenerateTimedExamRequest)(nil),       // 39: makejob.question.v1.GenerateTimedExamRequest
+	(*GenerateTimedExamResponse)(nil),      // 40: makejob.question.v1.GenerateTimedExamResponse
+	(*SubmitExamRequest)(nil),              // 41: makejob.question.v1.SubmitExamRequest
+	(*SubmitExamResponse)(nil),             // 42: makejob.question.v1.SubmitExamResponse
+	(*QuestionResult)(nil),                 // 43: makejob.question.v1.QuestionResult
+	(*DeleteNoteRequest)(nil),              // 44: makejob.question.v1.DeleteNoteRequest
+	(*ListQuestionSetsRequest)(nil),        // 45: makejob.question.v1.ListQuestionSetsRequest
+	(*ListQuestionSetsResponse)(nil),       // 46: makejob.question.v1.ListQuestionSetsResponse
+	(*QuestionSetPreview)(nil),             // 47: makejob.question.v1.QuestionSetPreview
+	(*QuestionSetSummary)(nil),             // 48: makejob.question.v1.QuestionSetSummary
+	(*GetQuestionSetDetailRequest)(nil),    // 49: makejob.question.v1.GetQuestionSetDetailRequest
+	(*QuestionSetDetail)(nil),              // 50: makejob.question.v1.QuestionSetDetail
+	(*ListMistakeTopicsRequest)(nil),       // 51: makejob.question.v1.ListMistakeTopicsRequest
+	(*ListMistakeTopicsResponse)(nil),      // 52: makejob.question.v1.ListMistakeTopicsResponse
+	(*MistakeTopic)(nil),                   // 53: makejob.question.v1.MistakeTopic
+	(*MistakeQuestion)(nil),                // 54: makejob.question.v1.MistakeQuestion
+	(*GetMistakeTopicRequest)(nil),         // 55: makejob.question.v1.GetMistakeTopicRequest
+	(*MistakeTopicCard)(nil),               // 56: makejob.question.v1.MistakeTopicCard
+	(*AdminListQuestionsRequest)(nil),      // 57: makejob.question.v1.AdminListQuestionsRequest
+	(*AdminListQuestionsResponse)(nil),     // 58: makejob.question.v1.AdminListQuestionsResponse
+	(*AdminQuestionInfo)(nil),              // 59: makejob.question.v1.AdminQuestionInfo
+	(*AdminCreateQuestionRequest)(nil),     // 60: makejob.question.v1.AdminCreateQuestionRequest
+	(*AdminCreateQuestionResponse)(nil),    // 61: makejob.question.v1.AdminCreateQuestionResponse
+	(*AdminUpdateQuestionRequest)(nil),     // 62: makejob.question.v1.AdminUpdateQuestionRequest
+	(*AdminUpdateQuestionResponse)(nil),    // 63: makejob.question.v1.AdminUpdateQuestionResponse
+	(*AdminDeleteQuestionRequest)(nil),     // 64: makejob.question.v1.AdminDeleteQuestionRequest
+	(*AdminDeleteQuestionResponse)(nil),    // 65: makejob.question.v1.AdminDeleteQuestionResponse
+	(*GetAdminQuestionStatsRequest)(nil),   // 66: makejob.question.v1.GetAdminQuestionStatsRequest
+	(*AdminQuestionStatsResponse)(nil),     // 67: makejob.question.v1.AdminQuestionStatsResponse
+	nil,                                    // 68: makejob.question.v1.SubmitExamRequest.AnswersEntry
+	(*v1.PageParam)(nil),                   // 69: makejob.shared.v1.PageParam
+	(*v1.PageResult)(nil),                  // 70: makejob.shared.v1.PageResult
+	(*timestamppb.Timestamp)(nil),          // 71: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                  // 72: google.protobuf.Empty
 }
 var file_makejob_question_v1_question_proto_depIdxs = []int32{
-	66, // 0: makejob.question.v1.ListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
+	69, // 0: makejob.question.v1.ListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
 	3,  // 1: makejob.question.v1.ListQuestionsResponse.questions:type_name -> makejob.question.v1.QuestionSummary
-	67, // 2: makejob.question.v1.ListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	70, // 2: makejob.question.v1.ListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
 	7,  // 3: makejob.question.v1.QuestionDetail.category:type_name -> makejob.question.v1.CategoryInfo
 	6,  // 4: makejob.question.v1.QuestionDetail.test_cases:type_name -> makejob.question.v1.TestCase
-	68, // 5: makejob.question.v1.QuestionDetail.created_at:type_name -> google.protobuf.Timestamp
+	71, // 5: makejob.question.v1.QuestionDetail.created_at:type_name -> google.protobuf.Timestamp
 	10, // 6: makejob.question.v1.CategoryTreeResponse.categories:type_name -> makejob.question.v1.CategoryNode
 	10, // 7: makejob.question.v1.CategoryNode.children:type_name -> makejob.question.v1.CategoryNode
 	12, // 8: makejob.question.v1.IndustryListResponse.industries:type_name -> makejob.question.v1.IndustryInfo
-	66, // 9: makejob.question.v1.ListFavoritesRequest.page:type_name -> makejob.shared.v1.PageParam
-	3,  // 10: makejob.question.v1.FavoriteListResponse.questions:type_name -> makejob.question.v1.QuestionSummary
-	67, // 11: makejob.question.v1.FavoriteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	68, // 12: makejob.question.v1.NoteResponse.created_at:type_name -> google.protobuf.Timestamp
-	68, // 13: makejob.question.v1.NoteResponse.updated_at:type_name -> google.protobuf.Timestamp
-	66, // 14: makejob.question.v1.ListNotesRequest.page:type_name -> makejob.shared.v1.PageParam
-	22, // 15: makejob.question.v1.NoteListResponse.notes:type_name -> makejob.question.v1.NoteResponse
-	67, // 16: makejob.question.v1.NoteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	28, // 17: makejob.question.v1.PracticeRecommendationResponse.questions:type_name -> makejob.question.v1.RecommendedQuestion
-	66, // 18: makejob.question.v1.WrongQuestionRequest.page:type_name -> makejob.shared.v1.PageParam
-	31, // 19: makejob.question.v1.WrongQuestionListResponse.entries:type_name -> makejob.question.v1.WrongQuestionEntry
-	67, // 20: makejob.question.v1.WrongQuestionListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	68, // 21: makejob.question.v1.WrongQuestionEntry.last_wrong_at:type_name -> google.protobuf.Timestamp
-	33, // 22: makejob.question.v1.UserPracticeStats.category_stats:type_name -> makejob.question.v1.CategoryStat
-	5,  // 23: makejob.question.v1.ExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
-	5,  // 24: makejob.question.v1.GenerateTimedExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
-	68, // 25: makejob.question.v1.GenerateTimedExamResponse.started_at:type_name -> google.protobuf.Timestamp
-	68, // 26: makejob.question.v1.GenerateTimedExamResponse.expires_at:type_name -> google.protobuf.Timestamp
-	65, // 27: makejob.question.v1.SubmitExamRequest.answers:type_name -> makejob.question.v1.SubmitExamRequest.AnswersEntry
-	40, // 28: makejob.question.v1.SubmitExamResponse.question_results:type_name -> makejob.question.v1.QuestionResult
-	66, // 29: makejob.question.v1.ListQuestionSetsRequest.page:type_name -> makejob.shared.v1.PageParam
-	45, // 30: makejob.question.v1.ListQuestionSetsResponse.items:type_name -> makejob.question.v1.QuestionSetSummary
-	67, // 31: makejob.question.v1.ListQuestionSetsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	44, // 32: makejob.question.v1.QuestionSetSummary.questions:type_name -> makejob.question.v1.QuestionSetPreview
-	45, // 33: makejob.question.v1.QuestionSetDetail.info:type_name -> makejob.question.v1.QuestionSetSummary
-	3,  // 34: makejob.question.v1.QuestionSetDetail.questions:type_name -> makejob.question.v1.QuestionSummary
-	50, // 35: makejob.question.v1.ListMistakeTopicsResponse.topics:type_name -> makejob.question.v1.MistakeTopic
-	51, // 36: makejob.question.v1.MistakeTopic.recent_wrong_questions:type_name -> makejob.question.v1.MistakeQuestion
-	68, // 37: makejob.question.v1.MistakeQuestion.last_wrong_at:type_name -> google.protobuf.Timestamp
-	66, // 38: makejob.question.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
-	56, // 39: makejob.question.v1.AdminListQuestionsResponse.questions:type_name -> makejob.question.v1.AdminQuestionInfo
-	67, // 40: makejob.question.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	68, // 41: makejob.question.v1.AdminQuestionInfo.created_at:type_name -> google.protobuf.Timestamp
-	68, // 42: makejob.question.v1.AdminQuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 43: makejob.question.v1.QuestionService.ListQuestions:input_type -> makejob.question.v1.ListQuestionsRequest
-	4,  // 44: makejob.question.v1.QuestionService.GetQuestion:input_type -> makejob.question.v1.GetQuestionRequest
-	8,  // 45: makejob.question.v1.QuestionService.ListCategories:input_type -> makejob.question.v1.ListCategoriesRequest
-	69, // 46: makejob.question.v1.QuestionService.ListIndustries:input_type -> google.protobuf.Empty
-	13, // 47: makejob.question.v1.QuestionService.SubmitAnswer:input_type -> makejob.question.v1.SubmitAnswerRequest
-	15, // 48: makejob.question.v1.QuestionService.RunCode:input_type -> makejob.question.v1.RunCodeRequest
-	17, // 49: makejob.question.v1.QuestionService.CreateFavorite:input_type -> makejob.question.v1.CreateFavoriteRequest
-	18, // 50: makejob.question.v1.QuestionService.DeleteFavorite:input_type -> makejob.question.v1.DeleteFavoriteRequest
-	19, // 51: makejob.question.v1.QuestionService.ListFavorites:input_type -> makejob.question.v1.ListFavoritesRequest
-	21, // 52: makejob.question.v1.QuestionService.CreateNote:input_type -> makejob.question.v1.CreateNoteRequest
-	23, // 53: makejob.question.v1.QuestionService.UpdateNote:input_type -> makejob.question.v1.UpdateNoteRequest
-	24, // 54: makejob.question.v1.QuestionService.ListNotes:input_type -> makejob.question.v1.ListNotesRequest
-	26, // 55: makejob.question.v1.QuestionService.GetPracticeRecommendations:input_type -> makejob.question.v1.PracticeRecommendationRequest
-	29, // 56: makejob.question.v1.QuestionService.GetWrongQuestions:input_type -> makejob.question.v1.WrongQuestionRequest
-	0,  // 57: makejob.question.v1.QuestionService.GetUserPracticeStats:input_type -> makejob.question.v1.UserIDRequest
-	34, // 58: makejob.question.v1.QuestionService.GetRandomExam:input_type -> makejob.question.v1.RandomExamRequest
-	36, // 59: makejob.question.v1.QuestionService.GenerateTimedExam:input_type -> makejob.question.v1.GenerateTimedExamRequest
-	38, // 60: makejob.question.v1.QuestionService.SubmitExam:input_type -> makejob.question.v1.SubmitExamRequest
-	41, // 61: makejob.question.v1.QuestionService.DeleteNote:input_type -> makejob.question.v1.DeleteNoteRequest
-	42, // 62: makejob.question.v1.QuestionService.ListQuestionSets:input_type -> makejob.question.v1.ListQuestionSetsRequest
-	46, // 63: makejob.question.v1.QuestionService.GetQuestionSetDetail:input_type -> makejob.question.v1.GetQuestionSetDetailRequest
-	48, // 64: makejob.question.v1.QuestionService.ListMistakeTopics:input_type -> makejob.question.v1.ListMistakeTopicsRequest
-	52, // 65: makejob.question.v1.QuestionService.GetMistakeTopic:input_type -> makejob.question.v1.GetMistakeTopicRequest
-	54, // 66: makejob.question.v1.QuestionService.AdminListQuestions:input_type -> makejob.question.v1.AdminListQuestionsRequest
-	57, // 67: makejob.question.v1.QuestionService.AdminCreateQuestion:input_type -> makejob.question.v1.AdminCreateQuestionRequest
-	59, // 68: makejob.question.v1.QuestionService.AdminUpdateQuestion:input_type -> makejob.question.v1.AdminUpdateQuestionRequest
-	61, // 69: makejob.question.v1.QuestionService.AdminDeleteQuestion:input_type -> makejob.question.v1.AdminDeleteQuestionRequest
-	63, // 70: makejob.question.v1.QuestionService.GetAdminQuestionStats:input_type -> makejob.question.v1.GetAdminQuestionStatsRequest
-	2,  // 71: makejob.question.v1.QuestionService.ListQuestions:output_type -> makejob.question.v1.ListQuestionsResponse
-	5,  // 72: makejob.question.v1.QuestionService.GetQuestion:output_type -> makejob.question.v1.QuestionDetail
-	9,  // 73: makejob.question.v1.QuestionService.ListCategories:output_type -> makejob.question.v1.CategoryTreeResponse
-	11, // 74: makejob.question.v1.QuestionService.ListIndustries:output_type -> makejob.question.v1.IndustryListResponse
-	14, // 75: makejob.question.v1.QuestionService.SubmitAnswer:output_type -> makejob.question.v1.SubmitAnswerResponse
-	16, // 76: makejob.question.v1.QuestionService.RunCode:output_type -> makejob.question.v1.RunCodeResponse
-	69, // 77: makejob.question.v1.QuestionService.CreateFavorite:output_type -> google.protobuf.Empty
-	69, // 78: makejob.question.v1.QuestionService.DeleteFavorite:output_type -> google.protobuf.Empty
-	20, // 79: makejob.question.v1.QuestionService.ListFavorites:output_type -> makejob.question.v1.FavoriteListResponse
-	22, // 80: makejob.question.v1.QuestionService.CreateNote:output_type -> makejob.question.v1.NoteResponse
-	22, // 81: makejob.question.v1.QuestionService.UpdateNote:output_type -> makejob.question.v1.NoteResponse
-	25, // 82: makejob.question.v1.QuestionService.ListNotes:output_type -> makejob.question.v1.NoteListResponse
-	27, // 83: makejob.question.v1.QuestionService.GetPracticeRecommendations:output_type -> makejob.question.v1.PracticeRecommendationResponse
-	30, // 84: makejob.question.v1.QuestionService.GetWrongQuestions:output_type -> makejob.question.v1.WrongQuestionListResponse
-	32, // 85: makejob.question.v1.QuestionService.GetUserPracticeStats:output_type -> makejob.question.v1.UserPracticeStats
-	35, // 86: makejob.question.v1.QuestionService.GetRandomExam:output_type -> makejob.question.v1.ExamResponse
-	37, // 87: makejob.question.v1.QuestionService.GenerateTimedExam:output_type -> makejob.question.v1.GenerateTimedExamResponse
-	39, // 88: makejob.question.v1.QuestionService.SubmitExam:output_type -> makejob.question.v1.SubmitExamResponse
-	69, // 89: makejob.question.v1.QuestionService.DeleteNote:output_type -> google.protobuf.Empty
-	43, // 90: makejob.question.v1.QuestionService.ListQuestionSets:output_type -> makejob.question.v1.ListQuestionSetsResponse
-	47, // 91: makejob.question.v1.QuestionService.GetQuestionSetDetail:output_type -> makejob.question.v1.QuestionSetDetail
-	49, // 92: makejob.question.v1.QuestionService.ListMistakeTopics:output_type -> makejob.question.v1.ListMistakeTopicsResponse
-	53, // 93: makejob.question.v1.QuestionService.GetMistakeTopic:output_type -> makejob.question.v1.MistakeTopicCard
-	55, // 94: makejob.question.v1.QuestionService.AdminListQuestions:output_type -> makejob.question.v1.AdminListQuestionsResponse
-	58, // 95: makejob.question.v1.QuestionService.AdminCreateQuestion:output_type -> makejob.question.v1.AdminCreateQuestionResponse
-	60, // 96: makejob.question.v1.QuestionService.AdminUpdateQuestion:output_type -> makejob.question.v1.AdminUpdateQuestionResponse
-	62, // 97: makejob.question.v1.QuestionService.AdminDeleteQuestion:output_type -> makejob.question.v1.AdminDeleteQuestionResponse
-	64, // 98: makejob.question.v1.QuestionService.GetAdminQuestionStats:output_type -> makejob.question.v1.AdminQuestionStatsResponse
-	71, // [71:99] is the sub-list for method output_type
-	43, // [43:71] is the sub-list for method input_type
-	43, // [43:43] is the sub-list for extension type_name
-	43, // [43:43] is the sub-list for extension extendee
-	0,  // [0:43] is the sub-list for field type_name
+	15, // 9: makejob.question.v1.SubmitAnswerResponse.judge_summary:type_name -> makejob.question.v1.JudgeSummary
+	16, // 10: makejob.question.v1.JudgeSummary.results:type_name -> makejob.question.v1.JudgeCaseResult
+	69, // 11: makejob.question.v1.ListFavoritesRequest.page:type_name -> makejob.shared.v1.PageParam
+	3,  // 12: makejob.question.v1.FavoriteListResponse.questions:type_name -> makejob.question.v1.QuestionSummary
+	70, // 13: makejob.question.v1.FavoriteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 14: makejob.question.v1.NoteResponse.created_at:type_name -> google.protobuf.Timestamp
+	71, // 15: makejob.question.v1.NoteResponse.updated_at:type_name -> google.protobuf.Timestamp
+	69, // 16: makejob.question.v1.ListNotesRequest.page:type_name -> makejob.shared.v1.PageParam
+	25, // 17: makejob.question.v1.NoteListResponse.notes:type_name -> makejob.question.v1.NoteResponse
+	70, // 18: makejob.question.v1.NoteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	31, // 19: makejob.question.v1.PracticeRecommendationResponse.questions:type_name -> makejob.question.v1.RecommendedQuestion
+	69, // 20: makejob.question.v1.WrongQuestionRequest.page:type_name -> makejob.shared.v1.PageParam
+	34, // 21: makejob.question.v1.WrongQuestionListResponse.entries:type_name -> makejob.question.v1.WrongQuestionEntry
+	70, // 22: makejob.question.v1.WrongQuestionListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 23: makejob.question.v1.WrongQuestionEntry.last_wrong_at:type_name -> google.protobuf.Timestamp
+	36, // 24: makejob.question.v1.UserPracticeStats.category_stats:type_name -> makejob.question.v1.CategoryStat
+	5,  // 25: makejob.question.v1.ExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
+	5,  // 26: makejob.question.v1.GenerateTimedExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
+	71, // 27: makejob.question.v1.GenerateTimedExamResponse.started_at:type_name -> google.protobuf.Timestamp
+	71, // 28: makejob.question.v1.GenerateTimedExamResponse.expires_at:type_name -> google.protobuf.Timestamp
+	68, // 29: makejob.question.v1.SubmitExamRequest.answers:type_name -> makejob.question.v1.SubmitExamRequest.AnswersEntry
+	43, // 30: makejob.question.v1.SubmitExamResponse.question_results:type_name -> makejob.question.v1.QuestionResult
+	69, // 31: makejob.question.v1.ListQuestionSetsRequest.page:type_name -> makejob.shared.v1.PageParam
+	48, // 32: makejob.question.v1.ListQuestionSetsResponse.items:type_name -> makejob.question.v1.QuestionSetSummary
+	70, // 33: makejob.question.v1.ListQuestionSetsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	47, // 34: makejob.question.v1.QuestionSetSummary.questions:type_name -> makejob.question.v1.QuestionSetPreview
+	48, // 35: makejob.question.v1.QuestionSetDetail.info:type_name -> makejob.question.v1.QuestionSetSummary
+	3,  // 36: makejob.question.v1.QuestionSetDetail.questions:type_name -> makejob.question.v1.QuestionSummary
+	53, // 37: makejob.question.v1.ListMistakeTopicsResponse.topics:type_name -> makejob.question.v1.MistakeTopic
+	54, // 38: makejob.question.v1.MistakeTopic.recent_wrong_questions:type_name -> makejob.question.v1.MistakeQuestion
+	71, // 39: makejob.question.v1.MistakeQuestion.last_wrong_at:type_name -> google.protobuf.Timestamp
+	69, // 40: makejob.question.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
+	59, // 41: makejob.question.v1.AdminListQuestionsResponse.questions:type_name -> makejob.question.v1.AdminQuestionInfo
+	70, // 42: makejob.question.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 43: makejob.question.v1.AdminQuestionInfo.created_at:type_name -> google.protobuf.Timestamp
+	71, // 44: makejob.question.v1.AdminQuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 45: makejob.question.v1.QuestionService.ListQuestions:input_type -> makejob.question.v1.ListQuestionsRequest
+	4,  // 46: makejob.question.v1.QuestionService.GetQuestion:input_type -> makejob.question.v1.GetQuestionRequest
+	8,  // 47: makejob.question.v1.QuestionService.ListCategories:input_type -> makejob.question.v1.ListCategoriesRequest
+	72, // 48: makejob.question.v1.QuestionService.ListIndustries:input_type -> google.protobuf.Empty
+	13, // 49: makejob.question.v1.QuestionService.SubmitAnswer:input_type -> makejob.question.v1.SubmitAnswerRequest
+	17, // 50: makejob.question.v1.QuestionService.RunCode:input_type -> makejob.question.v1.RunCodeRequest
+	19, // 51: makejob.question.v1.QuestionService.CreateFavorite:input_type -> makejob.question.v1.CreateFavoriteRequest
+	20, // 52: makejob.question.v1.QuestionService.DeleteFavorite:input_type -> makejob.question.v1.DeleteFavoriteRequest
+	21, // 53: makejob.question.v1.QuestionService.ListFavorites:input_type -> makejob.question.v1.ListFavoritesRequest
+	24, // 54: makejob.question.v1.QuestionService.CreateNote:input_type -> makejob.question.v1.CreateNoteRequest
+	26, // 55: makejob.question.v1.QuestionService.UpdateNote:input_type -> makejob.question.v1.UpdateNoteRequest
+	27, // 56: makejob.question.v1.QuestionService.ListNotes:input_type -> makejob.question.v1.ListNotesRequest
+	29, // 57: makejob.question.v1.QuestionService.GetPracticeRecommendations:input_type -> makejob.question.v1.PracticeRecommendationRequest
+	32, // 58: makejob.question.v1.QuestionService.GetWrongQuestions:input_type -> makejob.question.v1.WrongQuestionRequest
+	0,  // 59: makejob.question.v1.QuestionService.GetUserPracticeStats:input_type -> makejob.question.v1.UserIDRequest
+	37, // 60: makejob.question.v1.QuestionService.GetRandomExam:input_type -> makejob.question.v1.RandomExamRequest
+	39, // 61: makejob.question.v1.QuestionService.GenerateTimedExam:input_type -> makejob.question.v1.GenerateTimedExamRequest
+	41, // 62: makejob.question.v1.QuestionService.SubmitExam:input_type -> makejob.question.v1.SubmitExamRequest
+	44, // 63: makejob.question.v1.QuestionService.DeleteNote:input_type -> makejob.question.v1.DeleteNoteRequest
+	45, // 64: makejob.question.v1.QuestionService.ListQuestionSets:input_type -> makejob.question.v1.ListQuestionSetsRequest
+	49, // 65: makejob.question.v1.QuestionService.GetQuestionSetDetail:input_type -> makejob.question.v1.GetQuestionSetDetailRequest
+	51, // 66: makejob.question.v1.QuestionService.ListMistakeTopics:input_type -> makejob.question.v1.ListMistakeTopicsRequest
+	55, // 67: makejob.question.v1.QuestionService.GetMistakeTopic:input_type -> makejob.question.v1.GetMistakeTopicRequest
+	57, // 68: makejob.question.v1.QuestionService.AdminListQuestions:input_type -> makejob.question.v1.AdminListQuestionsRequest
+	60, // 69: makejob.question.v1.QuestionService.AdminCreateQuestion:input_type -> makejob.question.v1.AdminCreateQuestionRequest
+	62, // 70: makejob.question.v1.QuestionService.AdminUpdateQuestion:input_type -> makejob.question.v1.AdminUpdateQuestionRequest
+	64, // 71: makejob.question.v1.QuestionService.AdminDeleteQuestion:input_type -> makejob.question.v1.AdminDeleteQuestionRequest
+	66, // 72: makejob.question.v1.QuestionService.GetAdminQuestionStats:input_type -> makejob.question.v1.GetAdminQuestionStatsRequest
+	2,  // 73: makejob.question.v1.QuestionService.ListQuestions:output_type -> makejob.question.v1.ListQuestionsResponse
+	5,  // 74: makejob.question.v1.QuestionService.GetQuestion:output_type -> makejob.question.v1.QuestionDetail
+	9,  // 75: makejob.question.v1.QuestionService.ListCategories:output_type -> makejob.question.v1.CategoryTreeResponse
+	11, // 76: makejob.question.v1.QuestionService.ListIndustries:output_type -> makejob.question.v1.IndustryListResponse
+	14, // 77: makejob.question.v1.QuestionService.SubmitAnswer:output_type -> makejob.question.v1.SubmitAnswerResponse
+	18, // 78: makejob.question.v1.QuestionService.RunCode:output_type -> makejob.question.v1.RunCodeResponse
+	22, // 79: makejob.question.v1.QuestionService.CreateFavorite:output_type -> makejob.question.v1.FavoriteResponse
+	22, // 80: makejob.question.v1.QuestionService.DeleteFavorite:output_type -> makejob.question.v1.FavoriteResponse
+	23, // 81: makejob.question.v1.QuestionService.ListFavorites:output_type -> makejob.question.v1.FavoriteListResponse
+	25, // 82: makejob.question.v1.QuestionService.CreateNote:output_type -> makejob.question.v1.NoteResponse
+	25, // 83: makejob.question.v1.QuestionService.UpdateNote:output_type -> makejob.question.v1.NoteResponse
+	28, // 84: makejob.question.v1.QuestionService.ListNotes:output_type -> makejob.question.v1.NoteListResponse
+	30, // 85: makejob.question.v1.QuestionService.GetPracticeRecommendations:output_type -> makejob.question.v1.PracticeRecommendationResponse
+	33, // 86: makejob.question.v1.QuestionService.GetWrongQuestions:output_type -> makejob.question.v1.WrongQuestionListResponse
+	35, // 87: makejob.question.v1.QuestionService.GetUserPracticeStats:output_type -> makejob.question.v1.UserPracticeStats
+	38, // 88: makejob.question.v1.QuestionService.GetRandomExam:output_type -> makejob.question.v1.ExamResponse
+	40, // 89: makejob.question.v1.QuestionService.GenerateTimedExam:output_type -> makejob.question.v1.GenerateTimedExamResponse
+	42, // 90: makejob.question.v1.QuestionService.SubmitExam:output_type -> makejob.question.v1.SubmitExamResponse
+	72, // 91: makejob.question.v1.QuestionService.DeleteNote:output_type -> google.protobuf.Empty
+	46, // 92: makejob.question.v1.QuestionService.ListQuestionSets:output_type -> makejob.question.v1.ListQuestionSetsResponse
+	50, // 93: makejob.question.v1.QuestionService.GetQuestionSetDetail:output_type -> makejob.question.v1.QuestionSetDetail
+	52, // 94: makejob.question.v1.QuestionService.ListMistakeTopics:output_type -> makejob.question.v1.ListMistakeTopicsResponse
+	56, // 95: makejob.question.v1.QuestionService.GetMistakeTopic:output_type -> makejob.question.v1.MistakeTopicCard
+	58, // 96: makejob.question.v1.QuestionService.AdminListQuestions:output_type -> makejob.question.v1.AdminListQuestionsResponse
+	61, // 97: makejob.question.v1.QuestionService.AdminCreateQuestion:output_type -> makejob.question.v1.AdminCreateQuestionResponse
+	63, // 98: makejob.question.v1.QuestionService.AdminUpdateQuestion:output_type -> makejob.question.v1.AdminUpdateQuestionResponse
+	65, // 99: makejob.question.v1.QuestionService.AdminDeleteQuestion:output_type -> makejob.question.v1.AdminDeleteQuestionResponse
+	67, // 100: makejob.question.v1.QuestionService.GetAdminQuestionStats:output_type -> makejob.question.v1.AdminQuestionStatsResponse
+	73, // [73:101] is the sub-list for method output_type
+	45, // [45:73] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_makejob_question_v1_question_proto_init() }
@@ -5289,14 +5544,14 @@ func file_makejob_question_v1_question_proto_init() {
 	if File_makejob_question_v1_question_proto != nil {
 		return
 	}
-	file_makejob_question_v1_question_proto_msgTypes[59].OneofWrappers = []any{}
+	file_makejob_question_v1_question_proto_msgTypes[62].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_question_v1_question_proto_rawDesc), len(file_makejob_question_v1_question_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   66,
+			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -19,3 +19,7 @@ jwt:
   secret: "makejob-secret-key-change-in-production"
   expire_hours: 168
   service_secret: "makejob-internal-service-secret"
+
+dependent_services:
+  question_addr: "localhost:9003"
+  interview_addr: "localhost:9004"
