@@ -4,9 +4,48 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { buildAuthorizationHeader, extractErrorMessage, getApiBaseUrl, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { flushSync } from 'react-dom'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Col,
+  ConfigProvider,
+  Empty,
+  Input,
+  InputNumber,
+  message,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Switch,
+  Tag,
+  Typography,
+} from 'antd'
+import {
+  ThunderboltOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  PlusOutlined,
+  StopOutlined,
+  CloudUploadOutlined,
+  CloudSyncOutlined,
+  LoadingOutlined,
+  WarningOutlined,
+  CodeOutlined,
+  BookOutlined,
+  TagOutlined,
+  LinkOutlined,
+  FileTextOutlined,
+  DownOutlined,
+  UpOutlined,
+} from '@ant-design/icons'
 import { useAdminAuthStore } from '../../state/auth'
 import { fetchScraperTaskDetail } from '../runtime/runtimeApi'
 import type { ScraperTaskDetail } from '../runtime/runtimeTypes'
+
+const { Title, Text, Paragraph } = Typography
 
 type QuestionType = 'choice' | 'multi' | 'code' | 'subjective'
 type QuestionDifficulty = 'easy' | 'medium' | 'hard'
@@ -198,57 +237,70 @@ const QUESTION_DIFFICULTY_OPTIONS: Array<{ value: QuestionDifficulty; label: str
   { value: 'hard', label: '困难' },
 ]
 
-/**
- * 获取后台行业列表，供流水线指定题库目标行业。
- */
+/* ------------------------------------------------------------------ */
+/*  视觉 token（与前两页完全一致）                                      */
+/* ------------------------------------------------------------------ */
+
+const THEME = {
+  token: {
+    borderRadius: 14,
+    borderRadiusLG: 20,
+    colorPrimary: '#2563eb',
+    colorBgContainer: '#ffffff',
+    colorBorder: '#e2e8f0',
+    colorBorderSecondary: '#f1f5f9',
+    colorText: '#0f172a',
+    colorTextSecondary: '#64748b',
+    colorTextTertiary: '#94a3b8',
+    fontFamily: 'Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    controlHeight: 44,
+    controlHeightLG: 52,
+    controlHeightSM: 36,
+    boxShadow: '0 0 0 1px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.04), 0 12px 24px rgba(0,0,0,0.03)',
+    boxShadowSecondary: '0 0 0 1px rgba(0,0,0,0.04), 0 8px 16px rgba(0,0,0,0.06), 0 24px 48px rgba(0,0,0,0.04)',
+  },
+}
+
+const glassCard = {
+  background: 'rgba(255, 255, 255, 0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: 20,
+  border: '1px solid rgba(255, 255, 255, 0.6)',
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.04), 0 12px 24px rgba(0,0,0,0.03)',
+  transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+} as React.CSSProperties
+
+const solidCard = {
+  background: '#ffffff',
+  borderRadius: 20,
+  border: '1px solid #f1f5f9',
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.02), 0 4px 12px rgba(0,0,0,0.03)',
+  transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+} as React.CSSProperties
+
+/* ------------------------------------------------------------------ */
+/*  API 与工具函数（全部保留原逻辑）                                     */
+/* ------------------------------------------------------------------ */
+
 async function fetchIndustries(token: string | null): Promise<Industry[]> {
-  const response = await requestJson<ApiEnvelope<Industry[]>>('/admin/industries', {
-    method: 'GET',
-    token,
-  })
-
-  if (!isSuccessCode(response.code)) {
-    throw new Error(response.message || '获取行业列表失败')
-  }
-
+  const response = await requestJson<ApiEnvelope<Industry[]>>('/admin/industries', { method: 'GET', token })
+  if (!isSuccessCode(response.code)) throw new Error(response.message || '获取行业列表失败')
   return response.data
 }
 
-/**
- * 获取后台分类列表，用于题卡落入现有题库分类。
- */
 async function fetchCategories(token: string | null): Promise<Category[]> {
-  const response = await requestJson<ApiEnvelope<Category[]>>('/admin/categories', {
-    method: 'GET',
-    token,
-  })
-
-  if (!isSuccessCode(response.code)) {
-    throw new Error(response.message || '获取分类列表失败')
-  }
-
+  const response = await requestJson<ApiEnvelope<Category[]>>('/admin/categories', { method: 'GET', token })
+  if (!isSuccessCode(response.code)) throw new Error(response.message || '获取分类列表失败')
   return response.data
 }
 
-/**
- * 获取后台可用抓取来源列表，用于选择面经抓取渠道。
- */
 async function fetchScraperSources(token: string | null): Promise<ScraperSource[]> {
-  const response = await requestJson<ApiEnvelope<ScraperSource[]>>('/admin/scraper/sources', {
-    method: 'GET',
-    token,
-  })
-
-  if (!isSuccessCode(response.code)) {
-    throw new Error(response.message || '获取抓取来源失败')
-  }
-
+  const response = await requestJson<ApiEnvelope<ScraperSource[]>>('/admin/scraper/sources', { method: 'GET', token })
+  if (!isSuccessCode(response.code)) throw new Error(response.message || '获取抓取来源失败')
   return response.data
 }
 
-/**
- * 调用后台题目流水线生成接口，产出待确认题卡。
- */
 async function generateQuestionPipeline(
   token: string | null,
   payload: Record<string, unknown>,
@@ -258,17 +310,10 @@ async function generateQuestionPipeline(
     token,
     body: payload,
   })
-
-  if (!isSuccessCode(response.code)) {
-    throw new Error(response.message || '生成题目流水线失败')
-  }
-
+  if (!isSuccessCode(response.code)) throw new Error(response.message || '生成题目流水线失败')
   return normalizeQuestionPipelineGenerateResponse(response.data)
 }
 
-/**
- * 将当前表单转换为后台题目流水线生成请求载荷，供同步生成与异步入队复用。
- */
 function buildQuestionPipelineGeneratePayload(form: PipelineFormState): Record<string, unknown> {
   return {
     industry_code: form.industryCode,
@@ -282,9 +327,6 @@ function buildQuestionPipelineGeneratePayload(form: PipelineFormState): Record<s
   }
 }
 
-/**
- * 以 SSE 方式读取题目流水线流式事件，让逐张直生模式可以边生成边落屏。
- */
 async function streamQuestionPipeline(
   token: string | null,
   payload: Record<string, unknown>,
@@ -309,12 +351,8 @@ async function streamQuestionPipeline(
     signal,
   })
 
-  if (!response.ok) {
-    throw new Error(await buildQuestionPipelineStreamErrorMessage(response))
-  }
-  if (!response.body) {
-    throw new Error('流式生成接口未返回可读取的数据流。')
-  }
+  if (!response.ok) throw new Error(await buildQuestionPipelineStreamErrorMessage(response))
+  if (!response.body) throw new Error('流式生成接口未返回可读取的数据流。')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
@@ -322,9 +360,7 @@ async function streamQuestionPipeline(
 
   const processEventBlock = (block: string): void => {
     const normalizedBlock = block.trim()
-    if (!normalizedBlock) {
-      return
-    }
+    if (!normalizedBlock) return
 
     let eventName = ''
     const dataLines: string[] = []
@@ -335,10 +371,7 @@ async function streamQuestionPipeline(
         dataLines.push(line.slice('data:'.length).trim())
       }
     }
-
-    if (dataLines.length === 0) {
-      return
-    }
+    if (dataLines.length === 0) return
 
     const rawPayload = JSON.parse(dataLines.join('\n')) as RawQuestionPipelineStreamEvent
     const effectiveEvent = typeof rawPayload.event === 'string' && rawPayload.event.trim()
@@ -356,9 +389,7 @@ async function streamQuestionPipeline(
 
     switch (effectiveEvent) {
       case 'status':
-        if (message) {
-          callbacks.onStatus(message)
-        }
+        if (message) callbacks.onStatus(message)
         return
       case 'warning':
         if (message) {
@@ -382,9 +413,7 @@ async function streamQuestionPipeline(
         }
         return
       case 'error':
-        if (message) {
-          callbacks.onError(message)
-        }
+        if (message) callbacks.onError(message)
         return
       case 'card':
         if (rawPayload.card && typeof rawPayload.card === 'object') {
@@ -399,9 +428,7 @@ async function streamQuestionPipeline(
         )
         return
       default:
-        if (message) {
-          callbacks.onStatus(message)
-        }
+        if (message) callbacks.onStatus(message)
     }
   }
 
@@ -419,42 +446,24 @@ async function streamQuestionPipeline(
 
     if (done) {
       const remaining = decoder.decode()
-      if (remaining) {
-        buffer += remaining
-      }
-      if (buffer.trim()) {
-        processEventBlock(buffer)
-      }
+      if (remaining) buffer += remaining
+      if (buffer.trim()) processEventBlock(buffer)
       break
     }
   }
 }
 
-/**
- * 解析流式生成接口的失败响应，优先提取后端返回的明确错误消息。
- */
 async function buildQuestionPipelineStreamErrorMessage(response: Response): Promise<string> {
   const fallback = `流式生成失败，状态码：${response.status}`
   const rawText = (await response.text()).trim()
-  if (!rawText) {
-    return fallback
-  }
-
+  if (!rawText) return fallback
   try {
     const payload = JSON.parse(rawText) as StreamErrorPayload
-    if (typeof payload.message === 'string' && payload.message.trim()) {
-      return payload.message.trim()
-    }
-  } catch {
-    // 保持回退文案即可，这里无需额外处理。
-  }
-
+    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message.trim()
+  } catch { /* noop */ }
   return rawText
 }
 
-/**
- * 创建异步题目流水线生成任务，交给后台 worker 延后执行。
- */
 async function queueQuestionPipelineGenerateTask(
   token: string | null,
   payload: Record<string, unknown>,
@@ -464,17 +473,10 @@ async function queueQuestionPipelineGenerateTask(
     token,
     body: payload,
   })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '创建异步题目流水线任务失败')
-  }
-
+  if (!isSuccessCode(response.code) || !response.data) throw new Error(response.message || '创建异步题目流水线任务失败')
   return response.data
 }
 
-/**
- * 导入当前勾选后的候选题卡到正式题库。
- */
 async function importQuestionPipeline(
   token: string | null,
   payload: Record<string, unknown>,
@@ -484,17 +486,10 @@ async function importQuestionPipeline(
     token,
     body: payload,
   })
-
-  if (!isSuccessCode(response.code)) {
-    throw new Error(response.message || '导入题目流水线失败')
-  }
-
+  if (!isSuccessCode(response.code)) throw new Error(response.message || '导入题目流水线失败')
   return response.data
 }
 
-/**
- * 将当前勾选题卡入队为异步导入任务，交给后台 worker 后续消费。
- */
 async function queueQuestionPipelineImportTask(
   token: string | null,
   payload: Record<string, unknown>,
@@ -504,17 +499,10 @@ async function queueQuestionPipelineImportTask(
     token,
     body: payload,
   })
-
-  if (!isSuccessCode(response.code) || !response.data) {
-    throw new Error(response.message || '创建异步导入任务失败')
-  }
-
+  if (!isSuccessCode(response.code) || !response.data) throw new Error(response.message || '创建异步导入任务失败')
   return response.data
 }
 
-/**
- * 构造流水线表单初始值，避免页面初次渲染时出现空引用。
- */
 function buildInitialPipelineForm(): PipelineFormState {
   return {
     industryCode: '',
@@ -527,9 +515,6 @@ function buildInitialPipelineForm(): PipelineFormState {
   }
 }
 
-/**
- * 将后端题卡转换为前端可编辑状态。
- */
 function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard[] {
   return cards.map((card) => ({
     ...card,
@@ -539,18 +524,13 @@ function buildEditableCards(cards: QuestionPipelineCard[]): EditablePipelineCard
   }))
 }
 
-/**
- * 将勾选题卡整理成统一导入载荷，供同步导入与异步入队共用。
- */
 function buildSelectedImportPayload(cards: EditablePipelineCard[]) {
   return cards
     .filter((item) => item.selected)
     .map((item) => {
       const judgeConfig = item.type === 'code' ? parseQuestionPipelineJudgeConfigText(item.judgeConfigText) : undefined
       if (item.type === 'code') {
-        if (!item.solution.trim()) {
-          throw new Error(`编程题《${item.title || '未命名题卡'}》缺少代码思路解析`)
-        }
+        if (!item.solution.trim()) throw new Error(`编程题《${item.title || '未命名题卡'}》缺少代码思路解析`)
         validateQuestionPipelineCodeJudgeConfig(judgeConfig)
       }
       return {
@@ -568,22 +548,14 @@ function buildSelectedImportPayload(cards: EditablePipelineCard[]) {
     })
 }
 
-/**
- * 根据异步任务载荷恢复流水线表单，便于后台任务完成后回到当前页面继续筛题和导入。
- */
 function restoreQuestionPipelineFormFromTaskPayload(
   current: PipelineFormState,
   payloadJSON?: string,
 ): PipelineFormState {
-  if (!payloadJSON?.trim()) {
-    return current
-  }
-
+  if (!payloadJSON?.trim()) return current
   try {
     const payload = JSON.parse(payloadJSON) as Record<string, unknown>
-    const candidateCount = typeof payload.candidate_count === 'number'
-      ? String(payload.candidate_count)
-      : current.candidateCount
+    const candidateCount = typeof payload.candidate_count === 'number' ? String(payload.candidate_count) : current.candidateCount
     return {
       ...current,
       industryCode: typeof payload.industry_code === 'string' ? payload.industry_code.trim() : current.industryCode,
@@ -596,48 +568,26 @@ function restoreQuestionPipelineFormFromTaskPayload(
         ? payload.sources.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
         : current.sources,
     }
-  } catch {
-    return current
-  }
+  } catch { return current }
 }
 
-/**
- * 将异步任务详情中的结果 JSON 还原为前端统一的题目流水线结果结构。
- */
 function restoreQuestionPipelineResponseFromTask(task: ScraperTaskDetail): QuestionPipelineGenerateResponse {
-  if (!task.result_json?.trim()) {
-    throw new Error('当前任务还没有可恢复的候选题卡结果')
-  }
-
+  if (!task.result_json?.trim()) throw new Error('当前任务还没有可恢复的候选题卡结果')
   try {
     return normalizeQuestionPipelineGenerateResponse(JSON.parse(task.result_json) as RawQuestionPipelineGenerateResponse)
-  } catch {
-    throw new Error('题目流水线任务结果解析失败')
-  }
+  } catch { throw new Error('题目流水线任务结果解析失败') }
 }
 
-/**
- * 将流式到达的新题卡合并进当前列表，避免完成事件重复插入相同卡片。
- */
 function mergeEditableCards(current: EditablePipelineCard[], incoming: EditablePipelineCard[]): EditablePipelineCard[] {
   const merged = [...current]
   for (const card of incoming) {
     const index = merged.findIndex((item) => item.id === card.id)
-    if (index >= 0) {
-      merged[index] = {
-        ...merged[index],
-        ...card,
-      }
-    } else {
-      merged.push(card)
-    }
+    if (index >= 0) merged[index] = { ...merged[index], ...card }
+    else merged.push(card)
   }
   return merged
 }
 
-/**
- * 合并流式调试记录，便于页面展示每次失败调用的 trace_id 与原始输出。
- */
 function mergePipelineDebugEntries(current: PipelineDebugEntry[], incoming: PipelineDebugEntry): PipelineDebugEntry[] {
   const index = current.findIndex((item) => item.id === incoming.id)
   if (index >= 0) {
@@ -648,16 +598,10 @@ function mergePipelineDebugEntries(current: PipelineDebugEntry[], incoming: Pipe
   return [...current, incoming]
 }
 
-/**
- * 按后端最终返回顺序重建题卡列表，同时保留用户已修改过的勾选与编辑内容。
- */
 function reconcileEditableCards(current: EditablePipelineCard[], incoming: EditablePipelineCard[]): EditablePipelineCard[] {
   return incoming.map((card) => {
     const existing = current.find((item) => item.id === card.id)
-    if (!existing) {
-      return card
-    }
-
+    if (!existing) return card
     return {
       ...card,
       selected: existing.selected,
@@ -676,23 +620,11 @@ function reconcileEditableCards(current: EditablePipelineCard[], incoming: Edita
   })
 }
 
-/**
- * 将未知值安全转换为字符串数组，避免后端返回 null 时前端直接崩溃。
- */
 function normalizeStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter(Boolean)
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
 }
 
-/**
- * 为流水线卡片构造最小可编辑的编程题判题配置，避免前端把编程题退回成空白结构。
- */
 function buildDefaultPipelineJudgeConfig(): QuestionJudgeConfig {
   return {
     evaluation_mode: 'testcase',
@@ -707,32 +639,17 @@ function buildDefaultPipelineJudgeConfig(): QuestionJudgeConfig {
   }
 }
 
-/**
- * 解析后端或模型返回的 judge_config，统一收敛为前端可编辑对象。
- */
 function normalizeQuestionJudgeConfigValue(value: unknown): QuestionJudgeConfig | null {
-  if (!value) {
-    return null
-  }
-
+  if (!value) return null
   let payload = value
   if (typeof value === 'string') {
-    try {
-      payload = JSON.parse(value) as unknown
-    } catch {
-      return null
-    }
+    try { payload = JSON.parse(value) as unknown } catch { return null }
   }
-
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return null
-  }
-
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
   const record = payload as Record<string, unknown>
   const evaluationMode: QuestionEvaluationMode = record.evaluation_mode === 'testcase' ? 'testcase' : 'analysis_only'
   const defaultLanguage = typeof record.default_language === 'string' && record.default_language.trim() ? record.default_language.trim() : 'go'
   const allowedLanguages = normalizeStringList(record.allowed_languages)
-
   return {
     evaluation_mode: evaluationMode,
     default_language: defaultLanguage,
@@ -746,105 +663,46 @@ function normalizeQuestionJudgeConfigValue(value: unknown): QuestionJudgeConfig 
   }
 }
 
-/**
- * 把编程题判题配置格式化为多行 JSON，便于流水线人工复核与补录。
- */
 function formatQuestionJudgeConfigText(value?: QuestionJudgeConfig | null): string {
   return JSON.stringify(value || buildDefaultPipelineJudgeConfig(), null, 2)
 }
 
-/**
- * 解析流水线卡片中的 judge_config 文本，并在 JSON 不合法时直接阻止导入。
- */
 function parseQuestionPipelineJudgeConfigText(value: string): QuestionJudgeConfig | undefined {
   const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
+  if (!trimmed) return undefined
   let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed) as unknown
-  } catch {
-    throw new Error('编程题 judge_config 必须是合法 JSON')
-  }
-
+  try { parsed = JSON.parse(trimmed) as unknown } catch { throw new Error('编程题 judge_config 必须是合法 JSON') }
   const normalized = normalizeQuestionJudgeConfigValue(parsed)
-  if (!normalized) {
-    throw new Error('编程题 judge_config 必须是 JSON 对象')
-  }
+  if (!normalized) throw new Error('编程题 judge_config 必须是 JSON 对象')
   return normalized
 }
 
-/**
- * 校验编程题判题配置是否满足当前流水线导入要求。
- */
 function validateQuestionPipelineCodeJudgeConfig(value?: QuestionJudgeConfig): void {
-  if (!value) {
-    throw new Error('编程题缺少 judge_config')
-  }
-  if (value.evaluation_mode !== 'testcase') {
-    throw new Error('编程题 judge_config 必须使用 testcase 判题模式')
-  }
-  if ((value.public_test_cases || []).length !== 3) {
-    throw new Error('编程题必须提供 3 条公开测试用例')
-  }
-  if ((value.hidden_test_cases || []).length === 0) {
-    throw new Error('编程题必须提供隐藏测试用例')
-  }
-  if ((value.reference_solutions || []).length === 0) {
-    throw new Error('编程题必须提供代码参考答案')
-  }
+  if (!value) throw new Error('编程题缺少 judge_config')
+  if (value.evaluation_mode !== 'testcase') throw new Error('编程题 judge_config 必须使用 testcase 判题模式')
+  if ((value.public_test_cases || []).length !== 3) throw new Error('编程题必须提供 3 条公开测试用例')
+  if ((value.hidden_test_cases || []).length === 0) throw new Error('编程题必须提供隐藏测试用例')
+  if ((value.reference_solutions || []).length === 0) throw new Error('编程题必须提供代码参考答案')
 }
 
-/**
- * 规范化题型枚举，保证页面下拉框始终拿到受控值。
- */
 function normalizeQuestionType(value: unknown): QuestionType {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (normalized === 'choice' || normalized === 'single' || normalized === 'singlechoice') {
-    return 'choice'
-  }
-  if (normalized === 'multi' || normalized === 'multiple' || normalized === 'multiplechoice') {
-    return 'multi'
-  }
-  if (
-    normalized === 'code'
-    || normalized === 'coding'
-    || normalized === 'programming'
-    || normalized === 'algorithm'
-    || normalized === '编程题'
-    || normalized === '代码题'
-    || normalized === '算法题'
-  ) {
-    return 'code'
-  }
-  if (normalized === 'subjective' || normalized === 'qa' || normalized === 'essay' || normalized === '问答题' || normalized === '主观题') {
-    return 'subjective'
-  }
+  if (normalized === 'choice' || normalized === 'single' || normalized === 'singlechoice') return 'choice'
+  if (normalized === 'multi' || normalized === 'multiple' || normalized === 'multiplechoice') return 'multi'
+  if (normalized === 'code' || normalized === 'coding' || normalized === 'programming' || normalized === 'algorithm' || normalized === '编程题' || normalized === '代码题' || normalized === '算法题') return 'code'
+  if (normalized === 'subjective' || normalized === 'qa' || normalized === 'essay' || normalized === '问答题' || normalized === '主观题') return 'subjective'
   return 'subjective'
 }
 
-/**
- * 规范化难度枚举，避免接口脏数据导致页面渲染状态异常。
- */
 function normalizeQuestionDifficulty(value: unknown): QuestionDifficulty {
-  if (value === 'easy' || value === 'medium' || value === 'hard') {
-    return value
-  }
+  if (value === 'easy' || value === 'medium' || value === 'hard') return value
   return 'medium'
 }
 
-/**
- * 规范化题目流水线生成模式，避免接口返回未知值导致页面状态不一致。
- */
 function normalizeQuestionPipelineGenerationMode(value: unknown): QuestionPipelineGenerationMode {
   return 'direct_single'
 }
 
-/**
- * 将单张原始题卡转换为前端稳定可渲染的数据结构。
- */
 function normalizeQuestionPipelineCard(card: RawQuestionPipelineCard, index: number): QuestionPipelineCard {
   const title = typeof card.title === 'string' ? card.title.trim() : ''
   const content = typeof card.content === 'string' ? card.content.trim() : ''
@@ -852,7 +710,6 @@ function normalizeQuestionPipelineCard(card: RawQuestionPipelineCard, index: num
   const solution = typeof card.solution === 'string' ? card.solution.trim() : ''
   const type = normalizeQuestionType(card.type)
   const judgeConfig = normalizeQuestionJudgeConfigValue(card.judge_config)
-
   return {
     id: typeof card.id === 'string' && card.id.trim() ? card.id.trim() : `pipeline-card-${index + 1}`,
     title,
@@ -873,28 +730,15 @@ function normalizeQuestionPipelineCard(card: RawQuestionPipelineCard, index: num
   }
 }
 
-/**
- * 规范化生成接口响应，确保页面只消费结构稳定的候选题卡数据。
- */
 function normalizeQuestionPipelineGenerateResponse(
   payload: RawQuestionPipelineGenerateResponse | null | undefined,
 ): QuestionPipelineGenerateResponse {
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('生成接口已返回成功，但未携带候选题卡数据。')
-  }
-
+  if (!payload || typeof payload !== 'object') throw new Error('生成接口已返回成功，但未携带候选题卡数据。')
   const cards = Array.isArray(payload.cards)
-    ? payload.cards
-        .map((item, index) => normalizeQuestionPipelineCard((item || {}) as RawQuestionPipelineCard, index))
-        .filter((item) => item.title && item.content && item.answer)
+    ? payload.cards.map((item, index) => normalizeQuestionPipelineCard((item || {}) as RawQuestionPipelineCard, index)).filter((item) => item.title && item.content && item.answer)
     : []
-
-  if (cards.length === 0) {
-    throw new Error('生成接口已返回成功，但没有可展示的候选题卡。')
-  }
-
+  if (cards.length === 0) throw new Error('生成接口已返回成功，但没有可展示的候选题卡。')
   const rawStats = payload.stats && typeof payload.stats === 'object' ? (payload.stats as Record<string, unknown>) : {}
-
   return {
     industry_code: typeof payload.industry_code === 'string' ? payload.industry_code.trim() : '',
     requirement: typeof payload.requirement === 'string' ? payload.requirement.trim() : '',
@@ -912,85 +756,52 @@ function normalizeQuestionPipelineGenerateResponse(
   }
 }
 
-/**
- * 将后端失败阶段映射为更易读的中文标签，便于页面快速定位问题发生在哪一层。
- */
 function formatQuestionPipelineFailureStage(stage: string): string {
   switch (stage.trim()) {
-    case 'parse':
-      return '结构解析失败'
-    case 'supplement':
-      return '编程题补齐失败'
-    case 'constraint':
-      return '约束校验失败'
-    case 'slot_exhausted':
-      return '重试耗尽'
-    case 'model_call':
-      return '模型调用失败'
-    case 'provider':
-      return 'Provider 配置异常'
-    case 'normalize':
-      return '题卡归一化失败'
-    default:
-      return stage.trim() || '未标注阶段'
+    case 'parse': return '结构解析失败'
+    case 'supplement': return '编程题补齐失败'
+    case 'constraint': return '约束校验失败'
+    case 'slot_exhausted': return '重试耗尽'
+    case 'model_call': return '模型调用失败'
+    case 'provider': return 'Provider 配置异常'
+    case 'normalize': return '题卡归一化失败'
+    default: return stage.trim() || '未标注阶段'
   }
 }
 
-/**
- * 为题目流水线生成模式返回简洁中文文案，方便页面提示当前链路。
- */
-function questionPipelineGenerationModeLabel(mode: QuestionPipelineGenerationMode): string {
+function questionPipelineGenerationModeLabel(_mode: QuestionPipelineGenerationMode): string {
   return '逐张直生'
 }
 
-/**
- * 将标签输入框转换为标签数组，统一去空与去重。
- */
 function parseTagsInput(input: string): string[] {
   const values = input.split(/,|，/).map((item) => item.trim()).filter(Boolean)
   return Array.from(new Set(values))
 }
 
-/**
- * 为题卡来源类型生成简短中文文案。
- */
 function sourceTypeLabel(sourceType: string): string {
   return sourceType === 'generated' ? 'AI 改写' : '抓取清洗'
 }
 
-/**
- * 为当前行业过滤可选分类，避免导入时再次打到跨行业外键错误。
- */
 function filterCategoriesByIndustry(
   categories: Category[],
   industries: Industry[],
   industryCode: string,
 ): Category[] {
   const industry = industries.find((item) => item.code === industryCode)
-  if (!industry) {
-    return []
-  }
-
-  return categories
-    .filter((item) => item.industry_id === industry.id)
-    .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+  if (!industry) return []
+  return categories.filter((item) => item.industry_id === industry.id).sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
 }
 
-/**
- * 生成页面中的表单校验消息，控制按钮可用性。
- */
 function buildPipelineFormError(form: PipelineFormState): string {
-  if (!form.industryCode) {
-    return '请选择题库目标行业。'
-  }
-  if (!form.requirement.trim()) {
-    return '请填写岗位要求、题目方向或清洗要求。'
-  }
-  if (!form.includeGenerated && !form.includeScraped) {
-    return '抓取与 AI 生成至少要启用一种。'
-  }
+  if (!form.industryCode) return '请选择题库目标行业。'
+  if (!form.requirement.trim()) return '请填写岗位要求、题目方向或清洗要求。'
+  if (!form.includeGenerated && !form.includeScraped) return '抓取与 AI 生成至少要启用一种。'
   return ''
 }
+
+/* ------------------------------------------------------------------ */
+/*  题目流水线页面主体                                                  */
+/* ------------------------------------------------------------------ */
 
 export function QuestionPipelinePage() {
   const token = useAdminAuthStore((state) => state.accessToken)
@@ -1003,9 +814,10 @@ export function QuestionPipelinePage() {
   const [debugEntries, setDebugEntries] = useState<PipelineDebugEntry[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
   const [stats, setStats] = useState<QuestionPipelineStats | null>(null)
-  const [message, setMessage] = useState('填写岗位要求后即可生成候选题卡。')
+  const [statusMessage, setStatusMessage] = useState('填写岗位要求后即可生成候选题卡。')
   const [isStreaming, setIsStreaming] = useState(false)
   const [asyncGenerateTaskId, setAsyncGenerateTaskId] = useState('')
+  const [expandedDebugId, setExpandedDebugId] = useState<string | null>(null)
 
   const industriesQuery = useQuery({
     queryKey: ['admin-industries'],
@@ -1023,31 +835,16 @@ export function QuestionPipelinePage() {
   })
 
   useEffect(() => {
-    if (!sourcesQuery.data || form.sources.length > 0) {
-      return
-    }
-
+    if (!sourcesQuery.data || form.sources.length > 0) return
     const activeSources = sourcesQuery.data.filter((item) => item.is_active).map((item) => item.name)
-    setForm((current) => ({
-      ...current,
-      sources: activeSources,
-    }))
+    setForm((current) => ({ ...current, sources: activeSources }))
   }, [form.sources.length, sourcesQuery.data])
 
   useEffect(() => {
-    if (!industriesQuery.data || form.industryCode) {
-      return
-    }
-
+    if (!industriesQuery.data || form.industryCode) return
     const firstActiveIndustry = industriesQuery.data.find((item) => item.is_active)
-    if (!firstActiveIndustry) {
-      return
-    }
-
-    setForm((current) => ({
-      ...current,
-      industryCode: firstActiveIndustry.code,
-    }))
+    if (!firstActiveIndustry) return
+    setForm((current) => ({ ...current, industryCode: firstActiveIndustry.code }))
   }, [form.industryCode, industriesQuery.data])
 
   useEffect(() => () => {
@@ -1071,10 +868,10 @@ export function QuestionPipelinePage() {
       setDebugEntries([])
       setWarnings(result.warnings || [])
       setStats(result.stats)
-      setMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+      setStatusMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '生成题目流水线失败'))
+      setStatusMessage(extractErrorMessage(error, '生成题目流水线失败'))
     },
   })
 
@@ -1082,14 +879,14 @@ export function QuestionPipelinePage() {
     mutationFn: async () => queueQuestionPipelineGenerateTask(token, buildQuestionPipelineGeneratePayload(form)),
     onSuccess: async (task) => {
       setAsyncGenerateTaskId(String(task?.id ?? ''))
-      setMessage(`已创建异步题目流水线任务 #${task?.id ?? ''}，可稍后按任务 ID 恢复结果或前往运行任务页查看状态。`)
+      setStatusMessage(`已创建异步题目流水线任务 #${task?.id ?? ''}，可稍后按任务 ID 恢复结果或前往运行任务页查看状态。`)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
       ])
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '创建异步题目流水线任务失败'))
+      setStatusMessage(extractErrorMessage(error, '创建异步题目流水线任务失败'))
     },
   })
 
@@ -1101,14 +898,12 @@ export function QuestionPipelinePage() {
       }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-questions'] })
-      setMessage(`已导入 ${result.success_count ?? 0} 道题，失败 ${result.fail_count ?? 0} 道。`)
-      if ((result.success_count ?? 0) > 0) {
-        setCards((current) => current.filter((item) => !item.selected))
-      }
+      setStatusMessage(`已导入 ${result.success_count ?? 0} 道题，失败 ${result.fail_count ?? 0} 道。`)
+      if ((result.success_count ?? 0) > 0) setCards((current) => current.filter((item) => !item.selected))
       setWarnings(result.errors || [])
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '导入题目流水线失败'))
+      setStatusMessage(extractErrorMessage(error, '导入题目流水线失败'))
     },
   })
 
@@ -1120,68 +915,55 @@ export function QuestionPipelinePage() {
         questions: buildSelectedImportPayload(cards),
       }),
     onSuccess: async (task) => {
-      setMessage(`已创建异步导入任务 #${task?.id ?? ''}，可前往运行任务页查看执行状态。`)
+      setStatusMessage(`已创建异步导入任务 #${task?.id ?? ''}，可前往运行任务页查看执行状态。`)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['admin-runtime-scraper-tasks-overview'] }),
       ])
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '创建异步导入任务失败'))
+      setStatusMessage(extractErrorMessage(error, '创建异步导入任务失败'))
     },
   })
 
   const loadGenerateTaskResultMutation = useMutation({
     mutationFn: async () => {
       const taskID = Number(asyncGenerateTaskId)
-      if (!Number.isFinite(taskID) || taskID <= 0) {
-        throw new Error('请输入有效的异步任务 ID')
-      }
+      if (!Number.isFinite(taskID) || taskID <= 0) throw new Error('请输入有效的异步任务 ID')
       return fetchScraperTaskDetail(token, taskID)
     },
     onSuccess: (task) => {
       if ((task.task_type || '') !== 'question_pipeline_build') {
-        setMessage(`任务 #${task.id} 不是题目流水线生成任务，请确认任务 ID。`)
+        setStatusMessage(`任务 #${task.id} 不是题目流水线生成任务，请确认任务 ID。`)
         return
       }
-
       setForm((current) => restoreQuestionPipelineFormFromTaskPayload(current, task.payload_json))
       if (task.status === 'pending' || task.status === 'running') {
-        setMessage(`任务 #${task.id} 当前状态为 ${task.status}，请稍后重新读取结果。`)
+        setStatusMessage(`任务 #${task.id} 当前状态为 ${task.status}，请稍后重新读取结果。`)
         return
       }
       if (task.status === 'failed') {
         setWarnings(task.error_msg ? [task.error_msg] : [])
-        setMessage(`任务 #${task.id} 执行失败，可前往运行任务页查看详情后重试。`)
+        setStatusMessage(`任务 #${task.id} 执行失败，可前往运行任务页查看详情后重试。`)
         return
       }
-
       const result = restoreQuestionPipelineResponseFromTask(task)
       setCards(buildEditableCards(result.cards))
       setFreshCardIds([])
       setDebugEntries([])
       setWarnings(result.warnings || [])
       setStats(result.stats)
-      setMessage(`已从异步任务 #${task.id} 恢复 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+      setStatusMessage(`已从异步任务 #${task.id} 恢复 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '读取异步题目流水线结果失败'))
+      setStatusMessage(extractErrorMessage(error, '读取异步题目流水线结果失败'))
     },
   })
 
-  /**
-   * 为刚到达的流式题卡添加短暂高亮，强化逐张落屏的视觉反馈。
-   */
   function markFreshCard(cardId: string): void {
-    if (!cardId) {
-      return
-    }
-
+    if (!cardId) return
     const currentTimer = freshCardTimerRef.current[cardId]
-    if (currentTimer) {
-      window.clearTimeout(currentTimer)
-    }
-
+    if (currentTimer) window.clearTimeout(currentTimer)
     setFreshCardIds((current) => (current.includes(cardId) ? current : [...current, cardId]))
     freshCardTimerRef.current[cardId] = window.setTimeout(() => {
       setFreshCardIds((current) => current.filter((item) => item !== cardId))
@@ -1189,18 +971,12 @@ export function QuestionPipelinePage() {
     }, 1600)
   }
 
-  /**
-   * 取消当前流式生成请求，避免继续占用模型调用与页面状态。
-   */
   function handleCancelStream(): void {
     streamAbortRef.current?.abort()
     setIsStreaming(false)
-    setMessage('已取消本次流式生成。')
+    setStatusMessage('已取消本次流式生成。')
   }
 
-  /**
-   * 提交流水线生成表单，请求后台返回候选题卡。
-   */
   function handleGenerate(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     if (form.includeGenerated) {
@@ -1213,113 +989,75 @@ export function QuestionPipelinePage() {
       setFreshCardIds([])
       setDebugEntries([])
       setWarnings([])
-      setStats({
-        searched_count: 0,
-        fetched_count: 0,
-        scraped_count: 0,
-        generated_count: 0,
-        candidate_count: 0,
-        selected_sources: 0,
-      })
-      setMessage('正在建立流式生成连接。')
+      setStats({ searched_count: 0, fetched_count: 0, scraped_count: 0, generated_count: 0, candidate_count: 0, selected_sources: 0 })
+      setStatusMessage('正在建立流式生成连接。')
       setIsStreaming(true)
 
-      void streamQuestionPipeline(
-        token,
-        buildQuestionPipelineGeneratePayload(form),
-        controller.signal,
-        {
-          onStatus: (nextMessage) => {
-            setMessage(nextMessage)
-          },
-          onWarning: (debugEntry, warning) => {
-            setWarnings((current) => (current.includes(warning) ? current : [...current, warning]))
-            if (debugEntry) {
-              setDebugEntries((current) => mergePipelineDebugEntries(current, debugEntry))
-            }
-          },
-          onError: (errorMessage) => {
-            setMessage(errorMessage)
-          },
-          onCard: (card) => {
-            flushSync(() => {
-              setCards((current) => mergeEditableCards(current, buildEditableCards([card])))
-              setStats((current) => ({
-                searched_count: current?.searched_count || 0,
-                fetched_count: current?.fetched_count || 0,
-                scraped_count: current?.scraped_count || 0,
-                generated_count: (current?.generated_count || 0) + 1,
-                candidate_count: current?.candidate_count || 0,
-                selected_sources: current?.selected_sources || 0,
-              }))
-            })
-            markFreshCard(card.id)
-          },
-          onComplete: (result) => {
-            setCards((current) => reconcileEditableCards(current, buildEditableCards(result.cards)))
-            setWarnings((current) => Array.from(new Set([...current, ...(result.warnings || [])])))
-            setStats(result.stats)
-            setMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
-          },
+      void streamQuestionPipeline(token, buildQuestionPipelineGeneratePayload(form), controller.signal, {
+        onStatus: (nextMessage) => { setStatusMessage(nextMessage) },
+        onWarning: (debugEntry, warning) => {
+          setWarnings((current) => (current.includes(warning) ? current : [...current, warning]))
+          if (debugEntry) setDebugEntries((current) => mergePipelineDebugEntries(current, debugEntry))
         },
-      )
+        onError: (errorMessage) => { setStatusMessage(errorMessage) },
+        onCard: (card) => {
+          flushSync(() => {
+            setCards((current) => mergeEditableCards(current, buildEditableCards([card])))
+            setStats((current) => ({
+              searched_count: current?.searched_count || 0,
+              fetched_count: current?.fetched_count || 0,
+              scraped_count: current?.scraped_count || 0,
+              generated_count: (current?.generated_count || 0) + 1,
+              candidate_count: current?.candidate_count || 0,
+              selected_sources: current?.selected_sources || 0,
+            }))
+          })
+          markFreshCard(card.id)
+        },
+        onComplete: (result) => {
+          setCards((current) => reconcileEditableCards(current, buildEditableCards(result.cards)))
+          setWarnings((current) => Array.from(new Set([...current, ...(result.warnings || [])])))
+          setStats(result.stats)
+          setStatusMessage(`已通过${questionPipelineGenerationModeLabel(result.generation_mode)}生成 ${result.cards.length} 张候选题卡，请确认后再导入题库。`)
+        },
+      })
         .catch((error) => {
-          if (controller.signal.aborted) {
-            return
-          }
-          setMessage(extractErrorMessage(error, '流式生成题目流水线失败'))
+          if (controller.signal.aborted) return
+          setStatusMessage(extractErrorMessage(error, '流式生成题目流水线失败'))
         })
         .finally(() => {
-          if (streamAbortRef.current === controller) {
-            streamAbortRef.current = null
-          }
+          if (streamAbortRef.current === controller) streamAbortRef.current = null
           setIsStreaming(false)
         })
       return
     }
-
-    setMessage('正在生成候选题卡。')
+    setStatusMessage('正在生成候选题卡。')
     setDebugEntries([])
     setWarnings([])
     generateMutation.mutate()
   }
 
-  /**
-   * 将当前流水线请求入队为异步生成任务，适合耗时较长或希望脱离页面等待的场景。
-   */
   function handleQueueGenerateTask(): void {
-    setMessage('正在创建异步题目流水线任务。')
+    setStatusMessage('正在创建异步题目流水线任务。')
     queueGenerateTaskMutation.mutate()
   }
 
-  /**
-   * 按任务 ID 重新读取异步生成结果，便于任务完成后恢复候选题卡继续人工确认。
-   */
   function handleLoadGenerateTaskResult(): void {
-    setMessage('正在读取异步题目流水线结果。')
+    setStatusMessage('正在读取异步题目流水线结果。')
     setWarnings([])
     loadGenerateTaskResultMutation.mutate()
   }
 
-  /**
-   * 提交当前勾选题卡，将其批量写入正式题库。
-   */
   function handleImportSelected(): void {
-    setMessage('正在导入已选题卡。')
+    setStatusMessage('正在导入已选题卡。')
     importMutation.mutate()
   }
 
-  /**
-   * 将当前勾选题卡创建为异步导入任务，适合批量导入或交给独立 worker 后台处理。
-   */
   function handleQueueImportSelected(): void {
-    setMessage('正在创建异步导入任务。')
+    setStatusMessage('正在创建异步导入任务。')
     queueImportTaskMutation.mutate()
   }
 
-  /**
-   * 切换抓取来源选择状态，控制抓取素材范围。
-   */
   function toggleSource(sourceName: string): void {
     setForm((current) => ({
       ...current,
@@ -1329,479 +1067,906 @@ export function QuestionPipelinePage() {
     }))
   }
 
-  /**
-   * 批量切换题卡勾选状态，便于一次性导入或排除。
-   */
   function setAllCardsSelected(nextSelected: boolean): void {
-    setCards((current) =>
-      current.map((item) => ({
-        ...item,
-        selected: nextSelected,
-      })),
-    )
+    setCards((current) => current.map((item) => ({ ...item, selected: nextSelected })))
   }
 
-  /**
-   * 更新单张题卡的可编辑字段，保持导入前的最后确认态。
-   */
   function updateCardField<K extends keyof EditablePipelineCard>(
     cardId: string,
     field: K,
     value: EditablePipelineCard[K],
   ): void {
-    setCards((current) =>
-      current.map((item) => (item.id === cardId ? { ...item, [field]: value } : item)),
-    )
+    setCards((current) => current.map((item) => (item.id === cardId ? { ...item, [field]: value } : item)))
   }
 
-  /**
-   * 切换题卡题型时，为编程题自动补一个最小 judge_config 模板，避免导入时字段完全缺失。
-   */
   function handleCardTypeChange(cardId: string, nextType: QuestionType): void {
-    setCards((current) =>
-      current.map((item) => {
-        if (item.id !== cardId) {
-          return item
-        }
-
-        if (nextType !== 'code') {
-          return {
-            ...item,
-            type: nextType,
-          }
-        }
-
-        let nextJudgeConfig = item.judge_config || buildDefaultPipelineJudgeConfig()
-        try {
-          nextJudgeConfig = parseQuestionPipelineJudgeConfigText(item.judgeConfigText || '') || nextJudgeConfig
-        } catch {
-          nextJudgeConfig = nextJudgeConfig || buildDefaultPipelineJudgeConfig()
-        }
-        return {
-          ...item,
-          type: nextType,
-          judge_config: nextJudgeConfig,
-          judgeConfigText: formatQuestionJudgeConfigText(nextJudgeConfig),
-        }
-      }),
-    )
+    setCards((current) => current.map((item) => {
+      if (item.id !== cardId) return item
+      if (nextType !== 'code') return { ...item, type: nextType }
+      let nextJudgeConfig = item.judge_config || buildDefaultPipelineJudgeConfig()
+      try {
+        nextJudgeConfig = parseQuestionPipelineJudgeConfigText(item.judgeConfigText || '') || nextJudgeConfig
+      } catch { nextJudgeConfig = nextJudgeConfig || buildDefaultPipelineJudgeConfig() }
+      return {
+        ...item,
+        type: nextType,
+        judge_config: nextJudgeConfig,
+        judgeConfigText: formatQuestionJudgeConfigText(nextJudgeConfig),
+      }
+    }))
   }
+
+  const mutationPending =
+    generateMutation.isPending ||
+    isStreaming ||
+    queueGenerateTaskMutation.isPending ||
+    importMutation.isPending ||
+    queueImportTaskMutation.isPending ||
+    loadGenerateTaskResultMutation.isPending
 
   if (industriesQuery.isLoading || categoriesQuery.isLoading || sourcesQuery.isLoading) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">题目流水线</span>
-        <h2>题目流水线</h2>
-        <p className="admin-copy">正在加载行业、分类与抓取来源配置。</p>
-      </section>
+      <ConfigProvider theme={THEME}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+          <Spin size="large" tip="正在加载行业、分类与抓取来源配置..." />
+        </div>
+      </ConfigProvider>
     )
   }
 
   if (industriesQuery.isError || categoriesQuery.isError || sourcesQuery.isError) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">题目流水线</span>
-        <h2>题目流水线</h2>
-        <p className="admin-copy">
-          {extractErrorMessage(
-            industriesQuery.error || categoriesQuery.error || sourcesQuery.error,
-            '读取题目流水线配置失败',
-          )}
-        </p>
-      </section>
+      <ConfigProvider theme={THEME}>
+        <div style={{ padding: 40, maxWidth: 800, margin: '0 auto' }}>
+          <Alert
+            message="读取题目流水线配置失败"
+            description={extractErrorMessage(industriesQuery.error || categoriesQuery.error || sourcesQuery.error, '请稍后重试')}
+            type="error"
+            showIcon
+            style={{ borderRadius: 20, padding: 24 }}
+          />
+        </div>
+      </ConfigProvider>
     )
   }
 
   return (
-    <section className={`admin-panel admin-question-pipeline-page ${isStreaming ? 'admin-question-pipeline-page--streaming' : ''}`}>
-      <div className="admin-question-pipeline-page__hero">
-        <div>
-          <span className="admin-tag">题目流水线</span>
-          <h2>大模型题库流水线</h2>
-          <p className="admin-copy">
-            输入岗位要求和智能体命令后，系统会统一采用逐张直生模式生成候选题卡，并实时展示单卡结果、失败原因与原始调试输出。
-          </p>
-        </div>
-        <div className="admin-question-pipeline-page__summary">
-          <strong>{cards.length}</strong>
-          <span>候选题卡</span>
-          <small>{isStreaming ? '逐张落屏中' : `已勾选 ${selectedCount} 张`}</small>
-        </div>
-      </div>
-
-      <form className="admin-question-pipeline-composer" onSubmit={handleGenerate}>
-        <div className="admin-question-pipeline-composer__grid">
-          <label className="admin-field">
-            <span>目标行业</span>
-            <select
-              value={form.industryCode}
-              onChange={(event) => setForm((current) => ({ ...current, industryCode: event.target.value }))}
-            >
-              <option value="">请选择行业</option>
-              {(industriesQuery.data || []).map((industry) => (
-                <option key={industry.code} value={industry.code}>
-                  {industry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="admin-field">
-            <span>候选数量</span>
-            <select
-              value={form.candidateCount}
-              onChange={(event) => setForm((current) => ({ ...current, candidateCount: event.target.value }))}
-            >
-              <option value="6">6 张</option>
-              <option value="8">8 张</option>
-              <option value="12">12 张</option>
-              <option value="16">16 张</option>
-            </select>
-          </label>
-
-        </div>
-
-        <label className="admin-field">
-          <span>岗位要求 / 清洗目标</span>
-          <textarea
-            className="admin-question-pipeline-composer__requirement"
-            value={form.requirement}
-            onChange={(event) => setForm((current) => ({ ...current, requirement: event.target.value }))}
-            placeholder="例如：生成 Go 后端高级工程师面试题，重点覆盖并发、MySQL、Redis、微服务治理，结合真实项目经验，输出中高级难度。"
-          />
-        </label>
-
-        <label className="admin-field">
-          <span>智能体命令 / 自定义提示词</span>
-          <textarea
-            className="admin-question-pipeline-composer__prompt"
-            value={form.agentPrompt}
-            onChange={(event) => setForm((current) => ({ ...current, agentPrompt: event.target.value }))}
-            placeholder="例如：参考 Go 语言核心特性生成 8 道互不重复的问答题，聚焦语言理解，不要项目题，不要八股套话。"
-          />
-        </label>
-
-        <div className="admin-question-pipeline-composer__strategy">
-          <label className="admin-question-pipeline-composer__switch">
-            <input
-              type="checkbox"
-              checked={form.includeScraped}
-              onChange={(event) => setForm((current) => ({ ...current, includeScraped: event.target.checked }))}
-            />
-            <span>抓取相关面经素材</span>
-          </label>
-
-          <label className="admin-question-pipeline-composer__switch">
-            <input
-              type="checkbox"
-              checked={form.includeGenerated}
-              onChange={(event) => setForm((current) => ({ ...current, includeGenerated: event.target.checked }))}
-            />
-            <span>调用大模型生成 / 改写</span>
-          </label>
-        </div>
-
-        <div className="admin-question-pipeline-composer__sources">
-          {(sourcesQuery.data || []).map((source) => (
-            <label key={source.name} className="admin-question-pipeline-composer__source-chip">
-              <input
-                type="checkbox"
-                checked={form.sources.includes(source.name)}
-                onChange={() => toggleSource(source.name)}
-                disabled={!form.includeScraped}
-              />
-              <span>{source.label}</span>
-            </label>
-          ))}
-        </div>
-
-        <div className={`admin-question-pipeline-composer__status ${formError ? 'is-error' : 'is-valid'}`}>
-          <div>
-            <strong>流水线状态</strong>
-            <span>{formError || message}</span>
-          </div>
-          <div className="admin-question-pipeline-composer__status-actions">
-            {isStreaming ? (
-              <span className="admin-question-pipeline-progress">
-                <i className="admin-question-pipeline-progress__dot" />
-                正在逐张生成
-              </span>
-            ) : null}
-            <button
-              className="admin-link"
-              type="button"
-              onClick={handleCancelStream}
-              disabled={!isStreaming}
-            >
-              停止生成
-            </button>
-            <button
-              className="admin-link"
-              type="submit"
-              disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
-            >
-              {generateMutation.isPending || isStreaming ? '生成中...' : '生成候选题卡'}
-            </button>
-            <button
-              className="admin-link"
-              type="button"
-              onClick={handleQueueGenerateTask}
-              disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
-            >
-              {queueGenerateTaskMutation.isPending ? '入队中...' : '异步生成候选题卡'}
-            </button>
-          </div>
-        </div>
-
-        <div className="admin-question-pipeline-composer__task-restore">
-          <label className="admin-field">
-            <span>异步任务 ID</span>
-            <input
-              value={asyncGenerateTaskId}
-              onChange={(event) => setAsyncGenerateTaskId(event.target.value.replace(/[^\d]/g, ''))}
-              placeholder="输入题目流水线任务 ID"
-            />
-          </label>
-          <button
-            className="admin-link"
-            type="button"
-            onClick={handleLoadGenerateTaskResult}
-            disabled={!asyncGenerateTaskId || loadGenerateTaskResultMutation.isPending}
+    <ConfigProvider theme={THEME}>
+      <div
+        style={{
+          minHeight: '100vh',
+          background: '#f0f2f5',
+          padding: '32px 24px 64px',
+          fontFamily: THEME.token.fontFamily as string,
+        }}
+      >
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          {/* ===== 毛玻璃标题栏 ===== */}
+          <div
+            style={{
+              ...glassCard,
+              padding: '28px 32px',
+              marginBottom: 28,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 16,
+            }}
           >
-            {loadGenerateTaskResultMutation.isPending ? '读取中...' : '恢复异步结果'}
-          </button>
-        </div>
-      </form>
-
-      {stats ? (
-        <div className="admin-question-pipeline-stats">
-          <div className="admin-question-pipeline-stats__item">
-            <strong>{stats.searched_count}</strong>
-            <span>搜索结果</span>
-          </div>
-          <div className="admin-question-pipeline-stats__item">
-            <strong>{stats.fetched_count}</strong>
-            <span>已抓取素材</span>
-          </div>
-          <div className="admin-question-pipeline-stats__item">
-            <strong>{stats.generated_count}</strong>
-            <span>AI 产出题卡</span>
-          </div>
-          <div className="admin-question-pipeline-stats__item">
-            <strong>{stats.candidate_count}</strong>
-            <span>最终候选</span>
-          </div>
-        </div>
-      ) : null}
-
-      {warnings.length > 0 ? (
-        <div className="admin-question-pipeline-warnings">
-          {warnings.map((warning) => (
-            <p key={warning}>{warning}</p>
-          ))}
-        </div>
-      ) : null}
-
-      {debugEntries.length > 0 ? (
-        <div className="admin-question-pipeline-debug">
-          <div className="admin-question-pipeline-debug__head">
-            <strong>原始输出调试</strong>
-            <span>共记录 {debugEntries.length} 次失败调用，可直接查看模型原始输出。</span>
-          </div>
-          {debugEntries.map((entry) => (
-            <details key={entry.id} className="admin-question-pipeline-debug__item">
-              <summary>
-                {entry.slotIndex > 0 ? `第 ${entry.slotIndex} 张` : '未定位卡位'}
-                {entry.retryIndex > 0 ? ` · 第 ${entry.retryIndex} 次尝试` : ''}
-                {entry.failureStage ? ` · ${formatQuestionPipelineFailureStage(entry.failureStage)}` : ''}
-                {entry.traceId ? ` · trace_id: ${entry.traceId}` : ''}
-              </summary>
-              <p>{entry.message}</p>
-              {entry.repairAttempted || entry.supplementAttempted ? (
-                <p>
-                  {entry.repairAttempted ? '已触发 JSON 修复' : '未触发 JSON 修复'}
-                  {' · '}
-                  {entry.supplementAttempted ? '已触发编程题补齐' : '未触发编程题补齐'}
-                </p>
-              ) : null}
-              {entry.candidateExcerpt ? <pre>{entry.candidateExcerpt}</pre> : null}
-              {entry.traceId ? <p>你也可以去 AI 调用日志页按 trace_id 检索这次调用。</p> : null}
-              <pre>{entry.rawOutput || '当前事件未携带原始输出。'}</pre>
-            </details>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="admin-question-pipeline-results__toolbar">
-        <div className="admin-question-pipeline-results__selection">
-          <button className="admin-link" type="button" onClick={() => setAllCardsSelected(true)} disabled={cards.length === 0}>
-            全选
-          </button>
-          <button className="admin-link" type="button" onClick={() => setAllCardsSelected(false)} disabled={cards.length === 0}>
-            全不选
-          </button>
-        </div>
-        <button
-          className="admin-link"
-          type="button"
-          onClick={handleImportSelected}
-          disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
-        >
-          {importMutation.isPending ? '导入中...' : `导入已选 ${selectedCount} 张`}
-        </button>
-        <button
-          className="admin-link"
-          type="button"
-          onClick={handleQueueImportSelected}
-          disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
-        >
-          {queueImportTaskMutation.isPending ? '入队中...' : `异步入队 ${selectedCount} 张`}
-        </button>
-      </div>
-
-      {cards.length === 0 ? (
-        <div className="admin-question-pipeline-empty">
-          <strong>还没有候选题卡</strong>
-          <p>先填写岗位要求并执行一次流水线，结果会以卡片形式展示在这里。</p>
-        </div>
-      ) : (
-        <div className="admin-question-pipeline-results">
-          {cards.map((card) => (
-            <article
-              key={card.id}
-              className={`admin-question-pipeline-card ${card.selected ? 'admin-question-pipeline-card--active' : ''} ${freshCardIds.includes(card.id) ? 'admin-question-pipeline-card--fresh' : ''}`}
-            >
-              <div className="admin-question-pipeline-card__head">
-                <label className="admin-question-pipeline-card__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={card.selected}
-                    onChange={(event) => updateCardField(card.id, 'selected', event.target.checked)}
-                  />
-                  <span>加入题库</span>
-                </label>
-                <div className="admin-question-pipeline-card__badges">
-                  <span>{sourceTypeLabel(card.source_type)}</span>
-                  <span>{Math.round(card.confidence * 100)}% 置信度</span>
+            <Space direction="vertical" size={8} style={{ flex: 1, minWidth: 280 }}>
+              <Space align="center" size={12}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 20,
+                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
+                  }}
+                >
+                  <ThunderboltOutlined />
                 </div>
+                <div>
+                  <Title level={4} style={{ margin: 0, fontWeight: 700, letterSpacing: '-0.02em' }}>
+                    题目流水线
+                    {cards.length > 0 && (
+                      <Badge
+                        count={cards.length}
+                        style={{ backgroundColor: '#3b82f6', marginLeft: 10, boxShadow: '0 2px 6px rgba(59, 130, 246, 0.35)' }}
+                      />
+                    )}
+                  </Title>
+                </div>
+              </Space>
+              <Paragraph type="secondary" style={{ margin: 0, maxWidth: 640, fontSize: 14, lineHeight: 1.6 }}>
+                输入岗位要求和智能体命令后，系统统一采用逐张直生模式生成候选题卡，实时展示单卡结果、失败原因与原始调试输出。
+              </Paragraph>
+            </Space>
+
+            <div
+              style={{
+                padding: '16px 22px',
+                borderRadius: 18,
+                background: isStreaming
+                  ? 'linear-gradient(135deg, #fef3c7, #fde68a)'
+                  : 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
+                color: isStreaming ? '#92400e' : '#0f172a',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                textAlign: 'center',
+                minWidth: 130,
+                transition: 'all 0.4s ease',
+              }}
+            >
+              <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.03em' }}>
+                {cards.length}
               </div>
+              <Text style={{ fontSize: 13, fontWeight: 500, opacity: 0.8 }}>
+                候选题卡
+              </Text>
+              <Text style={{ fontSize: 12, opacity: 0.65 }}>
+                {isStreaming ? '逐张落屏中...' : `已勾选 ${selectedCount} 张`}
+              </Text>
+            </div>
+          </div>
 
-              <div className="admin-question-pipeline-card__meta">
-                <span>{card.source_label || '未标注来源'}</span>
-                <span>{QUESTION_TYPE_OPTIONS.find((item) => item.value === card.type)?.label || card.type}</span>
-                <span>{QUESTION_DIFFICULTY_OPTIONS.find((item) => item.value === card.difficulty)?.label || card.difficulty}</span>
-              </div>
-
-              {card.source_title ? <p className="admin-question-pipeline-card__source-title">素材：{card.source_title}</p> : null}
-              {card.source_url ? (
-                <a className="admin-question-pipeline-card__source-link" href={card.source_url} target="_blank" rel="noreferrer">
-                  查看原始来源
-                </a>
-              ) : null}
-
-              <label className="admin-field">
-                <span>题目标题</span>
-                <input value={card.title} onChange={(event) => updateCardField(card.id, 'title', event.target.value)} />
-              </label>
-
-              <div className="admin-question-pipeline-card__grid">
-                <label className="admin-field">
-                  <span>题型</span>
-                  <select
-                    value={card.type}
-                    onChange={(event) => handleCardTypeChange(card.id, event.target.value as QuestionType)}
-                  >
-                    {QUESTION_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="admin-field">
-                  <span>难度</span>
-                  <select
-                    value={card.difficulty}
-                    onChange={(event) => updateCardField(card.id, 'difficulty', event.target.value as QuestionDifficulty)}
-                  >
-                    {QUESTION_DIFFICULTY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="admin-field">
-                  <span>分类</span>
-                  <select value={card.category} onChange={(event) => updateCardField(card.id, 'category', event.target.value)}>
-                    {categoryOptions.map((option) => (
-                      <option key={option.id} value={option.name}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className="admin-field">
-                <span>题目内容</span>
-                <textarea
-                  className="admin-question-pipeline-card__content"
-                  value={card.content}
-                  onChange={(event) => updateCardField(card.id, 'content', event.target.value)}
-                />
-              </label>
-
-                <label className="admin-field">
-                  <span>{card.type === 'code' ? '代码参考答案' : '标准答案'}</span>
-                  <textarea
-                    className="admin-question-pipeline-card__answer"
-                    value={card.answer}
-                    onChange={(event) => updateCardField(card.id, 'answer', event.target.value)}
-                  />
-                </label>
-
-                {card.type === 'code' ? (
-                  <label className="admin-field">
-                    <span>代码思路解析</span>
-                    <textarea
-                      className="admin-question-pipeline-card__answer"
-                      value={card.solution}
-                      onChange={(event) => updateCardField(card.id, 'solution', event.target.value)}
+          {/* ===== 生成表单区 ===== */}
+          <form onSubmit={handleGenerate}>
+            <div style={{ ...solidCard, padding: '28px 32px', marginBottom: 28 }}>
+              <Row gutter={[24, 24]}>
+                <Col xs={24} md={12}>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>目标行业</Text>
+                    <Select
+                      value={form.industryCode || undefined}
+                      onChange={(value) => setForm((current) => ({ ...current, industryCode: value }))}
+                      placeholder="请选择行业"
+                      size="large"
+                      style={{ width: '100%', borderRadius: 14 }}
+                      options={(industriesQuery.data || []).map((industry) => ({ label: industry.name, value: industry.code }))}
                     />
-                  </label>
-                ) : null}
+                  </Space>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>候选数量</Text>
+                    <Select
+                      value={form.candidateCount}
+                      onChange={(value) => setForm((current) => ({ ...current, candidateCount: value }))}
+                      size="large"
+                      style={{ width: '100%', borderRadius: 14 }}
+                      options={[
+                        { label: '6 张', value: '6' },
+                        { label: '8 张', value: '8' },
+                        { label: '12 张', value: '12' },
+                        { label: '16 张', value: '16' },
+                      ]}
+                    />
+                  </Space>
+                </Col>
+                <Col xs={24}>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>岗位要求 / 清洗目标</Text>
+                    <Input.TextArea
+                      value={form.requirement}
+                      onChange={(e) => setForm((current) => ({ ...current, requirement: e.target.value }))}
+                      placeholder="例如：生成 Go 后端高级工程师面试题，重点覆盖并发、MySQL、Redis、微服务治理，结合真实项目经验，输出中高级难度。"
+                      rows={4}
+                      style={{ borderRadius: 14, fontSize: 14, resize: 'vertical' }}
+                    />
+                  </Space>
+                </Col>
+                <Col xs={24}>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>智能体命令 / 自定义提示词</Text>
+                    <Input.TextArea
+                      value={form.agentPrompt}
+                      onChange={(e) => setForm((current) => ({ ...current, agentPrompt: e.target.value }))}
+                      placeholder="例如：参考 Go 语言核心特性生成 8 道互不重复的问答题，聚焦语言理解，不要项目题，不要八股套话。"
+                      rows={3}
+                      style={{ borderRadius: 14, fontSize: 14, resize: 'vertical' }}
+                    />
+                  </Space>
+                </Col>
+              </Row>
 
-                <label className="admin-field">
-                  <span>{card.type === 'code' ? '考察意图 / 补充说明' : '解析'}</span>
-                  <textarea
-                    className="admin-question-pipeline-card__answer"
-                    value={card.explanation}
-                  onChange={(event) => updateCardField(card.id, 'explanation', event.target.value)}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>标签</span>
-                <input value={card.tagsText} onChange={(event) => updateCardField(card.id, 'tagsText', event.target.value)} />
-              </label>
-
-              {card.type === 'code' ? (
-                <label className="admin-field">
-                  <span>判题配置 judge_config</span>
-                  <textarea
-                    className="admin-question-pipeline-card__content"
-                    value={card.judgeConfigText}
-                    onChange={(event) => updateCardField(card.id, 'judgeConfigText', event.target.value)}
+              {/* 策略开关 */}
+              <div style={{ marginTop: 24, display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <Switch
+                    checked={form.includeScraped}
+                    onChange={(checked) => setForm((current) => ({ ...current, includeScraped: checked }))}
+                    style={{ backgroundColor: form.includeScraped ? '#3b82f6' : '#cbd5e1' }}
                   />
+                  <Text style={{ fontSize: 14, fontWeight: 500 }}>抓取相关面经素材</Text>
                 </label>
-              ) : null}
-            </article>
-          ))}
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <Switch
+                    checked={form.includeGenerated}
+                    onChange={(checked) => setForm((current) => ({ ...current, includeGenerated: checked }))}
+                    style={{ backgroundColor: form.includeGenerated ? '#3b82f6' : '#cbd5e1' }}
+                  />
+                  <Text style={{ fontSize: 14, fontWeight: 500 }}>调用大模型生成 / 改写</Text>
+                </label>
+              </div>
+
+              {/* 来源选择 */}
+              <div style={{ marginTop: 20 }}>
+                <Text type="secondary" style={{ fontSize: 13, marginBottom: 12, display: 'block' }}>抓取来源</Text>
+                <Space size={10} wrap>
+                  {(sourcesQuery.data || []).map((source) => (
+                    <Tag
+                      key={source.name}
+                      onClick={() => form.includeScraped && toggleSource(source.name)}
+                      style={{
+                        cursor: form.includeScraped ? 'pointer' : 'not-allowed',
+                        borderRadius: 10,
+                        padding: '6px 14px',
+                        fontSize: 13,
+                        border: form.sources.includes(source.name)
+                          ? '1px solid #3b82f6'
+                          : '1px solid #e2e8f0',
+                        background: form.sources.includes(source.name) ? '#eff6ff' : '#f8fafc',
+                        color: form.sources.includes(source.name) ? '#2563eb' : '#64748b',
+                        opacity: form.includeScraped ? 1 : 0.5,
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      {form.sources.includes(source.name) && <CheckCircleOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+                      {source.label}
+                    </Tag>
+                  ))}
+                </Space>
+              </div>
+
+              {/* 状态条 */}
+              <div
+                style={{
+                  marginTop: 24,
+                  padding: '16px 20px',
+                  borderRadius: 16,
+                  background: formError ? '#fef2f2' : '#f0fdf4',
+                  border: formError ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 14,
+                }}
+              >
+                <Space direction="vertical" size={4}>
+                  <Text strong style={{ fontSize: 14, color: formError ? '#991b1b' : '#166534' }}>流水线状态</Text>
+                  <Text style={{ fontSize: 13, color: formError ? '#b91c1c' : '#15803d' }}>{formError || statusMessage}</Text>
+                </Space>
+                <Space size={10}>
+                  {isStreaming && (
+                    <Tag
+                      color="processing"
+                      style={{ borderRadius: 10, padding: '4px 12px', fontSize: 13 }}
+                      icon={<LoadingOutlined />}
+                    >
+                      正在逐张生成
+                    </Tag>
+                  )}
+                  <Button
+                    icon={<StopOutlined />}
+                    onClick={handleCancelStream}
+                    disabled={!isStreaming}
+                    style={{ borderRadius: 12, height: 40 }}
+                  >
+                    停止生成
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={isStreaming ? <LoadingOutlined /> : <ThunderboltOutlined />}
+                    htmlType="submit"
+                    disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
+                    loading={generateMutation.isPending || isStreaming}
+                    style={{
+                      borderRadius: 12,
+                      height: 40,
+                      padding: '0 22px',
+                      fontWeight: 600,
+                      background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                      border: 'none',
+                      boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
+                    }}
+                  >
+                    生成候选题卡
+                  </Button>
+                  <Button
+                    icon={<CloudUploadOutlined />}
+                    onClick={handleQueueGenerateTask}
+                    disabled={Boolean(formError) || generateMutation.isPending || isStreaming || queueGenerateTaskMutation.isPending}
+                    loading={queueGenerateTaskMutation.isPending}
+                    style={{ borderRadius: 12, height: 40, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                  >
+                    异步生成
+                  </Button>
+                </Space>
+              </div>
+
+              {/* 异步恢复 */}
+              <div style={{ marginTop: 16, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <Space direction="vertical" size={6} style={{ flex: 1, minWidth: 200 }}>
+                  <Text type="secondary" style={{ fontSize: 13 }}>异步任务 ID</Text>
+                  <Input
+                    value={asyncGenerateTaskId}
+                    onChange={(e) => setAsyncGenerateTaskId(e.target.value.replace(/[^\d]/g, ''))}
+                    placeholder="输入题目流水线任务 ID"
+                    size="large"
+                    style={{ borderRadius: 14 }}
+                  />
+                </Space>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={handleLoadGenerateTaskResult}
+                  disabled={!asyncGenerateTaskId || loadGenerateTaskResultMutation.isPending}
+                  loading={loadGenerateTaskResultMutation.isPending}
+                  style={{ borderRadius: 12, height: 44, border: '1px solid #e2e8f0' }}
+                >
+                  恢复异步结果
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          {/* ===== 统计数字 ===== */}
+          {stats && (
+            <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
+              {[
+                { label: '搜索结果', value: stats.searched_count, color: '#6366f1', bg: '#eef2ff' },
+                { label: '已抓取素材', value: stats.fetched_count, color: '#3b82f6', bg: '#eff6ff' },
+                { label: 'AI 产出题卡', value: stats.generated_count, color: '#0ea5e9', bg: '#f0f9ff' },
+                { label: '最终候选', value: stats.candidate_count, color: '#10b981', bg: '#f0fdf4' },
+              ].map((item) => (
+                <Col xs={12} md={6} key={item.label}>
+                  <div
+                    style={{
+                      ...solidCard,
+                      padding: '20px 22px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 14,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-3px)'
+                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'none'
+                      e.currentTarget.style.boxShadow = solidCard.boxShadow as string
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 12,
+                        background: item.bg,
+                        color: item.color,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 18,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.value}
+                    </div>
+                    <Text type="secondary" style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</Text>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          )}
+
+          {/* ===== 警告区 ===== */}
+          {warnings.length > 0 && (
+            <div
+              style={{
+                ...solidCard,
+                padding: '20px 24px',
+                marginBottom: 28,
+                background: '#fffbeb',
+                border: '1px solid #fef3c7',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <WarningOutlined style={{ color: '#f59e0b' }} />
+                <Text strong style={{ color: '#92400e' }}>流水线警告</Text>
+              </div>
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                {warnings.map((warning) => (
+                  <Text key={warning} style={{ color: '#a16207', fontSize: 13, lineHeight: 1.7 }}>{warning}</Text>
+                ))}
+              </Space>
+            </div>
+          )}
+
+          {/* ===== 调试信息 ===== */}
+          {debugEntries.length > 0 && (
+            <div style={{ ...solidCard, padding: '28px 32px', marginBottom: 28 }}>
+              <Title level={5} style={{ margin: '0 0 16px', fontWeight: 700 }}>
+                <CodeOutlined style={{ marginRight: 8, color: '#64748b' }} />
+                原始输出调试
+                <Text type="secondary" style={{ fontSize: 13, fontWeight: 400, marginLeft: 8 }}>共 {debugEntries.length} 次失败调用</Text>
+              </Title>
+              <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                {debugEntries.map((entry) => {
+                  const isExpanded = expandedDebugId === entry.id
+                  return (
+                    <div
+                      key={entry.id}
+                      style={{
+                        borderRadius: 14,
+                        border: '1px solid #f1f5f9',
+                        overflow: 'hidden',
+                        transition: 'all 0.3s ease',
+                      }}
+                    >
+                      <div
+                        onClick={() => setExpandedDebugId(isExpanded ? null : entry.id)}
+                        style={{
+                          padding: '14px 18px',
+                          background: isExpanded ? '#f8fafc' : '#ffffff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Space size={8} wrap>
+                          {entry.slotIndex > 0 && (
+                            <Tag size="small" style={{ borderRadius: 6, margin: 0, background: '#e0e7ff', color: '#3730a3', border: 'none' }}>
+                              第 {entry.slotIndex} 张
+                            </Tag>
+                          )}
+                          {entry.retryIndex > 0 && (
+                            <Tag size="small" style={{ borderRadius: 6, margin: 0, background: '#fef3c7', color: '#92400e', border: 'none' }}>
+                              重试 {entry.retryIndex}
+                            </Tag>
+                          )}
+                          <Tag size="small" style={{ borderRadius: 6, margin: 0, background: '#fee2e2', color: '#991b1b', border: 'none' }}>
+                            {formatQuestionPipelineFailureStage(entry.failureStage)}
+                          </Tag>
+                          {entry.traceId && (
+                            <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                              {entry.traceId.slice(0, 16)}...
+                            </Text>
+                          )}
+                        </Space>
+                        {isExpanded ? <UpOutlined style={{ color: '#94a3b8' }} /> : <DownOutlined style={{ color: '#94a3b8' }} />}
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: '16px 18px', borderTop: '1px solid #f1f5f9' }}>
+                          <Paragraph style={{ marginBottom: 12, fontSize: 13 }}>{entry.message}</Paragraph>
+                          {(entry.repairAttempted || entry.supplementAttempted) && (
+                            <Space size={16} style={{ marginBottom: 12 }}>
+                              <Tag size="small" style={{ borderRadius: 6, background: entry.repairAttempted ? '#d1fae5' : '#f1f5f9', color: entry.repairAttempted ? '#065f46' : '#64748b', border: 'none' }}>
+                                {entry.repairAttempted ? '已触发 JSON 修复' : '未触发 JSON 修复'}
+                              </Tag>
+                              <Tag size="small" style={{ borderRadius: 6, background: entry.supplementAttempted ? '#d1fae5' : '#f1f5f9', color: entry.supplementAttempted ? '#065f46' : '#64748b', border: 'none' }}>
+                                {entry.supplementAttempted ? '已触发编程题补齐' : '未触发编程题补齐'}
+                              </Tag>
+                            </Space>
+                          )}
+                          {entry.candidateExcerpt && (
+                            <pre
+                              style={{
+                                margin: '0 0 12px',
+                                padding: 14,
+                                borderRadius: 12,
+                                background: '#0f172a',
+                                color: '#e2e8f0',
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                                overflow: 'auto',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {entry.candidateExcerpt}
+                            </pre>
+                          )}
+                          <pre
+                            style={{
+                              margin: 0,
+                              padding: 14,
+                              borderRadius: 12,
+                              background: '#f8fafc',
+                              color: '#475569',
+                              fontSize: 12,
+                              lineHeight: 1.6,
+                              overflow: 'auto',
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              border: '1px solid #f1f5f9',
+                            }}
+                          >
+                            {entry.rawOutput || '当前事件未携带原始输出。'}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </Space>
+            </div>
+          )}
+
+          {/* ===== 结果操作栏 ===== */}
+          {cards.length > 0 && (
+            <div
+              style={{
+                ...glassCard,
+                padding: '16px 24px',
+                marginBottom: 28,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 14,
+                position: 'sticky',
+                top: 16,
+                zIndex: 20,
+              }}
+            >
+              <Space size={10}>
+                <Button
+                  size="small"
+                  onClick={() => setAllCardsSelected(true)}
+                  style={{ borderRadius: 10, border: '1px solid #e2e8f0' }}
+                >
+                  全选
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => setAllCardsSelected(false)}
+                  style={{ borderRadius: 10, border: '1px solid #e2e8f0' }}
+                >
+                  全不选
+                </Button>
+                <Tag color="processing" style={{ borderRadius: 8, margin: 0 }}>已勾选 {selectedCount} 张</Tag>
+              </Space>
+              <Space size={10}>
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={handleImportSelected}
+                  disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
+                  loading={importMutation.isPending}
+                  style={{
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                    border: 'none',
+                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  导入已选 {selectedCount} 张
+                </Button>
+                <Button
+                  icon={<CloudSyncOutlined />}
+                  onClick={handleQueueImportSelected}
+                  disabled={selectedCount === 0 || importMutation.isPending || queueImportTaskMutation.isPending}
+                  loading={queueImportTaskMutation.isPending}
+                  style={{ borderRadius: 12, border: '1px solid #e2e8f0' }}
+                >
+                  异步入队
+                </Button>
+              </Space>
+            </div>
+          )}
+
+          {/* ===== 题卡结果 ===== */}
+          {cards.length === 0 ? (
+            <div style={{ ...solidCard, padding: '48px 32px', textAlign: 'center' }}>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="还没有候选题卡"
+              >
+                <Paragraph type="secondary" style={{ maxWidth: 400, margin: '0 auto' }}>
+                  先填写岗位要求并执行一次流水线，结果会以卡片形式展示在这里。
+                </Paragraph>
+              </Empty>
+            </div>
+          ) : (
+            <Row gutter={[20, 20]}>
+              {cards.map((card) => {
+                const isFresh = freshCardIds.includes(card.id)
+                return (
+                  <Col xs={24} md={12} key={card.id}>
+                    <div
+                      style={{
+                        ...solidCard,
+                        padding: '24px 28px',
+                        border: card.selected
+                          ? '2px solid #3b82f6'
+                          : isFresh
+                          ? '2px solid rgba(16, 185, 129, 0.6)'
+                          : '1px solid #f1f5f9',
+                        background: card.selected ? '#fafdff' : isFresh ? '#f6fffa' : '#ffffff',
+                        boxShadow: card.selected
+                          ? '0 4px 16px rgba(59, 130, 246, 0.12)'
+                          : isFresh
+                          ? '0 8px 24px rgba(16, 185, 129, 0.15)'
+                          : solidCard.boxShadow as string,
+                        transform: isFresh ? 'translateY(-3px)' : 'none',
+                        animation: isFresh ? 'cardFreshEnter 0.5s ease' : 'none',
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* 左侧选中指示条 */}
+                      {card.selected && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: 4,
+                            height: '100%',
+                            background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+                            borderRadius: '2px 0 0 2px',
+                          }}
+                        />
+                      )}
+
+                      {/* 卡片头部 */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: 16,
+                        }}
+                      >
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={card.selected}
+                            onChange={(event) => updateCardField(card.id, 'selected', event.target.checked)}
+                            style={{ width: 18, height: 18, accentColor: '#3b82f6' }}
+                          />
+                          <Text strong style={{ fontSize: 14, color: '#0f172a' }}>加入题库</Text>
+                        </label>
+                        <Space size={6}>
+                          <Tag
+                            style={{
+                              borderRadius: 8,
+                              background: card.source_type === 'generated' ? '#eff6ff' : '#f0fdf4',
+                              color: card.source_type === 'generated' ? '#1d4ed8' : '#15803d',
+                              border: 'none',
+                              fontSize: 12,
+                            }}
+                          >
+                            {sourceTypeLabel(card.source_type)}
+                          </Tag>
+                          <Tag
+                            style={{
+                              borderRadius: 8,
+                              background: '#f8fafc',
+                              color: '#64748b',
+                              border: 'none',
+                              fontSize: 12,
+                            }}
+                          >
+                            {Math.round(card.confidence * 100)}% 置信度
+                          </Tag>
+                        </Space>
+                      </div>
+
+                      {/* Meta */}
+                      <Space size={8} style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                        <Tag size="small" style={{ borderRadius: 6, background: '#e0e7ff', color: '#3730a3', border: 'none' }}>
+                          {card.source_label || '未标注来源'}
+                        </Tag>
+                        <Tag size="small" style={{ borderRadius: 6, background: '#f1f5f9', color: '#475569', border: 'none' }}>
+                          {QUESTION_TYPE_OPTIONS.find((item) => item.value === card.type)?.label || card.type}
+                        </Tag>
+                        <Tag
+                          size="small"
+                          style={{
+                            borderRadius: 6,
+                            background:
+                              card.difficulty === 'easy'
+                                ? '#f0fdf4'
+                                : card.difficulty === 'hard'
+                                ? '#fef2f2'
+                                : '#fffbeb',
+                            color:
+                              card.difficulty === 'easy'
+                                ? '#15803d'
+                                : card.difficulty === 'hard'
+                                ? '#dc2626'
+                                : '#d97706',
+                            border: 'none',
+                          }}
+                        >
+                          {QUESTION_DIFFICULTY_OPTIONS.find((item) => item.value === card.difficulty)?.label || card.difficulty}
+                        </Tag>
+                      </Space>
+
+                      {/* 来源标题/链接 */}
+                      {card.source_title && (
+                        <Text style={{ fontSize: 13, color: '#475569', marginBottom: 8, display: 'block' }}>
+                          素材：{card.source_title}
+                        </Text>
+                      )}
+                      {card.source_url && (
+                        <a
+                          href={card.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 14 }}
+                        >
+                          <LinkOutlined style={{ fontSize: 11 }} />
+                          查看原始来源
+                        </a>
+                      )}
+
+                      {/* 题目标题 */}
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>题目标题</Text>
+                        <Input
+                          value={card.title}
+                          onChange={(e) => updateCardField(card.id, 'title', e.target.value)}
+                          size="large"
+                          style={{ borderRadius: 12 }}
+                        />
+                      </Space>
+
+                      {/* 题型/难度/分类 */}
+                      <Row gutter={[12, 12]} style={{ marginBottom: 14 }}>
+                        <Col span={8}>
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>题型</Text>
+                            <Select
+                              value={card.type}
+                              onChange={(value) => handleCardTypeChange(card.id, value as QuestionType)}
+                              size="large"
+                              style={{ width: '100%', borderRadius: 12 }}
+                              options={QUESTION_TYPE_OPTIONS}
+                            />
+                          </Space>
+                        </Col>
+                        <Col span={8}>
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>难度</Text>
+                            <Select
+                              value={card.difficulty}
+                              onChange={(value) => updateCardField(card.id, 'difficulty', value as QuestionDifficulty)}
+                              size="large"
+                              style={{ width: '100%', borderRadius: 12 }}
+                              options={QUESTION_DIFFICULTY_OPTIONS}
+                            />
+                          </Space>
+                        </Col>
+                        <Col span={8}>
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>分类</Text>
+                            <Select
+                              value={card.category || undefined}
+                              onChange={(value) => updateCardField(card.id, 'category', value)}
+                              placeholder="选择分类"
+                              size="large"
+                              style={{ width: '100%', borderRadius: 12 }}
+                              options={categoryOptions.map((option) => ({ label: option.name, value: option.name }))}
+                            />
+                          </Space>
+                        </Col>
+                      </Row>
+
+                      {/* 题目内容 */}
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>题目内容</Text>
+                        <Input.TextArea
+                          value={card.content}
+                          onChange={(e) => updateCardField(card.id, 'content', e.target.value)}
+                          rows={3}
+                          style={{ borderRadius: 12, fontSize: 13, resize: 'vertical' }}
+                        />
+                      </Space>
+
+                      {/* 答案 */}
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{card.type === 'code' ? '代码参考答案' : '标准答案'}</Text>
+                        <Input.TextArea
+                          value={card.answer}
+                          onChange={(e) => updateCardField(card.id, 'answer', e.target.value)}
+                          rows={2}
+                          style={{ borderRadius: 12, fontSize: 13, resize: 'vertical' }}
+                        />
+                      </Space>
+
+                      {/* 代码思路（仅编程题） */}
+                      {card.type === 'code' && (
+                        <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                          <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>代码思路解析</Text>
+                          <Input.TextArea
+                            value={card.solution}
+                            onChange={(e) => updateCardField(card.id, 'solution', e.target.value)}
+                            rows={2}
+                            style={{ borderRadius: 12, fontSize: 13, resize: 'vertical' }}
+                          />
+                        </Space>
+                      )}
+
+                      {/* 解析 */}
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{card.type === 'code' ? '考察意图 / 补充说明' : '解析'}</Text>
+                        <Input.TextArea
+                          value={card.explanation}
+                          onChange={(e) => updateCardField(card.id, 'explanation', e.target.value)}
+                          rows={2}
+                          style={{ borderRadius: 12, fontSize: 13, resize: 'vertical' }}
+                        />
+                      </Space>
+
+                      {/* 标签 */}
+                      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}><TagOutlined style={{ marginRight: 4 }} />标签</Text>
+                        <Input
+                          value={card.tagsText}
+                          onChange={(e) => updateCardField(card.id, 'tagsText', e.target.value)}
+                          placeholder="用逗号分隔多个标签"
+                          size="large"
+                          style={{ borderRadius: 12 }}
+                        />
+                      </Space>
+
+                      {/* 判题配置（仅编程题） */}
+                      {card.type === 'code' && (
+                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                          <Text style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}><CodeOutlined style={{ marginRight: 4 }} />判题配置 judge_config</Text>
+                          <Input.TextArea
+                            value={card.judgeConfigText}
+                            onChange={(e) => updateCardField(card.id, 'judgeConfigText', e.target.value)}
+                            rows={6}
+                            style={{
+                              borderRadius: 12,
+                              fontSize: 12,
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                              background: '#f8fafc',
+                              resize: 'vertical',
+                            }}
+                          />
+                        </Space>
+                      )}
+                    </div>
+                  </Col>
+                )
+              })}
+            </Row>
+          )}
         </div>
-      )}
-    </section>
+
+        {/* CSS 动画 */}
+        <style>{`
+          @keyframes cardFreshEnter {
+            0% {
+              opacity: 0;
+              transform: translateY(16px) scale(0.97);
+            }
+            60% {
+              opacity: 1;
+              transform: translateY(-4px) scale(1.01);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(-3px) scale(1);
+            }
+          }
+        `}</style>
+      </div>
+    </ConfigProvider>
   )
 }

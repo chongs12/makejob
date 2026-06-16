@@ -1,6 +1,17 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  SoundOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  InboxOutlined,
+} from '@ant-design/icons'
+import { Button, Input, InputNumber, Modal, Select, Switch, Tag, Tooltip } from 'antd'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
@@ -70,6 +81,39 @@ interface JSONPreview {
 interface SceneDefaultFormState {
   interview: string
   companion: string
+}
+
+const THEME = {
+  bg: '#f4f7fe',
+  cardBg: '#ffffff',
+  primary: '#4f46e5',
+  primaryLight: '#e0e7ff',
+  accent: '#f59e0b',
+  textMain: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  border: '#e2e8f0',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  shadow: '0 8px 32px rgba(31, 38, 135, 0.07)',
+  radius: 16,
+}
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: THEME.radius,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: THEME.shadow,
+}
+
+const solidCard = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  boxShadow: THEME.shadow,
+  border: '1px solid ' + THEME.border,
 }
 
 /**
@@ -332,6 +376,13 @@ function supportStatusLabel(status: string): string {
   }
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  ready: 'success',
+  planned: 'warning',
+  invalid: 'error',
+  legacy_unsupported: 'default',
+}
+
 /**
  * 截断过长的音色 ID，减少列表区阅读负担。
  */
@@ -389,7 +440,7 @@ export function TTSPage() {
     interview: '0',
     companion: '0',
   })
-  const [message, setMessage] = useState('读取 TTS 配置中')
+  const [messageText, setMessageText] = useState('读取 TTS 配置中')
 
   const configsQuery = useQuery({
     queryKey: ['admin', 'tts-configs', accessToken],
@@ -423,7 +474,7 @@ export function TTSPage() {
         }
         return buildInitialTTSForm(configsQuery.data.providers || [])
       })
-      setMessage((current) => (current === '读取 TTS 配置中' ? '已同步 TTS 配置列表。' : current))
+      setMessageText((current) => (current === '读取 TTS 配置中' ? '已同步 TTS 配置列表。' : current))
       return
     }
 
@@ -447,13 +498,13 @@ export function TTSPage() {
     },
     onSuccess: async (configId) => {
       setSelectedConfigId(configId)
-      setMessage(selectedConfigId ? 'TTS 配置已更新。' : 'TTS 配置已创建。')
+      setMessageText(selectedConfigId ? 'TTS 配置已更新。' : 'TTS 配置已创建。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'tts-configs'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '保存 TTS 配置失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '保存 TTS 配置失败，请稍后重试'))
     },
   })
 
@@ -462,13 +513,13 @@ export function TTSPage() {
       await updateTTSSceneDefaults(accessToken, buildDefaultBindingsPayload(defaultBindings))
     },
     onSuccess: async () => {
-      setMessage('场景默认 TTS 绑定已更新。')
+      setMessageText('场景默认 TTS 绑定已更新。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'tts-configs'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '更新场景默认 TTS 绑定失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '更新场景默认 TTS 绑定失败，请稍后重试'))
     },
   })
 
@@ -479,13 +530,13 @@ export function TTSPage() {
     onSuccess: async () => {
       setSelectedConfigId(null)
       setForm(buildInitialTTSForm(configsQuery.data?.providers || []))
-      setMessage('TTS 配置已删除。')
+      setMessageText('TTS 配置已删除。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'tts-configs'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '删除 TTS 配置失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '删除 TTS 配置失败，请稍后重试'))
     },
   })
 
@@ -495,7 +546,7 @@ export function TTSPage() {
   function startCreatingTTSConfig(): void {
     setSelectedConfigId(null)
     setForm(buildInitialTTSForm(configsQuery.data?.providers || []))
-    setMessage('已切换到新建 TTS 配置模式。')
+    setMessageText('已切换到新建 TTS 配置模式。')
   }
 
   /**
@@ -504,7 +555,7 @@ export function TTSPage() {
   function startEditingTTSConfig(config: TTSConfig): void {
     setSelectedConfigId(config.id)
     setForm(buildTTSForm(config, configsQuery.data?.providers || []))
-    setMessage(`正在编辑音色：${config.name}`)
+    setMessageText(`正在编辑音色：${config.name}`)
   }
 
   /**
@@ -539,11 +590,11 @@ export function TTSPage() {
     event.preventDefault()
 
     if (formError) {
-      setMessage(formError)
+      setMessageText(formError)
       return
     }
 
-    setMessage(selectedConfigId ? '正在更新 TTS 配置。' : '正在创建 TTS 配置。')
+    setMessageText(selectedConfigId ? '正在更新 TTS 配置。' : '正在创建 TTS 配置。')
     saveMutation.mutate()
   }
 
@@ -555,273 +606,747 @@ export function TTSPage() {
       return
     }
 
-    if (!window.confirm('确认删除当前 TTS 配置吗？删除后不可恢复。')) {
-      return
-    }
-
-    setMessage('正在删除 TTS 配置。')
-    deleteMutation.mutate(selectedConfigId)
+    Modal.confirm({
+      title: '确认删除',
+      icon: <ExclamationCircleOutlined />,
+      content: '确认删除当前 TTS 配置吗？删除后不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        setMessageText('正在删除 TTS 配置。')
+        deleteMutation.mutate(selectedConfigId)
+      },
+    })
   }
 
   /**
    * 保存场景默认 TTS 绑定。
    */
   function handleSaveDefaults(): void {
-    setMessage('正在更新场景默认 TTS 绑定。')
+    setMessageText('正在更新场景默认 TTS 绑定。')
     saveDefaultsMutation.mutate()
   }
 
   if (configsQuery.isLoading) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">语音中心</span>
-        <h2>TTS 配置</h2>
-        <p className="admin-copy">正在加载后台 TTS 配置列表。</p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>TTS 配置</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.textSecondary }}>正在加载后台 TTS 配置列表...</p>
+        </div>
+      </div>
     )
   }
 
   if (configsQuery.isError || !configsQuery.data) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">语音中心</span>
-        <h2>TTS 配置</h2>
-        <p className="admin-copy">{extractErrorMessage(configsQuery.error, '读取 TTS 配置失败')}</p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>TTS 配置</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.danger }}>{extractErrorMessage(configsQuery.error, '读取 TTS 配置失败')}</p>
+        </div>
+      </div>
     )
   }
 
   return (
-    <section className="admin-panel admin-tts-page">
-      <div className="admin-tts-page__hero">
-        <div>
-          <span className="admin-tag">语音中心</span>
-          <h2>TTS 配置</h2>
-          <p className="admin-copy">
-            这里维护真实可运行的 TTS 供应商配置。TTS 记录本身只负责保存供应商、鉴权和官方参数，实际使用场景改由
-            Live2D 模型绑定与场景默认策略决定。
-          </p>
+    <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+      {/* Header */}
+      <div
+        style={{
+          ...glassCard,
+          padding: '24px 28px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+              flexShrink: 0,
+            }}
+          >
+            <SoundOutlined style={{ fontSize: 22, color: '#fff' }} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain, lineHeight: 1.3 }}>
+              TTS 配置
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textSecondary }}>
+              维护 TTS 供应商配置，支持场景默认绑定和 Live2D 复用
+            </p>
+          </div>
         </div>
-        <div className="admin-tts-page__summary">
-          <strong>{(configsQuery.data.configs || []).length}</strong>
-          <span>条配置</span>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              ...solidCard,
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 120,
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 700, color: THEME.primary }}>{(configsQuery.data.configs || []).length}</span>
+            <span style={{ fontSize: 12, color: THEME.textSecondary }}>条配置</span>
+          </div>
         </div>
       </div>
 
-      <div className="admin-tts-page__toolbar">
-        <div className="admin-tts-editor__grid">
-          <label className="admin-field">
-            <span>{ttsSceneLabel('interview')}默认 TTS</span>
-            <select
+      {/* Scene Defaults Toolbar */}
+      <div
+        style={{
+          ...solidCard,
+          padding: '16px 20px',
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 280px' }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: THEME.textSecondary, whiteSpace: 'nowrap' }}>
+              {ttsSceneLabel('interview')}默认 TTS
+            </span>
+            <Select
               value={defaultBindings.interview}
-              onChange={(event) => setDefaultBindings((current) => ({ ...current, interview: event.target.value }))}
-            >
-              <option value="0">未设置，回退到 config.yaml</option>
-              {readyConfigOptions.map((config) => (
-                <option key={config.id} value={config.id}>
-                  {config.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="admin-field">
-            <span>{ttsSceneLabel('companion')}默认 TTS</span>
-            <select
+              onChange={(v) => setDefaultBindings((current) => ({ ...current, interview: v }))}
+              style={{ flex: 1 }}
+              options={[
+                { value: '0', label: '未设置，回退到 config.yaml' },
+                ...readyConfigOptions.map((config) => ({
+                  value: String(config.id),
+                  label: config.name,
+                })),
+              ]}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 280px' }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: THEME.textSecondary, whiteSpace: 'nowrap' }}>
+              {ttsSceneLabel('companion')}默认 TTS
+            </span>
+            <Select
               value={defaultBindings.companion}
-              onChange={(event) => setDefaultBindings((current) => ({ ...current, companion: event.target.value }))}
-            >
-              <option value="0">未设置，回退到 config.yaml</option>
-              {readyConfigOptions.map((config) => (
-                <option key={config.id} value={config.id}>
-                  {config.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={(v) => setDefaultBindings((current) => ({ ...current, companion: v }))}
+              style={{ flex: 1 }}
+              options={[
+                { value: '0', label: '未设置，回退到 config.yaml' },
+                ...readyConfigOptions.map((config) => ({
+                  value: String(config.id),
+                  label: config.name,
+                })),
+              ]}
+            />
+          </div>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={handleSaveDefaults}
+            loading={saveDefaultsMutation.isPending}
+            style={{
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              border: 'none',
+              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+            }}
+          >
+            保存场景默认绑定
+          </Button>
+          <Button
+            icon={<PlusOutlined />}
+            onClick={startCreatingTTSConfig}
+            style={{ borderRadius: 10 }}
+          >
+            新建 TTS 配置
+          </Button>
         </div>
-
-        <button className="admin-link" type="button" onClick={handleSaveDefaults} disabled={saveDefaultsMutation.isPending}>
-          {saveDefaultsMutation.isPending ? '保存默认绑定中...' : '保存场景默认绑定'}
-        </button>
-
-        <button className="admin-link" type="button" onClick={startCreatingTTSConfig}>
-          新建 TTS 配置
-        </button>
       </div>
 
-      <div className="admin-tts-page__layout">
-        <div className="admin-tts-list">
-          {(configsQuery.data.configs || []).length === 0 ? (
-            <div className="admin-tts-card admin-tts-card--empty">
-              <strong>当前还没有 TTS 配置记录</strong>
-              <p>可以先新建一条可运行的供应商配置，再到 Live2D 页面绑定使用。</p>
+      {/* Main Content */}
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {/* Left: Config List */}
+        <div style={{ flex: '1 1 340px', maxWidth: 420, minWidth: 300 }}>
+          <div
+            style={{
+              ...solidCard,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 300px)',
+              minHeight: 500,
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid ' + THEME.border,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>配置列表</span>
+              <span style={{ fontSize: 12, color: THEME.textMuted }}>
+                共 {(configsQuery.data.configs || []).length} 条
+              </span>
             </div>
-          ) : (
-            (configsQuery.data.configs || []).map((config) => (
-              <button
-                key={config.id}
-                type="button"
-                className={`admin-tts-card ${selectedConfigId === config.id ? 'admin-tts-card--active' : ''}`}
-                onClick={() => startEditingTTSConfig(config)}
-              >
-                <div className="admin-tts-card__head">
-                  <strong>{config.name}</strong>
-                  <span>{config.is_active ? '启用中' : '已停用'}</span>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+              {(configsQuery.data.configs || []).length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: THEME.textMuted,
+                    gap: 12,
+                  }}
+                >
+                  <InboxOutlined style={{ fontSize: 40 }} />
+                  <span style={{ fontSize: 14 }}>当前还没有 TTS 配置记录</span>
+                  <span style={{ fontSize: 12 }}>可以先新建一条可运行的供应商配置</span>
                 </div>
-                <div className="admin-tts-card__meta">
-                  <span>{ttsEngineLabel(config.engine, providerMap)}</span>
-                  <span>{supportStatusLabel(config.support_status)}</span>
-                  <span>排序 {config.sort_order}</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(configsQuery.data.configs || []).map((config) => {
+                    const isActive = selectedConfigId === config.id
+                    return (
+                      <div
+                        key={config.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => startEditingTTSConfig(config)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            startEditingTTSConfig(config)
+                          }
+                        }}
+                        style={{
+                          padding: '14px 16px',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          border: isActive
+                            ? '1.5px solid ' + THEME.primary
+                            : '1.5px solid transparent',
+                          background: isActive ? '#f5f3ff' : '#fafafa',
+                          transition: 'all 0.2s ease',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = '#f1f5f9'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = '#fafafa'
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: '12px',
+                              bottom: '12px',
+                              width: 3,
+                              borderRadius: '0 3px 3px 0',
+                              background: THEME.primary,
+                            }}
+                          />
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 14,
+                              color: THEME.textMain,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {config.name}
+                          </span>
+                          <Tag
+                            color={config.is_active ? 'success' : 'default'}
+                            style={{ fontSize: 11, padding: '0 6px', margin: 0, flexShrink: 0 }}
+                          >
+                            {config.is_active ? '启用中' : '已停用'}
+                          </Tag>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 12,
+                            color: THEME.textSecondary,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span>{ttsEngineLabel(config.engine, providerMap)}</span>
+                          <Tag
+                            color={STATUS_COLOR[config.support_status] || 'default'}
+                            style={{ fontSize: 11, margin: 0 }}
+                          >
+                            {supportStatusLabel(config.support_status)}
+                          </Tag>
+                          <span style={{ color: THEME.textMuted }}>排序 {config.sort_order}</span>
+                        </div>
+                        <Tooltip title={config.voice_id}>
+                          <p
+                            style={{
+                              margin: '6px 0 0',
+                              fontSize: 12,
+                              color: THEME.textMuted,
+                              fontFamily: 'monospace',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {shortenVoiceId(config.voice_id)}
+                          </p>
+                        </Tooltip>
+                      </div>
+                    )
+                  })}
                 </div>
-                <p>{shortenVoiceId(config.voice_id)}</p>
-              </button>
-            ))
-          )}
+              )}
+            </div>
+          </div>
         </div>
 
-        <form className="admin-tts-editor" onSubmit={handleSubmit}>
-          <div className="admin-tts-editor__head">
-            <div>
-              <h3>{selectedConfigId ? '编辑 TTS 配置' : '新建 TTS 配置'}</h3>
-              <p>{message}</p>
-            </div>
-            <span className="admin-tag">{selectedConfigId ? `ID #${selectedConfigId}` : '新配置'}</span>
-          </div>
-
-          <label className="admin-field">
-            <span>配置名称</span>
-            <input
-              value={form.name}
-              onChange={(event) => updateTTSField('name', event.target.value)}
-              placeholder="例如 豆包陪伴女声"
-            />
-          </label>
-
-          <div className="admin-tts-editor__grid">
-            <label className="admin-field">
-              <span>供应商</span>
-              <select value={form.engine} onChange={(event) => handleEngineChange(event.target.value)}>
-                {(configsQuery.data.providers || []).map((provider) => (
-                  <option key={provider.key} value={provider.key}>
-                    {provider.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>排序权重</span>
-              <input
-                type="number"
-                value={form.sortOrder}
-                onChange={(event) => updateTTSField('sortOrder', event.target.value)}
-                placeholder="0"
-              />
-            </label>
-          </div>
-
-          <label className="admin-field">
-            <span>Voice ID / Speaker</span>
-            <input
-              value={form.voiceId}
-              onChange={(event) => updateTTSField('voiceId', event.target.value)}
-              placeholder="请输入当前供应商的音色或说话人 ID"
-            />
-          </label>
-
-          <div className={`admin-tts-editor__status ${currentProvider?.support_status === 'supported' ? 'is-valid' : 'is-error'}`}>
-            <strong>供应商状态</strong>
-            <span>{currentProvider?.support_message || '当前供应商元数据缺失。'}</span>
-          </div>
-
-          <label className="admin-field">
-            <span>鉴权配置 JSON</span>
-            <textarea
-              className="admin-tts-editor__params"
-              value={form.authConfigJson}
-              onChange={(event) => updateTTSField('authConfigJson', event.target.value)}
-              placeholder='例如 {"api_key":"xxx"}'
-            />
-          </label>
-
-          <label className="admin-field">
-            <span>供应商参数 JSON</span>
-            <textarea
-              className="admin-tts-editor__params"
-              value={form.paramsJson}
-              onChange={(event) => updateTTSField('paramsJson', event.target.value)}
-              placeholder='例如 {"resource_id":"seed-tts-2.0"}'
-            />
-          </label>
-
-          <div className={`admin-tts-editor__status ${formError ? 'is-error' : 'is-valid'}`}>
-            <strong>表单检查</strong>
-            <span>{formError || '当前 TTS 表单已通过基础校验，可以提交保存。'}</span>
-          </div>
-
-          <div className="admin-tts-editor__effective-json">
-            <div className="admin-tts-editor__effective-head">
-              <strong>鉴权配置预览</strong>
-              <span>{authPreview.valid ? '已通过 JSON 校验' : '当前展示回退空对象'}</span>
-            </div>
-            <pre>{authPreview.formattedJson}</pre>
-          </div>
-
-          <div className="admin-tts-editor__effective-json">
-            <div className="admin-tts-editor__effective-head">
-              <strong>参数配置预览</strong>
-              <span>{paramsPreview.valid ? '已合并上方 Voice ID 后的最终预览' : '当前展示回退空对象'}</span>
-            </div>
-            <pre>{effectiveParamsPreview.formattedJson}</pre>
-          </div>
-
-          <div className="admin-tts-editor__effective-json">
-            <div className="admin-tts-editor__effective-head">
-              <strong>官方字段提示</strong>
-              <span>{currentProvider?.label || '未知供应商'}</span>
-            </div>
-            <pre>{`鉴权字段：\n${formatFieldDefinitions(currentProvider?.auth_fields || [])}\n\n参数字段：\n${formatFieldDefinitions(currentProvider?.param_fields || [])}`}</pre>
-          </div>
-
-          <label className="admin-tts-editor__switch">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(event) => updateTTSField('isActive', event.target.checked)}
-            />
-            <span>{form.isActive ? '当前配置启用中' : '当前配置已停用'}</span>
-          </label>
-
-          <div className="admin-tts-editor__actions">
-            <button
-              className="admin-link"
-              type="button"
-              onClick={startCreatingTTSConfig}
-              disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+        {/* Right: Editor */}
+        <div style={{ flex: '2 1 520px', minWidth: 360 }}>
+          <div
+            style={{
+              ...solidCard,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 300px)',
+              minHeight: 500,
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid ' + THEME.border,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
             >
-              重置为新建
-            </button>
-            {selectedConfigId ? (
-              <button
-                className="admin-link"
-                type="button"
-                onClick={handleDelete}
-                disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+              <div>
+                <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>
+                  {selectedConfigId ? '编辑 TTS 配置' : '新建 TTS 配置'}
+                </span>
+                <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{messageText}</div>
+              </div>
+              <Tag
+                style={{
+                  fontSize: 12,
+                  padding: '2px 10px',
+                  color: selectedConfigId ? THEME.primary : THEME.success,
+                  background: selectedConfigId ? THEME.primaryLight : '#dcfce7',
+                  border: 'none',
+                }}
               >
-                {deleteMutation.isPending ? '删除中...' : '删除配置'}
-              </button>
-            ) : null}
-            <button
-              className="admin-link"
-              type="submit"
-              disabled={Boolean(formError) || saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+                {selectedConfigId ? `ID #${selectedConfigId}` : '新配置'}
+              </Tag>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+              }}
             >
-              {saveMutation.isPending ? '保存中...' : selectedConfigId ? '保存修改' : '创建配置'}
-            </button>
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  配置名称
+                </label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => updateTTSField('name', e.target.value)}
+                  placeholder="例如 豆包陪伴女声"
+                  style={{ borderRadius: 10 }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 16 }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    供应商
+                  </label>
+                  <Select
+                    value={form.engine}
+                    onChange={(v) => handleEngineChange(v)}
+                    style={{ width: '100%' }}
+                    options={(configsQuery.data.providers || []).map((p) => ({
+                      value: p.key,
+                      label: p.label,
+                    }))}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    排序权重
+                  </label>
+                  <InputNumber
+                    value={Number(form.sortOrder)}
+                    onChange={(val) => updateTTSField('sortOrder', val !== null && val !== undefined ? String(val) : '0')}
+                    style={{ width: '100%', borderRadius: 10 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  Voice ID / Speaker
+                </label>
+                <Input
+                  value={form.voiceId}
+                  onChange={(e) => updateTTSField('voiceId', e.target.value)}
+                  placeholder="请输入当前供应商的音色或说话人 ID"
+                  style={{ borderRadius: 10 }}
+                />
+              </div>
+
+              {/* Provider Status */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  background: currentProvider?.support_status === 'supported' ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${currentProvider?.support_status === 'supported' ? '#bbf7d0' : '#fecaca'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                {currentProvider?.support_status === 'supported' ? (
+                  <CheckCircleOutlined style={{ fontSize: 18, color: THEME.success }} />
+                ) : (
+                  <ExclamationCircleOutlined style={{ fontSize: 18, color: THEME.danger }} />
+                )}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: THEME.textMain }}>供应商状态</div>
+                  <div style={{ fontSize: 12, color: THEME.textSecondary }}>
+                    {currentProvider?.support_message || '当前供应商元数据缺失。'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    鉴权配置 JSON
+                  </label>
+                  <Input.TextArea
+                    value={form.authConfigJson}
+                    onChange={(e) => updateTTSField('authConfigJson', e.target.value)}
+                    placeholder='例如 {"api_key":"xxx"}'
+                    rows={6}
+                    style={{
+                      borderRadius: 10,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      borderColor: authPreview.valid ? undefined : THEME.danger,
+                    }}
+                  />
+                  {!authPreview.valid && (
+                    <div style={{ marginTop: 4, fontSize: 12, color: THEME.danger }}>{authPreview.error}</div>
+                  )}
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    供应商参数 JSON
+                  </label>
+                  <Input.TextArea
+                    value={form.paramsJson}
+                    onChange={(e) => updateTTSField('paramsJson', e.target.value)}
+                    placeholder='例如 {"resource_id":"seed-tts-2.0"}'
+                    rows={6}
+                    style={{
+                      borderRadius: 10,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      borderColor: paramsPreview.valid ? undefined : THEME.danger,
+                    }}
+                  />
+                  {!paramsPreview.valid && (
+                    <div style={{ marginTop: 4, fontSize: 12, color: THEME.danger }}>{paramsPreview.error}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Check */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  background: formError ? '#fef2f2' : '#f0fdf4',
+                  border: `1px solid ${formError ? '#fecaca' : '#bbf7d0'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                {formError ? (
+                  <ExclamationCircleOutlined style={{ fontSize: 18, color: THEME.danger }} />
+                ) : (
+                  <CheckCircleOutlined style={{ fontSize: 18, color: THEME.success }} />
+                )}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: THEME.textMain }}>表单检查</div>
+                  <div style={{ fontSize: 12, color: THEME.textSecondary }}>
+                    {formError || '当前 TTS 表单已通过基础校验，可以提交保存。'}
+                  </div>
+                </div>
+              </div>
+
+              {/* JSON Previews */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 600, color: THEME.textSecondary }}>鉴权配置预览</span>
+                    <Tag
+                      color={authPreview.valid ? 'success' : 'error'}
+                      style={{ fontSize: 11, margin: 0 }}
+                    >
+                      {authPreview.valid ? '已通过 JSON 校验' : '回退空对象'}
+                    </Tag>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 12,
+                      borderRadius: 10,
+                      background: '#0f172a',
+                      color: '#e2e8f0',
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                      overflowX: 'auto',
+                      maxHeight: 160,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {authPreview.formattedJson}
+                  </pre>
+                </div>
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 600, color: THEME.textSecondary }}>参数配置预览</span>
+                    <Tag
+                      color={paramsPreview.valid ? 'success' : 'error'}
+                      style={{ fontSize: 11, margin: 0 }}
+                    >
+                      {paramsPreview.valid ? '已合并 Voice ID' : '回退空对象'}
+                    </Tag>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 12,
+                      borderRadius: 10,
+                      background: '#0f172a',
+                      color: '#e2e8f0',
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                      overflowX: 'auto',
+                      maxHeight: 160,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {effectiveParamsPreview.formattedJson}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Field Definitions */}
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, color: THEME.textSecondary }}>官方字段提示</span>
+                  <span style={{ fontSize: 11, color: THEME.textMuted }}>{currentProvider?.label || '未知供应商'}</span>
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: 14,
+                    borderRadius: 10,
+                    background: '#f8fafc',
+                    color: THEME.textSecondary,
+                    fontSize: 12,
+                    lineHeight: 1.8,
+                    overflowX: 'auto',
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                    border: '1px solid ' + THEME.border,
+                  }}
+                >
+                  {`鉴权字段：\n${formatFieldDefinitions(currentProvider?.auth_fields || [])}\n\n参数字段：\n${formatFieldDefinitions(currentProvider?.param_fields || [])}`}
+                </pre>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Switch
+                  checked={form.isActive}
+                  onChange={(checked) => updateTTSField('isActive', checked)}
+                />
+                <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                  {form.isActive ? '当前配置启用中' : '当前配置已停用'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', paddingTop: 4 }}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={startCreatingTTSConfig}
+                  disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+                  style={{ borderRadius: 10 }}
+                >
+                  重置为新建
+                </Button>
+                {selectedConfigId && (
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleDelete}
+                    loading={deleteMutation.isPending}
+                    disabled={saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+                    style={{ borderRadius: 10 }}
+                  >
+                    删除配置
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SaveOutlined />}
+                  loading={saveMutation.isPending}
+                  disabled={Boolean(formError) || saveMutation.isPending || deleteMutation.isPending || saveDefaultsMutation.isPending}
+                  style={{
+                    borderRadius: 10,
+                    background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                    border: 'none',
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                  }}
+                >
+                  {saveMutation.isPending ? '保存中...' : selectedConfigId ? '保存修改' : '创建配置'}
+                </Button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
-    </section>
+    </div>
   )
 }

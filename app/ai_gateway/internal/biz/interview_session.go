@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 )
@@ -369,7 +370,7 @@ func (uc *InterviewSessionUseCase) EndInterviewSession(ctx context.Context, req 
 func (uc *InterviewSessionUseCase) getSession(sessionID string) (*interviewSessionState, error) {
 	val, ok := uc.sessions.Load(sessionID)
 	if !ok {
-		return nil, ErrAIConfigNotFound // 会话不存在
+		return nil, kratosErr.NotFound("SESSION_NOT_FOUND", "面试会话不存在或已过期，请重新开始面试")
 	}
 	return val.(*interviewSessionState), nil
 }

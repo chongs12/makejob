@@ -1,6 +1,21 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  SmileOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
+  InboxOutlined,
+  FileZipOutlined,
+  PictureOutlined,
+} from '@ant-design/icons'
+import { Button, Card, Input, Modal, Select, Switch, Tag, Tooltip } from 'antd'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
@@ -63,6 +78,39 @@ interface Live2DFormState {
   configJson: string
   ttsConfigId: string
   isActive: boolean
+}
+
+const THEME = {
+  bg: '#f4f7fe',
+  cardBg: '#ffffff',
+  primary: '#4f46e5',
+  primaryLight: '#e0e7ff',
+  accent: '#f59e0b',
+  textMain: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  border: '#e2e8f0',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  shadow: '0 8px 32px rgba(31, 38, 135, 0.07)',
+  radius: 16,
+}
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: THEME.radius,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: THEME.shadow,
+}
+
+const solidCard = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  boxShadow: THEME.shadow,
+  border: '1px solid ' + THEME.border,
 }
 
 const LIVE2D_SCENE_OPTIONS: Array<{ value: Live2DScene; label: string }> = [
@@ -233,14 +281,14 @@ function buildInitialLive2DForm(): Live2DFormState {
  */
 function buildDefaultLive2DConfig(scene: Live2DScene): Record<string, unknown> {
   if (scene === 'interview') {
-      return {
-        scale: 0.34,
-        offset_x: 0,
-        offset_y: 0.02,
-        idle_motion: 'interview_idle',
-        tap_motion: 'greeting',
-        background: 'transparent',
-      }
+    return {
+      scale: 0.34,
+      offset_x: 0,
+      offset_y: 0.02,
+      idle_motion: 'interview_idle',
+      tap_motion: 'greeting',
+      background: 'transparent',
+    }
   }
 
   return {
@@ -437,7 +485,7 @@ export function Live2DPage() {
   const backgroundInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [form, setForm] = useState<Live2DFormState>(buildInitialLive2DForm())
-  const [message, setMessage] = useState('读取 Live2D 模型中')
+  const [messageText, setMessageText] = useState('读取 Live2D 模型中')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [backgroundImportFile, setBackgroundImportFile] = useState<File | null>(null)
 
@@ -477,7 +525,7 @@ export function Live2DPage() {
     }
 
     if (selectedModelId === null) {
-      setMessage((current) => (current === '读取 Live2D 模型中' ? '已同步 Live2D 模型列表。' : current))
+      setMessageText((current) => (current === '读取 Live2D 模型中' ? '已同步 Live2D 模型列表。' : current))
       return
     }
 
@@ -506,7 +554,7 @@ export function Live2DPage() {
       if (result.model_id) {
         setSelectedModelId(result.model_id)
       }
-      setMessage(
+      setMessageText(
         result.created
           ? `模型包已导入并加入后台待确认列表，资源目录：${result.asset_dir}。当前默认未启用，启用后前台才可见。`
           : `模型资源已存在于后台列表，资源目录：${result.asset_dir}。当前仍需在后台确认启用后前台才可见。`,
@@ -520,7 +568,7 @@ export function Live2DPage() {
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '导入 Live2D 模型包失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '导入 Live2D 模型包失败，请稍后重试'))
     },
   })
 
@@ -537,14 +585,14 @@ export function Live2DPage() {
         ...current,
         backgroundImageUrl: result.asset_url || current.backgroundImageUrl,
       }))
-      setMessage(`背景图导入完成：${result.file_name}`)
+      setMessageText(`背景图导入完成：${result.file_name}`)
       setBackgroundImportFile(null)
       if (backgroundInputRef.current) {
         backgroundInputRef.current.value = ''
       }
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '导入 Live2D 背景图失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '导入 Live2D 背景图失败，请稍后重试'))
     },
   })
 
@@ -562,13 +610,13 @@ export function Live2DPage() {
     },
     onSuccess: async (modelId) => {
       setSelectedModelId(modelId)
-      setMessage(selectedModelId ? 'Live2D 模型已更新。' : 'Live2D 模型已创建。')
+      setMessageText(selectedModelId ? 'Live2D 模型已更新。' : 'Live2D 模型已创建。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'live2d-models'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '保存 Live2D 模型失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '保存 Live2D 模型失败，请稍后重试'))
     },
   })
 
@@ -579,13 +627,13 @@ export function Live2DPage() {
     onSuccess: async () => {
       setSelectedModelId(null)
       setForm(buildInitialLive2DForm())
-      setMessage('Live2D 模型已删除。')
+      setMessageText('Live2D 模型已删除。')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'live2d-models'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '删除 Live2D 模型失败，请稍后重试'))
+      setMessageText(extractErrorMessage(error, '删除 Live2D 模型失败，请稍后重试'))
     },
   })
 
@@ -595,7 +643,7 @@ export function Live2DPage() {
   function startCreatingModel(): void {
     setSelectedModelId(null)
     setForm(buildInitialLive2DForm())
-    setMessage('已切换到新建 Live2D 模型。')
+    setMessageText('已切换到新建 Live2D 模型。')
   }
 
   /**
@@ -604,7 +652,7 @@ export function Live2DPage() {
   function startEditingModel(model: Live2DModel): void {
     setSelectedModelId(model.id)
     setForm(buildLive2DForm(model))
-    setMessage(`正在编辑模型：${model.name}`)
+    setMessageText(`正在编辑模型：${model.name}`)
   }
 
   /**
@@ -633,7 +681,7 @@ export function Live2DPage() {
    */
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    setMessage(selectedModelId ? '正在更新 Live2D 模型。' : '正在创建 Live2D 模型。')
+    setMessageText(selectedModelId ? '正在更新 Live2D 模型。' : '正在创建 Live2D 模型。')
     saveMutation.mutate()
   }
 
@@ -642,7 +690,7 @@ export function Live2DPage() {
    */
   function handleImport(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    setMessage('正在导入 Live2D 模型包。')
+    setMessageText('正在导入 Live2D 模型包。')
     importMutation.mutate()
   }
 
@@ -665,12 +713,12 @@ export function Live2DPage() {
    */
   function handleBackgroundImport(): void {
     if (!backgroundImportFile) {
-      setMessage('请先选择一张舞台背景图，再执行上传。')
+      setMessageText('请先选择一张舞台背景图，再执行上传。')
       openBackgroundPicker()
       return
     }
 
-    setMessage('正在导入 Live2D 背景图。')
+    setMessageText('正在导入 Live2D 背景图。')
     importBackgroundMutation.mutate()
   }
 
@@ -682,320 +730,886 @@ export function Live2DPage() {
       return
     }
 
-    if (!window.confirm('确认删除当前 Live2D 模型吗？删除后不可恢复。')) {
-      return
-    }
-
-    setMessage('正在删除 Live2D 模型。')
-    deleteMutation.mutate(selectedModelId)
+    Modal.confirm({
+      title: '确认删除',
+      icon: <ExclamationCircleOutlined />,
+      content: '确认删除当前 Live2D 模型吗？删除后不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        setMessageText('正在删除 Live2D 模型。')
+        deleteMutation.mutate(selectedModelId)
+      },
+    })
   }
 
   if (modelsQuery.isLoading || industriesQuery.isLoading || ttsConfigsQuery.isLoading) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">Live2D 中心</span>
-        <h2>Live2D 管理</h2>
-        <p className="admin-copy">正在加载模型资产与行业数据。</p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>Live2D 管理</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.textSecondary }}>正在加载模型资产与行业数据...</p>
+        </div>
+      </div>
     )
   }
 
   if (modelsQuery.isError || industriesQuery.isError || ttsConfigsQuery.isError) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">Live2D 中心</span>
-        <h2>Live2D 管理</h2>
-        <p className="admin-copy">
-          {extractErrorMessage(modelsQuery.error || industriesQuery.error || ttsConfigsQuery.error, '读取 Live2D 管理数据失败')}
-        </p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>Live2D 管理</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.danger }}>
+            {extractErrorMessage(modelsQuery.error || industriesQuery.error || ttsConfigsQuery.error, '读取 Live2D 管理数据失败')}
+          </p>
+        </div>
+      </div>
     )
   }
 
   return (
-    <section className="admin-panel admin-live2d-page">
-      <div className="admin-live2d-page__hero">
-        <div>
-          <span className="admin-tag">Live2D 中心</span>
-          <h2>Live2D 管理</h2>
-          <p className="admin-copy">
-            当前页用于维护陪伴与面试场景的 Live2D 模型。ZIP 导入或本地资源自动识别后，只会先加入后台待确认列表，默认未启用；只有管理员手动启用后，前台用户才可以切换到这些模型。
-          </p>
+    <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+      {/* Header */}
+      <div
+        style={{
+          ...glassCard,
+          padding: '24px 28px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, #ec4899, #db2777)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(236, 72, 153, 0.35)',
+              flexShrink: 0,
+            }}
+          >
+            <SmileOutlined style={{ fontSize: 22, color: '#fff' }} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain, lineHeight: 1.3 }}>
+              Live2D 管理
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textSecondary }}>
+              维护陪伴与面试场景的 Live2D 模型，支持 ZIP 导入和手动配置
+            </p>
+          </div>
         </div>
-        <div className="admin-live2d-page__summary">
-          <strong>{modelsQuery.data?.length || 0}</strong>
-          <span>个模型</span>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              ...solidCard,
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 120,
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 700, color: THEME.primary }}>{modelsQuery.data?.length || 0}</span>
+            <span style={{ fontSize: 12, color: THEME.textSecondary }}>个模型</span>
+          </div>
         </div>
       </div>
 
-      <div className="admin-live2d-page__toolbar">
-        <form className="admin-live2d-import" onSubmit={handleImport}>
+      {/* Import Toolbar */}
+      <div
+        style={{
+          ...solidCard,
+          padding: '14px 20px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <form
+          onSubmit={handleImport}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}
+        >
           <input
             ref={packageInputRef}
-            className="admin-upload-input"
             type="file"
             accept=".zip"
             onChange={(event) => setImportFile(event.target.files?.[0] || null)}
+            style={{ display: 'none' }}
           />
-          <div className="admin-upload-meta">
-            <strong>模型 ZIP</strong>
-            <span>{importFile?.name || '尚未选择模型包'}</span>
+          <div
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              background: '#f8fafc',
+              border: '1px solid ' + THEME.border,
+              fontSize: 13,
+              color: importFile ? THEME.textMain : THEME.textMuted,
+              minWidth: 180,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <FileZipOutlined />
+            {importFile?.name || '尚未选择模型包'}
           </div>
-          <button className="admin-link" type="button" onClick={openPackagePicker} disabled={importMutation.isPending}>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={openPackagePicker}
+            disabled={importMutation.isPending}
+            style={{ borderRadius: 10 }}
+          >
             选择模型包
-          </button>
-          <button className="admin-link" type="submit" disabled={importMutation.isPending || !importFile}>
-            {importMutation.isPending ? '导入中...' : '导入 ZIP 模型包'}
-          </button>
+          </Button>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            htmlType="submit"
+            disabled={importMutation.isPending || !importFile}
+            loading={importMutation.isPending}
+            style={{
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              border: 'none',
+            }}
+          >
+            导入 ZIP
+          </Button>
         </form>
 
-        <div className="admin-live2d-import">
+        <div style={{ width: 1, height: 32, background: THEME.border }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <input
             ref={backgroundInputRef}
-            className="admin-upload-input"
             type="file"
             accept=".png,.jpg,.jpeg,.webp"
             onChange={(event) => setBackgroundImportFile(event.target.files?.[0] || null)}
+            style={{ display: 'none' }}
           />
-          <div className="admin-upload-meta">
-            <strong>舞台背景图</strong>
-            <span>{backgroundImportFile?.name || '尚未选择背景图'}</span>
+          <div
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              background: '#f8fafc',
+              border: '1px solid ' + THEME.border,
+              fontSize: 13,
+              color: backgroundImportFile ? THEME.textMain : THEME.textMuted,
+              minWidth: 180,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <PictureOutlined />
+            {backgroundImportFile?.name || '尚未选择背景图'}
           </div>
-          <button className="admin-link" type="button" onClick={openBackgroundPicker} disabled={importBackgroundMutation.isPending}>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={openBackgroundPicker}
+            disabled={importBackgroundMutation.isPending}
+            style={{ borderRadius: 10 }}
+          >
             选择背景图
-          </button>
-          <button className="admin-link" type="button" onClick={handleBackgroundImport} disabled={importBackgroundMutation.isPending}>
-            {importBackgroundMutation.isPending ? '上传中...' : '上传舞台背景图'}
-          </button>
+          </Button>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={handleBackgroundImport}
+            disabled={importBackgroundMutation.isPending || !backgroundImportFile}
+            loading={importBackgroundMutation.isPending}
+            style={{
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              border: 'none',
+            }}
+          >
+            上传背景图
+          </Button>
         </div>
 
-        <button className="admin-link" type="button" onClick={startCreatingModel}>
+        <div style={{ flex: 1 }} />
+
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={startCreatingModel}
+          style={{
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+            border: 'none',
+          }}
+        >
           新建模型
-        </button>
+        </Button>
       </div>
 
-      <div className="admin-live2d-page__layout">
-        <div className="admin-live2d-list">
-          {(modelsQuery.data || []).length === 0 ? (
-            <div className="admin-live2d-card admin-live2d-card--empty">
-              <strong>当前还没有 Live2D 模型记录</strong>
-              <p>可以先导入 ZIP 模型包，再创建一条模型配置记录。</p>
+      {/* Main Content */}
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {/* Left: Model List */}
+        <div style={{ flex: '1 1 340px', maxWidth: 420, minWidth: 300 }}>
+          <div
+            style={{
+              ...solidCard,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 300px)',
+              minHeight: 500,
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid ' + THEME.border,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>模型列表</span>
+              <span style={{ fontSize: 12, color: THEME.textMuted }}>共 {modelsQuery.data?.length || 0} 个</span>
             </div>
-          ) : (
-            (modelsQuery.data || []).map((model) => (
-              <button
-                key={model.id}
-                type="button"
-                className={`admin-live2d-card ${selectedModelId === model.id ? 'admin-live2d-card--active' : ''}`}
-                onClick={() => startEditingModel(model)}
-              >
-                <div className="admin-live2d-card__head">
-                  <strong>{model.name}</strong>
-                  <span>{model.is_active ? '启用中' : '已停用'}</span>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+              {(modelsQuery.data || []).length === 0 ? (
+                <div
+                  style={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: THEME.textMuted,
+                    gap: 12,
+                  }}
+                >
+                  <InboxOutlined style={{ fontSize: 40 }} />
+                  <span style={{ fontSize: 14 }}>当前还没有 Live2D 模型记录</span>
+                  <span style={{ fontSize: 12 }}>可以先导入 ZIP 模型包，再创建一条模型配置记录</span>
                 </div>
-                <div className="admin-live2d-card__meta">
-                  <span>{live2DSceneLabel(model.scene)}</span>
-                  <span>{resolveIndustryName(model.industry_id, industryMap)}</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(modelsQuery.data || []).map((model) => {
+                    const isActive = selectedModelId === model.id
+                    return (
+                      <div
+                        key={model.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => startEditingModel(model)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            startEditingModel(model)
+                          }
+                        }}
+                        style={{
+                          padding: '14px 16px',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          border: isActive
+                            ? '1.5px solid ' + THEME.primary
+                            : '1.5px solid transparent',
+                          background: isActive ? '#f5f3ff' : '#fafafa',
+                          transition: 'all 0.2s ease',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = '#f1f5f9'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.currentTarget.style.background = '#fafafa'
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: '12px',
+                              bottom: '12px',
+                              width: 3,
+                              borderRadius: '0 3px 3px 0',
+                              background: THEME.primary,
+                            }}
+                          />
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 14,
+                              color: THEME.textMain,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {model.name}
+                          </span>
+                          <Tag
+                            color={model.is_active ? 'success' : 'default'}
+                            style={{ fontSize: 11, padding: '0 6px', margin: 0, flexShrink: 0 }}
+                          >
+                            {model.is_active ? '启用中' : '已停用'}
+                          </Tag>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 12,
+                            color: THEME.textSecondary,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <Tag
+                            style={{
+                              fontSize: 11,
+                              margin: 0,
+                              color: model.scene === 'interview' ? '#8b5cf6' : '#3b82f6',
+                              background:
+                                model.scene === 'interview' ? '#f3e8ff' : '#dbeafe',
+                              border: 'none',
+                            }}
+                          >
+                            {live2DSceneLabel(model.scene)}
+                          </Tag>
+                          <span>{resolveIndustryName(model.industry_id, industryMap)}</span>
+                        </div>
+                        <Tooltip title={model.model_url}>
+                          <p
+                            style={{
+                              margin: '6px 0 0',
+                              fontSize: 11,
+                              color: THEME.textMuted,
+                              fontFamily: 'monospace',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {shortenUrl(model.model_url)}
+                          </p>
+                        </Tooltip>
+                      </div>
+                    )
+                  })}
                 </div>
-                <p>{shortenUrl(model.model_url)}</p>
-              </button>
-            ))
-          )}
+              )}
+            </div>
+          </div>
         </div>
 
-        <form className="admin-live2d-editor" onSubmit={handleSubmit}>
-          <div className="admin-live2d-editor__head">
-            <div>
-              <h3>{selectedModelId ? '编辑 Live2D 模型' : '新建 Live2D 模型'}</h3>
-              <p>{message}</p>
-            </div>
-            <span className="admin-tag">{selectedModelId ? `ID #${selectedModelId}` : '新模型'}</span>
-          </div>
-
-          <label className="admin-field">
-            <span>模型名称</span>
-            <input
-              value={form.name}
-              onChange={(event) => updateLive2DField('name', event.target.value)}
-              placeholder="例如 Ariu 陪伴版"
-            />
-          </label>
-
-          <div className="admin-live2d-editor__grid">
-            <label className="admin-field">
-              <span>所属行业</span>
-              <select
-                value={form.industryId}
-                onChange={(event) => updateLive2DField('industryId', event.target.value)}
-              >
-                <option value="0">通用模型</option>
-                {(industriesQuery.data || []).map((industry) => (
-                  <option key={industry.id} value={industry.id}>
-                    {industry.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>使用场景</span>
-              <select
-                value={form.scene}
-                onChange={(event) => updateLive2DField('scene', event.target.value as Live2DScene)}
-              >
-                {LIVE2D_SCENE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="admin-field">
-            <span>绑定 TTS 配置</span>
-            <select value={form.ttsConfigId} onChange={(event) => updateLive2DField('ttsConfigId', event.target.value)}>
-              <option value="0">不绑定，回退到场景默认 / config.yaml</option>
-              {(ttsConfigsQuery.data || []).map((config) => (
-                <option key={config.id} value={config.id}>
-                  {config.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="admin-field">
-            <span>模型地址</span>
-            <input
-              value={form.modelUrl}
-              onChange={(event) => updateLive2DField('modelUrl', event.target.value)}
-              placeholder="/live2d-assets/xxx/xxx.model3.json"
-            />
-          </label>
-
-          <label className="admin-field">
-            <span>缩略图地址</span>
-            <input
-              value={form.thumbnailUrl}
-              onChange={(event) => updateLive2DField('thumbnailUrl', event.target.value)}
-              placeholder="/live2d-assets/xxx/preview.png"
-            />
-          </label>
-
-          <label className="admin-field">
-            <span>舞台背景图地址</span>
-            <input
-              value={form.backgroundImageUrl}
-              onChange={(event) => updateLive2DField('backgroundImageUrl', event.target.value)}
-              placeholder="/live2d-assets/backgrounds/stage-cover.webp"
-            />
-          </label>
-
-          {form.thumbnailUrl ? (
-            <div className="admin-live2d-editor__preview">
-              <strong>缩略图预览</strong>
-              <img src={form.thumbnailUrl} alt={form.name || 'Live2D 缩略图'} />
-            </div>
-          ) : null}
-
-          {form.backgroundImageUrl ? (
-            <div className="admin-live2d-editor__preview admin-live2d-editor__preview-stage">
-              <strong>舞台背景预览</strong>
-              <img src={form.backgroundImageUrl} alt={form.name ? `${form.name} 舞台背景` : 'Live2D 舞台背景'} />
-            </div>
-          ) : null}
-
-          <div className="admin-live2d-editor__resource-check">
-            <div className={`admin-live2d-editor__status ${hasValidModelUrl ? 'is-valid' : 'is-warning'}`}>
-              <strong>模型资源</strong>
-              <span>
-                {hasValidModelUrl
-                  ? '模型地址看起来是可加载的 .model3.json 文件。'
-                  : '模型地址建议指向 .model3.json 文件，避免前台无法加载。'}
-              </span>
-            </div>
-            <div className={`admin-live2d-editor__status ${hasBackgroundImageUrl ? 'is-valid' : 'is-warning'}`}>
-              <strong>舞台背景</strong>
-              <span>
-                {hasBackgroundImageUrl
-                  ? '前台舞台会优先加载该背景图，加载失败时自动回退默认渐变背景。'
-                  : '当前未配置背景图，前台会继续使用默认舞台渐变背景。'}
-              </span>
-            </div>
-            <div className={`admin-live2d-editor__status ${form.isActive ? 'is-valid' : 'is-warning'}`}>
-              <strong>前台可见性</strong>
-              <span>
-                {form.isActive
-                  ? '当前模型已启用，满足场景与行业命中条件时会出现在前台切换列表。'
-                  : '当前模型未启用，只会保留在后台管理页，前台不会展示或允许切换。'}
-              </span>
-            </div>
-            <div className={`admin-live2d-editor__status ${configPreview.valid ? 'is-valid' : 'is-error'}`}>
-              <strong>配置 JSON</strong>
-              <span>
-                {configPreview.valid
-                  ? '配置 JSON 可解析，预览区展示的是合并默认值后的最终配置。'
-                  : configPreview.error}
-              </span>
-            </div>
-          </div>
-
-          <label className="admin-field">
-            <span>渲染配置 JSON</span>
-            <textarea
-              className="admin-live2d-editor__config"
-              value={form.configJson}
-              onChange={(event) => handleConfigJsonChange(event.target.value)}
-              placeholder='例如 {"scale":0.4,"offset_y":0.08}'
-            />
-          </label>
-
-          <div className="admin-live2d-editor__effective-config">
-            <div className="admin-live2d-editor__effective-head">
-              <strong>最终生效配置预览</strong>
-              <span>{configPreview.valid ? '已通过校验' : '当前展示默认配置回退值'}</span>
-            </div>
-            <pre>{configPreview.formattedConfig}</pre>
-          </div>
-
-          <label className="admin-live2d-editor__switch">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(event) => updateLive2DField('isActive', event.target.checked)}
-            />
-            <span>{form.isActive ? '当前模型启用中' : '当前模型已停用'}</span>
-          </label>
-
-          <div className="admin-live2d-editor__actions">
-            <button
-              className="admin-link"
-              type="button"
-              onClick={startCreatingModel}
-              disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+        {/* Right: Editor */}
+        <div style={{ flex: '2 1 520px', minWidth: 360 }}>
+          <div
+            style={{
+              ...solidCard,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 300px)',
+              minHeight: 500,
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid ' + THEME.border,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
             >
-              重置为新建
-            </button>
-            {selectedModelId ? (
-              <button
-                className="admin-link"
-                type="button"
-                onClick={handleDelete}
-                disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+              <div>
+                <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>
+                  {selectedModelId ? '编辑 Live2D 模型' : '新建 Live2D 模型'}
+                </span>
+                <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{messageText}</div>
+              </div>
+              <Tag
+                style={{
+                  fontSize: 12,
+                  padding: '2px 10px',
+                  color: selectedModelId ? THEME.primary : THEME.success,
+                  background: selectedModelId ? THEME.primaryLight : '#dcfce7',
+                  border: 'none',
+                }}
               >
-                {deleteMutation.isPending ? '删除中...' : '删除模型'}
-              </button>
-            ) : null}
-            <button
-              className="admin-link"
-              type="submit"
-              disabled={!canSubmit || saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+                {selectedModelId ? `ID #${selectedModelId}` : '新模型'}
+              </Tag>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+              }}
             >
-              {saveMutation.isPending ? '保存中...' : selectedModelId ? '保存修改' : '创建模型'}
-            </button>
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  模型名称
+                </label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => updateLive2DField('name', e.target.value)}
+                  placeholder="例如 Ariu 陪伴版"
+                  style={{ borderRadius: 10 }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    所属行业
+                  </label>
+                  <Select
+                    value={form.industryId}
+                    onChange={(v) => updateLive2DField('industryId', v)}
+                    style={{ width: '100%' }}
+                    options={[
+                      { value: '0', label: '通用模型' },
+                      ...(industriesQuery.data || []).map((i) => ({
+                        value: String(i.id),
+                        label: i.name,
+                      })),
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    使用场景
+                  </label>
+                  <Select
+                    value={form.scene}
+                    onChange={(v) => updateLive2DField('scene', v as Live2DScene)}
+                    style={{ width: '100%' }}
+                    options={LIVE2D_SCENE_OPTIONS}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  绑定 TTS 配置
+                </label>
+                <Select
+                  value={form.ttsConfigId}
+                  onChange={(v) => updateLive2DField('ttsConfigId', v)}
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: '0', label: '不绑定，回退到场景默认 / config.yaml' },
+                    ...(ttsConfigsQuery.data || []).map((c) => ({
+                      value: String(c.id),
+                      label: c.name,
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  模型地址
+                </label>
+                <Input
+                  value={form.modelUrl}
+                  onChange={(e) => updateLive2DField('modelUrl', e.target.value)}
+                  placeholder="/live2d-assets/xxx/xxx.model3.json"
+                  style={{ borderRadius: 10, fontFamily: 'monospace', fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    缩略图地址
+                  </label>
+                  <Input
+                    value={form.thumbnailUrl}
+                    onChange={(e) => updateLive2DField('thumbnailUrl', e.target.value)}
+                    placeholder="/live2d-assets/xxx/preview.png"
+                    style={{ borderRadius: 10, fontFamily: 'monospace', fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: THEME.textSecondary,
+                      marginBottom: 6,
+                    }}
+                  >
+                    舞台背景图地址
+                  </label>
+                  <Input
+                    value={form.backgroundImageUrl}
+                    onChange={(e) => updateLive2DField('backgroundImageUrl', e.target.value)}
+                    placeholder="/live2d-assets/backgrounds/stage-cover.webp"
+                    style={{ borderRadius: 10, fontFamily: 'monospace', fontSize: 13 }}
+                  />
+                </div>
+              </div>
+
+              {/* Image Previews */}
+              {(form.thumbnailUrl || form.backgroundImageUrl) && (
+                <div style={{ display: 'grid', gridTemplateColumns: form.thumbnailUrl && form.backgroundImageUrl ? '1fr 1fr' : '1fr', gap: 16 }}>
+                  {form.thumbnailUrl && (
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: THEME.textSecondary,
+                          marginBottom: 8,
+                        }}
+                      >
+                        缩略图预览
+                      </div>
+                      <div
+                        style={{
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          border: '1px solid ' + THEME.border,
+                          height: 160,
+                          background: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <img
+                          src={form.thumbnailUrl}
+                          alt={form.name || '缩略图'}
+                          style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {form.backgroundImageUrl && (
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: THEME.textSecondary,
+                          marginBottom: 8,
+                        }}
+                      >
+                        舞台背景预览
+                      </div>
+                      <div
+                        style={{
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          border: '1px solid ' + THEME.border,
+                          height: 160,
+                          background: '#f8fafc',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <img
+                          src={form.backgroundImageUrl}
+                          alt={form.name ? `${form.name} 舞台背景` : '舞台背景'}
+                          style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'cover',
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Status Checks */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                {[
+                  {
+                    ok: hasValidModelUrl,
+                    title: '模型资源',
+                    okText: '模型地址看起来是可加载的 .model3.json 文件。',
+                    warnText: '模型地址建议指向 .model3.json 文件，避免前台无法加载。',
+                  },
+                  {
+                    ok: hasBackgroundImageUrl,
+                    title: '舞台背景',
+                    okText: '前台舞台会优先加载该背景图，加载失败时自动回退默认渐变背景。',
+                    warnText: '当前未配置背景图，前台会继续使用默认舞台渐变背景。',
+                  },
+                  {
+                    ok: form.isActive,
+                    title: '前台可见性',
+                    okText: '当前模型已启用，满足场景与行业命中条件时会出现在前台切换列表。',
+                    warnText: '当前模型未启用，只会保留在后台管理页，前台不会展示或允许切换。',
+                  },
+                  {
+                    ok: configPreview.valid,
+                    title: '配置 JSON',
+                    okText: '配置 JSON 可解析，预览区展示的是合并默认值后的最终配置。',
+                    warnText: configPreview.error,
+                    isError: !configPreview.valid,
+                  },
+                ].map((check) => (
+                  <div
+                    key={check.title}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      background: check.ok ? '#f0fdf4' : check.isError ? '#fef2f2' : '#fffbeb',
+                      border: `1px solid ${check.ok ? '#bbf7d0' : check.isError ? '#fecaca' : '#fde68a'}`,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 8,
+                    }}
+                  >
+                    {check.ok ? (
+                      <CheckCircleOutlined
+                        style={{
+                          fontSize: 16,
+                          color: THEME.success,
+                          marginTop: 2,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : check.isError ? (
+                      <ExclamationCircleOutlined
+                        style={{
+                          fontSize: 16,
+                          color: THEME.danger,
+                          marginTop: 2,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <WarningOutlined
+                        style={{
+                          fontSize: 16,
+                          color: THEME.warning,
+                          marginTop: 2,
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: THEME.textMain }}>{check.title}</div>
+                      <div style={{ fontSize: 11, color: THEME.textSecondary, lineHeight: 1.4 }}>
+                        {check.ok ? check.okText : check.warnText}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: THEME.textSecondary,
+                    marginBottom: 6,
+                  }}
+                >
+                  渲染配置 JSON
+                </label>
+                <Input.TextArea
+                  value={form.configJson}
+                  onChange={(e) => handleConfigJsonChange(e.target.value)}
+                  placeholder='例如 {"scale":0.4,"offset_y":0.08}'
+                  rows={6}
+                  style={{
+                    borderRadius: 10,
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    borderColor: configPreview.valid ? undefined : THEME.danger,
+                  }}
+                />
+                {!configPreview.valid && (
+                  <div style={{ marginTop: 4, fontSize: 12, color: THEME.danger }}>{configPreview.error}</div>
+                )}
+              </div>
+
+              {/* Effective Config Preview */}
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, color: THEME.textSecondary }}>最终生效配置预览</span>
+                  <Tag
+                    color={configPreview.valid ? 'success' : 'error'}
+                    style={{ fontSize: 11, margin: 0 }}
+                  >
+                    {configPreview.valid ? '已通过校验' : '默认配置回退值'}
+                  </Tag>
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: 14,
+                    borderRadius: 10,
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    overflowX: 'auto',
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {configPreview.formattedConfig}
+                </pre>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Switch
+                  checked={form.isActive}
+                  onChange={(checked) => updateLive2DField('isActive', checked)}
+                />
+                <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                  {form.isActive ? '当前模型启用中' : '当前模型已停用'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', paddingTop: 4 }}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={startCreatingModel}
+                  disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+                  style={{ borderRadius: 10 }}
+                >
+                  重置为新建
+                </Button>
+                {selectedModelId && (
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleDelete}
+                    loading={deleteMutation.isPending}
+                    disabled={saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+                    style={{ borderRadius: 10 }}
+                  >
+                    删除模型
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SaveOutlined />}
+                  loading={saveMutation.isPending}
+                  disabled={!canSubmit || saveMutation.isPending || deleteMutation.isPending || importMutation.isPending || importBackgroundMutation.isPending}
+                  style={{
+                    borderRadius: 10,
+                    background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                    border: 'none',
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                  }}
+                >
+                  {saveMutation.isPending ? '保存中...' : selectedModelId ? '保存修改' : '创建模型'}
+                </Button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
-    </section>
+    </div>
   )
 }

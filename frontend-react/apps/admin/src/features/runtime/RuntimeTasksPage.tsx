@@ -1,5 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  RocketOutlined,
+  SearchOutlined,
+  ReloadOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+  FileTextOutlined,
+  CopyOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ExclamationCircleOutlined,
+  ThunderboltOutlined,
+  ApiOutlined,
+  DownOutlined,
+  UpOutlined,
+} from '@ant-design/icons'
+import { Button, Card, Input, Select, Tag, Tooltip } from 'antd'
 import { extractErrorMessage } from '@makejob/api-client'
 import { useAdminAuthStore } from '../../state/auth'
 import {
@@ -13,6 +30,39 @@ import {
 
 const LOG_PAGE_SIZE = 10
 const TASK_PAGE_SIZE = 10
+
+const THEME = {
+  bg: '#f4f7fe',
+  cardBg: '#ffffff',
+  primary: '#4f46e5',
+  primaryLight: '#e0e7ff',
+  accent: '#f59e0b',
+  textMain: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  border: '#e2e8f0',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  shadow: '0 8px 32px rgba(31, 38, 135, 0.07)',
+  radius: 16,
+}
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: THEME.radius,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: THEME.shadow,
+}
+
+const solidCard = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  boxShadow: THEME.shadow,
+  border: '1px solid ' + THEME.border,
+}
 
 /**
  * 规范化需要复制的文本，避免把纯空白内容写入剪贴板。
@@ -93,8 +143,12 @@ function formatRuntimeListDateTime(value?: string): string {
 /**
  * 统一渲染 AI 调用状态标签，便于日志表格快速识别成功与失败。
  */
-function renderAICallStatusText(isSuccess: boolean): string {
-  return isSuccess ? 'success' : 'failed'
+function renderAICallStatusTag(isSuccess: boolean): React.ReactNode {
+  return isSuccess ? (
+    <Tag color="success" style={{ fontSize: 11, margin: 0 }}>success</Tag>
+  ) : (
+    <Tag color="error" style={{ fontSize: 11, margin: 0 }}>failed</Tag>
+  )
 }
 
 /**
@@ -113,28 +167,23 @@ function renderScraperTaskTypeText(taskType?: string): string {
   }
 }
 
+const TASK_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  pending: { label: '待执行', color: THEME.warning },
+  running: { label: '执行中', color: THEME.primary },
+  fetched: { label: '已抓取', color: '#3b82f6' },
+  cleaned: { label: '已清洗', color: '#8b5cf6' },
+  imported: { label: '已导入', color: THEME.success },
+  succeeded: { label: '已完成', color: THEME.success },
+  failed: { label: '失败', color: THEME.danger },
+}
+
 /**
  * 统一渲染抓取任务状态文本，减少后台列表直接暴露内部状态码的阅读成本。
  */
-function renderScraperTaskStatusText(status?: string): string {
-  switch ((status || '').trim()) {
-    case 'pending':
-      return '待执行'
-    case 'running':
-      return '执行中'
-    case 'fetched':
-      return '已抓取'
-    case 'cleaned':
-      return '已清洗'
-    case 'imported':
-      return '已导入'
-    case 'succeeded':
-      return '已完成'
-    case 'failed':
-      return '失败'
-    default:
-      return status?.trim() || '-'
-  }
+function renderScraperTaskStatusTag(status?: string): React.ReactNode {
+  const cfg = TASK_STATUS_CONFIG[status?.trim() || '']
+  if (!cfg) return <Tag style={{ fontSize: 11, margin: 0 }}>{status?.trim() || '-'}</Tag>
+  return <Tag color={cfg.color} style={{ fontSize: 11, margin: 0 }}>{cfg.label}</Tag>
 }
 
 /**
@@ -344,21 +393,23 @@ export function RuntimeTasksPage() {
 
   if (aiConfigQuery.isLoading || aiLogsQuery.isLoading || scraperTasksQuery.isLoading) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">运行任务</span>
-        <h2>运行日志与任务</h2>
-        <p className="admin-copy">正在加载 AI 日志、抓取任务和当前运行配置。</p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>运行日志与任务</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.textSecondary }}>正在加载 AI 日志、抓取任务和当前运行配置...</p>
+        </div>
+      </div>
     )
   }
 
   if (pageError) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">运行任务</span>
-        <h2>运行日志与任务</h2>
-        <p className="admin-copy">{pageError}</p>
-      </section>
+      <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ ...glassCard, padding: '24px 28px' }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain }}>运行日志与任务</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.danger }}>{pageError}</p>
+        </div>
+      </div>
     )
   }
 
@@ -371,442 +422,1058 @@ export function RuntimeTasksPage() {
   const totalTaskPages = Math.max(1, Math.ceil((scraperTasks?.total || 0) / TASK_PAGE_SIZE))
 
   return (
-    <section className="admin-panel admin-runtime-list-page">
-      <div className="admin-runtime-list-page__hero">
-        <div>
-          <span className="admin-tag">运行任务</span>
-          <h2>统一查看日志、任务和当前生效配置</h2>
-          <p className="admin-copy">先用现有 AI 调用日志和 scraper task 建立统一排查入口，后续再演进成更完整的任务体系。</p>
+    <div style={{ padding: '24px 32px 32px', background: THEME.bg, minHeight: '100vh' }}>
+      {/* Header */}
+      <div
+        style={{
+          ...glassCard,
+          padding: '24px 28px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)',
+              flexShrink: 0,
+            }}
+          >
+            <RocketOutlined style={{ fontSize: 22, color: '#fff' }} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: THEME.textMain, lineHeight: 1.3 }}>
+              运行日志与任务
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textSecondary }}>
+              统一查看 AI 调用日志、抓取任务和当前生效配置
+            </p>
+          </div>
         </div>
-        <div className="admin-runtime-list-page__summary">
-          <strong>{aiLogs?.total || 0}</strong>
-          <span>AI 日志</span>
-          <strong>{scraperTasks?.total || 0}</strong>
-          <span>抓取任务</span>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              ...solidCard,
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 120,
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 700, color: THEME.primary }}>{aiLogs?.total || 0}</span>
+            <span style={{ fontSize: 12, color: THEME.textSecondary }}>AI 日志</span>
+          </div>
+          <div
+            style={{
+              ...solidCard,
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 120,
+            }}
+          >
+            <span style={{ fontSize: 24, fontWeight: 700, color: THEME.accent }}>{scraperTasks?.total || 0}</span>
+            <span style={{ fontSize: 12, color: THEME.textSecondary }}>抓取任务</span>
+          </div>
         </div>
       </div>
 
-      <div className="admin-runtime-inline-config">
-        <span>当前主 Provider：{aiConfig?.configs?.ai_provider || '未设置'}</span>
-        <span>默认模型：{aiConfig?.configs?.ai_model || '未设置'}</span>
-        <span>Fallback：{aiConfig?.configs?.ai_fallback_provider || '未启用'}</span>
-      </div>
-
-      <div className="admin-runtime-list-page__layout">
-        <section className="admin-runtime-section">
-          <div className="admin-runtime-section__head">
+      {/* Inline Config Chips */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          flexWrap: 'wrap',
+          marginBottom: 20,
+        }}
+      >
+        {[
+          {
+            label: '当前主 Provider',
+            value: aiConfig?.configs?.ai_provider || '未设置',
+            icon: <ApiOutlined />,
+          },
+          {
+            label: '默认模型',
+            value: aiConfig?.configs?.ai_model || '未设置',
+            icon: <ThunderboltOutlined />,
+          },
+          {
+            label: 'Fallback',
+            value: aiConfig?.configs?.ai_fallback_provider || '未启用',
+            icon: <CheckCircleOutlined />,
+          },
+        ].map((chip) => (
+          <div
+            key={chip.label}
+            style={{
+              ...solidCard,
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <span style={{ fontSize: 16, color: THEME.primary }}>{chip.icon}</span>
             <div>
-              <h3>AI 调用日志</h3>
-              <p>支持直接按 trace_id、异步任务 ID 与状态过滤。</p>
+              <div style={{ fontSize: 11, color: THEME.textMuted }}>{chip.label}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: THEME.textMain }}>{chip.value}</div>
             </div>
           </div>
+        ))}
+      </div>
 
-          <div className="admin-runtime-filters">
-            <label className="admin-field">
-              <span>Trace ID</span>
-              <input
-                value={traceId}
-                onChange={(event) => setTraceId(event.target.value)}
-                placeholder="输入 trace_id 片段"
-              />
-            </label>
-            <label className="admin-field">
-              <span>任务 ID</span>
-              <input
-                value={taskId}
-                onChange={(event) => setTaskId(event.target.value)}
-                placeholder="输入异步任务 ID"
-              />
-            </label>
-            <label className="admin-field">
-              <span>状态</span>
-              <select value={status} onChange={(event) => setStatus(event.target.value)}>
-                <option value="">全部</option>
-                <option value="failed">失败</option>
-                <option value="success">成功</option>
-              </select>
-            </label>
-            <button className="admin-link" type="button" onClick={handleApplyLogFilters}>
-              应用筛选
-            </button>
+      {/* AI Logs Section */}
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 6,
+                height: 18,
+                borderRadius: 3,
+                background: THEME.primary,
+              }}
+            />
+            <span style={{ fontSize: 16, fontWeight: 600, color: THEME.textMain }}>AI 调用日志</span>
           </div>
+        }
+        style={{ ...solidCard, marginBottom: 20 }}
+        bodyStyle={{ padding: '20px 24px' }}
+      >
+        {/* Filters */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 16,
+            paddingBottom: 16,
+            borderBottom: '1px solid ' + THEME.border,
+          }}
+        >
+          <Input
+            placeholder="Trace ID"
+            value={traceId}
+            onChange={(e) => setTraceId(e.target.value)}
+            style={{ width: 180, borderRadius: 10 }}
+            prefix={<SearchOutlined style={{ color: THEME.textMuted }} />}
+          />
+          <Input
+            placeholder="任务 ID"
+            value={taskId}
+            onChange={(e) => setTaskId(e.target.value)}
+            style={{ width: 160, borderRadius: 10 }}
+          />
+          <Select
+            placeholder="状态"
+            allowClear
+            value={status || undefined}
+            onChange={(v) => setStatus(v || '')}
+            style={{ width: 120 }}
+            options={[
+              { value: 'failed', label: '失败' },
+              { value: 'success', label: '成功' },
+            ]}
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={handleApplyLogFilters}
+            style={{
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              border: 'none',
+            }}
+          >
+            应用筛选
+          </Button>
+        </div>
 
-          <div className="admin-runtime-list-table">
-            <div className="admin-runtime-list-table__row admin-runtime-list-table__row--head">
-              <span>时间</span>
-              <span>场景</span>
-              <span>来源</span>
-              <span>Provider / Model</span>
-              <span>状态</span>
-              <span>任务 ID</span>
-              <span>Trace ID</span>
-            </div>
-            {(aiLogs?.list || []).map((item) => (
-              <div className="admin-runtime-list-table__row" key={item.id}>
-                <span>{formatRuntimeListDateTime(item.created_at)}</span>
-                <span>{item.scene || '-'}</span>
-                <span>{item.source || '-'}</span>
-                <span>{item.provider || '-'} / {item.model || '-'}</span>
-                <span>{renderAICallStatusText(item.is_success)}</span>
-                <span>{item.task_id || '--'}</span>
-                <code>{item.trace_id || '-'}</code>
-              </div>
-            ))}
+        {/* Table */}
+        <div
+          style={{
+            overflowX: 'auto',
+            borderRadius: 12,
+            border: '1px solid ' + THEME.border,
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(140px, 1fr) 80px 80px minmax(140px, 1.5fr) 70px 80px minmax(120px, 1fr)',
+              gap: 8,
+              padding: '10px 14px',
+              background: '#f8fafc',
+              borderBottom: '1px solid ' + THEME.border,
+              fontSize: 12,
+              fontWeight: 600,
+              color: THEME.textSecondary,
+            }}
+          >
+            <span>时间</span>
+            <span>场景</span>
+            <span>来源</span>
+            <span>Provider / Model</span>
+            <span>状态</span>
+            <span>任务 ID</span>
+            <span>Trace ID</span>
           </div>
-
-          <div className="admin-question-pagination">
-            <button className="admin-link" type="button" disabled={logPage <= 1} onClick={() => setLogPage((current) => current - 1)}>
-              上一页
-            </button>
-            <span>
-              第 {logPage} / {totalLogPages} 页
-            </span>
-            <button
-              className="admin-link"
-              type="button"
-              disabled={logPage >= totalLogPages}
-              onClick={() => setLogPage((current) => current + 1)}
+          {(aiLogs?.list || []).map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(140px, 1fr) 80px 80px minmax(140px, 1.5fr) 70px 80px minmax(120px, 1fr)',
+                gap: 8,
+                padding: '12px 14px',
+                borderBottom: '1px solid ' + THEME.border,
+                fontSize: 13,
+                color: THEME.textMain,
+                alignItems: 'center',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f8fafc'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
             >
-              下一页
-            </button>
-          </div>
-        </section>
-
-        <section className="admin-runtime-section">
-          <div className="admin-runtime-section__head">
-            <div>
-              <h3>抓取任务列表</h3>
-              <p>按状态和任务类型筛选，并直接查看异步任务载荷与结果。</p>
+              <span style={{ color: THEME.textSecondary, fontSize: 12 }}>{formatRuntimeListDateTime(item.created_at)}</span>
+              <span>{item.scene || '-'}</span>
+              <span>{item.source || '-'}</span>
+              <span style={{ fontSize: 12 }}>{item.provider || '-'} / {item.model || '-'}</span>
+              <span>{renderAICallStatusTag(item.is_success)}</span>
+              <span style={{ fontSize: 12, color: THEME.textSecondary }}>{item.task_id || '--'}</span>
+              <code
+                style={{
+                  fontSize: 11,
+                  color: THEME.primary,
+                  background: THEME.primaryLight,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.trace_id || '-'}
+              </code>
             </div>
-          </div>
-          {taskActionMessage ? <p className="admin-copy">{taskActionMessage}</p> : null}
+          ))}
+        </div>
 
-          <div className="admin-runtime-filters">
-            <label className="admin-field">
-              <span>状态</span>
-              <select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}>
-                <option value="">全部</option>
-                <option value="pending">待执行</option>
-                <option value="running">执行中</option>
-                <option value="imported">已导入</option>
-                <option value="succeeded">已完成</option>
-                <option value="failed">失败</option>
-                <option value="fetched">已抓取</option>
-              </select>
-            </label>
-            <label className="admin-field">
-              <span>类型</span>
-              <select value={taskType} onChange={(event) => setTaskType(event.target.value)}>
-                <option value="">全部</option>
-                <option value="import_questions">异步导入</option>
-                <option value="question_pipeline_build">流水线生成</option>
-                <option value="fetch_snapshot">抓取快照</option>
-              </select>
-            </label>
-            <button className="admin-link" type="button" onClick={handleApplyTaskFilters}>
-              应用筛选
-            </button>
+        {aiLogs?.list?.length === 0 && (
+          <div
+            style={{
+              padding: '40px 0',
+              textAlign: 'center',
+              color: THEME.textMuted,
+              fontSize: 14,
+            }}
+          >
+            暂无 AI 调用日志
           </div>
+        )}
 
-          <div className="admin-runtime-list-table admin-runtime-list-table--scraper">
-            <div className="admin-runtime-list-table__row admin-runtime-list-table__row--head">
-              <span>ID</span>
-              <span>时间</span>
-              <span>类型</span>
-              <span>来源</span>
-              <span>状态</span>
-              <span>标题 / URL</span>
-              <span>结果</span>
-              <span>操作</span>
-            </div>
-            {(scraperTasks?.list || []).map((item) => (
-              <div className="admin-runtime-list-table__row" key={item.id}>
-                <code>{item.id}</code>
-                <span>{formatRuntimeListDateTime(item.created_at)}</span>
-                <span>{renderScraperTaskTypeText(item.task_type)}</span>
-                <span>{item.source || '-'}</span>
-                <span>{renderScraperTaskStatusText(item.status)}</span>
-                <span>{item.source_title || item.source_url || '-'}</span>
-                <span>{buildScraperTaskSummary(item)}</span>
-                <span>
-                  <div className="admin-runtime-task-actions">
-                     <button
-                       className="admin-link"
-                       type="button"
-                       onClick={() => handleToggleTaskDetail(item.id)}
-                     >
-                       {selectedTaskId === item.id ? '收起详情' : '查看详情'}
-                     </button>
-                     <button
-                       className="admin-link"
-                       type="button"
-                       onClick={() => handleViewTaskLogs(item.id)}
-                     >
-                       关联 AI 日志
-                     </button>
-                     {item.status === 'failed' && ['import_questions', 'question_pipeline_build'].includes(item.task_type || '') ? (
-                       <button
-                         className="admin-link"
-                         type="button"
-                         disabled={retryTaskMutation.isPending}
-                        onClick={() => {
-                          setTaskActionMessage(`正在重新投递任务 #${item.id}...`)
-                          retryTaskMutation.mutate(item.id)
-                        }}
-                      >
-                        {retryTaskMutation.isPending ? '重试中...' : '重新投递'}
-                      </button>
-                    ) : null}
-                  </div>
+        {/* Pagination */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            marginTop: 16,
+          }}
+        >
+          <Button
+            size="small"
+            disabled={logPage <= 1}
+            onClick={() => setLogPage((current) => current - 1)}
+          >
+            上一页
+          </Button>
+          <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+            第 {logPage} / {totalLogPages} 页
+          </span>
+          <Button
+            size="small"
+            disabled={logPage >= totalLogPages}
+            onClick={() => setLogPage((current) => current + 1)}
+          >
+            下一页
+          </Button>
+        </div>
+      </Card>
+
+      {/* Scraper Tasks Section */}
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 6,
+                height: 18,
+                borderRadius: 3,
+                background: THEME.accent,
+              }}
+            />
+            <span style={{ fontSize: 16, fontWeight: 600, color: THEME.textMain }}>抓取任务列表</span>
+          </div>
+        }
+        style={{ ...solidCard, marginBottom: 20 }}
+        bodyStyle={{ padding: '20px 24px' }}
+      >
+        {taskActionMessage && (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: taskActionMessage.includes('失败') || taskActionMessage.includes('错误') ? '#fef2f2' : '#f0fdf4',
+              border: `1px solid ${taskActionMessage.includes('失败') || taskActionMessage.includes('错误') ? '#fecaca' : '#bbf7d0'}`,
+              color: taskActionMessage.includes('失败') || taskActionMessage.includes('错误') ? '#dc2626' : '#16a34a',
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            {taskActionMessage}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 16,
+            paddingBottom: 16,
+            borderBottom: '1px solid ' + THEME.border,
+          }}
+        >
+          <Select
+            placeholder="状态"
+            allowClear
+            value={taskStatus || undefined}
+            onChange={(v) => setTaskStatus(v || '')}
+            style={{ width: 140 }}
+            options={[
+              { value: 'pending', label: '待执行' },
+              { value: 'running', label: '执行中' },
+              { value: 'imported', label: '已导入' },
+              { value: 'succeeded', label: '已完成' },
+              { value: 'failed', label: '失败' },
+              { value: 'fetched', label: '已抓取' },
+            ]}
+          />
+          <Select
+            placeholder="类型"
+            allowClear
+            value={taskType || undefined}
+            onChange={(v) => setTaskType(v || '')}
+            style={{ width: 160 }}
+            options={[
+              { value: 'import_questions', label: '异步导入' },
+              { value: 'question_pipeline_build', label: '流水线生成' },
+              { value: 'fetch_snapshot', label: '抓取快照' },
+            ]}
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={handleApplyTaskFilters}
+            style={{
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              border: 'none',
+            }}
+          >
+            应用筛选
+          </Button>
+        </div>
+
+        {/* Table */}
+        <div
+          style={{
+            overflowX: 'auto',
+            borderRadius: 12,
+            border: '1px solid ' + THEME.border,
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '60px minmax(120px, 1fr) 90px 80px 80px minmax(120px, 1fr) minmax(160px, 1.5fr) 140px',
+              gap: 8,
+              padding: '10px 14px',
+              background: '#f8fafc',
+              borderBottom: '1px solid ' + THEME.border,
+              fontSize: 12,
+              fontWeight: 600,
+              color: THEME.textSecondary,
+            }}
+          >
+            <span>ID</span>
+            <span>时间</span>
+            <span>类型</span>
+            <span>来源</span>
+            <span>状态</span>
+            <span>标题 / URL</span>
+            <span>结果</span>
+            <span style={{ textAlign: 'center' }}>操作</span>
+          </div>
+          {(scraperTasks?.list || []).map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '60px minmax(120px, 1fr) 90px 80px 80px minmax(120px, 1fr) minmax(160px, 1.5fr) 140px',
+                gap: 8,
+                padding: '12px 14px',
+                borderBottom: '1px solid ' + THEME.border,
+                fontSize: 13,
+                color: THEME.textMain,
+                alignItems: 'center',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f8fafc'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              <code style={{ fontSize: 11, color: THEME.textSecondary }}>{item.id}</code>
+              <span style={{ color: THEME.textSecondary, fontSize: 12 }}>{formatRuntimeListDateTime(item.created_at)}</span>
+              <span style={{ fontSize: 12 }}>{renderScraperTaskTypeText(item.task_type)}</span>
+              <span style={{ fontSize: 12 }}>{item.source || '-'}</span>
+              <span>{renderScraperTaskStatusTag(item.status)}</span>
+              <Tooltip title={item.source_url || item.source_title}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.source_title || item.source_url || '-'}
                 </span>
+              </Tooltip>
+              <Tooltip title={buildScraperTaskSummary(item)}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: item.error_msg?.trim() ? THEME.danger : THEME.textSecondary,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {buildScraperTaskSummary(item)}
+                </span>
+              </Tooltip>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                <Button
+                  size="small"
+                  type={selectedTaskId === item.id ? 'primary' : 'default'}
+                  icon={selectedTaskId === item.id ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                  onClick={() => handleToggleTaskDetail(item.id)}
+                  style={{ borderRadius: 6, fontSize: 12 }}
+                >
+                  {selectedTaskId === item.id ? '收起' : '详情'}
+                </Button>
+                <Button
+                  size="small"
+                  icon={<FileTextOutlined />}
+                  onClick={() => handleViewTaskLogs(item.id)}
+                  style={{ borderRadius: 6, fontSize: 12 }}
+                >
+                  日志
+                </Button>
+                {item.status === 'failed' &&
+                  ['import_questions', 'question_pipeline_build'].includes(item.task_type || '') && (
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined spin={retryTaskMutation.isPending && retryTaskMutation.variables === item.id} />}
+                      loading={retryTaskMutation.isPending && retryTaskMutation.variables === item.id}
+                      disabled={retryTaskMutation.isPending}
+                      onClick={() => {
+                        setTaskActionMessage(`正在重新投递任务 #${item.id}...`)
+                        retryTaskMutation.mutate(item.id)
+                      }}
+                      style={{ borderRadius: 6, fontSize: 12 }}
+                    >
+                      重试
+                    </Button>
+                  )}
               </div>
-            ))}
+            </div>
+          ))}
+        </div>
+
+        {scraperTasks?.list?.length === 0 && (
+          <div
+            style={{
+              padding: '40px 0',
+              textAlign: 'center',
+              color: THEME.textMuted,
+              fontSize: 14,
+            }}
+          >
+            暂无抓取任务
           </div>
+        )}
 
-          {selectedTaskId ? (
-            <article className="admin-runtime-task-detail">
-              <div className="admin-runtime-section__head">
-                 <div>
-                   <h3>任务详情 #{selectedTaskId}</h3>
-                   <p>查看入队载荷、执行结果与时间线，并可反查关联 AI 调用日志。</p>
-                 </div>
-                <button className="admin-link" type="button" onClick={() => setSelectedTaskId(null)}>
-                  关闭详情
-                </button>
-              </div>
-              <div className="admin-runtime-task-detail__toolbar">
-                <button className="admin-link" type="button" onClick={() => handleViewTaskLogs(selectedTaskId)}>
-                  查看关联 AI 日志
-                </button>
-              </div>
+        {/* Pagination */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            marginTop: 16,
+          }}
+        >
+          <Button
+            size="small"
+            disabled={taskPage <= 1}
+            onClick={() => setTaskPage((current) => current - 1)}
+          >
+            上一页
+          </Button>
+          <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+            第 {taskPage} / {totalTaskPages} 页
+          </span>
+          <Button
+            size="small"
+            disabled={taskPage >= totalTaskPages}
+            onClick={() => setTaskPage((current) => current + 1)}
+          >
+            下一页
+          </Button>
+        </div>
 
-              {scraperTaskDetailQuery.isLoading ? <p className="admin-copy">正在加载任务详情。</p> : null}
-              {scraperTaskDetailQuery.isError ? (
-                <p className="admin-copy">{extractErrorMessage(scraperTaskDetailQuery.error, '读取任务详情失败')}</p>
-              ) : null}
+        {/* Task Detail */}
+        {selectedTaskId && (
+          <div
+            style={{
+              ...solidCard,
+              marginTop: 20,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid ' + THEME.border,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>
+                  任务详情 #{selectedTaskId}
+                </span>
+                <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
+                  查看入队载荷、执行结果与时间线
+                </div>
+              </div>
+              <Button
+                size="small"
+                onClick={() => setSelectedTaskId(null)}
+                style={{ borderRadius: 8 }}
+              >
+                关闭详情
+              </Button>
+            </div>
+
+            <div style={{ padding: '16px 20px' }}>
+              <Button
+                icon={<FileTextOutlined />}
+                size="small"
+                onClick={() => handleViewTaskLogs(selectedTaskId)}
+                style={{ borderRadius: 8, marginBottom: 16 }}
+              >
+                查看关联 AI 日志
+              </Button>
+
+              {scraperTaskDetailQuery.isLoading && (
+                <p style={{ color: THEME.textSecondary, fontSize: 13 }}>正在加载任务详情...</p>
+              )}
+              {scraperTaskDetailQuery.isError && (
+                <p style={{ color: THEME.danger, fontSize: 13 }}>
+                  {extractErrorMessage(scraperTaskDetailQuery.error, '读取任务详情失败')}
+                </p>
+              )}
 
               {!scraperTaskDetailQuery.isLoading && !scraperTaskDetailQuery.isError && taskDetail ? (
                 <>
-                  <div className="admin-runtime-task-detail__grid">
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>任务类型</strong>
-                      <span>{renderScraperTaskTypeText(taskDetail.task_type)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>任务状态</strong>
-                      <span>{renderScraperTaskStatusText(taskDetail.status)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>来源</strong>
-                      <span>{taskDetail.source || '-'}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>来源标题</strong>
-                      <span>{taskDetail.source_title || '-'}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>来源 URL</strong>
-                      <code>{taskDetail.source_url || '-'}</code>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>题目 / 导入 / 重试</strong>
-                      <span>{taskDetail.question_count} / {taskDetail.imported_count} / {taskDetail.retry_count || 0}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>创建时间</strong>
-                      <span>{formatRuntimeListDateTime(taskDetail.created_at)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>开始时间</strong>
-                      <span>{formatRuntimeListDateTime(taskDetail.started_at)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>结束时间</strong>
-                      <span>{formatRuntimeListDateTime(taskDetail.finished_at)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item">
-                      <strong>更新时间</strong>
-                      <span>{formatRuntimeListDateTime(taskDetail.updated_at)}</span>
-                    </div>
-                    <div className="admin-runtime-task-detail__item admin-runtime-task-detail__item--full">
-                      <strong>错误信息</strong>
-                      <span>{taskDetail.error_msg || '--'}</span>
-                    </div>
-                  </div>
-
-                  <div className="admin-runtime-task-detail__blocks">
-                    <div className="admin-runtime-task-detail__block">
-                      <h4>任务载荷</h4>
-                      <pre>{formatTaskJSONText(taskDetail.payload_json)}</pre>
-                    </div>
-                    <div className="admin-runtime-task-detail__block">
-                      <h4>执行结果</h4>
-                      <pre>{formatTaskJSONText(taskDetail.result_json)}</pre>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '12px 16px',
+                      marginBottom: 20,
+                    }}
+                  >
+                    {[
+                      { label: '任务类型', value: renderScraperTaskTypeText(taskDetail.task_type) },
+                      { label: '任务状态', value: renderScraperTaskStatusTag(taskDetail.status) },
+                      { label: '来源', value: taskDetail.source || '-' },
+                      { label: '来源标题', value: taskDetail.source_title || '-' },
+                      {
+                        label: '来源 URL',
+                        value: taskDetail.source_url || '-',
+                        code: true,
+                      },
+                      {
+                        label: '题目 / 导入 / 重试',
+                        value: `${taskDetail.question_count} / ${taskDetail.imported_count} / ${taskDetail.retry_count || 0}`,
+                      },
+                      { label: '创建时间', value: formatRuntimeListDateTime(taskDetail.created_at) },
+                      { label: '开始时间', value: formatRuntimeListDateTime(taskDetail.started_at) },
+                      { label: '结束时间', value: formatRuntimeListDateTime(taskDetail.finished_at) },
+                      { label: '更新时间', value: formatRuntimeListDateTime(taskDetail.updated_at) },
+                    ].map((field) => (
+                      <div key={field.label}>
+                        <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 2 }}>{field.label}</div>
+                        {field.code ? (
+                          <code style={{ fontSize: 12, color: THEME.textSecondary }}>{field.value}</code>
+                        ) : (
+                          <div style={{ fontSize: 13, fontWeight: 500, color: THEME.textMain }}>{field.value}</div>
+                        )}
+                      </div>
+                    ))}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 2 }}>错误信息</div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: taskDetail.error_msg ? THEME.danger : THEME.textMuted,
+                        }}
+                      >
+                        {taskDetail.error_msg || '--'}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="admin-runtime-task-detail__related-logs">
-                    <div className="admin-runtime-section__head">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: THEME.textSecondary,
+                          marginBottom: 8,
+                        }}
+                      >
+                        任务载荷
+                      </div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: 14,
+                          borderRadius: 10,
+                          background: '#0f172a',
+                          color: '#e2e8f0',
+                          fontSize: 12,
+                          lineHeight: 1.6,
+                          overflowX: 'auto',
+                          maxHeight: 300,
+                          overflowY: 'auto',
+                        }}
+                      >
+                        {formatTaskJSONText(taskDetail.payload_json)}
+                      </pre>
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: THEME.textSecondary,
+                          marginBottom: 8,
+                        }}
+                      >
+                        执行结果
+                      </div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: 14,
+                          borderRadius: 10,
+                          background: '#0f172a',
+                          color: '#e2e8f0',
+                          fontSize: 12,
+                          lineHeight: 1.6,
+                          overflowX: 'auto',
+                          maxHeight: 300,
+                          overflowY: 'auto',
+                        }}
+                      >
+                        {formatTaskJSONText(taskDetail.result_json)}
+                      </pre>
+                    </div>
+                  </div>
+
+                  {/* Related AI Logs */}
+                  <div
+                    style={{
+                      borderTop: '1px solid ' + THEME.border,
+                      paddingTop: 20,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: 14,
+                      }}
+                    >
                       <div>
-                        <h3>关联 AI 日志</h3>
-                        <p>展示当前任务最近关联的模型调用，便于和任务结果一屏对照排查。</p>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textMain }}>
+                          关联 AI 日志
+                        </span>
+                        <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
+                          展示当前任务最近关联的模型调用
+                        </div>
                       </div>
-                      <button className="admin-link" type="button" onClick={() => handleViewTaskLogs(selectedTaskId)}>
+                      <Button
+                        size="small"
+                        icon={<FileTextOutlined />}
+                        onClick={() => handleViewTaskLogs(selectedTaskId)}
+                        style={{ borderRadius: 8 }}
+                      >
                         打开完整日志列表
-                      </button>
+                      </Button>
                     </div>
 
-                    {relatedAICallLogsQuery.isLoading ? <p className="admin-copy">正在加载关联 AI 日志。</p> : null}
-                    {relatedAICallLogsQuery.isError ? (
-                      <p className="admin-copy">{extractErrorMessage(relatedAICallLogsQuery.error, '读取关联 AI 日志失败')}</p>
-                    ) : null}
-                    {!relatedAICallLogsQuery.isLoading && !relatedAICallLogsQuery.isError && (relatedAICallLogs?.list || []).length === 0 ? (
-                      <p className="admin-copy">当前任务还没有关联的 AI 调用日志。</p>
-                    ) : null}
+                    {relatedAICallLogsQuery.isLoading && (
+                      <p style={{ color: THEME.textSecondary, fontSize: 13 }}>正在加载关联 AI 日志...</p>
+                    )}
+                    {relatedAICallLogsQuery.isError && (
+                      <p style={{ color: THEME.danger, fontSize: 13 }}>
+                        {extractErrorMessage(relatedAICallLogsQuery.error, '读取关联 AI 日志失败')}
+                      </p>
+                    )}
+                    {!relatedAICallLogsQuery.isLoading &&
+                      !relatedAICallLogsQuery.isError &&
+                      (relatedAICallLogs?.list || []).length === 0 && (
+                        <p style={{ color: THEME.textMuted, fontSize: 13 }}>当前任务还没有关联的 AI 调用日志。</p>
+                      )}
 
-                    {!relatedAICallLogsQuery.isLoading && !relatedAICallLogsQuery.isError && (relatedAICallLogs?.list || []).length ? (
-                      <div className="admin-runtime-related-log-list">
-                        {(relatedAICallLogs?.list || []).map((item) => (
-                          <article className="admin-runtime-related-log-card" key={item.id}>
-                            <div className="admin-runtime-related-log-card__head">
-                              <strong>{item.scene || '-'}</strong>
-                              <span>{renderAICallStatusText(item.is_success)}</span>
-                            </div>
-                            <div className="admin-runtime-related-log-card__meta">
-                              <span>{formatRuntimeListDateTime(item.created_at)}</span>
-                              <span>{buildAICallInlineSummary(item)}</span>
-                            </div>
-                            <div className="admin-runtime-related-log-card__trace">
-                              <span>Trace ID</span>
-                              <code>{item.trace_id || '-'}</code>
-                            </div>
-                            <div className="admin-runtime-related-log-card__actions">
-                              <button className="admin-link" type="button" onClick={() => handleToggleRelatedLogDetail(item.id)}>
-                                {expandedRelatedLogId === item.id ? '收起原始信息' : '展开原始信息'}
-                              </button>
-                            </div>
-
-                            {expandedRelatedLogId === item.id ? (
-                              <div className="admin-runtime-related-log-card__detail">
-                                {relatedAICallLogDetailQuery.isLoading ? <p className="admin-copy">正在加载 AI 日志详情。</p> : null}
-                                {relatedAICallLogDetailQuery.isError ? (
-                                  <p className="admin-copy">{extractErrorMessage(relatedAICallLogDetailQuery.error, '读取 AI 日志详情失败')}</p>
-                                ) : null}
-                                {!relatedAICallLogDetailQuery.isLoading && !relatedAICallLogDetailQuery.isError && relatedAICallLogDetailQuery.data ? (
-                                  <>
-                                    <div className="admin-runtime-related-log-card__detail-toolbar">
-                                      <button
-                                        className="admin-link"
-                                        type="button"
-                                        onClick={() => handleCopyRelatedLogText(relatedAICallLogDetailQuery.data.trace_id, 'Trace ID')}
-                                      >
-                                        复制 Trace ID
-                                      </button>
-                                      <button
-                                        className="admin-link"
-                                        type="button"
-                                        onClick={() => handleCopyRelatedLogText(relatedAICallLogDetailQuery.data.rendered_prompt, '渲染 Prompt')}
-                                      >
-                                        复制 Prompt
-                                      </button>
-                                      <button
-                                        className="admin-link"
-                                        type="button"
-                                        onClick={() => handleCopyRelatedLogText(relatedAICallLogDetailQuery.data.model_output, '模型原始输出')}
-                                      >
-                                        复制输出
-                                      </button>
-                                      {normalizeRuntimeCopyText(relatedAICallLogDetailQuery.data.model_error) ? (
-                                        <button
-                                          className="admin-link"
-                                          type="button"
-                                          onClick={() => handleCopyRelatedLogText(relatedAICallLogDetailQuery.data.model_error, '模型错误')}
-                                        >
-                                          复制错误
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                    {relatedLogCopyMessage ? <p className="admin-copy">{relatedLogCopyMessage}</p> : null}
-                                    <div className="admin-runtime-related-log-card__detail-grid">
-                                      <div className="admin-runtime-related-log-card__detail-item">
-                                        <strong>Prompt 来源</strong>
-                                        <span>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.prompt_source)}</span>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-item">
-                                        <strong>模板</strong>
-                                        <span>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.selected_prompt_name)}</span>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-item">
-                                        <strong>Provider / Model</strong>
-                                        <span>{relatedAICallLogDetailQuery.data.provider || '-'} / {relatedAICallLogDetailQuery.data.model || '-'}</span>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-item">
-                                        <strong>耗时</strong>
-                                        <span>{relatedAICallLogDetailQuery.data.latency_ms || 0} ms</span>
-                                      </div>
-                                    </div>
-                                    <div className="admin-runtime-related-log-card__detail-blocks">
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>用户输入</h4>
-                                        <pre>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.user_input)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>渲染 Prompt</h4>
-                                        <pre>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.rendered_prompt)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>请求消息</h4>
-                                        <pre>{formatTaskJSONText(relatedAICallLogDetailQuery.data.request_messages)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>运行配置</h4>
-                                        <pre>{formatTaskJSONText(relatedAICallLogDetailQuery.data.runtime_config)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>场景配置</h4>
-                                        <pre>{formatTaskJSONText(relatedAICallLogDetailQuery.data.scene_config)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block">
-                                        <h4>模型原始输出</h4>
-                                        <pre>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.model_output)}</pre>
-                                      </div>
-                                      <div className="admin-runtime-related-log-card__detail-block admin-runtime-related-log-card__detail-block--full">
-                                        <h4>模型错误</h4>
-                                        <pre>{formatRuntimeDetailText(relatedAICallLogDetailQuery.data.model_error)}</pre>
-                                      </div>
-                                    </div>
-                                  </>
-                                ) : null}
+                    {!relatedAICallLogsQuery.isLoading &&
+                      !relatedAICallLogsQuery.isError &&
+                      (relatedAICallLogs?.list || []).length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {(relatedAICallLogs?.list || []).map((item) => (
+                            <div
+                              key={item.id}
+                              style={{
+                                borderRadius: 12,
+                                border: '1px solid ' + THEME.border,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  padding: '12px 16px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                  cursor: 'pointer',
+                                  background: '#fafafa',
+                                  transition: 'background 0.15s',
+                                }}
+                                onClick={() => handleToggleRelatedLogDetail(item.id)}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#f1f5f9'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#fafafa'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                  <strong style={{ fontSize: 14, color: THEME.textMain }}>{item.scene || '-'}</strong>
+                                  {renderAICallStatusTag(item.is_success)}
+                                  <span style={{ fontSize: 12, color: THEME.textSecondary }}>
+                                    {formatRuntimeListDateTime(item.created_at)}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: THEME.textMuted }}>
+                                    {buildAICallInlineSummary(item)}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <code
+                                    style={{
+                                      fontSize: 11,
+                                      color: THEME.primary,
+                                      background: THEME.primaryLight,
+                                      padding: '2px 6px',
+                                      borderRadius: 4,
+                                    }}
+                                  >
+                                    {item.trace_id || '-'}
+                                  </code>
+                                  {expandedRelatedLogId === item.id ? (
+                                    <UpOutlined style={{ color: THEME.textMuted }} />
+                                  ) : (
+                                    <DownOutlined style={{ color: THEME.textMuted }} />
+                                  )}
+                                </div>
                               </div>
-                            ) : null}
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
+
+                              {expandedRelatedLogId === item.id && (
+                                <div style={{ padding: 16, borderTop: '1px solid ' + THEME.border }}>
+                                  {relatedAICallLogDetailQuery.isLoading && (
+                                    <p style={{ color: THEME.textSecondary, fontSize: 13 }}>正在加载 AI 日志详情...</p>
+                                  )}
+                                  {relatedAICallLogDetailQuery.isError && (
+                                    <p style={{ color: THEME.danger, fontSize: 13 }}>
+                                      {extractErrorMessage(
+                                        relatedAICallLogDetailQuery.error,
+                                        '读取 AI 日志详情失败',
+                                      )}
+                                    </p>
+                                  )}
+                                  {!relatedAICallLogDetailQuery.isLoading &&
+                                    !relatedAICallLogDetailQuery.isError &&
+                                    relatedAICallLogDetailQuery.data && (
+                                      <>
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            gap: 8,
+                                            flexWrap: 'wrap',
+                                            marginBottom: 12,
+                                          }}
+                                        >
+                                          {[
+                                            {
+                                              label: 'Trace ID',
+                                              value: relatedAICallLogDetailQuery.data.trace_id,
+                                            },
+                                            {
+                                              label: '渲染 Prompt',
+                                              value: relatedAICallLogDetailQuery.data.rendered_prompt,
+                                            },
+                                            {
+                                              label: '模型原始输出',
+                                              value: relatedAICallLogDetailQuery.data.model_output,
+                                            },
+                                            ...(normalizeRuntimeCopyText(
+                                              relatedAICallLogDetailQuery.data.model_error,
+                                            )
+                                              ? [
+                                                  {
+                                                    label: '模型错误',
+                                                    value: relatedAICallLogDetailQuery.data.model_error,
+                                                  },
+                                                ]
+                                              : []),
+                                          ].map((btn) => (
+                                            <Button
+                                              key={btn.label}
+                                              size="small"
+                                              icon={<CopyOutlined />}
+                                              onClick={() =>
+                                                handleCopyRelatedLogText(btn.value || '', btn.label)
+                                              }
+                                              style={{ borderRadius: 6, fontSize: 12 }}
+                                            >
+                                              复制{btn.label}
+                                            </Button>
+                                          ))}
+                                        </div>
+
+                                        {relatedLogCopyMessage && (
+                                          <div
+                                            style={{
+                                              marginBottom: 12,
+                                              padding: '8px 12px',
+                                              borderRadius: 8,
+                                              background: '#f0fdf4',
+                                              border: '1px solid #bbf7d0',
+                                              color: '#16a34a',
+                                              fontSize: 12,
+                                              fontWeight: 500,
+                                            }}
+                                          >
+                                            {relatedLogCopyMessage}
+                                          </div>
+                                        )}
+
+                                        <div
+                                          style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                            gap: '10px 16px',
+                                            marginBottom: 16,
+                                          }}
+                                        >
+                                          {[
+                                            {
+                                              label: 'Prompt 来源',
+                                              value: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.prompt_source,
+                                              ),
+                                            },
+                                            {
+                                              label: '模板',
+                                              value: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.selected_prompt_name,
+                                              ),
+                                            },
+                                            {
+                                              label: 'Provider / Model',
+                                              value: `${relatedAICallLogDetailQuery.data.provider || '-'} / ${relatedAICallLogDetailQuery.data.model || '-'}`,
+                                            },
+                                            {
+                                              label: '耗时',
+                                              value: `${relatedAICallLogDetailQuery.data.latency_ms || 0} ms`,
+                                            },
+                                          ].map((field) => (
+                                            <div key={field.label}>
+                                              <div
+                                                style={{
+                                                  fontSize: 11,
+                                                  color: THEME.textMuted,
+                                                  marginBottom: 2,
+                                                }}
+                                              >
+                                                {field.label}
+                                              </div>
+                                              <div
+                                                style={{
+                                                  fontSize: 13,
+                                                  fontWeight: 500,
+                                                  color: THEME.textMain,
+                                                }}
+                                              >
+                                                {field.value}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 12,
+                                          }}
+                                        >
+                                          {[
+                                            {
+                                              title: '用户输入',
+                                              content: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.user_input,
+                                              ),
+                                            },
+                                            {
+                                              title: '渲染 Prompt',
+                                              content: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.rendered_prompt,
+                                              ),
+                                            },
+                                            {
+                                              title: '请求消息',
+                                              content: formatTaskJSONText(
+                                                relatedAICallLogDetailQuery.data.request_messages,
+                                              ),
+                                            },
+                                            {
+                                              title: '运行配置',
+                                              content: formatTaskJSONText(
+                                                relatedAICallLogDetailQuery.data.runtime_config,
+                                              ),
+                                            },
+                                            {
+                                              title: '场景配置',
+                                              content: formatTaskJSONText(
+                                                relatedAICallLogDetailQuery.data.scene_config,
+                                              ),
+                                            },
+                                            {
+                                              title: '模型原始输出',
+                                              content: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.model_output,
+                                              ),
+                                            },
+                                            {
+                                              title: '模型错误',
+                                              content: formatRuntimeDetailText(
+                                                relatedAICallLogDetailQuery.data.model_error,
+                                              ),
+                                            },
+                                          ].map((block) => (
+                                            <div key={block.title}>
+                                              <div
+                                                style={{
+                                                  fontSize: 12,
+                                                  fontWeight: 600,
+                                                  color: THEME.textSecondary,
+                                                  marginBottom: 6,
+                                                }}
+                                              >
+                                                {block.title}
+                                              </div>
+                                              <pre
+                                                style={{
+                                                  margin: 0,
+                                                  padding: 12,
+                                                  borderRadius: 10,
+                                                  background: '#0f172a',
+                                                  color: '#e2e8f0',
+                                                  fontSize: 12,
+                                                  lineHeight: 1.6,
+                                                  overflowX: 'auto',
+                                                  maxHeight: 200,
+                                                  overflowY: 'auto',
+                                                }}
+                                              >
+                                                {block.content}
+                                              </pre>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                   </div>
                 </>
               ) : null}
-            </article>
-          ) : null}
-
-          <div className="admin-question-pagination">
-            <button className="admin-link" type="button" disabled={taskPage <= 1} onClick={() => setTaskPage((current) => current - 1)}>
-              上一页
-            </button>
-            <span>
-              第 {taskPage} / {totalTaskPages} 页
-            </span>
-            <button
-              className="admin-link"
-              type="button"
-              disabled={taskPage >= totalTaskPages}
-              onClick={() => setTaskPage((current) => current + 1)}
-            >
-              下一页
-            </button>
+            </div>
           </div>
-        </section>
-      </div>
-    </section>
+        )}
+      </Card>
+    </div>
   )
 }

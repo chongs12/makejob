@@ -1,6 +1,39 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Button,
+  Input,
+  Select,
+  Switch,
+  Tag,
+  Modal,
+  message,
+  Row,
+  Col,
+  Space,
+  Spin,
+  Empty,
+  Divider,
+  Pagination,
+} from 'antd'
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  ReloadOutlined,
+  InfoCircleOutlined,
+  BookOutlined,
+  CodeOutlined,
+  FileTextOutlined,
+  CheckCircleOutlined,
+  QuestionCircleOutlined,
+  TagsOutlined,
+  ImportOutlined,
+  ExportOutlined,
+  DownOutlined,
+  RightOutlined,
+} from '@ant-design/icons'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
@@ -154,6 +187,39 @@ interface CategoryOption {
   label: string
 }
 
+const THEME = {
+  bg: '#f4f7fe',
+  cardBg: '#ffffff',
+  primary: '#4f46e5',
+  primaryLight: '#e0e7ff',
+  accent: '#f59e0b',
+  textMain: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+  border: '#e2e8f0',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  shadow: '0 8px 32px rgba(31, 38, 135, 0.07)',
+  radius: 16,
+}
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: THEME.radius,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: THEME.shadow,
+}
+
+const solidCard = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  boxShadow: THEME.shadow,
+  border: '1px solid ' + THEME.border,
+}
+
 const QUESTION_TYPE_OPTIONS: Array<{ value: QuestionType; label: string }> = [
   { value: 'choice', label: '单选题' },
   { value: 'multi', label: '多选题' },
@@ -169,9 +235,6 @@ const QUESTION_DIFFICULTY_OPTIONS: Array<{ value: QuestionDifficulty; label: str
 
 const QUESTION_PAGE_SIZE = 10
 
-/**
- * 获取后台行业列表，供题目编辑表单做行业选择。
- */
 async function fetchIndustries(token: string | null): Promise<Industry[]> {
   const response = await requestJson<ApiEnvelope<Industry[]>>('/admin/industries', {
     method: 'GET',
@@ -185,9 +248,6 @@ async function fetchIndustries(token: string | null): Promise<Industry[]> {
   return response.data
 }
 
-/**
- * 获取后台分类列表，供筛选器和题目表单复用。
- */
 async function fetchCategories(token: string | null): Promise<Category[]> {
   const response = await requestJson<ApiEnvelope<Category[]>>('/admin/categories', {
     method: 'GET',
@@ -201,9 +261,6 @@ async function fetchCategories(token: string | null): Promise<Category[]> {
   return response.data
 }
 
-/**
- * 按分页和筛选条件获取后台题库列表。
- */
 async function fetchQuestions(token: string | null, filters: QuestionFilters): Promise<PageResult<QuestionListItem>> {
   const searchParams = new URLSearchParams({
     page: String(filters.page),
@@ -232,9 +289,6 @@ async function fetchQuestions(token: string | null, filters: QuestionFilters): P
   return response.data
 }
 
-/**
- * 获取后台题目标签词典，辅助题库治理阶段统一标签口径。
- */
 async function fetchQuestionTagTaxonomy(token: string | null): Promise<QuestionTagTaxonomyGroup[]> {
   const response = await requestJson<ApiEnvelope<QuestionTagTaxonomyGroup[]>>('/admin/questions/tag-taxonomy', {
     method: 'GET',
@@ -248,9 +302,6 @@ async function fetchQuestionTagTaxonomy(token: string | null): Promise<QuestionT
   return response.data
 }
 
-/**
- * 创建新的题目记录，并返回服务端保存后的结果。
- */
 async function createQuestion(token: string | null, payload: Record<string, unknown>): Promise<QuestionListItem> {
   const response = await requestJson<ApiEnvelope<QuestionListItem>>('/admin/questions', {
     method: 'POST',
@@ -265,9 +316,6 @@ async function createQuestion(token: string | null, payload: Record<string, unkn
   return response.data
 }
 
-/**
- * 更新指定题目，保持后台题库和前端编辑结果一致。
- */
 async function updateQuestion(token: string | null, id: number, payload: Record<string, unknown>): Promise<void> {
   const response = await requestJson<ApiEnvelope<null>>(`/admin/questions/${id}`, {
     method: 'PUT',
@@ -280,9 +328,6 @@ async function updateQuestion(token: string | null, id: number, payload: Record<
   }
 }
 
-/**
- * 删除指定题目，供后台快速清理无效内容。
- */
 async function deleteQuestion(token: string | null, id: number): Promise<void> {
   const response = await requestJson<ApiEnvelope<null>>(`/admin/questions/${id}`, {
     method: 'DELETE',
@@ -294,9 +339,6 @@ async function deleteQuestion(token: string | null, id: number): Promise<void> {
   }
 }
 
-/**
- * 调用后台批量导入接口，导入指定行业的题目集合。
- */
 async function batchImportQuestions(
   token: string | null,
   industryCode: string,
@@ -318,9 +360,6 @@ async function batchImportQuestions(
   return response.data
 }
 
-/**
- * 构造题目表单初始值，避免新建态出现 undefined。
- */
 function buildInitialQuestionForm(): QuestionFormState {
   return {
     industryId: '',
@@ -357,9 +396,6 @@ function buildInitialQuestionForm(): QuestionFormState {
   }
 }
 
-/**
- * 将题目记录转换成可编辑表单，统一编辑态与新建态的数据模型。
- */
 function buildQuestionForm(question?: QuestionListItem | null): QuestionFormState {
   if (!question) {
     return buildInitialQuestionForm()
@@ -400,9 +436,6 @@ function buildQuestionForm(question?: QuestionListItem | null): QuestionFormStat
   }
 }
 
-/**
- * 将多行选项输入解析为数组，兼容空行和首尾空白。
- */
 function parseQuestionOptionsText(value: string): string[] {
   return value
     .split(/\r?\n/)
@@ -410,9 +443,6 @@ function parseQuestionOptionsText(value: string): string[] {
     .filter(Boolean)
 }
 
-/**
- * 将标签输入解析为去重后的字符串数组，兼容中文逗号与英文逗号。
- */
 function parseQuestionTagsText(value: string): string[] {
   return Array.from(
     new Set(
@@ -424,9 +454,6 @@ function parseQuestionTagsText(value: string): string[] {
   )
 }
 
-/**
- * 将多行文本解析为去重后的字符串数组，供结构化解析和模板字段复用。
- */
 function parseQuestionLineListText(value: string): string[] {
   return Array.from(
     new Set(
@@ -438,9 +465,6 @@ function parseQuestionLineListText(value: string): string[] {
   )
 }
 
-/**
- * 解析测试用例 JSON 文本，供编程题判题配置表单复用。
- */
 function parseQuestionCasesText(value: string): QuestionTestCase[] {
   if (!value.trim()) {
     return []
@@ -449,9 +473,6 @@ function parseQuestionCasesText(value: string): QuestionTestCase[] {
   return Array.isArray(parsed) ? (parsed as QuestionTestCase[]) : []
 }
 
-/**
- * 解析参考实现 JSON 文本，供编程题判题配置表单复用。
- */
 function parseQuestionReferenceSolutionsText(value: string): QuestionReferenceSolution[] {
   if (!value.trim()) {
     return []
@@ -460,16 +481,10 @@ function parseQuestionReferenceSolutionsText(value: string): QuestionReferenceSo
   return Array.isArray(parsed) ? (parsed as QuestionReferenceSolution[]) : []
 }
 
-/**
- * 根据题型判断当前题目是否需要选项列表。
- */
 function requiresQuestionOptions(questionType: QuestionType): boolean {
   return questionType === 'choice' || questionType === 'multi'
 }
 
-/**
- * 将题目表单转换为后端可直接消费的请求体。
- */
 function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> {
   const options = parseQuestionOptionsText(form.optionsText)
   const solution =
@@ -527,23 +542,14 @@ function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> 
   }
 }
 
-/**
- * 将题型值转换为后台列表可读的中文标签。
- */
 function questionTypeLabel(type: string): string {
   return QUESTION_TYPE_OPTIONS.find((item) => item.value === type)?.label || type
 }
 
-/**
- * 将难度值转换为后台列表可读的中文标签。
- */
 function questionDifficultyLabel(difficulty: string): string {
   return QUESTION_DIFFICULTY_OPTIONS.find((item) => item.value === difficulty)?.label || difficulty
 }
 
-/**
- * 按父子分类关系拍平分类选项，便于表单中展示层级结构。
- */
 function buildCategoryOptions(categories: Category[], industryId: string): CategoryOption[] {
   const targetIndustryId = Number(industryId)
   const filtered = categories
@@ -566,9 +572,6 @@ function buildCategoryOptions(categories: Category[], industryId: string): Categ
 
   const result: CategoryOption[] = []
 
-  /**
-   * 深度优先展开分类树，并为子节点补上层级缩进。
-   */
   function visitCategory(category: Category, depth: number): void {
     result.push({
       id: category.id,
@@ -591,9 +594,6 @@ function buildCategoryOptions(categories: Category[], industryId: string): Categ
   return result
 }
 
-/**
- * 截断较长的题干摘要，减少列表区阅读噪音。
- */
 function summarizeQuestionContent(content: string): string {
   const compact = content.replace(/\s+/g, ' ').trim()
   if (compact.length <= 96) {
@@ -603,9 +603,6 @@ function summarizeQuestionContent(content: string): string {
   return `${compact.slice(0, 96)}...`
 }
 
-/**
- * 解析批量导入 JSON 文本，并校验其是否为对象数组。
- */
 function parseBatchImportText(raw: string): Array<Record<string, unknown>> {
   const trimmed = raw.trim()
   if (!trimmed) {
@@ -626,9 +623,6 @@ function parseBatchImportText(raw: string): Array<Record<string, unknown>> {
   })
 }
 
-/**
- * 校验当前题目表单，提前发现缺字段或选择题选项不足的问题。
- */
 function validateQuestionForm(form: QuestionFormState): string {
   if (!form.industryId) {
     return '请选择所属行业'
@@ -679,9 +673,6 @@ function validateQuestionForm(form: QuestionFormState): string {
   return ''
 }
 
-/**
- * 提供后台题库管理页，支持分页筛选、创建、编辑和删除题目。
- */
 export function QuestionPage() {
   const accessToken = useAdminAuthStore((state) => state.accessToken)
   const queryClient = useQueryClient()
@@ -693,11 +684,24 @@ export function QuestionPage() {
   })
   const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null)
   const [form, setForm] = useState<QuestionFormState>(buildInitialQuestionForm())
-  const [message, setMessage] = useState('读取题库列表中')
+  const [editorMessage, setEditorMessage] = useState('读取题库列表中')
   const [importIndustryCode, setImportIndustryCode] = useState('')
   const [importText, setImportText] = useState(
     '[\n  {\n    "category_name": "Go 基础",\n    "type": "choice",\n    "difficulty": "easy",\n    "title": "Go 的切片底层是什么？",\n    "content": "下面关于 slice 的说法，哪一个更准确？",\n    "options_json": "[\\"动态数组视图\\",\\"固定长度数组\\"]",\n    "answer": "动态数组视图",\n    "explanation": "slice 本质上是对底层数组的描述结构。",\n    "tags": "slice,基础"\n  }\n]',
   )
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  const toggleGroup = (group: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(group)) {
+        next.delete(group)
+      } else {
+        next.add(group)
+      }
+      return next
+    })
+  }
 
   const industriesQuery = useQuery({
     queryKey: ['admin', 'industries', accessToken],
@@ -766,7 +770,7 @@ export function QuestionPage() {
     }
 
     if (selectedQuestionId === null) {
-      setMessage((current) => (current === '读取题库列表中' ? '已同步题库列表。' : current))
+      setEditorMessage((current) => (current === '读取题库列表中' ? '已同步题库列表。' : current))
       return
     }
 
@@ -812,13 +816,17 @@ export function QuestionPage() {
     },
     onSuccess: async (questionId) => {
       setSelectedQuestionId(questionId)
-      setMessage(selectedQuestionId ? '题目已更新。' : '题目已创建。')
+      const msg = selectedQuestionId ? '题目已更新。' : '题目已创建。'
+      setEditorMessage(msg)
+      message.success(msg)
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'questions'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '保存题目失败，请稍后重试'))
+      const msg = extractErrorMessage(error, '保存题目失败，请稍后重试')
+      setEditorMessage(msg)
+      message.error(msg)
     },
   })
 
@@ -829,13 +837,16 @@ export function QuestionPage() {
     onSuccess: async () => {
       setSelectedQuestionId(null)
       setForm(buildInitialQuestionForm())
-      setMessage('题目已删除。')
+      setEditorMessage('题目已删除。')
+      message.success('题目已删除')
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'questions'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '删除题目失败，请稍后重试'))
+      const msg = extractErrorMessage(error, '删除题目失败，请稍后重试')
+      setEditorMessage(msg)
+      message.error(msg)
     },
   })
 
@@ -853,39 +864,32 @@ export function QuestionPage() {
       return batchImportQuestions(accessToken, importIndustryCode, questions)
     },
     onSuccess: async (result) => {
-      setMessage(
-        `批量导入完成：共 ${result.total_count ?? 0} 条，成功 ${result.success_count ?? 0} 条，失败 ${result.fail_count ?? 0} 条。`,
-      )
+      const msg = `批量导入完成：共 ${result.total_count ?? 0} 条，成功 ${result.success_count ?? 0} 条，失败 ${result.fail_count ?? 0} 条。`
+      setEditorMessage(msg)
+      message.success(msg)
       await queryClient.invalidateQueries({
         queryKey: ['admin', 'questions'],
       })
     },
     onError: (error) => {
-      setMessage(extractErrorMessage(error, '批量导入题目失败，请稍后重试'))
+      const msg = extractErrorMessage(error, '批量导入题目失败，请稍后重试')
+      setEditorMessage(msg)
+      message.error(msg)
     },
   })
 
-  /**
-   * 切换到题目新建模式，并重置当前编辑表单。
-   */
   function startCreatingQuestion(): void {
     setSelectedQuestionId(null)
     setForm(buildInitialQuestionForm())
-    setMessage('已切换到新建题目模式。')
+    setEditorMessage('已切换到新建题目模式。')
   }
 
-  /**
-   * 把指定题目装载到右侧编辑区，继续维护已有题目。
-   */
   function startEditingQuestion(question: QuestionListItem): void {
     setSelectedQuestionId(question.id)
     setForm(buildQuestionForm(question))
-    setMessage(`正在编辑题目：${question.title}`)
+    setEditorMessage(`正在编辑题目：${question.title}`)
   }
 
-  /**
-   * 更新题目表单字段，集中管理输入状态。
-   */
   function updateQuestionField<Key extends keyof QuestionFormState>(key: Key, value: QuestionFormState[Key]): void {
     setForm((current) => ({
       ...current,
@@ -893,696 +897,965 @@ export function QuestionPage() {
     }))
   }
 
-  /**
-   * 将标准标签追加进当前表单，减少后台手动输入时的同义词漂移。
-   */
   function appendQuestionTag(tag: string): void {
     const nextTags = Array.from(new Set([...parseQuestionTagsText(form.tagsText), tag]))
     updateQuestionField('tagsText', nextTags.join(', '))
   }
 
-  /**
-   * 提交题目表单并执行创建或更新。
-   */
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
 
     if (formError) {
-      setMessage(formError)
+      message.warning(formError)
       return
     }
 
-    setMessage(selectedQuestionId ? '正在更新题目。' : '正在创建题目。')
+    setEditorMessage(selectedQuestionId ? '正在更新题目。' : '正在创建题目。')
     saveMutation.mutate()
   }
 
-  /**
-   * 删除当前选中的题目记录。
-   */
   function handleDelete(): void {
     if (!selectedQuestionId) {
       return
     }
 
-    if (!window.confirm('确认删除当前题目吗？删除后不可恢复。')) {
-      return
-    }
-
-    setMessage('正在删除题目。')
-    deleteMutation.mutate(selectedQuestionId)
+    Modal.confirm({
+      title: '确认删除题目',
+      content: '删除后不可恢复，确定要继续吗？',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        setEditorMessage('正在删除题目。')
+        deleteMutation.mutate(selectedQuestionId)
+      },
+    })
   }
 
-  /**
-   * 提交批量导入表单，并调用后台题库导入接口。
-   */
   function handleImport(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    setMessage('正在批量导入题目。')
+    setEditorMessage('正在批量导入题目。')
     importMutation.mutate()
   }
 
   if (industriesQuery.isLoading || categoriesQuery.isLoading || questionsQuery.isLoading || questionTagTaxonomyQuery.isLoading) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">题库中心</span>
-        <h2>题库管理</h2>
-        <p className="admin-copy">正在加载题目、行业和分类数据。</p>
-      </section>
+      <div style={{ padding: 40, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <Spin size="large" tip="正在加载题目、行业和分类数据..." />
+      </div>
     )
   }
 
   if (industriesQuery.isError || categoriesQuery.isError || questionsQuery.isError || questionTagTaxonomyQuery.isError) {
     return (
-      <section className="admin-panel">
-        <span className="admin-tag">题库中心</span>
-        <h2>题库管理</h2>
-        <p className="admin-copy">
-          {extractErrorMessage(
-            questionsQuery.error || categoriesQuery.error || industriesQuery.error || questionTagTaxonomyQuery.error,
-            '读取题库管理数据失败',
-          )}
-        </p>
-      </section>
+      <div style={{ padding: 40 }}>
+        <div style={{ ...solidCard, padding: 40, textAlign: 'center' }}>
+          <InfoCircleOutlined style={{ fontSize: 48, color: THEME.danger, marginBottom: 16 }} />
+          <h3 style={{ color: THEME.textMain, marginBottom: 8 }}>数据加载失败</h3>
+          <p style={{ color: THEME.textSecondary }}>
+            {extractErrorMessage(
+              questionsQuery.error || categoriesQuery.error || industriesQuery.error || questionTagTaxonomyQuery.error,
+              '读取题库管理数据失败',
+            )}
+          </p>
+        </div>
+      </div>
     )
   }
 
+  const typeColorMap: Record<QuestionType, string> = {
+    choice: '#4f46e5',
+    multi: '#6366f1',
+    code: '#f59e0b',
+    subjective: '#10b981',
+  }
+
+  const difficultyColorMap: Record<QuestionDifficulty, string> = {
+    easy: '#10b981',
+    medium: '#f59e0b',
+    hard: '#ef4444',
+  }
+
   return (
-    <section className="admin-panel admin-question-page">
-      <div className="admin-question-page__hero">
+    <div style={{ padding: '32px 28px', background: THEME.bg, minHeight: '100vh' }}>
+      {/* Hero */}
+      <div style={{ ...glassCard, padding: '28px 32px', marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <span className="admin-tag">题库中心</span>
-          <h2>题库管理</h2>
-          <p className="admin-copy">
+          <Space align="center" style={{ marginBottom: 8 }}>
+            <Tag color="processing" style={{ fontSize: 12, fontWeight: 600, borderRadius: 20, padding: '2px 12px' }}>
+              题库中心
+            </Tag>
+          </Space>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: THEME.textMain }}>题库管理</h2>
+          <p style={{ margin: '8px 0 0', color: THEME.textSecondary, fontSize: 14, maxWidth: 600 }}>
             当前页支持题目分页筛选、手动维护和快速编辑。右侧表单会根据题型自动切换选择题选项区，避免在字符串字段上来回猜格式。
           </p>
         </div>
-        <div className="admin-question-page__summary">
-          <strong>{questionsQuery.data?.total || 0}</strong>
-          <span>道题</span>
+        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 24 }}>
+          <div style={{ fontSize: 32, fontWeight: 800, color: THEME.primary, lineHeight: 1 }}>
+            {questionsQuery.data?.total || 0}
+          </div>
+          <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 4 }}>道题</div>
         </div>
       </div>
 
-      <div className="admin-question-page__toolbar">
-        <label className="admin-field">
-          <span>关键词</span>
-          <input
+      {/* Toolbar */}
+      <div style={{ ...solidCard, padding: '18px 24px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 200, flex: 1 }}>
+          <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: THEME.textMuted }}>关键词</div>
+          <Input.Search
             value={filters.keyword}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                keyword: event.target.value,
-                page: 1,
-              }))
-            }
+            onChange={(e) => setFilters((current) => ({ ...current, keyword: e.target.value, page: 1 }))}
             placeholder="标题或内容关键词"
+            allowClear
+            style={{ borderRadius: 10 }}
           />
-        </label>
-
-        <label className="admin-field">
-          <span>难度</span>
-          <select
-            value={filters.difficulty}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                difficulty: event.target.value,
-                page: 1,
-              }))
-            }
+        </div>
+        <div style={{ minWidth: 140 }}>
+          <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: THEME.textMuted }}>难度</div>
+          <Select
+            value={filters.difficulty || undefined}
+            onChange={(val) => setFilters((current) => ({ ...current, difficulty: val || '', page: 1 }))}
+            placeholder="全部难度"
+            allowClear
+            style={{ width: '100%', borderRadius: 10 }}
+            dropdownStyle={{ borderRadius: 10 }}
           >
-            <option value="">全部难度</option>
             {QUESTION_DIFFICULTY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
+              <Select.Option key={option.value} value={option.value}>
                 {option.label}
-              </option>
+              </Select.Option>
             ))}
-          </select>
-        </label>
-
-        <label className="admin-field">
-          <span>分类</span>
-          <select
-            value={filters.categoryId}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                categoryId: event.target.value,
-                page: 1,
-              }))
-            }
+          </Select>
+        </div>
+        <div style={{ minWidth: 180 }}>
+          <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: THEME.textMuted }}>分类</div>
+          <Select
+            value={filters.categoryId || undefined}
+            onChange={(val) => setFilters((current) => ({ ...current, categoryId: val || '', page: 1 }))}
+            placeholder="全部分类"
+            allowClear
+            style={{ width: '100%', borderRadius: 10 }}
+            dropdownStyle={{ borderRadius: 10 }}
           >
-            <option value="">全部分类</option>
             {filterCategoryOptions.map((option) => (
-              <option key={option.id} value={option.id}>
+              <Select.Option key={option.id} value={String(option.id)}>
                 {option.label}
-              </option>
+              </Select.Option>
             ))}
-          </select>
-        </label>
-
-        <button className="admin-link" type="button" onClick={startCreatingQuestion}>
+          </Select>
+        </div>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={startCreatingQuestion}
+          style={{
+            borderRadius: 10,
+            background: THEME.primary,
+            borderColor: THEME.primary,
+            fontWeight: 600,
+            marginTop: 20,
+          }}
+        >
           新建题目
-        </button>
+        </Button>
       </div>
 
-      <form className="admin-question-import" onSubmit={handleImport}>
-        <div className="admin-question-import__head">
+      {/* Batch Import */}
+      <div style={{ ...solidCard, padding: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <strong>批量导入题目</strong>
-            <p>这里直接粘贴 JSON 数组，结构与 `/api/admin/questions/import` 保持一致。</p>
+            <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+              <ImportOutlined style={{ marginRight: 8, color: THEME.primary }} />
+              批量导入题目
+            </h4>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>
+              直接粘贴 JSON 数组，结构与 /api/admin/questions/import 保持一致。
+            </p>
           </div>
-          <label className="admin-field">
-            <span>目标行业</span>
-            <select value={importIndustryCode} onChange={(event) => setImportIndustryCode(event.target.value)}>
-              <option value="">请选择行业</option>
+          <div style={{ minWidth: 180 }}>
+            <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 600, color: THEME.textMuted }}>目标行业</div>
+            <Select
+              value={importIndustryCode || undefined}
+              onChange={(val) => setImportIndustryCode(val || '')}
+              placeholder="请选择行业"
+              style={{ width: '100%', borderRadius: 10 }}
+              dropdownStyle={{ borderRadius: 10 }}
+            >
               {(industriesQuery.data || []).map((industry) => (
-                <option key={industry.code} value={industry.code}>
+                <Select.Option key={industry.code} value={industry.code}>
                   {industry.name}
-                </option>
+                </Select.Option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
         </div>
 
-        <textarea
-          className="admin-question-import__editor"
-          value={importText}
-          onChange={(event) => setImportText(event.target.value)}
-        />
+        <form onSubmit={handleImport}>
+          <Input.TextArea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            rows={6}
+            style={{ borderRadius: 10, resize: 'none', fontFamily: 'monospace', fontSize: 13 }}
+          />
 
-        <div className={`admin-question-import__status ${importPreview.valid ? 'is-valid' : 'is-error'}`}>
-          <span>
-            {importPreview.valid
-              ? `当前已识别 ${importPreview.count} 条待导入题目。`
-              : importPreview.error}
-          </span>
-          <button
-            className="admin-link"
-            type="submit"
-            disabled={!importPreview.valid || !importIndustryCode || importMutation.isPending}
+          <div
+            style={{
+              marginTop: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
           >
-            {importMutation.isPending ? '导入中...' : '开始批量导入'}
-          </button>
-        </div>
-      </form>
-
-      <div className="admin-question-page__layout">
-        <div className="admin-question-list-wrap">
-          <div className="admin-question-list">
-            {(questionsQuery.data?.list || []).length === 0 ? (
-              <div className="admin-question-card admin-question-card--empty">
-                <strong>当前筛选条件下没有题目</strong>
-                <p>可以先调整筛选条件，或者直接在右侧创建新题目。</p>
-              </div>
-            ) : (
-              (questionsQuery.data?.list || []).map((question) => (
-                <button
-                  key={question.id}
-                  type="button"
-                  className={`admin-question-card ${
-                    selectedQuestionId === question.id ? 'admin-question-card--active' : ''
-                  }`}
-                  onClick={() => startEditingQuestion(question)}
-                >
-                  <div className="admin-question-card__head">
-                    <strong>{question.title}</strong>
-                    <span>{question.is_active ? '启用中' : '已停用'}</span>
-                  </div>
-                  <div className="admin-question-card__meta">
-                    <span>{questionTypeLabel(question.type)}</span>
-                    <span>{questionDifficultyLabel(question.difficulty)}</span>
-                    <span>{question.category_name}</span>
-                  </div>
-                  <p>{summarizeQuestionContent(question.content)}</p>
-                  {(question.tags || []).length > 0 ? (
-                    <div className="admin-question-card__tags">
-                      {(question.tags || []).map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                </button>
-              ))
-            )}
-          </div>
-
-          <div className="admin-question-pagination">
-            <button
-              className="admin-link"
-              type="button"
-              disabled={filters.page <= 1}
-              onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, current.page - 1) }))}
+            <span
+              style={{
+                fontSize: 13,
+                color: importPreview.valid ? THEME.success : THEME.danger,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
             >
-              上一页
-            </button>
-            <span>
-              第 {questionsQuery.data?.page || filters.page} / {totalPages} 页
+              <InfoCircleOutlined />
+              {importPreview.valid
+                ? `当前已识别 ${importPreview.count} 条待导入题目。`
+                : importPreview.error}
             </span>
-            <button
-              className="admin-link"
-              type="button"
-              disabled={filters.page >= totalPages}
-              onClick={() => setFilters((current) => ({ ...current, page: Math.min(totalPages, current.page + 1) }))}
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<ExportOutlined />}
+              loading={importMutation.isPending}
+              disabled={!importPreview.valid || !importIndustryCode}
+              style={{
+                borderRadius: 10,
+                background: THEME.primary,
+                borderColor: THEME.primary,
+                fontWeight: 600,
+              }}
             >
-              下一页
-            </button>
-          </div>
-        </div>
-
-        <form className="admin-question-editor" onSubmit={handleSubmit}>
-          <div className="admin-question-editor__head">
-            <div>
-              <h3>{selectedQuestionId ? '编辑题目' : '新建题目'}</h3>
-              <p>{message}</p>
-            </div>
-            <span className="admin-tag">{selectedQuestionId ? `ID #${selectedQuestionId}` : '新题目'}</span>
-          </div>
-
-          <div className="admin-question-editor__grid">
-            <label className="admin-field">
-              <span>所属行业</span>
-              <select
-                value={form.industryId}
-                onChange={(event) => updateQuestionField('industryId', event.target.value)}
-              >
-                <option value="">请选择行业</option>
-                {(industriesQuery.data || []).map((industry) => (
-                  <option key={industry.id} value={industry.id}>
-                    {industry.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>分类</span>
-              <select
-                value={form.categoryId}
-                onChange={(event) => updateQuestionField('categoryId', event.target.value)}
-              >
-                <option value="">请选择分类</option>
-                {formCategoryOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="admin-question-editor__grid admin-question-editor__grid--triple">
-            <label className="admin-field">
-              <span>题型</span>
-              <select
-                value={form.type}
-                onChange={(event) => updateQuestionField('type', event.target.value as QuestionType)}
-              >
-                {QUESTION_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>难度</span>
-              <select
-                value={form.difficulty}
-                onChange={(event) => updateQuestionField('difficulty', event.target.value as QuestionDifficulty)}
-              >
-                {QUESTION_DIFFICULTY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="admin-field">
-              <span>标签</span>
-              <input
-                value={form.tagsText}
-                onChange={(event) => updateQuestionField('tagsText', event.target.value)}
-                placeholder="并发, channel, context"
-              />
-            </label>
-          </div>
-
-          <label className="admin-field">
-            <span>题目标题</span>
-            <input
-              value={form.title}
-              onChange={(event) => updateQuestionField('title', event.target.value)}
-              placeholder="请输入题目标题"
-            />
-          </label>
-
-          <label className="admin-field">
-            <span>题目内容</span>
-            <textarea
-              className="admin-question-editor__content"
-              value={form.content}
-              onChange={(event) => updateQuestionField('content', event.target.value)}
-              placeholder="请输入完整题干内容"
-            />
-          </label>
-
-          {requiresQuestionOptions(form.type) ? (
-            <label className="admin-field">
-              <span>选项列表</span>
-              <textarea
-                className="admin-question-editor__options"
-                value={form.optionsText}
-                onChange={(event) => updateQuestionField('optionsText', event.target.value)}
-                placeholder={'每行一个选项，例如：\n选项 A\n选项 B'}
-              />
-            </label>
-          ) : null}
-
-          <label className="admin-field">
-            <span>答案</span>
-            <textarea
-              className="admin-question-editor__answer"
-              value={form.answer}
-              onChange={(event) => updateQuestionField('answer', event.target.value)}
-              placeholder="请输入标准答案"
-            />
-          </label>
-
-          <label className="admin-field">
-            <span>解析</span>
-            <textarea
-              className="admin-question-editor__answer"
-              value={form.explanation}
-              onChange={(event) => updateQuestionField('explanation', event.target.value)}
-              placeholder="请输入题目解析"
-            />
-          </label>
-
-          {form.type === 'code' ? (
-            <div className="admin-question-import">
-              <div className="admin-question-import__head">
-                <div>
-                  <strong>编程题结构化解析</strong>
-                  <p>这里维护 P0 阶段要求的统一解析结构，前台会按这个结构直接展示。</p>
-                </div>
-              </div>
-
-              <label className="admin-field">
-                <span>题意总结</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionSummary}
-                  onChange={(event) => updateQuestionField('solutionSummary', event.target.value)}
-                  placeholder="一句话说明这道题核心在考什么"
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>解题思路</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionApproach}
-                  onChange={(event) => updateQuestionField('solutionApproach', event.target.value)}
-                  placeholder="说明为什么采用这套解法，以及关键策略是什么"
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>关键步骤</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionStepsText}
-                  onChange={(event) => updateQuestionField('solutionStepsText', event.target.value)}
-                  placeholder={'每行一条，例如：\n确定状态定义\n初始化边界\n按转移关系推进'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>边界条件</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionEdgeCasesText}
-                  onChange={(event) => updateQuestionField('solutionEdgeCasesText', event.target.value)}
-                  placeholder={'每行一条，例如：\n空输入\n长度为 1\n重复元素'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>复杂度分析</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionComplexity}
-                  onChange={(event) => updateQuestionField('solutionComplexity', event.target.value)}
-                  placeholder="例如：时间复杂度 O(n)，空间复杂度 O(1)"
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>常见错法</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.solutionMistakesText}
-                  onChange={(event) => updateQuestionField('solutionMistakesText', event.target.value)}
-                  placeholder={'每行一条，例如：\n漏掉边界判断\n索引越界\n复杂度分析缺失'}
-                />
-              </label>
-
-              <div className="admin-question-import__head">
-                <div>
-                  <strong>编程题判题配置</strong>
-                  <p>测试用例模式下将使用公开样例运行、隐藏用例提交判题；AI 只负责讲解，不负责最终裁决。</p>
-                </div>
-              </div>
-
-              <label className="admin-field">
-                <span>判题模式</span>
-                <select
-                  value={form.evaluationMode}
-                  onChange={(event) => updateQuestionField('evaluationMode', event.target.value as 'analysis_only' | 'testcase')}
-                >
-                  <option value="analysis_only">AI 分析模式</option>
-                  <option value="testcase">测试用例判题模式</option>
-                </select>
-              </label>
-
-              <div className="admin-question-editor__grid admin-question-editor__grid--triple">
-                <label className="admin-field">
-                  <span>默认语言</span>
-                  <input
-                    value={form.defaultLanguage}
-                    onChange={(event) => updateQuestionField('defaultLanguage', event.target.value)}
-                    placeholder="go"
-                  />
-                </label>
-
-                <label className="admin-field">
-                  <span>允许语言</span>
-                  <input
-                    value={form.allowedLanguagesText}
-                    onChange={(event) => updateQuestionField('allowedLanguagesText', event.target.value)}
-                    placeholder="go, python, javascript"
-                  />
-                </label>
-
-                <label className="admin-field">
-                  <span>起始模板代码</span>
-                  <input
-                    value={form.starterCode}
-                    onChange={(event) => updateQuestionField('starterCode', event.target.value)}
-                    placeholder="可选，用于初始化编辑器内容"
-                  />
-                </label>
-              </div>
-
-              <div className="admin-question-editor__grid admin-question-editor__grid--triple">
-                <label className="admin-field">
-                  <span>时间限制(ms)</span>
-                  <input
-                    value={form.timeLimitMs}
-                    onChange={(event) => updateQuestionField('timeLimitMs', event.target.value)}
-                    placeholder="2000"
-                  />
-                </label>
-
-                <label className="admin-field">
-                  <span>内存限制(MB)</span>
-                  <input
-                    value={form.memoryLimitMb}
-                    onChange={(event) => updateQuestionField('memoryLimitMb', event.target.value)}
-                    placeholder="128"
-                  />
-                </label>
-              </div>
-
-              <label className="admin-field">
-                <span>公开样例 JSON</span>
-                <textarea
-                  className="admin-question-editor__content"
-                  value={form.publicCasesText}
-                  onChange={(event) => updateQuestionField('publicCasesText', event.target.value)}
-                  placeholder={'[\n  {\n    "input": "3\\n1 2 3",\n    "expected_output": "6",\n    "description": "基础样例"\n  }\n]'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>隐藏用例 JSON</span>
-                <textarea
-                  className="admin-question-editor__content"
-                  value={form.hiddenCasesText}
-                  onChange={(event) => updateQuestionField('hiddenCasesText', event.target.value)}
-                  placeholder={'[\n  {\n    "input": "0",\n    "expected_output": "0",\n    "description": "边界场景"\n  }\n]'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>参考实现 JSON</span>
-                <textarea
-                  className="admin-question-editor__content"
-                  value={form.referenceSolutionsText}
-                  onChange={(event) => updateQuestionField('referenceSolutionsText', event.target.value)}
-                  placeholder={'[\n  {\n    "language": "go",\n    "title": "Go 参考实现",\n    "code": "package main\\n\\nfunc main() {}"\n  }\n]'}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {form.type === 'subjective' ? (
-            <div className="admin-question-import">
-              <div className="admin-question-import__head">
-                <div>
-                  <strong>主观题参考回答模板</strong>
-                  <p>这里维护面试化回答模板，前台会按“结论 + 展开 + 追问”结构展示。</p>
-                </div>
-              </div>
-
-              <label className="admin-field">
-                <span>核心结论</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.answerTemplateConclusion}
-                  onChange={(event) => updateQuestionField('answerTemplateConclusion', event.target.value)}
-                  placeholder="先给出这道题最关键的结论"
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>关键展开点</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.answerTemplateKeyPointsText}
-                  onChange={(event) => updateQuestionField('answerTemplateKeyPointsText', event.target.value)}
-                  placeholder={'每行一条，例如：\n解释原理\n说明适用场景\n补充优缺点'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>面试表达示例</span>
-                <textarea
-                  className="admin-question-editor__content"
-                  value={form.answerTemplateSampleAnswer}
-                  onChange={(event) => updateQuestionField('answerTemplateSampleAnswer', event.target.value)}
-                  placeholder="写一版更接近真实面试表达的完整回答"
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>高频追问点</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.answerTemplateFollowUpsText}
-                  onChange={(event) => updateQuestionField('answerTemplateFollowUpsText', event.target.value)}
-                  placeholder={'每行一条，例如：\n为什么这样设计？\n边界是什么？\n替代方案是什么？'}
-                />
-              </label>
-
-              <label className="admin-field">
-                <span>易答偏点</span>
-                <textarea
-                  className="admin-question-editor__answer"
-                  value={form.answerTemplatePitfallsText}
-                  onChange={(event) => updateQuestionField('answerTemplatePitfallsText', event.target.value)}
-                  placeholder={'每行一条，例如：\n只背定义\n不讲场景\n忽略权衡'}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {questionTagTaxonomyQuery.data?.length ? (
-            <div className="admin-question-import">
-              <div className="admin-question-import__head">
-                <div>
-                  <strong>标准标签建议</strong>
-                  <p>P0 阶段优先复用这套标签，避免同义词、英文大小写和临时口径继续扩散。</p>
-                </div>
-              </div>
-
-              {questionTagTaxonomyQuery.data.map((group) => (
-                <div key={group.group} style={{ marginBottom: 16 }}>
-                  <strong>{group.group}</strong>
-                  <p style={{ margin: '6px 0 10px' }}>{group.description}</p>
-                  <div className="admin-question-card__tags">
-                    {group.tags.map((tag) => (
-                      <button
-                        key={`${group.group}-${tag}`}
-                        type="button"
-                        className="admin-link"
-                        style={{ marginRight: 8, marginBottom: 8 }}
-                        onClick={() => appendQuestionTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          <div className={`admin-question-editor__status ${formError ? 'is-error' : 'is-valid'}`}>
-            <strong>表单检查</strong>
-            <span>{formError || '当前题目表单已通过基础校验，可以提交保存。'}</span>
-          </div>
-
-          <label className="admin-question-editor__switch">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(event) => updateQuestionField('isActive', event.target.checked)}
-            />
-            <span>{form.isActive ? '当前题目启用中' : '当前题目已停用'}</span>
-          </label>
-
-          <div className="admin-question-editor__actions">
-            <button
-              className="admin-link"
-              type="button"
-              onClick={startCreatingQuestion}
-              disabled={saveMutation.isPending || deleteMutation.isPending}
-            >
-              重置为新建
-            </button>
-            {selectedQuestionId ? (
-              <button
-                className="admin-link"
-                type="button"
-                onClick={handleDelete}
-                disabled={saveMutation.isPending || deleteMutation.isPending}
-              >
-                {deleteMutation.isPending ? '删除中...' : '删除题目'}
-              </button>
-            ) : null}
-            <button
-              className="admin-link"
-              type="submit"
-              disabled={Boolean(formError) || saveMutation.isPending || deleteMutation.isPending}
-            >
-              {saveMutation.isPending ? '保存中...' : selectedQuestionId ? '保存修改' : '创建题目'}
-            </button>
+              {importMutation.isPending ? '导入中...' : '开始批量导入'}
+            </Button>
           </div>
         </form>
       </div>
-    </section>
+
+      {/* Main Layout */}
+      <Row gutter={[24, 24]}>
+        {/* Question List */}
+        <Col xs={24} lg={10}>
+          <div style={{ ...solidCard, padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: THEME.textMain }}>
+                <BookOutlined style={{ marginRight: 8, color: THEME.primary }} />
+                题目列表
+              </h3>
+              <span style={{ fontSize: 12, color: THEME.textMuted }}>
+                共 {questionsQuery.data?.total || 0} 条
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20, maxHeight: 600, overflowY: 'auto', paddingRight: 4 }}>
+              {(questionsQuery.data?.list || []).length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <div>
+                      <strong style={{ color: THEME.textMain }}>当前筛选条件下没有题目</strong>
+                      <p style={{ color: THEME.textMuted, fontSize: 13, margin: '4px 0 0' }}>
+                        可以先调整筛选条件，或者直接在右侧创建新题目。
+                      </p>
+                    </div>
+                  }
+                />
+              ) : (
+                (questionsQuery.data?.list || []).map((question) => {
+                  const isActive = selectedQuestionId === question.id
+                  return (
+                    <button
+                      key={question.id}
+                      type="button"
+                      onClick={() => startEditingQuestion(question)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        padding: '14px 18px',
+                        borderRadius: 12,
+                        border: isActive ? '1px solid ' + THEME.primary : '1px solid ' + THEME.border,
+                        background: isActive ? THEME.primaryLight : THEME.cardBg,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = '#f8fafc'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = THEME.cardBg
+                        }
+                      }}
+                    >
+                      {isActive && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 10,
+                            bottom: 10,
+                            width: 4,
+                            borderRadius: '0 4px 4px 0',
+                            background: THEME.primary,
+                          }}
+                        />
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <strong style={{ fontSize: 14, color: THEME.textMain, fontWeight: 600 }}>
+                          {question.title}
+                        </strong>
+                        <Tag color={question.is_active ? 'success' : 'default'} style={{ fontSize: 11, borderRadius: 10, flexShrink: 0, marginLeft: 8 }}>
+                          {question.is_active ? '启用中' : '已停用'}
+                        </Tag>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <Tag
+                          style={{
+                            borderRadius: 10,
+                            fontSize: 11,
+                            color: typeColorMap[question.type],
+                            background: `${typeColorMap[question.type]}15`,
+                            border: `1px solid ${typeColorMap[question.type]}30`,
+                          }}
+                        >
+                          {questionTypeLabel(question.type)}
+                        </Tag>
+                        <Tag
+                          style={{
+                            borderRadius: 10,
+                            fontSize: 11,
+                            color: difficultyColorMap[question.difficulty],
+                            background: `${difficultyColorMap[question.difficulty]}15`,
+                            border: `1px solid ${difficultyColorMap[question.difficulty]}30`,
+                          }}
+                        >
+                          {questionDifficultyLabel(question.difficulty)}
+                        </Tag>
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>{question.category_name}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 12, color: THEME.textSecondary, lineHeight: 1.5 }}>
+                        {summarizeQuestionContent(question.content)}
+                      </p>
+                      {(question.tags || []).length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {(question.tags || []).map((tag) => (
+                            <Tag key={tag} style={{ borderRadius: 10, fontSize: 11, border: `1px solid ${THEME.border}` }}>
+                              {tag}
+                            </Tag>
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Pagination */}
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Pagination
+                current={questionsQuery.data?.page || filters.page}
+                total={questionsQuery.data?.total || 0}
+                pageSize={QUESTION_PAGE_SIZE}
+                onChange={(page) => setFilters((current) => ({ ...current, page }))}
+                showSizeChanger={false}
+                style={{ textAlign: 'center' }}
+              />
+            </div>
+          </div>
+        </Col>
+
+        {/* Question Editor */}
+        <Col xs={24} lg={14}>
+          <div style={{ ...solidCard, padding: 24 }}>
+            <form onSubmit={handleSubmit}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: THEME.textMain }}>
+                    {selectedQuestionId ? '编辑题目' : '新建题目'}
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>{editorMessage}</p>
+                </div>
+                <Tag color="processing" style={{ borderRadius: 10, fontWeight: 600 }}>
+                  {selectedQuestionId ? `ID #${selectedQuestionId}` : '新题目'}
+                </Tag>
+              </div>
+
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>所属行业</div>
+                  <Select
+                    value={form.industryId || undefined}
+                    onChange={(val) => updateQuestionField('industryId', val || '')}
+                    placeholder="请选择行业"
+                    style={{ width: '100%', borderRadius: 10 }}
+                    dropdownStyle={{ borderRadius: 10 }}
+                  >
+                    {(industriesQuery.data || []).map((industry) => (
+                      <Select.Option key={industry.id} value={String(industry.id)}>
+                        {industry.name}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col span={12}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>分类</div>
+                  <Select
+                    value={form.categoryId || undefined}
+                    onChange={(val) => updateQuestionField('categoryId', val || '')}
+                    placeholder="请选择分类"
+                    style={{ width: '100%', borderRadius: 10 }}
+                    dropdownStyle={{ borderRadius: 10 }}
+                  >
+                    {formCategoryOptions.map((option) => (
+                      <Select.Option key={option.id} value={String(option.id)}>
+                        {option.label}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col span={8}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>题型</div>
+                  <Select
+                    value={form.type}
+                    onChange={(val) => updateQuestionField('type', val as QuestionType)}
+                    style={{ width: '100%', borderRadius: 10 }}
+                    dropdownStyle={{ borderRadius: 10 }}
+                  >
+                    {QUESTION_TYPE_OPTIONS.map((option) => (
+                      <Select.Option key={option.value} value={option.value}>
+                        {option.label}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col span={8}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>难度</div>
+                  <Select
+                    value={form.difficulty}
+                    onChange={(val) => updateQuestionField('difficulty', val as QuestionDifficulty)}
+                    style={{ width: '100%', borderRadius: 10 }}
+                    dropdownStyle={{ borderRadius: 10 }}
+                  >
+                    {QUESTION_DIFFICULTY_OPTIONS.map((option) => (
+                      <Select.Option key={option.value} value={option.value}>
+                        {option.label}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Col>
+                <Col span={8}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>标签</div>
+                  <Input
+                    value={form.tagsText}
+                    onChange={(e) => updateQuestionField('tagsText', e.target.value)}
+                    placeholder="并发, channel, context"
+                    style={{ borderRadius: 10 }}
+                  />
+                </Col>
+                <Col span={24}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>题目标题</div>
+                  <Input
+                    value={form.title}
+                    onChange={(e) => updateQuestionField('title', e.target.value)}
+                    placeholder="请输入题目标题"
+                    style={{ borderRadius: 10 }}
+                  />
+                </Col>
+                <Col span={24}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>题目内容</div>
+                  <Input.TextArea
+                    value={form.content}
+                    onChange={(e) => updateQuestionField('content', e.target.value)}
+                    placeholder="请输入完整题干内容"
+                    rows={4}
+                    style={{ borderRadius: 10, resize: 'none' }}
+                  />
+                </Col>
+
+                {requiresQuestionOptions(form.type) && (
+                  <Col span={24}>
+                    <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>选项列表</div>
+                    <Input.TextArea
+                      value={form.optionsText}
+                      onChange={(e) => updateQuestionField('optionsText', e.target.value)}
+                      placeholder={'每行一个选项，例如：\n选项 A\n选项 B'}
+                      rows={4}
+                      style={{ borderRadius: 10, resize: 'none' }}
+                    />
+                  </Col>
+                )}
+
+                <Col span={24}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>答案</div>
+                  <Input.TextArea
+                    value={form.answer}
+                    onChange={(e) => updateQuestionField('answer', e.target.value)}
+                    placeholder="请输入标准答案"
+                    rows={3}
+                    style={{ borderRadius: 10, resize: 'none' }}
+                  />
+                </Col>
+                <Col span={24}>
+                  <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>解析</div>
+                  <Input.TextArea
+                    value={form.explanation}
+                    onChange={(e) => updateQuestionField('explanation', e.target.value)}
+                    placeholder="请输入题目解析"
+                    rows={3}
+                    style={{ borderRadius: 10, resize: 'none' }}
+                  />
+                </Col>
+              </Row>
+
+              {/* Code Question Sections */}
+              {form.type === 'code' && (
+                <>
+                  <Divider style={{ margin: '24px 0 16px' }} />
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+                      <CodeOutlined style={{ marginRight: 8, color: THEME.accent }} />
+                      编程题结构化解析
+                    </h4>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>
+                      这里维护 P0 阶段要求的统一解析结构，前台会按这个结构直接展示。
+                    </p>
+                  </div>
+                  <Row gutter={[16, 16]}>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>题意总结</div>
+                      <Input.TextArea
+                        value={form.solutionSummary}
+                        onChange={(e) => updateQuestionField('solutionSummary', e.target.value)}
+                        placeholder="一句话说明这道题核心在考什么"
+                        rows={2}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>解题思路</div>
+                      <Input.TextArea
+                        value={form.solutionApproach}
+                        onChange={(e) => updateQuestionField('solutionApproach', e.target.value)}
+                        placeholder="说明为什么采用这套解法，以及关键策略是什么"
+                        rows={2}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>关键步骤</div>
+                      <Input.TextArea
+                        value={form.solutionStepsText}
+                        onChange={(e) => updateQuestionField('solutionStepsText', e.target.value)}
+                        placeholder={'每行一条，例如：\n确定状态定义\n初始化边界\n按转移关系推进'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>边界条件</div>
+                      <Input.TextArea
+                        value={form.solutionEdgeCasesText}
+                        onChange={(e) => updateQuestionField('solutionEdgeCasesText', e.target.value)}
+                        placeholder={'每行一条，例如：\n空输入\n长度为 1\n重复元素'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>复杂度分析</div>
+                      <Input.TextArea
+                        value={form.solutionComplexity}
+                        onChange={(e) => updateQuestionField('solutionComplexity', e.target.value)}
+                        placeholder="例如：时间复杂度 O(n)，空间复杂度 O(1)"
+                        rows={2}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>常见错法</div>
+                      <Input.TextArea
+                        value={form.solutionMistakesText}
+                        onChange={(e) => updateQuestionField('solutionMistakesText', e.target.value)}
+                        placeholder={'每行一条，例如：\n漏掉边界判断\n索引越界\n复杂度分析缺失'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                  </Row>
+
+                  <Divider style={{ margin: '24px 0 16px' }} />
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+                      <CheckCircleOutlined style={{ marginRight: 8, color: THEME.success }} />
+                      编程题判题配置
+                    </h4>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>
+                      测试用例模式下将使用公开样例运行、隐藏用例提交判题；AI 只负责讲解，不负责最终裁决。
+                    </p>
+                  </div>
+                  <Row gutter={[16, 16]}>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>判题模式</div>
+                      <Select
+                        value={form.evaluationMode}
+                        onChange={(val) => updateQuestionField('evaluationMode', val as 'analysis_only' | 'testcase')}
+                        style={{ width: '100%', borderRadius: 10 }}
+                        dropdownStyle={{ borderRadius: 10 }}
+                      >
+                        <Select.Option value="analysis_only">AI 分析模式</Select.Option>
+                        <Select.Option value="testcase">测试用例判题模式</Select.Option>
+                      </Select>
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>默认语言</div>
+                      <Input
+                        value={form.defaultLanguage}
+                        onChange={(e) => updateQuestionField('defaultLanguage', e.target.value)}
+                        placeholder="go"
+                        style={{ borderRadius: 10 }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>允许语言</div>
+                      <Input
+                        value={form.allowedLanguagesText}
+                        onChange={(e) => updateQuestionField('allowedLanguagesText', e.target.value)}
+                        placeholder="go, python, javascript"
+                        style={{ borderRadius: 10 }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>起始模板代码</div>
+                      <Input
+                        value={form.starterCode}
+                        onChange={(e) => updateQuestionField('starterCode', e.target.value)}
+                        placeholder="可选，用于初始化编辑器内容"
+                        style={{ borderRadius: 10 }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>时间限制(ms)</div>
+                      <Input
+                        value={form.timeLimitMs}
+                        onChange={(e) => updateQuestionField('timeLimitMs', e.target.value)}
+                        placeholder="2000"
+                        style={{ borderRadius: 10 }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>内存限制(MB)</div>
+                      <Input
+                        value={form.memoryLimitMb}
+                        onChange={(e) => updateQuestionField('memoryLimitMb', e.target.value)}
+                        placeholder="128"
+                        style={{ borderRadius: 10 }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>公开样例 JSON</div>
+                      <Input.TextArea
+                        value={form.publicCasesText}
+                        onChange={(e) => updateQuestionField('publicCasesText', e.target.value)}
+                        placeholder={'[\n  {\n    "input": "3\\n1 2 3",\n    "expected_output": "6",\n    "description": "基础样例"\n  }\n]'}
+                        rows={5}
+                        style={{ borderRadius: 10, resize: 'none', fontFamily: 'monospace', fontSize: 13 }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>隐藏用例 JSON</div>
+                      <Input.TextArea
+                        value={form.hiddenCasesText}
+                        onChange={(e) => updateQuestionField('hiddenCasesText', e.target.value)}
+                        placeholder={'[\n  {\n    "input": "0",\n    "expected_output": "0",\n    "description": "边界场景"\n  }\n]'}
+                        rows={5}
+                        style={{ borderRadius: 10, resize: 'none', fontFamily: 'monospace', fontSize: 13 }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>参考实现 JSON</div>
+                      <Input.TextArea
+                        value={form.referenceSolutionsText}
+                        onChange={(e) => updateQuestionField('referenceSolutionsText', e.target.value)}
+                        placeholder={'[\n  {\n    "language": "go",\n    "title": "Go 参考实现",\n    "code": "package main\\n\\nfunc main() {}"\n  }\n]'}
+                        rows={5}
+                        style={{ borderRadius: 10, resize: 'none', fontFamily: 'monospace', fontSize: 13 }}
+                      />
+                    </Col>
+                  </Row>
+                </>
+              )}
+
+              {/* Subjective Question Sections */}
+              {form.type === 'subjective' && (
+                <>
+                  <Divider style={{ margin: '24px 0 16px' }} />
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+                      <QuestionCircleOutlined style={{ marginRight: 8, color: THEME.success }} />
+                      主观题参考回答模板
+                    </h4>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>
+                      这里维护面试化回答模板，前台会按"结论 + 展开 + 追问"结构展示。
+                    </p>
+                  </div>
+                  <Row gutter={[16, 16]}>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>核心结论</div>
+                      <Input.TextArea
+                        value={form.answerTemplateConclusion}
+                        onChange={(e) => updateQuestionField('answerTemplateConclusion', e.target.value)}
+                        placeholder="先给出这道题最关键的结论"
+                        rows={2}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>关键展开点</div>
+                      <Input.TextArea
+                        value={form.answerTemplateKeyPointsText}
+                        onChange={(e) => updateQuestionField('answerTemplateKeyPointsText', e.target.value)}
+                        placeholder={'每行一条，例如：\n解释原理\n说明适用场景\n补充优缺点'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>面试表达示例</div>
+                      <Input.TextArea
+                        value={form.answerTemplateSampleAnswer}
+                        onChange={(e) => updateQuestionField('answerTemplateSampleAnswer', e.target.value)}
+                        placeholder="写一版更接近真实面试表达的完整回答"
+                        rows={4}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>高频追问点</div>
+                      <Input.TextArea
+                        value={form.answerTemplateFollowUpsText}
+                        onChange={(e) => updateQuestionField('answerTemplateFollowUpsText', e.target.value)}
+                        placeholder={'每行一条，例如：\n为什么这样设计？\n边界是什么？\n替代方案是什么？'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                    <Col span={24}>
+                      <div style={{ marginBottom: 4, fontSize: 13, fontWeight: 600, color: THEME.textMain }}>易答偏点</div>
+                      <Input.TextArea
+                        value={form.answerTemplatePitfallsText}
+                        onChange={(e) => updateQuestionField('answerTemplatePitfallsText', e.target.value)}
+                        placeholder={'每行一条，例如：\n只背定义\n不讲场景\n忽略权衡'}
+                        rows={3}
+                        style={{ borderRadius: 10, resize: 'none' }}
+                      />
+                    </Col>
+                  </Row>
+                </>
+              )}
+
+              {/* Tag Taxonomy Suggestions */}
+              {questionTagTaxonomyQuery.data?.length ? (
+                <>
+                  <Divider style={{ margin: '24px 0 16px' }} />
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+                      <TagsOutlined style={{ marginRight: 8, color: THEME.primary }} />
+                      标准标签建议
+                    </h4>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: THEME.textMuted }}>
+                      P0 阶段优先复用这套标签，避免同义词、英文大小写和临时口径继续扩散。点击分组展开查看标签。
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {questionTagTaxonomyQuery.data.map((group) => {
+                      const isExpanded = expandedGroups.has(group.group)
+                      return (
+                        <div
+                          key={group.group}
+                          style={{
+                            borderRadius: 12,
+                            border: `1px solid ${THEME.border}`,
+                            background: THEME.cardBg,
+                            overflow: 'hidden',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group.group)}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: THEME.textMain,
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 8,
+                                  background: THEME.primaryLight,
+                                  color: THEME.primary,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {group.group[0]?.toUpperCase()}
+                              </span>
+                              <span>{group.group}</span>
+                              <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 400 }}>
+                                ({group.tags.length} 个标签)
+                              </span>
+                            </span>
+                            <span
+                              style={{
+                                color: THEME.textMuted,
+                                fontSize: 12,
+                                transition: 'transform 0.2s ease',
+                                transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              }}
+                            >
+                              {isExpanded ? <DownOutlined /> : <RightOutlined />}
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div
+                              style={{
+                                padding: '0 16px 14px',
+                                borderTop: `1px solid ${THEME.border}`,
+                              }}
+                            >
+                              <p style={{ margin: '10px 0', fontSize: 12, color: THEME.textSecondary }}>
+                                {group.description}
+                              </p>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {group.tags.map((tag) => (
+                                  <Button
+                                    key={`${group.group}-${tag}`}
+                                    size="small"
+                                    onClick={() => appendQuestionTag(tag)}
+                                    style={{
+                                      borderRadius: 10,
+                                      fontSize: 12,
+                                      border: `1px solid ${THEME.border}`,
+                                      color: THEME.textSecondary,
+                                    }}
+                                  >
+                                    + {tag}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              ) : null}
+
+              {/* Form Status */}
+              <div
+                style={{
+                  marginTop: 24,
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  background: formError ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)',
+                  border: formError ? '1px solid rgba(239,68,68,0.15)' : '1px solid rgba(16,185,129,0.15)',
+                  fontSize: 13,
+                  color: formError ? THEME.danger : THEME.success,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <InfoCircleOutlined />
+                <strong style={{ marginRight: 4 }}>表单检查</strong>
+                {formError || '当前题目表单已通过基础校验，可以提交保存。'}
+              </div>
+
+              <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Switch
+                  checked={form.isActive}
+                  onChange={(checked) => updateQuestionField('isActive', checked)}
+                />
+                <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                  {form.isActive ? '当前题目启用中' : '当前题目已停用'}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={startCreatingQuestion}
+                  disabled={saveMutation.isPending || deleteMutation.isPending}
+                  style={{ borderRadius: 10, fontWeight: 600 }}
+                >
+                  重置为新建
+                </Button>
+                {selectedQuestionId && (
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleDelete}
+                    loading={deleteMutation.isPending}
+                    disabled={saveMutation.isPending}
+                    style={{ borderRadius: 10, fontWeight: 600 }}
+                  >
+                    {deleteMutation.isPending ? '删除中...' : '删除题目'}
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SaveOutlined />}
+                  loading={saveMutation.isPending}
+                  disabled={Boolean(formError) || deleteMutation.isPending}
+                  style={{
+                    borderRadius: 10,
+                    background: THEME.primary,
+                    borderColor: THEME.primary,
+                    fontWeight: 600,
+                    minWidth: 120,
+                  }}
+                >
+                  {saveMutation.isPending ? '保存中...' : selectedQuestionId ? '保存修改' : '创建题目'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </Col>
+      </Row>
+    </div>
   )
 }
