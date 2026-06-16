@@ -21,6 +21,7 @@ func (r *noteRepo) Create(ctx context.Context, note *biz.UserNote) error {
 	m := &model.UserNote{
 		UserID:     note.UserID,
 		QuestionID: note.QuestionID,
+		Title:      note.Title,
 		Content:    note.Content,
 	}
 	return r.db.WithContext(ctx).Create(m).Error
@@ -30,7 +31,10 @@ func (r *noteRepo) Update(ctx context.Context, note *biz.UserNote) error {
 	return r.db.WithContext(ctx).
 		Model(&model.UserNote{}).
 		Where("id = ? AND user_id = ?", note.ID, note.UserID).
-		Update("content", note.Content).Error
+		Updates(map[string]any{
+			"title":   note.Title,
+			"content": note.Content,
+		}).Error
 }
 
 func (r *noteRepo) ListByUser(ctx context.Context, userID uint64, questionID uint64, page, pageSize int32) ([]*biz.UserNote, int64, error) {
@@ -54,10 +58,16 @@ func (r *noteRepo) ListByUser(ctx context.Context, userID uint64, questionID uin
 
 	items := make([]*biz.UserNote, len(models))
 	for i, m := range models {
+		var qid *uint64
+		if m.QuestionID != nil {
+			v := *m.QuestionID
+			qid = &v
+		}
 		items[i] = &biz.UserNote{
 			ID:         uint64(m.ID),
 			UserID:     m.UserID,
-			QuestionID: m.QuestionID,
+			QuestionID: qid,
+			Title:      m.Title,
 			Content:    m.Content,
 			CreatedAt:  m.CreatedAt,
 			UpdatedAt:  m.UpdatedAt,
@@ -72,10 +82,16 @@ func (r *noteRepo) GetByID(ctx context.Context, id uint64) (*biz.UserNote, error
 	if err := r.db.WithContext(ctx).First(&m, id).Error; err != nil {
 		return nil, err
 	}
+	var qid *uint64
+	if m.QuestionID != nil {
+		v := *m.QuestionID
+		qid = &v
+	}
 	return &biz.UserNote{
 		ID:         uint64(m.ID),
 		UserID:     m.UserID,
-		QuestionID: m.QuestionID,
+		QuestionID: qid,
+		Title:      m.Title,
 		Content:    m.Content,
 		CreatedAt:  m.CreatedAt,
 		UpdatedAt:  m.UpdatedAt,

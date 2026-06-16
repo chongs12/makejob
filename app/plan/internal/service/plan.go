@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 
+	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	planv1 "makejob/api/makejob/plan/v1"
@@ -201,9 +203,37 @@ func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTas
 		StartDate:         plan.CreatedAt.Format("2006-01-02"),
 		Phase:             plan.Phase,
 		PhaseGoal:         plan.PhaseGoal,
+		EntryPhase:        plan.EntryPhase,
 	}
 	if plan.DurationDays > 0 {
 		detail.EndDate = plan.CreatedAt.AddDate(0, 0, int(plan.DurationDays)).Format("2006-01-02")
+	}
+	if plan.AdjustmentSummariesJSON != "" {
+		var summaries []string
+		if jsonErr := json.Unmarshal([]byte(plan.AdjustmentSummariesJSON), &summaries); jsonErr == nil {
+			detail.AdjustmentSummaries = summaries
+		}
+	}
+	if plan.AdjustmentReasonCodesJSON != "" {
+		var codes []string
+		if jsonErr := json.Unmarshal([]byte(plan.AdjustmentReasonCodesJSON), &codes); jsonErr == nil {
+			detail.AdjustmentReasonCodes = codes
+		}
+	}
+	if plan.PhaseBlueprintSummaryJSON != "" {
+		var entries []biz.PhaseBlueprintSummaryEntry
+		if jsonErr := json.Unmarshal([]byte(plan.PhaseBlueprintSummaryJSON), &entries); jsonErr == nil {
+			protoEntries := make([]*planv1.PhaseBlueprintSummaryEntry, 0, len(entries))
+			for _, e := range entries {
+				protoEntries = append(protoEntries, &planv1.PhaseBlueprintSummaryEntry{
+					Phase:     e.Phase,
+					PhaseGoal: e.PhaseGoal,
+					StartDay:  int32(e.StartDay),
+					EndDay:    int32(e.EndDay),
+				})
+			}
+			detail.PhaseBlueprintSummary = protoEntries
+		}
 	}
 	return detail
 }
@@ -224,22 +254,25 @@ func toProtoPlanSummary(plan *biz.LearningPlan) *planv1.PlanSummary {
 // toProtoTaskDetail 将 LearningTask 转换为 TaskDetail。
 func toProtoTaskDetail(task *biz.LearningTask) *planv1.TaskDetail {
 	detail := &planv1.TaskDetail{
-		Id:              task.ID,
-		PlanId:          task.PlanID,
-		Title:           task.Title,
-		Description:     task.Description,
-		TaskType:        task.TaskType,
-		Phase:           task.Phase,
-		DayNumber:       task.DayNumber,
-		DurationMinutes: task.DurationMinutes,
-		Priority:        task.Priority,
-		Status:          task.Status,
-		OrderIndex:      task.SortOrder,
-		SortOrder:       task.SortOrder,
-		PhaseGoal:       biz.PhaseGoalMap[task.Phase],
-		Source:          task.Source,
-		SourceLabel:     task.SourceLabel,
-		Reason:          task.Reason,
+		Id:                  task.ID,
+		PlanId:              task.PlanID,
+		Title:               task.Title,
+		Description:         task.Description,
+		TaskType:            task.TaskType,
+		Phase:               task.Phase,
+		DayNumber:           task.DayNumber,
+		DurationMinutes:     task.DurationMinutes,
+		Priority:            task.Priority,
+		Status:              task.Status,
+		OrderIndex:          task.SortOrder,
+		SortOrder:           task.SortOrder,
+		PhaseGoal:           biz.PhaseGoalMap[task.Phase],
+		Source:              task.Source,
+		SourceLabel:         task.SourceLabel,
+		Reason:              task.Reason,
+		PriorityExplanation: task.PriorityExplanation,
+		SourceRef:           task.SourceRef,
+		CollectionHint:      task.CollectionHint,
 	}
 	if task.CompletedAt != nil {
 		detail.CompletedAt = timestamppb.New(*task.CompletedAt)
@@ -295,5 +328,8 @@ func toGRPCError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return err
+	if kratosErr.FromError(err) != nil {
+		return err
+	}
+	return kratosErr.InternalServer("INTERNAL", err.Error())
 }

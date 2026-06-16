@@ -78,7 +78,7 @@ func (s *RAGService) IndexQuestions(ctx context.Context, req *ragv1.IndexQuestio
 			meta[k] = v
 		}
 		items[i] = biz.IndexItem{
-			ID:       fmt.Sprintf("%d", item.QuestionId),
+			ID:       biz.QuestionIDToDocID(uint64(item.QuestionId)),
 			Content:  item.Content,
 			Metadata: meta,
 		}

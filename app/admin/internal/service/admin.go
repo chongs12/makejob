@@ -1005,23 +1005,30 @@ func (s *AdminService) GetAICallLog(ctx context.Context, req *adminv1.GetAICallL
 		return nil, err
 	}
 	return &adminv1.AICallLogDetail{
-		Id:              l.ID,
-		TraceId:         l.TraceID,
-		Source:          l.Source,
-		Scene:           l.Scene,
-		Provider:        l.Provider,
-		Model:           l.Model,
-		UserInput:       l.UserInput,
-		ModelOutput:     l.ModelOutput,
-		ModelError:      l.ModelError,
-		LatencyMs:       l.LatencyMs,
-		IsSuccess:       l.IsSuccess,
-		InputTokens:     int32(l.InputTokens),
-		OutputTokens:    int32(l.OutputTokens),
-		RenderedPrompt:  l.RenderedPrompt,
-		RequestMessages: l.RequestMessages,
-		RuntimeConfig:   l.RuntimeConfig,
-		CreatedAt:       timestamppb.New(l.CreatedAt),
+		Id:                 l.ID,
+		TraceId:            l.TraceID,
+		Source:             l.Source,
+		Scene:              l.Scene,
+		Provider:           l.Provider,
+		Model:              l.Model,
+		UserInput:          l.UserInput,
+		ModelOutput:        l.ModelOutput,
+		ModelError:         l.ModelError,
+		LatencyMs:          l.LatencyMs,
+		IsSuccess:          l.IsSuccess,
+		InputTokens:        int32(l.InputTokens),
+		OutputTokens:       int32(l.OutputTokens),
+		RenderedPrompt:     l.RenderedPrompt,
+		RequestMessages:    l.RequestMessages,
+		RuntimeConfig:      l.RuntimeConfig,
+		CreatedAt:          timestamppb.New(l.CreatedAt),
+		// P0 补齐字段
+		TaskId:             l.TaskID,
+		PromptSource:       l.PromptSource,
+		SelectedPromptName: l.SelectedPromptName,
+		SceneConfig:        l.SceneConfig,
+		UpdatedAt:          timestamppb.New(l.UpdatedAt),
+		IndustryId:         l.IndustryID,
 	}, nil
 }
 
@@ -1046,6 +1053,8 @@ func (s *AdminService) ListLive2DModels(ctx context.Context, _ *emptypb.Empty) (
 			TtsConfigId:  m.TTSConfigID,
 			IsActive:     m.IsActive,
 			CreatedAt:    timestamppb.New(m.CreatedAt),
+			// P0 补齐字段
+			UpdatedAt:    timestamppb.New(m.UpdatedAt),
 		}
 	}
 	return &adminv1.ListLive2DModelsResponse{Models: items}, nil
@@ -1203,8 +1212,22 @@ func (s *AdminService) ListTTSConfigs(ctx context.Context, _ *emptypb.Empty) (*a
 	if err != nil {
 		return nil, err
 	}
+
+	// 获取场景默认配置
+	sceneDefaults, _ := s.uc.GetTTSSceneDefaults(ctx)
+	configToScene := make(map[uint64]string)
+	for scene, configID := range sceneDefaults {
+		configToScene[configID] = scene
+	}
+
 	items := make([]*adminv1.TTSConfigInfo, len(configs))
 	for i, c := range configs {
+		// 从 catalog 获取 support_status/support_message
+		supportStatus, supportMessage := s.uc.GetTTSSupportStatus(c.Engine)
+
+		// 获取绑定的 scene
+		scene := configToScene[c.ID]
+
 		items[i] = &adminv1.TTSConfigInfo{
 			Id:             c.ID,
 			Name:           c.Name,
@@ -1215,9 +1238,34 @@ func (s *AdminService) ListTTSConfigs(ctx context.Context, _ *emptypb.Empty) (*a
 			IsActive:       c.IsActive,
 			SortOrder:      c.SortOrder,
 			CreatedAt:      timestamppb.New(c.CreatedAt),
+			// P1 补齐字段
+			SupportStatus:  supportStatus,
+			SupportMessage: supportMessage,
+			Scene:          scene,
 		}
 	}
-	return &adminv1.ListTTSConfigsResponse{Configs: items}, nil
+
+	// 获取供应商目录
+	providers := s.uc.GetTTSProviders()
+	providerItems := make([]*adminv1.TTSProviderInfo, len(providers))
+	for i, p := range providers {
+		providerItems[i] = &adminv1.TTSProviderInfo{
+			Key:            p.Key,
+			Label:          p.Label,
+			SupportStatus:  p.SupportStatus,
+			SupportMessage: p.SupportMessage,
+			AuthTemplate:   p.AuthTemplate,
+			ParamsTemplate: p.ParamsTemplate,
+			AuthFields:     p.AuthFields,
+			ParamFields:    p.ParamFields,
+		}
+	}
+
+	return &adminv1.ListTTSConfigsResponse{
+		Configs:         items,
+		Providers:       providerItems,
+		DefaultBindings: sceneDefaults,
+	}, nil
 }
 
 func (s *AdminService) CreateTTSConfig(ctx context.Context, req *adminv1.CreateTTSConfigRequest) (*adminv1.TTSConfigInfo, error) {
@@ -1271,6 +1319,25 @@ func (s *AdminService) UpdateTTSSceneDefaults(ctx context.Context, req *adminv1.
 		}
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// GetTTSProviders 获取 TTS 供应商目录
+func (s *AdminService) GetTTSProviders(ctx context.Context, _ *emptypb.Empty) (*adminv1.GetTTSProvidersResponse, error) {
+	providers := s.uc.GetTTSProviders()
+	items := make([]*adminv1.TTSProviderInfo, len(providers))
+	for i, p := range providers {
+		items[i] = &adminv1.TTSProviderInfo{
+			Key:            p.Key,
+			Label:          p.Label,
+			SupportStatus:  p.SupportStatus,
+			SupportMessage: p.SupportMessage,
+			AuthTemplate:   p.AuthTemplate,
+			ParamsTemplate: p.ParamsTemplate,
+			AuthFields:     p.AuthFields,
+			ParamFields:    p.ParamFields,
+		}
+	}
+	return &adminv1.GetTTSProvidersResponse{Providers: items}, nil
 }
 
 // ==================== RAG 配置 ====================
@@ -1497,16 +1564,12 @@ func (s *AdminService) GetRAGDocument(ctx context.Context, req *adminv1.GetRAGDo
 }
 
 func (s *AdminService) CreateRAGDocument(ctx context.Context, req *adminv1.CreateRAGDocumentRequest) (*adminv1.RAGDocumentDetail, error) {
-	metadataJSON, err := metadataJSONFromStringMap(req.Metadata)
-	if err != nil {
-		return nil, err
-	}
 	doc := &biz.RAGDocumentRecord{
 		Collection: req.Collection,
 		DocType:    req.DocType,
 		Title:      req.Title,
 		Content:    req.Content,
-		Metadata:   metadataJSON,
+		Metadata:   req.Metadata, // 已经是 JSON 字符串
 		IsActive:   true,
 	}
 	if err := s.uc.CreateRAGDocument(ctx, doc); err != nil {
@@ -1518,22 +1581,18 @@ func (s *AdminService) CreateRAGDocument(ctx context.Context, req *adminv1.Creat
 		DocType:    doc.DocType,
 		Title:      doc.Title,
 		Content:    doc.Content,
-		Metadata:   metadataJSON,
+		Metadata:   doc.Metadata,
 	}, nil
 }
 
 func (s *AdminService) UpdateRAGDocument(ctx context.Context, req *adminv1.UpdateRAGDocumentRequest) (*emptypb.Empty, error) {
-	metadataJSON, err := metadataJSONFromStringMap(req.Metadata)
-	if err != nil {
-		return nil, err
-	}
 	doc := &biz.RAGDocumentRecord{
 		ID:         req.Id,
 		Collection: req.Collection,
 		DocType:    req.DocType,
 		Title:      req.Title,
 		Content:    req.Content,
-		Metadata:   metadataJSON,
+		Metadata:   req.Metadata, // 已经是 JSON 字符串
 	}
 	if req.IsActive != nil {
 		doc.IsActive = *req.IsActive
@@ -1891,6 +1950,8 @@ func buildScraperTaskDetail(task *biz.ScraperTaskRecord) *adminv1.ScraperTaskDet
 		ResultJson:    task.ResultJSON,
 		CreatedAt:     timestamppb.New(task.CreatedAt),
 		UpdatedAt:     timestamppb.New(task.UpdatedAt),
+		// P0 补齐字段
+		PayloadJson:   task.PayloadJSON,
 	}
 	if task.StartedAt != nil {
 		item.StartedAt = timestamppb.New(*task.StartedAt)

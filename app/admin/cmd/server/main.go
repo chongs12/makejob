@@ -104,8 +104,6 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	if bc.DependentServices != nil && bc.DependentServices.AIGatewayAddr != "" {
 		aiGatewayConn, err = grpc.NewClient(bc.DependentServices.AIGatewayAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			// AI 调用耗时较长，设置默认 5 分钟超时
-			grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect AI gateway service: %w", err)

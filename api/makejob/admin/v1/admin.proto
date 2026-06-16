@@ -82,6 +82,7 @@ service AdminService {
   rpc UpdateTTSConfig(UpdateTTSConfigRequest) returns (google.protobuf.Empty);
   rpc DeleteTTSConfig(DeleteTTSConfigRequest) returns (google.protobuf.Empty);
   rpc UpdateTTSSceneDefaults(UpdateTTSSceneDefaultsRequest) returns (google.protobuf.Empty);
+  rpc GetTTSProviders(google.protobuf.Empty) returns (GetTTSProvidersResponse);
 
   // === RAG 配置 ===
   rpc GetRAGConfigs(google.protobuf.Empty) returns (GetRAGConfigsResponse);
@@ -642,6 +643,13 @@ message AICallLogDetail {
   string request_messages = 15;
   string runtime_config = 16;
   google.protobuf.Timestamp created_at = 17;
+  // P0 补齐字段
+  uint64 task_id = 18;
+  string prompt_source = 19;
+  string selected_prompt_name = 20;
+  string scene_config = 21;
+  google.protobuf.Timestamp updated_at = 22;
+  uint64 industry_id = 23;
 }
 
 // ============================================================
@@ -663,6 +671,8 @@ message Live2DModelInfo {
   uint64 tts_config_id = 8;
   bool is_active = 9;
   google.protobuf.Timestamp created_at = 10;
+  // P0 补齐字段
+  google.protobuf.Timestamp updated_at = 11;
 }
 
 message CreateLive2DModelRequest {
@@ -769,6 +779,8 @@ message ImportLive2DBackgroundResponse {
 
 message ListTTSConfigsResponse {
   repeated TTSConfigInfo configs = 1;
+  repeated TTSProviderInfo providers = 2;
+  map<string, uint64> default_bindings = 3;
 }
 
 message TTSConfigInfo {
@@ -781,6 +793,10 @@ message TTSConfigInfo {
   bool is_active = 7;
   int32 sort_order = 8;
   google.protobuf.Timestamp created_at = 9;
+  // P1 补齐字段
+  string support_status = 10;
+  string support_message = 11;
+  string scene = 12;
 }
 
 message CreateTTSConfigRequest {
@@ -810,6 +826,21 @@ message DeleteTTSConfigRequest {
 
 message UpdateTTSSceneDefaultsRequest {
   map<string, uint64> default_bindings = 1;
+}
+
+message GetTTSProvidersResponse {
+  repeated TTSProviderInfo providers = 1;
+}
+
+message TTSProviderInfo {
+  string key = 1;
+  string label = 2;
+  string support_status = 3;
+  string support_message = 4;
+  string auth_template = 5;
+  string params_template = 6;
+  repeated string auth_fields = 7;
+  repeated string param_fields = 8;
 }
 
 // ============================================================
@@ -929,7 +960,7 @@ message CreateRAGDocumentRequest {
   string doc_type = 2;
   string title = 3;
   string content = 4;
-  map<string, string> metadata = 5;
+  string metadata = 5;  // JSON 文本，对齐单体 map[string]any
 }
 
 message UpdateRAGDocumentRequest {
@@ -938,7 +969,7 @@ message UpdateRAGDocumentRequest {
   string doc_type = 3;
   string title = 4;
   string content = 5;
-  map<string, string> metadata = 6;
+  string metadata = 6;  // JSON 文本，对齐单体 map[string]any
   optional bool is_active = 7;
 }
 
@@ -1088,6 +1119,8 @@ message ScraperTaskDetail {
   google.protobuf.Timestamp finished_at = 13;
   string error_msg = 14;
   string result_json = 15;
+  // P0 补齐字段
+  string payload_json = 16;
 }
 
 message UpdateQuestionPipelineTaskRequest {

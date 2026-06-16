@@ -63,10 +63,10 @@ func (r *questionRepo) Create(ctx context.Context, question *biz.Question) error
 		Content:            question.Content,
 		Difficulty:         question.Difficulty,
 		Type:               question.Type,
-		IndustryID:         question.IndustryID,
+		IndustryID:         uint(question.IndustryID),
 		IndustryCode:       question.IndustryCode,
 		IndustryName:       question.IndustryName,
-		CategoryID:         question.CategoryID,
+		CategoryID:         uint(question.CategoryID),
 		CategoryName:       question.CategoryName,
 		OptionsJSON:        question.OptionsJSON,
 		StarterCode:        question.StarterCode,
@@ -161,10 +161,10 @@ func toBizQuestion(m *QuestionModel) *biz.Question {
 		Content:            m.Content,
 		Difficulty:         m.Difficulty,
 		Type:               m.Type,
-		IndustryID:         m.IndustryID,
+		IndustryID:         uint64(m.IndustryID),
 		IndustryCode:       m.IndustryCode,
 		IndustryName:       m.IndustryName,
-		CategoryID:         m.CategoryID,
+		CategoryID:         uint64(m.CategoryID),
 		CategoryName:       m.CategoryName,
 		Tags:               splitQuestionTags(m.Tags),
 		OptionsJSON:        m.OptionsJSON,
@@ -185,30 +185,33 @@ func toBizQuestion(m *QuestionModel) *biz.Question {
 }
 
 // QuestionModel GORM model
+// QuestionModel 题目 GORM model（对齐单体 questions 表结构）
 type QuestionModel struct {
 	gorm.Model
 	Title              string `gorm:"size:500;not null"`
-	Content            string `gorm:"type:text"`
-	Difficulty         string `gorm:"size:20"`
-	Type               string `gorm:"size:30"`
-	IndustryID         uint64 `gorm:"index"`
-	IndustryCode       string `gorm:"size:50;index"`
-	IndustryName       string `gorm:"size:200"`
-	CategoryID         uint64 `gorm:"index"`
-	CategoryName       string `gorm:"size:200"`
+	Content            string `gorm:"type:text;not null"`
+	Difficulty         string `gorm:"size:10;not null;default:'medium'"`
+	Type               string `gorm:"size:20;not null"`
+	IndustryID         uint   `gorm:"not null;index"`
+	CategoryID         uint   `gorm:"not null;index"`
 	OptionsJSON        string `gorm:"type:text"`
-	Answer             string `gorm:"type:text"`
+	Answer             string `gorm:"type:text;not null"`
+	Explanation        string `gorm:"type:text"`
 	SolutionJSON       string `gorm:"type:text"`
 	JudgeConfigJSON    string `gorm:"type:text"`
 	AnswerTemplateJSON string `gorm:"type:text"`
 	Tags               string `gorm:"size:500"`
-	StarterCode        string `gorm:"type:text"`
-	Language           string `gorm:"size:30"`
-	EvaluationMode     string `gorm:"size:30"`
-	ReferenceAnswer    string `gorm:"type:text"`
-	Explanation        string `gorm:"type:text"`
-	TestCasesJSON      string `gorm:"type:text"`
 	IsActive           bool   `gorm:"not null;default:true"`
+
+	// 通过 ALTER TABLE 补齐的列
+	IndustryCode    string `gorm:"column:industry_code;size:50"`
+	IndustryName    string `gorm:"column:industry_name;size:200"`
+	CategoryName    string `gorm:"column:category_name;size:200"`
+	StarterCode     string `gorm:"column:starter_code;type:text"`
+	Language        string `gorm:"column:language;size:30"`
+	EvaluationMode  string `gorm:"column:evaluation_mode;size:30"`
+	ReferenceAnswer string `gorm:"column:reference_answer;type:text"`
+	TestCasesJSON   string `gorm:"column:test_cases_json;type:text"`
 }
 
 // RandomSelect 按条件随机选取指定数量的题目
@@ -242,9 +245,9 @@ func (r *questionRepo) RandomSelect(ctx context.Context, filter *biz.QuestionFil
 			Content:            m.Content,
 			Difficulty:         m.Difficulty,
 			Type:               m.Type,
-			IndustryID:         m.IndustryID,
+			IndustryID:         uint64(m.IndustryID),
 			IndustryCode:       m.IndustryCode,
-			CategoryID:         m.CategoryID,
+			CategoryID:         uint64(m.CategoryID),
 			OptionsJSON:        m.OptionsJSON,
 			Answer:             m.Answer,
 			SolutionJSON:       m.SolutionJSON,

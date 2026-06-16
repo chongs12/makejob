@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -133,9 +135,9 @@ func NewIndexUseCase(embedder Embedder, store VectorStore, collection string, lo
 	}
 }
 
-// IndexQuestions 批量索引题目，每批最多 16 条
+// IndexQuestions 批量索引题目，每批最多 64 条（对齐单体 embedBatchSize）
 func (uc *IndexUseCase) IndexQuestions(ctx context.Context, items []IndexItem) (indexed int, failed int, failedIDs []string) {
-	const batchSize = 16
+	const batchSize = 64
 
 	for i := 0; i < len(items); i += batchSize {
 		end := i + batchSize
@@ -231,7 +233,7 @@ func NewSyncHandler(embedder Embedder, store VectorStore, collection string, log
 
 // HandleQuestionChanged 处理题目变更消息，根据 action 类型同步向量库
 func (h *SyncHandler) HandleQuestionChanged(ctx context.Context, questionID uint64, action string, content string, metadata map[string]any) error {
-	docID := fmt.Sprintf("%d", questionID)
+	docID := QuestionIDToDocID(questionID)
 
 	switch action {
 	case "create", "update":
@@ -287,4 +289,23 @@ func (h *SyncHandler) CollectionName() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.collection
+}
+
+// QuestionIDToDocID 题目 ID 转文档 ID（对齐单体：格式 "q-{id}"）
+func QuestionIDToDocID(questionID uint64) string {
+	return fmt.Sprintf("q-%d", questionID)
+}
+
+// DocIDToQuestionID 文档 ID 转题目 ID（对齐单体）
+func DocIDToQuestionID(docID string) (uint64, error) {
+	docID = strings.TrimSpace(docID)
+	if !strings.HasPrefix(docID, "q-") {
+		return 0, fmt.Errorf("无效的文档ID格式: %s", docID)
+	}
+	idStr := strings.TrimPrefix(docID, "q-")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("解析文档ID失败: %w", err)
+	}
+	return id, nil
 }

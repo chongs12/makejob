@@ -52,7 +52,7 @@ func (c *interviewClient) IsRealtimeInterview(ctx context.Context, interviewID u
 	return resp.IsRealtime, nil
 }
 
-// GetRealtimeContext 获取实时面试上下文
+// GetRealtimeContext 获取实时面试上下文（对齐单体：解析简历画像、面试模式等完整信息）
 func (c *interviewClient) GetRealtimeContext(ctx context.Context, interviewID uint64) (*biz.RealtimeContext, error) {
 	resp, err := c.client.GetRealtimeContext(withAuthContext(ctx), &interviewv1.GetRealtimeRequest{
 		InterviewId: interviewID,
@@ -60,11 +60,33 @@ func (c *interviewClient) GetRealtimeContext(ctx context.Context, interviewID ui
 	if err != nil {
 		return nil, fmt.Errorf("GetRealtimeContext RPC 失败: %w", err)
 	}
-	return &biz.RealtimeContext{
-		Industry:             resp.IndustryCode,
-		Difficulty:           resp.Difficulty,
-		CurrentQuestionIndex: resp.QuestionIndex,
-	}, nil
+
+	rtCtx := &biz.RealtimeContext{
+		InterviewID:    resp.InterviewId,
+		IndustryCode:   resp.IndustryCode,
+		Live2DModelKey: resp.Live2DModelKey,
+		TotalQuestions: int(resp.TotalQuestions),
+		Difficulty:     resp.Difficulty,
+		InterviewMode:  resp.InterviewMode,
+		Topics:         resp.Topics,
+		WeakTopics:     resp.WeakTopics,
+		DialogID:       resp.DialogId,
+		HasStarted:     resp.HasStarted,
+		CurrentTopic:   resp.CurrentTopic,
+	}
+
+	// 解析简历画像
+	if resp.ResumeProfile != nil {
+		rtCtx.ResumeProfile = &biz.ResumeProfile{
+			Summary:     resp.ResumeProfile.Summary,
+			Skills:      resp.ResumeProfile.Skills,
+			Projects:    resp.ResumeProfile.Projects,
+			Strengths:   resp.ResumeProfile.Strengths,
+			WeakSignals: resp.ResumeProfile.WeakSignals,
+		}
+	}
+
+	return rtCtx, nil
 }
 
 // BindRealtimeDialog 绑定实时对话 ID

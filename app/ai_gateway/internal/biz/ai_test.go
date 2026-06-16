@@ -51,7 +51,7 @@ func TestInterviewAgentUseCase_GenerateQuestion_Success(t *testing.T) {
 		config: &AIConfig{Scene: "interview_agent", Model: "test-model"},
 	}
 	promptRepo := &mockPromptRepo{
-		template: &PromptTemplate{TemplateText: "面试题目：{{industry_code}}"},
+		template: &PromptTemplate{TemplateContent: "面试题目：{{industry_code}}"},
 	}
 	callLogRepo := &mockCallLogRepo{}
 	llmClient := &mockLLMClient{
@@ -97,7 +97,7 @@ func TestPlanAgentUseCase_GeneratePlan_Success(t *testing.T) {
 		config: &AIConfig{Scene: "plan_agent", Model: "test-model"},
 	}
 	promptRepo := &mockPromptRepo{
-		template: &PromptTemplate{TemplateText: "学习计划：{{industry_code}}"},
+		template: &PromptTemplate{TemplateContent: "学习计划：{{industry_code}}"},
 	}
 	callLogRepo := &mockCallLogRepo{}
 	llmClient := &mockLLMClient{
@@ -127,12 +127,12 @@ func TestCompanionAgentUseCase_Chat_Success(t *testing.T) {
 		config: &AIConfig{Scene: "companion_agent", Model: "test-model"},
 	}
 	promptRepo := &mockPromptRepo{
-		template: &PromptTemplate{TemplateText: "陪伴聊天：{{user_message}}"},
+		template: &PromptTemplate{TemplateContent: "陪伴聊天：{{user_message}}"},
 	}
 	callLogRepo := &mockCallLogRepo{}
 	llmClient := &mockLLMClient{
 		response: &LLMResponse{
-			Content:      `{"reply":"你好！","emotion":"happy","suggestions":["继续学习"]}`,
+			Content:      "你好呀，今天想学点什么？",
 			InputTokens:  50,
 			OutputTokens: 30,
 		},
@@ -140,15 +140,19 @@ func TestCompanionAgentUseCase_Chat_Success(t *testing.T) {
 
 	uc := NewCompanionAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, log.DefaultLogger)
 
-	result, err := uc.Chat(context.Background(), "你好", "general", nil)
+	// 陪伴回复为纯文本，直接作为 reply；emotion 由 contextType 本地推导。
+	result, err := uc.Chat(context.Background(), "你好", "happy", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Reply != "你好！" {
-		t.Errorf("expected reply='你好！', got '%s'", result.Reply)
+	if result.Reply != "你好呀，今天想学点什么？" {
+		t.Errorf("expected reply='你好呀，今天想学点什么？', got '%s'", result.Reply)
 	}
 	if result.Emotion != "happy" {
 		t.Errorf("expected emotion='happy', got '%s'", result.Emotion)
+	}
+	if result.Suggestions == nil {
+		t.Errorf("expected non-nil suggestions slice")
 	}
 }
 

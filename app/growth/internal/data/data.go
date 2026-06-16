@@ -8,9 +8,10 @@ import (
 	"gorm.io/gorm/logger"
 
 	"makejob/app/growth/internal/conf"
+	"makejob/app/growth/internal/data/model"
 )
 
-// NewData 创建数据库连接
+// NewData 创建数据库连接并自动迁移表结构
 func NewData(cfg *conf.Data) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(cfg.Database.Source), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
@@ -25,6 +26,10 @@ func NewData(cfg *conf.Data) (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
+
+	if err := db.AutoMigrate(&model.StudyLog{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate study_logs: %w", err)
+	}
 
 	return db, nil
 }

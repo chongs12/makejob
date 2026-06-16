@@ -81,6 +81,27 @@ func (c *questionClient) ListQuestionSets(ctx context.Context, industryCode stri
 	return sets, nil
 }
 
+// GetMistakeTopicByCode 根据错因专题编码查询静态知识库卡片。
+func (c *questionClient) GetMistakeTopicByCode(ctx context.Context, code string) (*biz.MistakeTopicCard, error) {
+	resp, err := c.client.GetMistakeTopic(ctx, &questionv1.GetMistakeTopicRequest{
+		Code: code,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetMistakeTopic 调用失败: %w", err)
+	}
+	return &biz.MistakeTopicCard{
+		Code:                resp.GetCode(),
+		Tag:                 resp.GetTag(),
+		Title:               resp.GetTitle(),
+		ProblemPattern:      resp.GetProblemPattern(),
+		RootCauses:          resp.GetRootCauses(),
+		SelfCheckList:       resp.GetSelfCheckList(),
+		PracticeDirections:  resp.GetPracticeDirections(),
+		RecommendedActions:  resp.GetRecommendedActions(),
+		RelatedQuestionSets: resp.GetRelatedQuestionSets(),
+	}, nil
+}
+
 // --- PlanClient 实现 ---
 
 // planClient 实现 biz.PlanClient 接口，通过 gRPC 调用计划服务

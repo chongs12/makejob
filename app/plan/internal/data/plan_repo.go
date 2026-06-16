@@ -58,15 +58,17 @@ func (r *planRepo) GetByUserID(ctx context.Context, userID uint64) (*biz.Learnin
 // Update 更新学习计划核心字段
 func (r *planRepo) Update(ctx context.Context, plan *biz.LearningPlan) error {
 	return r.getDB(ctx).WithContext(ctx).Model(&biz.LearningPlan{}).Where("id = ?", plan.ID).Updates(map[string]any{
-		"title":               plan.Title,
-		"description":         plan.Description,
-		"level":               plan.Level,
-		"duration_days":       plan.DurationDays,
-		"daily_study_minutes": plan.DailyStudyMinutes,
-		"industry":            plan.Industry,
-		"status":              plan.Status,
-		"completed_tasks":     plan.CompletedTasks,
-		"total_tasks":         plan.TotalTasks,
+		"title":           plan.Title,
+		"description":     plan.Description,
+		"industry_id":     plan.IndustryID,
+		"plan_json":       plan.PlanJSON,
+		"status":          plan.Status,
+		"completed_tasks": plan.CompletedTasks,
+		"total_tasks":     plan.TotalTasks,
+		"start_date":      plan.StartDate,
+		"end_date":        plan.EndDate,
+		"phase":           plan.Phase,
+		"phase_goal":      plan.PhaseGoal,
 	}).Error
 }
 
@@ -147,16 +149,16 @@ func (r *taskRepo) GetByID(ctx context.Context, id uint64) (*biz.LearningTask, e
 // Update 更新任务状态和内容
 func (r *taskRepo) Update(ctx context.Context, task *biz.LearningTask) error {
 	return r.getDB(ctx).WithContext(ctx).Model(&biz.LearningTask{}).Where("id = ?", task.ID).Updates(map[string]any{
-		"title":            task.Title,
-		"description":      task.Description,
-		"task_type":        task.TaskType,
-		"phase":            task.Phase,
-		"day_number":       task.DayNumber,
-		"duration_minutes": task.DurationMinutes,
-		"priority":         task.Priority,
-		"status":           task.Status,
-		"completed_at":     task.CompletedAt,
-		"sort_order":       task.SortOrder,
+		"title":        task.Title,
+		"description":  task.Description,
+		"task_type":    task.TaskType,
+		"phase":        task.Phase,
+		"phase_goal":   task.PhaseGoal,
+		"target_id":    task.TargetID,
+		"due_date":     task.DueDate,
+		"status":       task.Status,
+		"completed_at": task.CompletedAt,
+		"sort_order":   task.SortOrder,
 	}).Error
 }
 

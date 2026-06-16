@@ -702,6 +702,9 @@ type Live2DDirective struct {
 	MotionDurationMs   int32                      `protobuf:"varint,8,opt,name=motion_duration_ms,json=motionDurationMs,proto3" json:"motion_duration_ms,omitempty"`
 	Intensity          float64                    `protobuf:"fixed64,9,opt,name=intensity,proto3" json:"intensity,omitempty"`
 	DurationMs         int32                      `protobuf:"varint,10,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	MotionPriority     string                     `protobuf:"bytes,11,opt,name=motion_priority,json=motionPriority,proto3" json:"motion_priority,omitempty"`
+	MouthOpen          float64                    `protobuf:"fixed64,12,opt,name=mouth_open,json=mouthOpen,proto3" json:"mouth_open,omitempty"`
+	Source             string                     `protobuf:"bytes,13,opt,name=source,proto3" json:"source,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -806,9 +809,30 @@ func (x *Live2DDirective) GetDurationMs() int32 {
 	return 0
 }
 
+func (x *Live2DDirective) GetMotionPriority() string {
+	if x != nil {
+		return x.MotionPriority
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetMouthOpen() float64 {
+	if x != nil {
+		return x.MouthOpen
+	}
+	return 0
+}
+
+func (x *Live2DDirective) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
 type Live2DExpressionLayer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Expression    string                 `protobuf:"bytes,1,opt,name=expression,proto3" json:"expression,omitempty"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Weight        float64                `protobuf:"fixed64,2,opt,name=weight,proto3" json:"weight,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -844,9 +868,9 @@ func (*Live2DExpressionLayer) Descriptor() ([]byte, []int) {
 	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *Live2DExpressionLayer) GetExpression() string {
+func (x *Live2DExpressionLayer) GetKey() string {
 	if x != nil {
-		return x.Expression
+		return x.Key
 	}
 	return ""
 }
@@ -860,7 +884,7 @@ func (x *Live2DExpressionLayer) GetWeight() float64 {
 
 type Live2DParameterOverride struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Param         string                 `protobuf:"bytes,1,opt,name=param,proto3" json:"param,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Value         float64                `protobuf:"fixed64,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -896,9 +920,9 @@ func (*Live2DParameterOverride) Descriptor() ([]byte, []int) {
 	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *Live2DParameterOverride) GetParam() string {
+func (x *Live2DParameterOverride) GetId() string {
 	if x != nil {
-		return x.Param
+		return x.Id
 	}
 	return ""
 }
@@ -2141,15 +2165,23 @@ func (x *GetRealtimeRequest) GetUserId() uint64 {
 }
 
 type RealtimeInterviewContext struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	InterviewId   uint64                 `protobuf:"varint,1,opt,name=interview_id,json=interviewId,proto3" json:"interview_id,omitempty"`
-	IndustryCode  string                 `protobuf:"bytes,2,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
-	Difficulty    string                 `protobuf:"bytes,3,opt,name=difficulty,proto3" json:"difficulty,omitempty"`
-	History       []*InterviewMessage    `protobuf:"bytes,4,rep,name=history,proto3" json:"history,omitempty"`
-	CurrentTopic  string                 `protobuf:"bytes,5,opt,name=current_topic,json=currentTopic,proto3" json:"current_topic,omitempty"`
-	QuestionIndex int32                  `protobuf:"varint,6,opt,name=question_index,json=questionIndex,proto3" json:"question_index,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	InterviewId    uint64                 `protobuf:"varint,1,opt,name=interview_id,json=interviewId,proto3" json:"interview_id,omitempty"`
+	IndustryCode   string                 `protobuf:"bytes,2,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
+	Difficulty     string                 `protobuf:"bytes,3,opt,name=difficulty,proto3" json:"difficulty,omitempty"`
+	History        []*InterviewMessage    `protobuf:"bytes,4,rep,name=history,proto3" json:"history,omitempty"`
+	CurrentTopic   string                 `protobuf:"bytes,5,opt,name=current_topic,json=currentTopic,proto3" json:"current_topic,omitempty"`
+	QuestionIndex  int32                  `protobuf:"varint,6,opt,name=question_index,json=questionIndex,proto3" json:"question_index,omitempty"`
+	Live2DModelKey string                 `protobuf:"bytes,7,opt,name=live2d_model_key,json=live2dModelKey,proto3" json:"live2d_model_key,omitempty"`
+	TotalQuestions int32                  `protobuf:"varint,8,opt,name=total_questions,json=totalQuestions,proto3" json:"total_questions,omitempty"`
+	InterviewMode  string                 `protobuf:"bytes,9,opt,name=interview_mode,json=interviewMode,proto3" json:"interview_mode,omitempty"`
+	Topics         []string               `protobuf:"bytes,10,rep,name=topics,proto3" json:"topics,omitempty"`
+	WeakTopics     []string               `protobuf:"bytes,11,rep,name=weak_topics,json=weakTopics,proto3" json:"weak_topics,omitempty"`
+	DialogId       string                 `protobuf:"bytes,12,opt,name=dialog_id,json=dialogId,proto3" json:"dialog_id,omitempty"`
+	HasStarted     bool                   `protobuf:"varint,13,opt,name=has_started,json=hasStarted,proto3" json:"has_started,omitempty"`
+	ResumeProfile  *ResumeProfile         `protobuf:"bytes,14,opt,name=resume_profile,json=resumeProfile,proto3" json:"resume_profile,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RealtimeInterviewContext) Reset() {
@@ -2224,6 +2256,138 @@ func (x *RealtimeInterviewContext) GetQuestionIndex() int32 {
 	return 0
 }
 
+func (x *RealtimeInterviewContext) GetLive2DModelKey() string {
+	if x != nil {
+		return x.Live2DModelKey
+	}
+	return ""
+}
+
+func (x *RealtimeInterviewContext) GetTotalQuestions() int32 {
+	if x != nil {
+		return x.TotalQuestions
+	}
+	return 0
+}
+
+func (x *RealtimeInterviewContext) GetInterviewMode() string {
+	if x != nil {
+		return x.InterviewMode
+	}
+	return ""
+}
+
+func (x *RealtimeInterviewContext) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *RealtimeInterviewContext) GetWeakTopics() []string {
+	if x != nil {
+		return x.WeakTopics
+	}
+	return nil
+}
+
+func (x *RealtimeInterviewContext) GetDialogId() string {
+	if x != nil {
+		return x.DialogId
+	}
+	return ""
+}
+
+func (x *RealtimeInterviewContext) GetHasStarted() bool {
+	if x != nil {
+		return x.HasStarted
+	}
+	return false
+}
+
+func (x *RealtimeInterviewContext) GetResumeProfile() *ResumeProfile {
+	if x != nil {
+		return x.ResumeProfile
+	}
+	return nil
+}
+
+type ResumeProfile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Summary       string                 `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
+	Skills        []string               `protobuf:"bytes,2,rep,name=skills,proto3" json:"skills,omitempty"`
+	Projects      []string               `protobuf:"bytes,3,rep,name=projects,proto3" json:"projects,omitempty"`
+	Strengths     []string               `protobuf:"bytes,4,rep,name=strengths,proto3" json:"strengths,omitempty"`
+	WeakSignals   []string               `protobuf:"bytes,5,rep,name=weak_signals,json=weakSignals,proto3" json:"weak_signals,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResumeProfile) Reset() {
+	*x = ResumeProfile{}
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeProfile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeProfile) ProtoMessage() {}
+
+func (x *ResumeProfile) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeProfile.ProtoReflect.Descriptor instead.
+func (*ResumeProfile) Descriptor() ([]byte, []int) {
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ResumeProfile) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *ResumeProfile) GetSkills() []string {
+	if x != nil {
+		return x.Skills
+	}
+	return nil
+}
+
+func (x *ResumeProfile) GetProjects() []string {
+	if x != nil {
+		return x.Projects
+	}
+	return nil
+}
+
+func (x *ResumeProfile) GetStrengths() []string {
+	if x != nil {
+		return x.Strengths
+	}
+	return nil
+}
+
+func (x *ResumeProfile) GetWeakSignals() []string {
+	if x != nil {
+		return x.WeakSignals
+	}
+	return nil
+}
+
 type BindDialogRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InterviewId   uint64                 `protobuf:"varint,1,opt,name=interview_id,json=interviewId,proto3" json:"interview_id,omitempty"`
@@ -2234,7 +2398,7 @@ type BindDialogRequest struct {
 
 func (x *BindDialogRequest) Reset() {
 	*x = BindDialogRequest{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[27]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2246,7 +2410,7 @@ func (x *BindDialogRequest) String() string {
 func (*BindDialogRequest) ProtoMessage() {}
 
 func (x *BindDialogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[27]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2259,7 +2423,7 @@ func (x *BindDialogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindDialogRequest.ProtoReflect.Descriptor instead.
 func (*BindDialogRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{27}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *BindDialogRequest) GetInterviewId() uint64 {
@@ -2286,7 +2450,7 @@ type AppendAnswerRequest struct {
 
 func (x *AppendAnswerRequest) Reset() {
 	*x = AppendAnswerRequest{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[28]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2298,7 +2462,7 @@ func (x *AppendAnswerRequest) String() string {
 func (*AppendAnswerRequest) ProtoMessage() {}
 
 func (x *AppendAnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[28]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2311,7 +2475,7 @@ func (x *AppendAnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendAnswerRequest.ProtoReflect.Descriptor instead.
 func (*AppendAnswerRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{28}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *AppendAnswerRequest) GetInterviewId() uint64 {
@@ -2339,7 +2503,7 @@ type AppendReplyRequest struct {
 
 func (x *AppendReplyRequest) Reset() {
 	*x = AppendReplyRequest{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[29]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2351,7 +2515,7 @@ func (x *AppendReplyRequest) String() string {
 func (*AppendReplyRequest) ProtoMessage() {}
 
 func (x *AppendReplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[29]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2364,7 +2528,7 @@ func (x *AppendReplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendReplyRequest.ProtoReflect.Descriptor instead.
 func (*AppendReplyRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{29}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *AppendReplyRequest) GetInterviewId() uint64 {
@@ -2398,7 +2562,7 @@ type AppendReplyResponse struct {
 
 func (x *AppendReplyResponse) Reset() {
 	*x = AppendReplyResponse{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[30]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2410,7 +2574,7 @@ func (x *AppendReplyResponse) String() string {
 func (*AppendReplyResponse) ProtoMessage() {}
 
 func (x *AppendReplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[30]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2423,7 +2587,7 @@ func (x *AppendReplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendReplyResponse.ProtoReflect.Descriptor instead.
 func (*AppendReplyResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{30}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *AppendReplyResponse) GetShouldEnd() bool {
@@ -2448,7 +2612,7 @@ type GetAdminInterviewStatsRequest struct {
 
 func (x *GetAdminInterviewStatsRequest) Reset() {
 	*x = GetAdminInterviewStatsRequest{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[31]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2460,7 +2624,7 @@ func (x *GetAdminInterviewStatsRequest) String() string {
 func (*GetAdminInterviewStatsRequest) ProtoMessage() {}
 
 func (x *GetAdminInterviewStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[31]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2473,7 +2637,7 @@ func (x *GetAdminInterviewStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAdminInterviewStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetAdminInterviewStatsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{31}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{32}
 }
 
 type AdminInterviewStatsResponse struct {
@@ -2485,7 +2649,7 @@ type AdminInterviewStatsResponse struct {
 
 func (x *AdminInterviewStatsResponse) Reset() {
 	*x = AdminInterviewStatsResponse{}
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[32]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2497,7 +2661,7 @@ func (x *AdminInterviewStatsResponse) String() string {
 func (*AdminInterviewStatsResponse) ProtoMessage() {}
 
 func (x *AdminInterviewStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_interview_v1_interview_proto_msgTypes[32]
+	mi := &file_makejob_interview_v1_interview_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2510,7 +2674,7 @@ func (x *AdminInterviewStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdminInterviewStatsResponse.ProtoReflect.Descriptor instead.
 func (*AdminInterviewStatsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{32}
+	return file_makejob_interview_v1_interview_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *AdminInterviewStatsResponse) GetTotalInterviews() int64 {
@@ -2604,7 +2768,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"editorMode\x12'\n" +
 	"\x0fevaluation_mode\x18\t \x01(\tR\x0eevaluationMode\x12P\n" +
 	"\x10live2d_directive\x18\n" +
-	" \x01(\v2%.makejob.interview.v1.Live2DDirectiveR\x0flive2dDirective\"\xbc\x03\n" +
+	" \x01(\v2%.makejob.interview.v1.Live2DDirectiveR\x0flive2dDirective\"\x9c\x04\n" +
 	"\x0fLive2DDirective\x12\x18\n" +
 	"\aemotion\x18\x01 \x01(\tR\aemotion\x12\x16\n" +
 	"\x06action\x18\x02 \x01(\tR\x06action\x12\x14\n" +
@@ -2618,14 +2782,16 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\tintensity\x18\t \x01(\x01R\tintensity\x12\x1f\n" +
 	"\vduration_ms\x18\n" +
 	" \x01(\x05R\n" +
-	"durationMs\"O\n" +
-	"\x15Live2DExpressionLayer\x12\x1e\n" +
+	"durationMs\x12'\n" +
+	"\x0fmotion_priority\x18\v \x01(\tR\x0emotionPriority\x12\x1d\n" +
 	"\n" +
-	"expression\x18\x01 \x01(\tR\n" +
-	"expression\x12\x16\n" +
-	"\x06weight\x18\x02 \x01(\x01R\x06weight\"E\n" +
-	"\x17Live2DParameterOverride\x12\x14\n" +
-	"\x05param\x18\x01 \x01(\tR\x05param\x12\x14\n" +
+	"mouth_open\x18\f \x01(\x01R\tmouthOpen\x12\x16\n" +
+	"\x06source\x18\r \x01(\tR\x06source\"A\n" +
+	"\x15Live2DExpressionLayer\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
+	"\x06weight\x18\x02 \x01(\x01R\x06weight\"?\n" +
+	"\x17Live2DParameterOverride\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value\"\xf0\x01\n" +
 	"\x13SubmitAnswerRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
@@ -2738,7 +2904,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"isRealtime\"P\n" +
 	"\x12GetRealtimeRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\x90\x02\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xcd\x04\n" +
 	"\x18RealtimeInterviewContext\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -2747,7 +2913,24 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"difficulty\x12@\n" +
 	"\ahistory\x18\x04 \x03(\v2&.makejob.interview.v1.InterviewMessageR\ahistory\x12#\n" +
 	"\rcurrent_topic\x18\x05 \x01(\tR\fcurrentTopic\x12%\n" +
-	"\x0equestion_index\x18\x06 \x01(\x05R\rquestionIndex\"S\n" +
+	"\x0equestion_index\x18\x06 \x01(\x05R\rquestionIndex\x12(\n" +
+	"\x10live2d_model_key\x18\a \x01(\tR\x0elive2dModelKey\x12'\n" +
+	"\x0ftotal_questions\x18\b \x01(\x05R\x0etotalQuestions\x12%\n" +
+	"\x0einterview_mode\x18\t \x01(\tR\rinterviewMode\x12\x16\n" +
+	"\x06topics\x18\n" +
+	" \x03(\tR\x06topics\x12\x1f\n" +
+	"\vweak_topics\x18\v \x03(\tR\n" +
+	"weakTopics\x12\x1b\n" +
+	"\tdialog_id\x18\f \x01(\tR\bdialogId\x12\x1f\n" +
+	"\vhas_started\x18\r \x01(\bR\n" +
+	"hasStarted\x12J\n" +
+	"\x0eresume_profile\x18\x0e \x01(\v2#.makejob.interview.v1.ResumeProfileR\rresumeProfile\"\x9e\x01\n" +
+	"\rResumeProfile\x12\x18\n" +
+	"\asummary\x18\x01 \x01(\tR\asummary\x12\x16\n" +
+	"\x06skills\x18\x02 \x03(\tR\x06skills\x12\x1a\n" +
+	"\bprojects\x18\x03 \x03(\tR\bprojects\x12\x1c\n" +
+	"\tstrengths\x18\x04 \x03(\tR\tstrengths\x12!\n" +
+	"\fweak_signals\x18\x05 \x03(\tR\vweakSignals\"S\n" +
 	"\x11BindDialogRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x1b\n" +
 	"\tdialog_id\x18\x02 \x01(\tR\bdialogId\"Y\n" +
@@ -2796,7 +2979,7 @@ func file_makejob_interview_v1_interview_proto_rawDescGZIP() []byte {
 	return file_makejob_interview_v1_interview_proto_rawDescData
 }
 
-var file_makejob_interview_v1_interview_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_makejob_interview_v1_interview_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_makejob_interview_v1_interview_proto_goTypes = []any{
 	(*UserIDRequest)(nil),                 // 0: makejob.interview.v1.UserIDRequest
 	(*CreateInterviewRequest)(nil),        // 1: makejob.interview.v1.CreateInterviewRequest
@@ -2825,80 +3008,82 @@ var file_makejob_interview_v1_interview_proto_goTypes = []any{
 	(*IsRealtimeResponse)(nil),            // 24: makejob.interview.v1.IsRealtimeResponse
 	(*GetRealtimeRequest)(nil),            // 25: makejob.interview.v1.GetRealtimeRequest
 	(*RealtimeInterviewContext)(nil),      // 26: makejob.interview.v1.RealtimeInterviewContext
-	(*BindDialogRequest)(nil),             // 27: makejob.interview.v1.BindDialogRequest
-	(*AppendAnswerRequest)(nil),           // 28: makejob.interview.v1.AppendAnswerRequest
-	(*AppendReplyRequest)(nil),            // 29: makejob.interview.v1.AppendReplyRequest
-	(*AppendReplyResponse)(nil),           // 30: makejob.interview.v1.AppendReplyResponse
-	(*GetAdminInterviewStatsRequest)(nil), // 31: makejob.interview.v1.GetAdminInterviewStatsRequest
-	(*AdminInterviewStatsResponse)(nil),   // 32: makejob.interview.v1.AdminInterviewStatsResponse
-	nil,                                   // 33: makejob.interview.v1.InterviewReport.DimensionScoresEntry
-	(*timestamppb.Timestamp)(nil),         // 34: google.protobuf.Timestamp
-	(*v1.PageParam)(nil),                  // 35: makejob.shared.v1.PageParam
-	(*v1.PageResult)(nil),                 // 36: makejob.shared.v1.PageResult
-	(*emptypb.Empty)(nil),                 // 37: google.protobuf.Empty
+	(*ResumeProfile)(nil),                 // 27: makejob.interview.v1.ResumeProfile
+	(*BindDialogRequest)(nil),             // 28: makejob.interview.v1.BindDialogRequest
+	(*AppendAnswerRequest)(nil),           // 29: makejob.interview.v1.AppendAnswerRequest
+	(*AppendReplyRequest)(nil),            // 30: makejob.interview.v1.AppendReplyRequest
+	(*AppendReplyResponse)(nil),           // 31: makejob.interview.v1.AppendReplyResponse
+	(*GetAdminInterviewStatsRequest)(nil), // 32: makejob.interview.v1.GetAdminInterviewStatsRequest
+	(*AdminInterviewStatsResponse)(nil),   // 33: makejob.interview.v1.AdminInterviewStatsResponse
+	nil,                                   // 34: makejob.interview.v1.InterviewReport.DimensionScoresEntry
+	(*timestamppb.Timestamp)(nil),         // 35: google.protobuf.Timestamp
+	(*v1.PageParam)(nil),                  // 36: makejob.shared.v1.PageParam
+	(*v1.PageResult)(nil),                 // 37: makejob.shared.v1.PageResult
+	(*emptypb.Empty)(nil),                 // 38: google.protobuf.Empty
 }
 var file_makejob_interview_v1_interview_proto_depIdxs = []int32{
 	5,  // 0: makejob.interview.v1.InterviewResponse.first_question:type_name -> makejob.interview.v1.InterviewQuestion
-	34, // 1: makejob.interview.v1.InterviewResponse.created_at:type_name -> google.protobuf.Timestamp
-	34, // 2: makejob.interview.v1.InterviewResponse.started_at:type_name -> google.protobuf.Timestamp
-	34, // 3: makejob.interview.v1.InterviewResponse.ended_at:type_name -> google.protobuf.Timestamp
+	35, // 1: makejob.interview.v1.InterviewResponse.created_at:type_name -> google.protobuf.Timestamp
+	35, // 2: makejob.interview.v1.InterviewResponse.started_at:type_name -> google.protobuf.Timestamp
+	35, // 3: makejob.interview.v1.InterviewResponse.ended_at:type_name -> google.protobuf.Timestamp
 	4,  // 4: makejob.interview.v1.InterviewDetail.messages:type_name -> makejob.interview.v1.InterviewMessage
 	14, // 5: makejob.interview.v1.InterviewDetail.report:type_name -> makejob.interview.v1.InterviewReport
-	34, // 6: makejob.interview.v1.InterviewDetail.created_at:type_name -> google.protobuf.Timestamp
+	35, // 6: makejob.interview.v1.InterviewDetail.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 7: makejob.interview.v1.InterviewDetail.current_question:type_name -> makejob.interview.v1.InterviewQuestion
-	34, // 8: makejob.interview.v1.InterviewDetail.started_at:type_name -> google.protobuf.Timestamp
-	34, // 9: makejob.interview.v1.InterviewDetail.ended_at:type_name -> google.protobuf.Timestamp
-	34, // 10: makejob.interview.v1.InterviewMessage.created_at:type_name -> google.protobuf.Timestamp
+	35, // 8: makejob.interview.v1.InterviewDetail.started_at:type_name -> google.protobuf.Timestamp
+	35, // 9: makejob.interview.v1.InterviewDetail.ended_at:type_name -> google.protobuf.Timestamp
+	35, // 10: makejob.interview.v1.InterviewMessage.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 11: makejob.interview.v1.InterviewMessage.question:type_name -> makejob.interview.v1.InterviewQuestion
 	6,  // 12: makejob.interview.v1.InterviewQuestion.live2d_directive:type_name -> makejob.interview.v1.Live2DDirective
 	7,  // 13: makejob.interview.v1.Live2DDirective.expression_mix:type_name -> makejob.interview.v1.Live2DExpressionLayer
 	8,  // 14: makejob.interview.v1.Live2DDirective.parameter_overrides:type_name -> makejob.interview.v1.Live2DParameterOverride
 	5,  // 15: makejob.interview.v1.AnswerFeedback.next_question:type_name -> makejob.interview.v1.InterviewQuestion
 	5,  // 16: makejob.interview.v1.NextQuestionResponse.question:type_name -> makejob.interview.v1.InterviewQuestion
-	33, // 17: makejob.interview.v1.InterviewReport.dimension_scores:type_name -> makejob.interview.v1.InterviewReport.DimensionScoresEntry
+	34, // 17: makejob.interview.v1.InterviewReport.dimension_scores:type_name -> makejob.interview.v1.InterviewReport.DimensionScoresEntry
 	15, // 18: makejob.interview.v1.InterviewReport.coding_diagnostics:type_name -> makejob.interview.v1.CodingDiagnosis
 	10, // 19: makejob.interview.v1.CodingResult.feedback:type_name -> makejob.interview.v1.AnswerFeedback
-	35, // 20: makejob.interview.v1.ListInterviewsRequest.page:type_name -> makejob.shared.v1.PageParam
+	36, // 20: makejob.interview.v1.ListInterviewsRequest.page:type_name -> makejob.shared.v1.PageParam
 	2,  // 21: makejob.interview.v1.ListInterviewsResponse.interviews:type_name -> makejob.interview.v1.InterviewResponse
-	36, // 22: makejob.interview.v1.ListInterviewsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	37, // 22: makejob.interview.v1.ListInterviewsResponse.page_result:type_name -> makejob.shared.v1.PageResult
 	4,  // 23: makejob.interview.v1.RealtimeInterviewContext.history:type_name -> makejob.interview.v1.InterviewMessage
-	6,  // 24: makejob.interview.v1.AppendReplyRequest.live2d_directive:type_name -> makejob.interview.v1.Live2DDirective
-	5,  // 25: makejob.interview.v1.AppendReplyResponse.next_question:type_name -> makejob.interview.v1.InterviewQuestion
-	1,  // 26: makejob.interview.v1.InterviewService.CreateInterview:input_type -> makejob.interview.v1.CreateInterviewRequest
-	18, // 27: makejob.interview.v1.InterviewService.GetInterview:input_type -> makejob.interview.v1.GetInterviewRequest
-	19, // 28: makejob.interview.v1.InterviewService.ListInterviews:input_type -> makejob.interview.v1.ListInterviewsRequest
-	13, // 29: makejob.interview.v1.InterviewService.FinishInterview:input_type -> makejob.interview.v1.FinishInterviewRequest
-	9,  // 30: makejob.interview.v1.InterviewService.SubmitAnswer:input_type -> makejob.interview.v1.SubmitAnswerRequest
-	11, // 31: makejob.interview.v1.InterviewService.GetNextQuestion:input_type -> makejob.interview.v1.GetNextQuestionRequest
-	23, // 32: makejob.interview.v1.InterviewService.IsRealtimeInterview:input_type -> makejob.interview.v1.IsRealtimeRequest
-	25, // 33: makejob.interview.v1.InterviewService.GetRealtimeContext:input_type -> makejob.interview.v1.GetRealtimeRequest
-	27, // 34: makejob.interview.v1.InterviewService.BindRealtimeDialog:input_type -> makejob.interview.v1.BindDialogRequest
-	28, // 35: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:input_type -> makejob.interview.v1.AppendAnswerRequest
-	29, // 36: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:input_type -> makejob.interview.v1.AppendReplyRequest
-	16, // 37: makejob.interview.v1.InterviewService.SubmitCodingAnswer:input_type -> makejob.interview.v1.SubmitCodingRequest
-	21, // 38: makejob.interview.v1.InterviewService.GetReport:input_type -> makejob.interview.v1.GetReportRequest
-	0,  // 39: makejob.interview.v1.InterviewService.GetInterviewStats:input_type -> makejob.interview.v1.UserIDRequest
-	31, // 40: makejob.interview.v1.InterviewService.GetAdminInterviewStats:input_type -> makejob.interview.v1.GetAdminInterviewStatsRequest
-	2,  // 41: makejob.interview.v1.InterviewService.CreateInterview:output_type -> makejob.interview.v1.InterviewResponse
-	3,  // 42: makejob.interview.v1.InterviewService.GetInterview:output_type -> makejob.interview.v1.InterviewDetail
-	20, // 43: makejob.interview.v1.InterviewService.ListInterviews:output_type -> makejob.interview.v1.ListInterviewsResponse
-	14, // 44: makejob.interview.v1.InterviewService.FinishInterview:output_type -> makejob.interview.v1.InterviewReport
-	10, // 45: makejob.interview.v1.InterviewService.SubmitAnswer:output_type -> makejob.interview.v1.AnswerFeedback
-	12, // 46: makejob.interview.v1.InterviewService.GetNextQuestion:output_type -> makejob.interview.v1.NextQuestionResponse
-	24, // 47: makejob.interview.v1.InterviewService.IsRealtimeInterview:output_type -> makejob.interview.v1.IsRealtimeResponse
-	26, // 48: makejob.interview.v1.InterviewService.GetRealtimeContext:output_type -> makejob.interview.v1.RealtimeInterviewContext
-	37, // 49: makejob.interview.v1.InterviewService.BindRealtimeDialog:output_type -> google.protobuf.Empty
-	37, // 50: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:output_type -> google.protobuf.Empty
-	30, // 51: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:output_type -> makejob.interview.v1.AppendReplyResponse
-	17, // 52: makejob.interview.v1.InterviewService.SubmitCodingAnswer:output_type -> makejob.interview.v1.CodingResult
-	14, // 53: makejob.interview.v1.InterviewService.GetReport:output_type -> makejob.interview.v1.InterviewReport
-	22, // 54: makejob.interview.v1.InterviewService.GetInterviewStats:output_type -> makejob.interview.v1.InterviewStats
-	32, // 55: makejob.interview.v1.InterviewService.GetAdminInterviewStats:output_type -> makejob.interview.v1.AdminInterviewStatsResponse
-	41, // [41:56] is the sub-list for method output_type
-	26, // [26:41] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	27, // 24: makejob.interview.v1.RealtimeInterviewContext.resume_profile:type_name -> makejob.interview.v1.ResumeProfile
+	6,  // 25: makejob.interview.v1.AppendReplyRequest.live2d_directive:type_name -> makejob.interview.v1.Live2DDirective
+	5,  // 26: makejob.interview.v1.AppendReplyResponse.next_question:type_name -> makejob.interview.v1.InterviewQuestion
+	1,  // 27: makejob.interview.v1.InterviewService.CreateInterview:input_type -> makejob.interview.v1.CreateInterviewRequest
+	18, // 28: makejob.interview.v1.InterviewService.GetInterview:input_type -> makejob.interview.v1.GetInterviewRequest
+	19, // 29: makejob.interview.v1.InterviewService.ListInterviews:input_type -> makejob.interview.v1.ListInterviewsRequest
+	13, // 30: makejob.interview.v1.InterviewService.FinishInterview:input_type -> makejob.interview.v1.FinishInterviewRequest
+	9,  // 31: makejob.interview.v1.InterviewService.SubmitAnswer:input_type -> makejob.interview.v1.SubmitAnswerRequest
+	11, // 32: makejob.interview.v1.InterviewService.GetNextQuestion:input_type -> makejob.interview.v1.GetNextQuestionRequest
+	23, // 33: makejob.interview.v1.InterviewService.IsRealtimeInterview:input_type -> makejob.interview.v1.IsRealtimeRequest
+	25, // 34: makejob.interview.v1.InterviewService.GetRealtimeContext:input_type -> makejob.interview.v1.GetRealtimeRequest
+	28, // 35: makejob.interview.v1.InterviewService.BindRealtimeDialog:input_type -> makejob.interview.v1.BindDialogRequest
+	29, // 36: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:input_type -> makejob.interview.v1.AppendAnswerRequest
+	30, // 37: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:input_type -> makejob.interview.v1.AppendReplyRequest
+	16, // 38: makejob.interview.v1.InterviewService.SubmitCodingAnswer:input_type -> makejob.interview.v1.SubmitCodingRequest
+	21, // 39: makejob.interview.v1.InterviewService.GetReport:input_type -> makejob.interview.v1.GetReportRequest
+	0,  // 40: makejob.interview.v1.InterviewService.GetInterviewStats:input_type -> makejob.interview.v1.UserIDRequest
+	32, // 41: makejob.interview.v1.InterviewService.GetAdminInterviewStats:input_type -> makejob.interview.v1.GetAdminInterviewStatsRequest
+	2,  // 42: makejob.interview.v1.InterviewService.CreateInterview:output_type -> makejob.interview.v1.InterviewResponse
+	3,  // 43: makejob.interview.v1.InterviewService.GetInterview:output_type -> makejob.interview.v1.InterviewDetail
+	20, // 44: makejob.interview.v1.InterviewService.ListInterviews:output_type -> makejob.interview.v1.ListInterviewsResponse
+	14, // 45: makejob.interview.v1.InterviewService.FinishInterview:output_type -> makejob.interview.v1.InterviewReport
+	10, // 46: makejob.interview.v1.InterviewService.SubmitAnswer:output_type -> makejob.interview.v1.AnswerFeedback
+	12, // 47: makejob.interview.v1.InterviewService.GetNextQuestion:output_type -> makejob.interview.v1.NextQuestionResponse
+	24, // 48: makejob.interview.v1.InterviewService.IsRealtimeInterview:output_type -> makejob.interview.v1.IsRealtimeResponse
+	26, // 49: makejob.interview.v1.InterviewService.GetRealtimeContext:output_type -> makejob.interview.v1.RealtimeInterviewContext
+	38, // 50: makejob.interview.v1.InterviewService.BindRealtimeDialog:output_type -> google.protobuf.Empty
+	38, // 51: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:output_type -> google.protobuf.Empty
+	31, // 52: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:output_type -> makejob.interview.v1.AppendReplyResponse
+	17, // 53: makejob.interview.v1.InterviewService.SubmitCodingAnswer:output_type -> makejob.interview.v1.CodingResult
+	14, // 54: makejob.interview.v1.InterviewService.GetReport:output_type -> makejob.interview.v1.InterviewReport
+	22, // 55: makejob.interview.v1.InterviewService.GetInterviewStats:output_type -> makejob.interview.v1.InterviewStats
+	33, // 56: makejob.interview.v1.InterviewService.GetAdminInterviewStats:output_type -> makejob.interview.v1.AdminInterviewStatsResponse
+	42, // [42:57] is the sub-list for method output_type
+	27, // [27:42] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_makejob_interview_v1_interview_proto_init() }
@@ -2912,7 +3097,7 @@ func file_makejob_interview_v1_interview_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_interview_v1_interview_proto_rawDesc), len(file_makejob_interview_v1_interview_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -112,6 +112,7 @@ message QuestionDetail {
   string solution_json = 19;
   string judge_config_json = 20;
   string answer_template_json = 21;
+  NoteResponse user_note = 22;
 }
 
 message TestCase {
@@ -355,6 +356,7 @@ message RandomExamRequest {
 message ExamResponse {
   repeated QuestionDetail questions = 1;
   int32 time_limit_minutes = 2;
+  uint64 exam_id = 3;
 }
 
 // === 限时考试 ===

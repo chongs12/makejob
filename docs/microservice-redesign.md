@@ -1013,7 +1013,7 @@ Gateway 处理：
 | Plan | 9007 | — | |
 | Companion | 9008 | — | |
 | Community | 9009 | — | |
-| LearningArchive | 9010 | — | |
+| LearningArchive | 9010 | — | | 
 | AI Gateway | 9011 | — | |
 | RAG | 9012 | — | |
 | CodeRunner | 9013 | — | |

@@ -49,7 +49,7 @@ func (uc *AdminUseCase) RenderPrompt(ctx context.Context, scene, templateText st
 		if err != nil {
 			return nil, ErrPromptRenderFailed.WithCause(err)
 		}
-		templateText = tpl.TemplateText
+		templateText = tpl.TemplateContent
 	}
 
 	// 渲染 prompt

@@ -22,6 +22,7 @@ type UserRepo interface {
 	Create(ctx context.Context, user *User) error
 	GetByID(ctx context.Context, id uint64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
+	GetByUsername(ctx context.Context, username string) (*User, error)
 	BatchGetByIDs(ctx context.Context, ids []uint64) ([]*User, error)
 	List(ctx context.Context, page, pageSize int32) ([]*User, int64, error)
 	Update(ctx context.Context, user *User) error
@@ -38,18 +39,20 @@ type TokenBlacklist interface {
 
 // --- 领域实体 ---
 
-// User 用户实体（FIX U1: 嵌入 BaseModel 支持软删除）
+// User 用户实体（对齐单体 users 表结构）
 type User struct {
 	BaseModel
-	Username          string     `gorm:"size:100;not null;uniqueIndex"`
+	Username          string     `gorm:"size:50;not null;uniqueIndex"` // 对齐单体 size:50
 	Password          string     `gorm:"column:password_hash;size:255;not null"`
-	Email             string     `gorm:"size:200;not null;uniqueIndex"`
+	Email             string     `gorm:"size:100;not null;uniqueIndex"` // 对齐单体 size:100
 	Avatar            string     `gorm:"size:500"`
-	Role              string     `gorm:"size:20;not null;default:'user'"`
-	MembershipLevel   string     `gorm:"size:20;not null;default:'free'"`
-	MembershipType    string     `gorm:"size:20"`
+	Role              string     `gorm:"size:20;not null;default:'free_member'"` // 对齐单体默认值
+	MembershipLevel   string     `gorm:"size:10;not null;default:'free'"`         // 对齐单体 size:10
 	MembershipExpireAt *time.Time
-	IsDisabled        bool       `gorm:"not null;default:false"`
+
+	// 运行期字段，不落库（表中无这些列）
+	MembershipType string `gorm:"-"` // 表中无此列
+	IsDisabled     bool   `gorm:"-"` // 表中无此列
 }
 
 func (User) TableName() string { return "users" }
@@ -63,11 +66,15 @@ func NewUserUseCase(repo UserRepo) *UserUseCase {
 	return &UserUseCase{repo: repo}
 }
 
-// Register 用户注册（bcrypt 哈希密码）
+// Register 用户注册（对齐单体：检查 email + username 唯一性，Role 默认 free_member）
 func (uc *UserUseCase) Register(ctx context.Context, username, password, email string) (*User, error) {
 	// 检查邮箱是否已存在
 	if _, err := uc.repo.GetByEmail(ctx, email); err == nil {
 		return nil, ErrEmailExists
+	}
+	// 检查用户名是否已存在（对齐单体）
+	if _, err := uc.repo.GetByUsername(ctx, username); err == nil {
+		return nil, ErrUsernameExists
 	}
 
 	// bcrypt 哈希密码
@@ -80,7 +87,7 @@ func (uc *UserUseCase) Register(ctx context.Context, username, password, email s
 		Username: username,
 		Password: string(hashedPassword),
 		Email:    email,
-		Role:     "user",
+		Role:     "free_member", // 对齐单体默认角色
 	}
 	if err := uc.repo.Create(ctx, user); err != nil {
 		return nil, err
@@ -128,14 +135,22 @@ func (uc *UserUseCase) BatchGetUsers(ctx context.Context, ids []uint64) ([]*User
 	return users, nil
 }
 
-// UpdateProfile 更新用户资料
+// UpdateProfile 更新用户资料（对齐单体：检查用户名唯一性）
 func (uc *UserUseCase) UpdateProfile(ctx context.Context, id uint64, username, avatar string) (*User, error) {
 	user, err := uc.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
 	if username != "" {
+		// 对齐单体：检查用户名唯一性（排除自己）
+		existing, _ := uc.repo.GetByUsername(ctx, username)
+		if existing != nil && uint64(existing.ID) != id {
+			return nil, ErrUsernameExists
+		}
 		user.Username = username
+	}
+	if avatar != "" {
+		user.Avatar = avatar
 	}
 	if err := uc.repo.Update(ctx, user); err != nil {
 		return nil, err

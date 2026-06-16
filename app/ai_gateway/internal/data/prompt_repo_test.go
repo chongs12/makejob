@@ -30,10 +30,10 @@ func TestGetActiveTemplateFallsBackToLegacyQuizScene(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.db.WithContext(ctx).Create(&biz.PromptTemplate{
-		Scene:        "quiz",
-		Version:      2,
-		TemplateText: "quiz template",
-		IsActive:     true,
+		Name:            "刷题助手",
+		Scene:           "quiz",
+		TemplateContent: "quiz template",
+		IsActive:        true,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed prompt template: %v", err)
 	}
@@ -42,8 +42,8 @@ func TestGetActiveTemplateFallsBackToLegacyQuizScene(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveTemplate returned error: %v", err)
 	}
-	if tpl.TemplateText != "quiz template" {
-		t.Fatalf("expected legacy quiz template, got %q", tpl.TemplateText)
+	if tpl.TemplateContent != "quiz template" {
+		t.Fatalf("expected legacy quiz template, got %q", tpl.TemplateContent)
 	}
 }
 

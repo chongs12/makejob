@@ -71,6 +71,7 @@ const (
 	AdminService_UpdateTTSConfig_FullMethodName                = "/makejob.admin.v1.AdminService/UpdateTTSConfig"
 	AdminService_DeleteTTSConfig_FullMethodName                = "/makejob.admin.v1.AdminService/DeleteTTSConfig"
 	AdminService_UpdateTTSSceneDefaults_FullMethodName         = "/makejob.admin.v1.AdminService/UpdateTTSSceneDefaults"
+	AdminService_GetTTSProviders_FullMethodName                = "/makejob.admin.v1.AdminService/GetTTSProviders"
 	AdminService_GetRAGConfigs_FullMethodName                  = "/makejob.admin.v1.AdminService/GetRAGConfigs"
 	AdminService_UpdateRAGConfigs_FullMethodName               = "/makejob.admin.v1.AdminService/UpdateRAGConfigs"
 	AdminService_TestRAGConnection_FullMethodName              = "/makejob.admin.v1.AdminService/TestRAGConnection"
@@ -168,6 +169,7 @@ type AdminServiceClient interface {
 	UpdateTTSConfig(ctx context.Context, in *UpdateTTSConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeleteTTSConfig(ctx context.Context, in *DeleteTTSConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateTTSSceneDefaults(ctx context.Context, in *UpdateTTSSceneDefaultsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetTTSProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetTTSProvidersResponse, error)
 	// === RAG 配置 ===
 	GetRAGConfigs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRAGConfigsResponse, error)
 	UpdateRAGConfigs(ctx context.Context, in *UpdateRAGConfigsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -730,6 +732,16 @@ func (c *adminServiceClient) UpdateTTSSceneDefaults(ctx context.Context, in *Upd
 	return out, nil
 }
 
+func (c *adminServiceClient) GetTTSProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetTTSProvidersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTTSProvidersResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetTTSProviders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *adminServiceClient) GetRAGConfigs(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRAGConfigsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetRAGConfigsResponse)
@@ -1077,6 +1089,7 @@ type AdminServiceServer interface {
 	UpdateTTSConfig(context.Context, *UpdateTTSConfigRequest) (*emptypb.Empty, error)
 	DeleteTTSConfig(context.Context, *DeleteTTSConfigRequest) (*emptypb.Empty, error)
 	UpdateTTSSceneDefaults(context.Context, *UpdateTTSSceneDefaultsRequest) (*emptypb.Empty, error)
+	GetTTSProviders(context.Context, *emptypb.Empty) (*GetTTSProvidersResponse, error)
 	// === RAG 配置 ===
 	GetRAGConfigs(context.Context, *emptypb.Empty) (*GetRAGConfigsResponse, error)
 	UpdateRAGConfigs(context.Context, *UpdateRAGConfigsRequest) (*emptypb.Empty, error)
@@ -1272,6 +1285,9 @@ func (UnimplementedAdminServiceServer) DeleteTTSConfig(context.Context, *DeleteT
 }
 func (UnimplementedAdminServiceServer) UpdateTTSSceneDefaults(context.Context, *UpdateTTSSceneDefaultsRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateTTSSceneDefaults not implemented")
+}
+func (UnimplementedAdminServiceServer) GetTTSProviders(context.Context, *emptypb.Empty) (*GetTTSProvidersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTTSProviders not implemented")
 }
 func (UnimplementedAdminServiceServer) GetRAGConfigs(context.Context, *emptypb.Empty) (*GetRAGConfigsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRAGConfigs not implemented")
@@ -2289,6 +2305,24 @@ func _AdminService_UpdateTTSSceneDefaults_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_GetTTSProviders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetTTSProviders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetTTSProviders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetTTSProviders(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AdminService_GetRAGConfigs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -2999,6 +3033,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateTTSSceneDefaults",
 			Handler:    _AdminService_UpdateTTSSceneDefaults_Handler,
+		},
+		{
+			MethodName: "GetTTSProviders",
+			Handler:    _AdminService_GetTTSProviders_Handler,
 		},
 		{
 			MethodName: "GetRAGConfigs",

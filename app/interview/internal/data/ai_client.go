@@ -132,3 +132,102 @@ func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParse
 		Education:  resp.Education,
 	}, nil
 }
+
+// StartInterview 开始面试会话（对齐单体 InterviewAgent.StartInterview）
+func (c *aiServiceClient) StartInterview(ctx context.Context, req *biz.StartInterviewRequest) (*biz.StartInterviewResponse, error) {
+	resp, err := c.client.StartInterview(ctx, &aiv1.StartInterviewRequest{
+		InterviewId:   req.InterviewID,
+		IndustryCode:  req.IndustryCode,
+		Difficulty:    req.Difficulty,
+		QuestionCount: req.QuestionCount,
+		ResumeText:    req.ResumeText,
+		JobDescription: req.JobDescription,
+		InterviewMode: req.InterviewMode,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("StartInterview gRPC call failed: %w", err)
+	}
+
+	return &biz.StartInterviewResponse{
+		SessionID:  resp.SessionId,
+		Question:   resp.Question,
+		Topic:      resp.Topic,
+		Difficulty: resp.Difficulty,
+		Type:       resp.Type,
+		Hints:      resp.Hints,
+	}, nil
+}
+
+// EvaluateAnswer 评估用户答案（对齐单体 InterviewAgent.EvaluateAnswer）
+func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateAnswerRequest) (*biz.EvaluateAnswerResponse, error) {
+	resp, err := c.client.EvaluateAnswer(ctx, &aiv1.EvaluateAnswerRequest{
+		SessionId:     req.SessionId,
+		QuestionIndex: req.QuestionIndex,
+		Answer:        req.Answer,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("EvaluateAnswer gRPC call failed: %w", err)
+	}
+
+	return &biz.EvaluateAnswerResponse{
+		Score:      resp.Score,
+		IsCorrect:  resp.IsCorrect,
+		Feedback:   resp.Feedback,
+		KeyPoints:  resp.KeyPoints,
+		Suggestions: resp.Suggestions,
+		FollowUp:   resp.FollowUp,
+	}, nil
+}
+
+// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion）
+func (c *aiServiceClient) GetNextQuestionSession(ctx context.Context, req *biz.GetNextQuestionSessionRequest) (*biz.GetNextQuestionSessionResponse, error) {
+	resp, err := c.client.GetNextQuestionSession(ctx, &aiv1.GetNextQuestionSessionRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetNextQuestionSession gRPC call failed: %w", err)
+	}
+
+	return &biz.GetNextQuestionSessionResponse{
+		Question:   resp.Question,
+		Topic:      resp.Topic,
+		Difficulty: resp.Difficulty,
+		Type:       resp.Type,
+		Hints:      resp.Hints,
+		HasNext:    resp.HasNext,
+	}, nil
+}
+
+// GenerateInterviewReport 生成面试报告（对齐单体 InterviewAgent.GenerateReport）
+func (c *aiServiceClient) GenerateInterviewReport(ctx context.Context, req *biz.GenerateInterviewReportRequest) (*biz.GenerateInterviewReportResponse, error) {
+	resp, err := c.client.GenerateInterviewReport(ctx, &aiv1.GenerateInterviewReportRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GenerateInterviewReport gRPC call failed: %w", err)
+	}
+
+	return &biz.GenerateInterviewReportResponse{
+		OverallScore:    resp.OverallScore,
+		Summary:         resp.Summary,
+		DimensionScores: resp.DimensionScores,
+		Strengths:       resp.Strengths,
+		Weaknesses:      resp.Weaknesses,
+		Suggestions:     resp.Suggestions,
+		AiFeedback:      resp.AiFeedback,
+	}, nil
+}
+
+// EndInterviewSession 结束面试会话（对齐单体 InterviewAgent.EndInterview）
+func (c *aiServiceClient) EndInterviewSession(ctx context.Context, req *biz.EndInterviewSessionRequest) (*biz.EndInterviewSessionResponse, error) {
+	resp, err := c.client.EndInterviewSession(ctx, &aiv1.EndInterviewSessionRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("EndInterviewSession gRPC call failed: %w", err)
+	}
+
+	return &biz.EndInterviewSessionResponse{
+		Success: resp.Success,
+	}, nil
+}

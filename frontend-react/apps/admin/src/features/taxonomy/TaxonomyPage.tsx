@@ -61,7 +61,18 @@ async function fetchIndustries(token: string | null): Promise<Industry[]> {
     throw new Error(response.message || '获取行业列表失败')
   }
 
-  return response.data
+  // Gateway 展开后应为数组；若为对象（如 {industries: [...]}）则取第一个数组字段
+  const data = response.data
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (data && typeof data === 'object') {
+    const firstArray = Object.values(data).find(Array.isArray)
+    if (firstArray) {
+      return firstArray as Industry[]
+    }
+  }
+  return []
 }
 
 /**
@@ -77,7 +88,17 @@ async function fetchCategories(token: string | null): Promise<Category[]> {
     throw new Error(response.message || '获取分类列表失败')
   }
 
-  return response.data
+  const data = response.data
+  if (Array.isArray(data)) {
+    return data
+  }
+  if (data && typeof data === 'object') {
+    const firstArray = Object.values(data).find(Array.isArray)
+    if (firstArray) {
+      return firstArray as Category[]
+    }
+  }
+  return []
 }
 
 /**
@@ -181,12 +202,12 @@ function buildIndustryForm(industry?: Industry | null): IndustryFormState {
   }
 
   return {
-    code: industry.code,
-    name: industry.name,
+    code: industry.code || '',
+    name: industry.name || '',
     description: industry.description || '',
     icon: industry.icon || '',
-    sortOrder: String(industry.sort_order),
-    isActive: industry.is_active,
+    sortOrder: String(industry.sort_order || 0),
+    isActive: industry.is_active ?? true,
   }
 }
 
@@ -213,10 +234,10 @@ function buildCategoryForm(category?: Category | null): CategoryFormState {
   }
 
   return {
-    industryId: String(category.industry_id),
-    name: category.name,
+    industryId: String(category.industry_id || 0),
+    name: category.name || '',
     parentId: String(category.parent_id || 0),
-    sortOrder: String(category.sort_order),
+    sortOrder: String(category.sort_order || 0),
     icon: category.icon || '',
     description: category.description || '',
   }

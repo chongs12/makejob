@@ -33,5 +33,10 @@ func NewData(cfg *conf.Data) (*gorm.DB, error) {
 		return nil, errors.InternalServer("DATABASE_MIGRATE_FAILED", "数据库迁移失败")
 	}
 
+	// 插入默认 Prompt 模板种子数据（仅在表为空时执行）
+	if err := seedDefaultPrompts(db); err != nil {
+		return nil, errors.InternalServer("SEED_PROMPTS_FAILED", "插入默认Prompt模板失败")
+	}
+
 	return db, nil
 }

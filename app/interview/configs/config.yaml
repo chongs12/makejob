@@ -1,10 +1,10 @@
 server:
   http:
     addr: 0.0.0.0:8004
-    timeout: 10s
+    timeout: 3m
   grpc:
     addr: 0.0.0.0:9004
-    timeout: 10s
+    timeout: 3m
 
 data:
   database:
@@ -16,7 +16,7 @@ data:
     db: 1
 
 ai:
-  service_addr: "localhost:9014"
+  service_addr: "localhost:9011"
 
 rag:
   service_addr: "localhost:9012"

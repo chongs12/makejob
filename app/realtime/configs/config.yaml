@@ -21,9 +21,26 @@ jwt:
   service_secret: "makejob-internal-service-secret"
 
 volcengine:
-  app_id: "your-volcengine-app-id"
-  token: "your-volcengine-token"
-  ws_url: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
+  # 实时对话配置（对齐单体 volcengine.realtime 段）
+  # 注意：app_id 和 access_token 需要替换为实际值
+  enabled: true
+  app_id: "5042896829"
+  access_token: "MuzdjRWpCVidGWeCslyFMbQ0w8aDLRxZ"
+  app_key: "PlgvMymc7f3tQnJ6"
+  base_url: "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
+  resource_id: "volc.speech.dialog"
+  speaker: "zh_female_vv_jupiter_bigtts"
+  input_mode: "push_to_talk"
+  audio_format: "pcm"
+  sample_rate: 16000
+  tts_format: "pcm_s16le"
+  tts_sample_rate: 24000
+  bot_name: "Ariu"
+  system_role: "你是一位专业、耐心、会逐题推进的中文技术面试官。"
+  speaking_style: "请用口语化中文进行简洁播报，每次只问一个问题。"
+  character_prompt: ""
+  location_city: "北京"
+  recv_timeout: 120
 
 dependent_services:
   interview_addr: "localhost:9004"

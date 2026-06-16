@@ -104,7 +104,7 @@ type Question struct {
 	Title              string
 	Content            string
 	Difficulty         string
-	Type               string // coding, subjective, multiple_choice
+	Type               string // 对齐单体：choice/multi/code/subjective
 	IndustryID         uint64
 	IndustryCode       string
 	IndustryName       string
@@ -149,7 +149,8 @@ type UserFavorite struct {
 type UserNote struct {
 	ID         uint64
 	UserID     uint64
-	QuestionID uint64
+	QuestionID *uint64 // 对齐单体：可空（全局笔记）
+	Title      string
 	Content    string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time

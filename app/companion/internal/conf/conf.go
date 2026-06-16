@@ -8,11 +8,19 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
-	AI     *AI     `yaml:"ai"`
-	TTS    *TTS    `yaml:"tts"`
+	Server    *Server    `yaml:"server"`
+	Data      *Data      `yaml:"data"`
+	JWT       *JWT       `yaml:"jwt"`
+	AI        *AI        `yaml:"ai"`
+	TTS       *TTS       `yaml:"tts"`
+	Services  *Services  `yaml:"services"`
+}
+
+// Services 外部服务配置
+type Services struct {
+	Growth    string `yaml:"growth"`
+	Interview string `yaml:"interview"`
+	Plan      string `yaml:"plan"`
 }
 
 // AI AI 服务配置
@@ -22,8 +30,22 @@ type AI struct {
 
 // TTS 语音合成服务配置
 type TTS struct {
-	APIKey string `yaml:"api_key"`
-	Voice  string `yaml:"voice"`
+	APIKey        string              `yaml:"api_key"`
+	Voice         string              `yaml:"voice"`
+	DefaultEngine string              `yaml:"default_engine"`
+	Engines       map[string]*TTSEngine `yaml:"engines"`
+}
+
+// TTSEngine 单个 TTS 供应商引擎配置
+type TTSEngine struct {
+	APIKey    string `yaml:"api_key"`
+	VoiceID   string `yaml:"voice_id"`
+	Model     string `yaml:"model"`
+	BaseURL   string `yaml:"base_url"`
+	GroupID   string `yaml:"group_id"`
+	AppID     string `yaml:"app_id"`
+	Format    string `yaml:"format"`
+	SampleRate int   `yaml:"sample_rate"`
 }
 
 type Server struct {
@@ -92,6 +114,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.TTS == nil {
 		bc.TTS = &TTS{}
+	}
+	if bc.Services == nil {
+		bc.Services = &Services{}
 	}
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"

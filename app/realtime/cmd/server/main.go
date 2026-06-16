@@ -52,15 +52,6 @@ func main() {
 
 // wireApp 手动组装所有依赖
 func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error) {
-	// data 层：数据库连接
-	db, err := data.NewData(bc.Data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect database: %w", err)
-	}
-
-	// data 层：仓库实现
-	realtimeRepo := data.NewRealtimeRepo(db)
-
 	// data 层：下游服务客户端
 	interviewClient, interviewCloser, err := data.NewInterviewClient(bc.DependentServices)
 	if err != nil {
@@ -74,15 +65,17 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// data 层：火山引擎连接工厂
 	volcFactory := data.NewVolcEngineFactory(bc.Volcengine)
+	volcSessionFactory := data.NewVolcEngineSessionFactory(bc.Volcengine)
 
-	// biz 层：会话管理器和业务用例
+	// biz 层：会话管理器和业务用例（对齐单体：纯内存管理，不依赖数据库）
 	sessionManager := biz.NewSessionManager()
 	realtimeUseCase := biz.NewRealtimeUseCase(
-		realtimeRepo,
 		interviewClient,
 		ragClient,
 		sessionManager,
 		volcFactory,
+		volcSessionFactory,
+		bc.Volcengine,
 		logger,
 	)
 
@@ -112,9 +105,6 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		}
 		if ragCloser != nil {
 			_ = ragCloser.Close()
-		}
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
 		}
 	}
 

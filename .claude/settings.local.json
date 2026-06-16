@@ -68,7 +68,17 @@
       "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/ai/v1/ai.proto)",
       "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/makejob/admin/v1/admin.proto)",
       "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative -I. api/makejob/admin/v1/admin.proto)",
-      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=. api/makejob/admin/v1/admin.proto)"
+      "Bash(protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative --proto_path=. api/makejob/admin/v1/admin.proto)",
+      "Bash(go run *)",
+      "Bash(grep -rln 'TrimPrefix.*json\\\\|```json\\\\|strings.Index.*{' docs/backend/internal/ai/)",
+      "Bash(nohup ./ai_gw_debug.exe)",
+      "Bash(cp ai_gw_debug.exe app/ai_gateway/ai_gw_debug.exe)",
+      "Bash(nohup /d/gogogo/makejob/ai_gw.exe)",
+      "Bash(nohup /d/gogogo/makejob/comp_debug.exe)",
+      "Bash(sed -n '1,60p' docs/backend/internal/model/learning_plan.go)",
+      "Bash(sed -n '1,55p' docs/backend/internal/model/learning_task.go)",
+      "Bash(npm install *)",
+      "Bash(npm run *)"
     ]
   }
 }

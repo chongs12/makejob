@@ -89,11 +89,10 @@ func (r *interviewRepo) Update(ctx context.Context, interview *biz.Interview) er
 // CreateMessage 创建面试消息，并在事务内复用同一个 DB 连接。
 func (r *interviewRepo) CreateMessage(ctx context.Context, msg *biz.InterviewMessage) error {
 	m := &model.InterviewMessage{
-		InterviewID:   msg.InterviewID,
-		Role:          msg.Role,
-		Content:       msg.Content,
-		MessageType:   msg.MessageType,
-		QuestionIndex: msg.QuestionIndex,
+		InterviewID: msg.InterviewID,
+		Role:        msg.Role,
+		Content:     msg.Content,
+		MessageType: msg.MessageType,
 	}
 	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
@@ -108,13 +107,12 @@ func (r *interviewRepo) ListMessages(ctx context.Context, interviewID uint64) ([
 	msgs := make([]*biz.InterviewMessage, len(models))
 	for i, m := range models {
 		msgs[i] = &biz.InterviewMessage{
-			ID:            m.ID,
-			InterviewID:   m.InterviewID,
-			Role:          m.Role,
-			Content:       m.Content,
-			MessageType:   m.MessageType,
-			QuestionIndex: m.QuestionIndex,
-			CreatedAt:     m.CreatedAt,
+			ID:          m.ID,
+			InterviewID: m.InterviewID,
+			Role:        m.Role,
+			Content:     m.Content,
+			MessageType: m.MessageType,
+			CreatedAt:   time.UnixMilli(m.CreatedAt),
 		}
 	}
 	return msgs, nil
@@ -197,65 +195,51 @@ func (r *interviewRepo) ListMessagesLimited(ctx context.Context, interviewID uin
 	msgs := make([]*biz.InterviewMessage, len(models))
 	for i, m := range models {
 		msgs[i] = &biz.InterviewMessage{
-			ID:            m.ID,
-			InterviewID:   m.InterviewID,
-			Role:          m.Role,
-			Content:       m.Content,
-			MessageType:   m.MessageType,
-			QuestionIndex: m.QuestionIndex,
-			CreatedAt:     m.CreatedAt,
+			ID:          m.ID,
+			InterviewID: m.InterviewID,
+			Role:        m.Role,
+			Content:     m.Content,
+			MessageType: m.MessageType,
+			CreatedAt:   time.UnixMilli(m.CreatedAt),
 		}
 	}
 	return msgs, nil
 }
 
-// BindRealtimeDialog 绑定实时对话 ID 到面试记录
+// BindRealtimeDialog 绑定实时对话 ID 到面试记录（复用 ai_session_id 列）
 func (r *interviewRepo) BindRealtimeDialog(ctx context.Context, interviewID uint64, dialogID string) error {
 	return r.getDB(ctx).WithContext(ctx).Model(&model.MockInterview{}).
 		Where("id = ?", interviewID).
-		Update("realtime_dialog_id", dialogID).Error
+		Update("ai_session_id", dialogID).Error
 }
 
-// AppendMessageAndBumpIndex 追加消息并递增 current_question_index（事务操作）
+// AppendMessageAndBumpIndex 追加消息（表无 current_index 列，不再递增）
 func (r *interviewRepo) AppendMessageAndBumpIndex(ctx context.Context, msg *biz.InterviewMessage) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 插入消息
-		m := &model.InterviewMessage{
-			InterviewID:   msg.InterviewID,
-			Role:          msg.Role,
-			Content:       msg.Content,
-			MessageType:   msg.MessageType,
-			QuestionIndex: msg.QuestionIndex,
-		}
-		if err := tx.Create(m).Error; err != nil {
-			return err
-		}
-		// 递增 current_question_index
-		return tx.Model(&model.MockInterview{}).
-			Where("id = ?", msg.InterviewID).
-			Update("current_index", gorm.Expr("current_index + 1")).Error
-	})
+	m := &model.InterviewMessage{
+		InterviewID: msg.InterviewID,
+		Role:        msg.Role,
+		Content:     msg.Content,
+		MessageType: msg.MessageType,
+	}
+	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
 
 // --- Model ↔ Biz 转换 ---
 
 func toModel(iv *biz.Interview) *model.MockInterview {
 	return &model.MockInterview{
-		Model:            gorm.Model{ID: uint(iv.ID)},
-		UserID:           iv.UserID,
-		IndustryCode:     iv.IndustryCode,
-		Difficulty:       iv.Difficulty,
-		Status:           iv.Status,
-		InterviewMode:    iv.InterviewMode,
-		QuestionCount:    iv.QuestionCount,
-		CurrentIndex:     iv.CurrentIndex,
-		OverallScore:     iv.OverallScore,
-		ResumeText:       iv.ResumeText,
-		ResumeParsedJSON: iv.ResumeParsedJSON,
-		JobDescription:   iv.JobDescription,
-		Live2DModelKey:   iv.Live2DModelKey,
-		RealtimeDialogID: iv.RealtimeDialogID,
-		FinishedAt:       iv.FinishedAt,
+		Model:          gorm.Model{ID: uint(iv.ID)},
+		UserID:         iv.UserID,
+		IndustryID:     iv.IndustryID,
+		Status:         iv.Status,
+		Score:          iv.OverallScore,
+		TotalQuestions: iv.QuestionCount,
+		AIFeedback:     iv.AIFeedback,
+		AISessionID:    iv.AISessionID,
+		ReportJSON:     iv.ReportJSON,
+		StartedAt:      iv.StartedAt,
+		EndedAt:        iv.FinishedAt,
+		Live2DModelKey: iv.Live2DModelKey,
 	}
 }
 
@@ -263,19 +247,16 @@ func toBiz(m *model.MockInterview) *biz.Interview {
 	return &biz.Interview{
 		ID:               uint64(m.ID),
 		UserID:           m.UserID,
-		IndustryCode:     m.IndustryCode,
-		Difficulty:       m.Difficulty,
+		IndustryID:       m.IndustryID,
 		Status:           m.Status,
-		InterviewMode:    m.InterviewMode,
-		QuestionCount:    m.QuestionCount,
-		CurrentIndex:     m.CurrentIndex,
-		OverallScore:     m.OverallScore,
-		ResumeText:       m.ResumeText,
-		ResumeParsedJSON: m.ResumeParsedJSON,
-		JobDescription:   m.JobDescription,
+		OverallScore:     m.Score,
+		QuestionCount:    m.TotalQuestions,
+		AIFeedback:       m.AIFeedback,
+		AISessionID:      m.AISessionID,
+		ReportJSON:       m.ReportJSON,
+		StartedAt:        m.StartedAt,
+		FinishedAt:       m.EndedAt,
 		Live2DModelKey:   m.Live2DModelKey,
-		RealtimeDialogID: m.RealtimeDialogID,
-		FinishedAt:       m.FinishedAt,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 	}
@@ -291,7 +272,7 @@ func (r *interviewRepo) GetStats(ctx context.Context, userID uint64) (*biz.Inter
 	}
 	if err := r.db.WithContext(ctx).Model(&model.MockInterview{}).
 		Where("user_id = ?", userID).
-		Select("COUNT(*) as total, COALESCE(AVG(overall_score), 0) as avg, COALESCE(SUM(current_index), 0) as total_questions, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed").
+		Select("COUNT(*) as total, COALESCE(AVG(score), 0) as avg, COALESCE(SUM(total_questions), 0) as total_questions, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed").
 		Scan(&stats).Error; err != nil {
 		return nil, err
 	}
@@ -300,7 +281,7 @@ func (r *interviewRepo) GetStats(ctx context.Context, userID uint64) (*biz.Inter
 	today := time.Now().Format("2006-01-02")
 	var todayCount int64
 	r.db.WithContext(ctx).Model(&model.MockInterview{}).
-		Where("user_id = ? AND status = 'completed' AND DATE(finished_at) = ?", userID, today).
+		Where("user_id = ? AND status = 'completed' AND DATE(ended_at) = ?", userID, today).
 		Count(&todayCount)
 
 	return &biz.InterviewStats{

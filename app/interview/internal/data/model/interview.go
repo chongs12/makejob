@@ -6,40 +6,35 @@ import (
 	"gorm.io/gorm"
 )
 
-// MockInterview 面试会话 GORM model
+// MockInterview 面试会话 GORM model（对齐单体 mock_interviews 表结构）
 type MockInterview struct {
 	gorm.Model
-	UserID           uint64      `gorm:"index;not null"`
-	IndustryCode     string      `gorm:"size:50;not null;index"`
-	Difficulty       string      `gorm:"size:20"`
-	Status           string      `gorm:"size:20;default:created;index"` // created, in_progress, ongoing, report_generating, report_failed, completed
-	InterviewMode    string      `gorm:"size:30;default:standard"`      // standard, realtime_voice, coding
-	QuestionCount    int32
-	CurrentIndex     int32
-	OverallScore     float64
-	ResumeText       string     `gorm:"type:text"`
-	ResumeParsedJSON string     `gorm:"type:text"` // AI 解析简历后的结构化 JSON
-	JobDescription   string     `gorm:"type:text"`
-	Live2DModelKey   string     `gorm:"size:100"`
-	RealtimeDialogID string     `gorm:"size:100;index"`
-	FinishedAt       *time.Time `gorm:"index"`
+	UserID         uint64      `gorm:"index;not null"`
+	IndustryID     uint64      `gorm:"column:industry_id;index;not null"`
+	Status         string      `gorm:"size:20;default:created;index"` // created, in_progress, ongoing, report_generating, report_failed, completed
+	Score          float64     `gorm:"column:score"`
+	TotalQuestions int32       `gorm:"column:total_questions"`
+	AIFeedback     string      `gorm:"column:ai_feedback;type:text"`
+	AISessionID    string      `gorm:"column:ai_session_id;type:text"`
+	ReportJSON     string      `gorm:"column:report_json;type:text"`
+	StartedAt      *time.Time  `gorm:"column:started_at"`
+	EndedAt        *time.Time  `gorm:"column:ended_at;index"`
+	Live2DModelKey string      `gorm:"size:128"`
 }
 
 func (MockInterview) TableName() string {
 	return "mock_interviews"
 }
 
-// InterviewMessage 面试消息 GORM model
+// InterviewMessage 面试消息 GORM model（对齐单体 interview_messages 表结构）
 type InterviewMessage struct {
-	ID            uint64         `gorm:"primaryKey;autoIncrement"`
-	InterviewID   uint64         `gorm:"index;not null"`
-	Role          string         `gorm:"size:20;not null"` // user, assistant
-	Content       string         `gorm:"type:text;not null"`
-	MessageType   string         `gorm:"size:20;default:text"` // text, code, audio
-	QuestionIndex int32
-	CreatedAt     time.Time      `gorm:"autoCreateTime"`
-	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt     gorm.DeletedAt `gorm:"index"`
+	ID           uint64 `gorm:"primaryKey;autoIncrement"`
+	InterviewID  uint64 `gorm:"index;not null"`
+	Role         string `gorm:"size:20;not null"` // user, assistant
+	Content      string `gorm:"type:text;not null"`
+	MessageType  string `gorm:"size:20;default:text"` // text, code, audio
+	CreatedAt    int64  `gorm:"column:created_at;autoCreateTime:milli"`
+	MetadataJSON string `gorm:"column:metadata_json;type:text"`
 }
 
 func (InterviewMessage) TableName() string {

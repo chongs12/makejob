@@ -65,6 +65,18 @@ message PlanDetail {
   string task_error = 20;
   string start_date = 21;
   string end_date = 22;
+  uint64 industry_id = 23;
+  string entry_phase = 24;
+  repeated string adjustment_summaries = 25;
+  repeated string adjustment_reason_codes = 26;
+  repeated PhaseBlueprintSummaryEntry phase_blueprint_summary = 27;
+}
+
+message PhaseBlueprintSummaryEntry {
+  string phase = 1;
+  string phase_goal = 2;
+  int32 start_day = 3;
+  int32 end_day = 4;
 }
 
 message TaskDetail {
@@ -87,6 +99,9 @@ message TaskDetail {
   string source = 16;
   string source_label = 17;
   string reason = 18;
+  string priority_explanation = 19;
+  string source_ref = 20;
+  string collection_hint = 21;
 }
 
 message ListPlansRequest {

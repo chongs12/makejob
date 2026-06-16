@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/milvus-io/milvus/client/v2/column"
 	"github.com/milvus-io/milvus/client/v2/entity"
+	"github.com/milvus-io/milvus/client/v2/index"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 
 	ark_embed "github.com/cloudwego/eino-ext/components/embedding/ark"
@@ -30,6 +32,56 @@ type milvusClient struct {
 	mu        sync.RWMutex
 }
 
+// 集合字段常量（对齐单体 collection.go）
+const (
+	DefaultEmbeddingDim = 4096
+	FieldNameID         = "id"
+	FieldNameContent    = "content"
+	FieldNameVector     = "vector"
+	FieldNameMetadata   = "metadata"
+)
+
+// EnsureCollection 确保 Collection 存在，不存在则创建并建立索引（对齐单体 collection.go）
+func EnsureCollection(ctx context.Context, client *milvusclient.Client, collection string, dim int) error {
+	if dim <= 0 {
+		dim = DefaultEmbeddingDim
+	}
+
+	has, err := client.HasCollection(ctx, milvusclient.NewHasCollectionOption(collection))
+	if err != nil {
+		return fmt.Errorf("检查Collection是否存在失败: %w", err)
+	}
+
+	if has {
+		return nil
+	}
+
+	schema := entity.NewSchema().
+		WithField(entity.NewField().WithName(FieldNameID).WithDataType(entity.FieldTypeVarChar).WithIsPrimaryKey(true).WithMaxLength(64)).
+		WithField(entity.NewField().WithName(FieldNameContent).WithDataType(entity.FieldTypeVarChar).WithMaxLength(8192)).
+		WithField(entity.NewField().WithName(FieldNameVector).WithDataType(entity.FieldTypeFloatVector).WithDim(int64(dim))).
+		WithField(entity.NewField().WithName(FieldNameMetadata).WithDataType(entity.FieldTypeJSON))
+
+	err = client.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(collection, schema))
+	if err != nil {
+		return fmt.Errorf("创建Collection失败: %w", err)
+	}
+
+	autoIndex := index.NewAutoIndex(entity.COSINE)
+	_, err = client.CreateIndex(ctx, milvusclient.NewCreateIndexOption(collection, FieldNameVector, autoIndex))
+	if err != nil {
+		return fmt.Errorf("创建索引失败: %w", err)
+	}
+
+	loadTask, err := client.LoadCollection(ctx, milvusclient.NewLoadCollectionOption(collection))
+	if err != nil {
+		return fmt.Errorf("加载Collection失败: %w", err)
+	}
+	_ = loadTask
+
+	return nil
+}
+
 // NewMilvusClient 创建 Milvus+Ark 集成客户端，同时实现 Embedder 和 VectorStore
 func NewMilvusClient(ctx context.Context, cfg *conf.RAG, logger log.Logger) (*milvusClient, error) {
 	log := log.NewHelper(logger)
@@ -41,20 +93,29 @@ func NewMilvusClient(ctx context.Context, cfg *conf.RAG, logger log.Logger) (*mi
 		BaseURL: cfg.ArkBaseURL,
 	})
 	if err != nil {
-		// FIX: 替换fmt.Errorf为kratos errors
 		return nil, errors.ServiceUnavailable("EMBEDDING_INIT_FAILED", "初始化Ark Embedder失败")
 	}
 	log.Info("Ark Embedder 初始化成功")
 
-	// 初始化 Milvus 客户端
-	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
-		Address: cfg.MilvusAddr,
+	// 初始化 Milvus 客户端（对齐单体：支持认证 + 10s 超时）
+	connectCtx, connectCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer connectCancel()
+
+	client, err := milvusclient.New(connectCtx, &milvusclient.ClientConfig{
+		Address:  cfg.MilvusAddr,
+		Username: cfg.MilvusUser,
+		Password: cfg.MilvusPassword,
 	})
 	if err != nil {
-		// FIX: 替换fmt.Errorf为kratos errors
 		return nil, errors.ServiceUnavailable("RAG_CONNECTION_FAILED", "连接Milvus失败")
 	}
 	log.Infof("Milvus 客户端连接成功: %s", cfg.MilvusAddr)
+
+	// 确保 Collection 存在（对齐单体 EnsureCollection）
+	if err := EnsureCollection(ctx, client, cfg.CollectionName, 0); err != nil {
+		client.Close(ctx)
+		return nil, errors.ServiceUnavailable("RAG_COLLECTION_INIT_FAILED", "初始化Collection失败")
+	}
 
 	return &milvusClient{
 		embedder:  embedder,
@@ -95,12 +156,13 @@ func (c *milvusClient) UpdateEmbeddingModel(ctx context.Context, modelName strin
 	return nil
 }
 
-// Search 在 Milvus 中进行向量相似度搜索（FIX C7: 透传 filters 构建过滤表达式）
+// Search 在 Milvus 中进行向量相似度搜索（对齐单体 retriever.go：WithANNSField + 双重 metadata 解析）
 func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]biz.Document, error) {
 	searchOpt := milvusclient.NewSearchOption(collection, topK, []entity.Vector{
 		entity.FloatVector(vector),
 	}).
-		WithOutputFields("id", "content", "metadata")
+		WithANNSField(FieldNameVector).
+		WithOutputFields(FieldNameID, FieldNameContent, FieldNameMetadata)
 
 	// 构建 Milvus 过滤表达式
 	if len(filters) > 0 {
@@ -110,7 +172,6 @@ func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, c
 
 	resultSets, err := c.client.Search(ctx, searchOpt)
 	if err != nil {
-		// FIX: 替换fmt.Errorf为kratos errors
 		return nil, errors.ServiceUnavailable("RAG_CONNECTION_FAILED", "Milvus搜索失败")
 	}
 	if len(resultSets) == 0 {
@@ -130,19 +191,29 @@ func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, c
 		}
 
 		// 提取 content
-		if contentCol := rs.GetColumn("content"); contentCol != nil {
+		if contentCol := rs.GetColumn(FieldNameContent); contentCol != nil {
 			if v, err := contentCol.GetAsString(i); err == nil {
 				doc.Content = v
 			}
 		}
 
-		// 提取 metadata
-		if metaCol := rs.GetColumn("metadata"); metaCol != nil {
+		// 提取 metadata（对齐单体：兼容 []byte 和 string 两种类型）
+		if metaCol := rs.GetColumn(FieldNameMetadata); metaCol != nil {
 			if v, err := metaCol.Get(i); err == nil {
-				if metaBytes, ok := v.([]byte); ok {
-					var meta map[string]any
-					if json.Unmarshal(metaBytes, &meta) == nil {
-						doc.MetaData = meta
+				switch metaRaw := v.(type) {
+				case []byte:
+					if len(metaRaw) > 0 {
+						var meta map[string]any
+						if json.Unmarshal(metaRaw, &meta) == nil {
+							doc.MetaData = meta
+						}
+					}
+				case string:
+					if len(metaRaw) > 0 {
+						var meta map[string]any
+						if json.Unmarshal([]byte(metaRaw), &meta) == nil {
+							doc.MetaData = meta
+						}
 					}
 				}
 			}
@@ -192,10 +263,10 @@ func (c *milvusClient) Upsert(ctx context.Context, collection string, docs []biz
 	}
 
 	opt := milvusclient.NewColumnBasedInsertOption(collection,
-		column.NewColumnVarChar("id", ids),
-		column.NewColumnVarChar("content", contents),
-		column.NewColumnFloatVector("vector", dim, vectors),
-		column.NewColumnJSONBytes("metadata", metadataBytes),
+		column.NewColumnVarChar(FieldNameID, ids),
+		column.NewColumnVarChar(FieldNameContent, contents),
+		column.NewColumnFloatVector(FieldNameVector, dim, vectors),
+		column.NewColumnJSONBytes(FieldNameMetadata, metadataBytes),
 	)
 
 	_, err := c.client.Upsert(ctx, opt)
@@ -214,7 +285,7 @@ func (c *milvusClient) Delete(ctx context.Context, collection string, ids []stri
 		return nil
 	}
 
-	opt := milvusclient.NewDeleteOption(collection).WithStringIDs("id", ids)
+	opt := milvusclient.NewDeleteOption(collection).WithStringIDs(FieldNameID, ids)
 
 	_, err := c.client.Delete(ctx, opt)
 	if err != nil {

@@ -26,7 +26,7 @@ func (r *growthRepo) GetStudyLogStats(ctx context.Context, userID uint64) (*biz.
 
 	// 统计学习天数
 	var totalDays int64
-	base.Distinct("date_key").Count(&totalDays)
+	base.Distinct("log_date").Count(&totalDays)
 
 	// 统计题目数量
 	var totalQuestions int64
@@ -56,10 +56,10 @@ func (r *growthRepo) calculateStreak(ctx context.Context, userID uint64) int32 {
 	r.db.WithContext(ctx).
 		Model(&model.StudyLog{}).
 		Where("user_id = ?", userID).
-		Select("DISTINCT date_key").
-		Order("date_key DESC").
+		Select("DISTINCT log_date").
+		Order("log_date DESC").
 		Limit(60).
-		Pluck("date_key", &dates)
+		Pluck("log_date", &dates)
 
 	if len(dates) == 0 {
 		return 0
@@ -83,7 +83,7 @@ func (r *growthRepo) calculateStreak(ctx context.Context, userID uint64) int32 {
 	return streak
 }
 
-// UpsertStudyLog 插入或更新学习记录，基于 (user_id, date_key, action, ref_id) 唯一键
+// UpsertStudyLog 插入或更新学习记录，基于 (user_id, log_date, action, ref_id) 唯一键
 func (r *growthRepo) UpsertStudyLog(ctx context.Context, log *biz.StudyLog) error {
 	completedTitlesJSON := joinStudyLogTitles(log.CompletedTitles)
 	skippedTitlesJSON := joinStudyLogTitles(log.SkippedTitles)
@@ -110,7 +110,7 @@ func (r *growthRepo) UpsertStudyLog(ctx context.Context, log *biz.StudyLog) erro
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "user_id"},
-				{Name: "date_key"},
+				{Name: "log_date"},
 				{Name: "action"},
 				{Name: "ref_id"},
 			},
@@ -152,7 +152,7 @@ func (r *growthRepo) GetWeeklyFocusItems(ctx context.Context, userID uint64) ([]
 
 	r.db.WithContext(ctx).
 		Model(&model.StudyLog{}).
-		Where("user_id = ? AND date_key >= ?", userID, weekAgo).
+		Where("user_id = ? AND log_date >= ?", userID, weekAgo).
 		Select("action, COUNT(*) as count").
 		Group("action").
 		Order("count DESC").
@@ -192,9 +192,9 @@ func (r *growthRepo) GetWeeklyStats(ctx context.Context, userID uint64, weeks in
 	weekAgo := time.Now().AddDate(0, 0, -weeks*7).Format("2006-01-02")
 	err := r.db.WithContext(ctx).
 		Model(&model.StudyLog{}).
-		Where("user_id = ? AND date_key >= ?", userID, weekAgo).
+		Where("user_id = ? AND log_date >= ?", userID, weekAgo).
 		Select(
-			"DATE_FORMAT(date_key, '%x-%v') as week, " +
+			"TO_CHAR(log_date, 'IYYY-IW') as week, " +
 				"SUM(CASE WHEN action IN ('practice','question') THEN 1 ELSE 0 END) as questions_answered, " +
 				"SUM(CASE WHEN action = 'interview' THEN 1 ELSE 0 END) as interviews_taken",
 		).

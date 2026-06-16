@@ -1,10 +1,10 @@
 server:
   http:
     addr: 0.0.0.0:8008
-    timeout: 10s
+    timeout: 3m
   grpc:
     addr: 0.0.0.0:9008
-    timeout: 10s
+    timeout: 3m
 
 data:
   database:
@@ -21,7 +21,7 @@ jwt:
   service_secret: "makejob-internal-service-secret"
 
 ai:
-  service_addr: "localhost:9000"
+  service_addr: "localhost:9011"
 
 tts:
   api_key: ""

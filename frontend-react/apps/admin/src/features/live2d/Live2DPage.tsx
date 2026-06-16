@@ -122,7 +122,7 @@ async function fetchTTSConfigs(token: string | null): Promise<TTSConfigOption[]>
     throw new Error(response.message || '获取 TTS 配置列表失败')
   }
 
-  return (response.data?.configs || []).filter((item) => item.support_status === 'ready')
+  return (response.data?.configs || []).filter((item) => item.support_status === 'supported')
 }
 
 /**

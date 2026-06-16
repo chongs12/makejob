@@ -124,15 +124,18 @@ message Live2DDirective {
   int32 motion_duration_ms = 8;
   double intensity = 9;
   int32 duration_ms = 10;
+  string motion_priority = 11;
+  double mouth_open = 12;
+  string source = 13;
 }
 
 message Live2DExpressionLayer {
-  string expression = 1;
+  string key = 1;
   double weight = 2;
 }
 
 message Live2DParameterOverride {
-  string param = 1;
+  string id = 1;
   double value = 2;
 }
 
@@ -275,6 +278,22 @@ message RealtimeInterviewContext {
   repeated InterviewMessage history = 4;
   string current_topic = 5;
   int32 question_index = 6;
+  string live2d_model_key = 7;
+  int32 total_questions = 8;
+  string interview_mode = 9;
+  repeated string topics = 10;
+  repeated string weak_topics = 11;
+  string dialog_id = 12;
+  bool has_started = 13;
+  ResumeProfile resume_profile = 14;
+}
+
+message ResumeProfile {
+  string summary = 1;
+  repeated string skills = 2;
+  repeated string projects = 3;
+  repeated string strengths = 4;
+  repeated string weak_signals = 5;
 }
 
 message BindDialogRequest {

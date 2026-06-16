@@ -307,6 +307,18 @@ func (uc *QuestionUseCase) IsFavorited(ctx context.Context, userID, questionID u
 	return exists
 }
 
+// GetUserNote 获取用户对指定题目的笔记（对齐单体：GetQuestion 填充 user_note）
+func (uc *QuestionUseCase) GetUserNote(ctx context.Context, userID, questionID uint64) (*UserNote, error) {
+	notes, _, err := uc.noteRepo.ListByUser(ctx, userID, questionID, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(notes) == 0 {
+		return nil, nil
+	}
+	return notes[0], nil
+}
+
 func (uc *QuestionUseCase) ListCategories(ctx context.Context, industryID uint64) ([]*Category, error) {
 	return uc.categoryRepo.ListByIndustry(ctx, industryID)
 }
@@ -423,7 +435,7 @@ func (uc *QuestionUseCase) ListFavorites(ctx context.Context, userID uint64, pag
 func (uc *QuestionUseCase) CreateNote(ctx context.Context, userID, questionID uint64, content string) (*UserNote, error) {
 	note := &UserNote{
 		UserID:     userID,
-		QuestionID: questionID,
+		QuestionID: &questionID,
 		Content:    content,
 	}
 	if err := uc.noteRepo.Create(ctx, note); err != nil {
@@ -509,6 +521,7 @@ type GenerateTimedExamRequest struct {
 
 // GetRandomExamRequest 定义随机组卷所需的筛选参数。
 type GetRandomExamRequest struct {
+	UserID        uint64
 	IndustryID    uint64
 	IndustryCode  string
 	CategoryID    uint64
@@ -650,8 +663,8 @@ func (uc *QuestionUseCase) SubmitExam(ctx context.Context, examID, userID uint64
 	return result, nil
 }
 
-// GetRandomExam 按筛选条件随机组装一套题卡。
-func (uc *QuestionUseCase) GetRandomExam(ctx context.Context, req *GetRandomExamRequest) ([]*Question, error) {
+// GetRandomExam 按筛选条件随机组装一套题卡，并创建考试记录以支持后续提交。
+func (uc *QuestionUseCase) GetRandomExam(ctx context.Context, req *GetRandomExamRequest) (*Exam, []*Question, error) {
 	if req.QuestionCount <= 0 {
 		req.QuestionCount = 10
 	}
@@ -661,7 +674,28 @@ func (uc *QuestionUseCase) GetRandomExam(ctx context.Context, req *GetRandomExam
 		CategoryID:   req.CategoryID,
 		Difficulty:   req.Difficulty,
 	}
-	return uc.questionRepo.RandomSelect(ctx, filter, req.QuestionCount)
+	questions, err := uc.questionRepo.RandomSelect(ctx, filter, req.QuestionCount)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(questions) == 0 {
+		return nil, nil, kratosErr.NotFound("NO_QUESTIONS", "无可用题目")
+	}
+	qIDs := make([]uint64, len(questions))
+	for i, q := range questions {
+		qIDs[i] = q.ID
+	}
+	exam := &Exam{
+		UserID:       req.UserID,
+		IndustryCode: req.IndustryCode,
+		QuestionIDs:  qIDs,
+		TimeLimitMin: int32(len(questions)) * 5,
+		Status:       "pending",
+	}
+	if err := uc.examRepo.Create(ctx, exam); err != nil {
+		return nil, nil, err
+	}
+	return exam, questions, nil
 }
 
 // ListQuestionSets 获取题集列表

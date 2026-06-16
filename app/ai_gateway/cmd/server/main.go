@@ -68,6 +68,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// biz 层：各场景业务用例
 	interviewUC := biz.NewInterviewAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
+	interviewSessionUC := biz.NewInterviewSessionUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 	planUC := biz.NewPlanAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 	companionUC := biz.NewCompanionAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
 	quizUC := biz.NewQuizAnalyzerUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)
@@ -77,7 +78,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// service 层：gRPC 服务实现
 	aiGatewayService := service.NewAIGatewayService(
-		interviewUC, planUC, companionUC, quizUC, resumeUC, live2dUC, adminUC,
+		interviewUC, interviewSessionUC, planUC, companionUC, quizUC, resumeUC, live2dUC, adminUC,
 	)
 
 	// auth 拦截器

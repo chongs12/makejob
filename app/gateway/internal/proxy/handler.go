@@ -65,6 +65,12 @@ const (
 	questionPipelineTaskType = "question_pipeline_build"
 )
 
+// defaultMistakeTopicCodes 旧单体内置的错因专题编码列表，用于对齐 ListMistakeTopics 响应格式。
+var defaultMistakeTopicCodes = []string{
+	"state-definition", "edge-cases", "index-control", "data-structure-choice",
+	"complexity-awareness", "debug-chaos", "implementation-incomplete",
+}
+
 // questionPipelineGeneratePayload 描述题目流水线生成接口的 JSON 请求体，供同步、异步与直连 SSE 三种入口共用。
 type questionPipelineGeneratePayload struct {
 	IndustryCode     string   `json:"industry_code"`
@@ -392,6 +398,10 @@ func unwrapSingleListField(value map[string]interface{}) (interface{}, bool) {
 		if listValue, ok := candidate.([]interface{}); ok {
 			return listValue, true
 		}
+		// nil 值也展开为空数组，避免前端收到 {categories: null} 而非 []
+		if candidate == nil {
+			return []interface{}{}, true
+		}
 	}
 	return nil, false
 }
@@ -411,6 +421,10 @@ func adaptLegacyResponseByPath(path string, value interface{}) interface{} {
 		return normalizeAdminRAGConfigPayload(value)
 	case strings.HasSuffix(path, "/admin/tts-configs"):
 		return normalizeAdminTTSConfigPayload(value)
+	case strings.HasSuffix(path, "/admin/industries"):
+		return normalizeAdminListPayload(value, "industries")
+	case strings.HasSuffix(path, "/admin/categories"):
+		return normalizeAdminListPayload(value, "categories")
 	case strings.HasSuffix(path, "/practice-stats"):
 		return normalizePracticeStatsPayload(value)
 	case strings.Contains(path, "/questions/sets"):
@@ -435,6 +449,8 @@ func adaptLegacyResponseByPath(path string, value interface{}) interface{} {
 		return normalizeCommunityPostPayload(value)
 	case strings.HasSuffix(path, "/comments"):
 		return normalizeCommunityCommentListPayload(value)
+	case strings.Contains(path, "/mistake-topics/") || strings.Contains(path, "/mistakes/topics/"):
+		return normalizeMistakeTopicCardPayload(value)
 	default:
 		return value
 	}
@@ -469,28 +485,49 @@ func normalizeCommunityPostPayload(value interface{}) interface{} {
 	return enrichCommunityPost(value)
 }
 
-// normalizeCommunityCommentListPayload 处理评论列表，补齐 author 结构。
+// normalizeCommunityCommentListPayload 处理评论列表，补齐 author 结构，
+// 并将分页对象展平为裸数组以对齐旧单体响应格式。
 func normalizeCommunityCommentListPayload(value interface{}) interface{} {
 	payload, ok := value.(map[string]interface{})
 	if !ok {
-		// 评论也可能以裸数组返回
 		if list, ok := value.([]interface{}); ok {
 			for i, item := range list {
-				list[i] = enrichCommunityAuthor(item)
+				list[i] = enrichCommunityComment(item)
 			}
 			return list
 		}
 		return value
 	}
-	if list, ok := payload["list"].([]interface{}); ok {
+	var list []interface{}
+	if comments, ok := payload["comments"].([]interface{}); ok {
+		list = comments
+	} else if l, ok := payload["list"].([]interface{}); ok {
+		list = l
+	}
+	if list != nil {
 		for i, item := range list {
-			list[i] = enrichCommunityAuthor(item)
+			list[i] = enrichCommunityComment(item)
 		}
+		return list
 	}
 	return payload
 }
 
-// enrichCommunityPost 将帖子的 tags CSV 拆为数组，并补齐 author 嵌套对象与默认布尔字段。
+// enrichCommunityComment 补齐评论的 author 嵌套对象并转换时间格式。
+func enrichCommunityComment(value interface{}) interface{} {
+	comment, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	enrichCommunityAuthor(comment)
+	comment["created_at"] = formatCommunityTime(comment["created_at"])
+	comment["updated_at"] = formatCommunityTime(comment["updated_at"])
+	return comment
+}
+
+// enrichCommunityPost 将帖子的 tags CSV 拆为数组，补齐 author 嵌套对象与默认布尔字段，
+// 将时间格式从 RFC3339 转换为旧单体的 "2006-01-02 15:04" 格式，
+// 并将 post_type 枚举从新微服务格式映射回旧单体格式。
 func enrichCommunityPost(value interface{}) interface{} {
 	post, ok := value.(map[string]interface{})
 	if !ok {
@@ -502,7 +539,51 @@ func enrichCommunityPost(value interface{}) interface{} {
 	ensureBoolField(post, "is_author")
 	ensureBoolField(post, "is_pinned")
 	ensureBoolField(post, "is_recommended")
+	post["created_at"] = formatCommunityTime(post["created_at"])
+	post["updated_at"] = formatCommunityTime(post["updated_at"])
+	// post_type 枚举映射：新微服务 discussion/article/question → 旧单体 article/moment
+	if pt, ok := post["post_type"].(string); ok {
+		post["post_type"] = mapPostTypeToLegacy(pt)
+	}
 	return post
+}
+
+// mapPostTypeToLegacy 将新微服务的 post_type 枚举映射回旧单体格式。
+func mapPostTypeToLegacy(pt string) string {
+	switch pt {
+	case "discussion":
+		return "moment"
+	case "question":
+		return "article"
+	default:
+		return pt
+	}
+}
+
+// mapPostTypeFromLegacy 将旧单体的 post_type 枚举映射为新微服务格式。
+func mapPostTypeFromLegacy(pt string) string {
+	switch pt {
+	case "moment":
+		return "discussion"
+	default:
+		return pt
+	}
+}
+
+// formatCommunityTime 将 RFC3339 时间字符串转换为旧单体的 "2006-01-02 15:04" 格式。
+func formatCommunityTime(value interface{}) interface{} {
+	s, ok := value.(string)
+	if !ok || s == "" {
+		return value
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, s)
+	}
+	if err != nil {
+		return value
+	}
+	return t.Format("2006-01-02 15:04")
 }
 
 // enrichCommunityAuthor 基于扁平的 author_* 字段构造前端期望的嵌套 author 对象。
@@ -555,6 +636,13 @@ func planDetailOrAdjustPath(path string) bool {
 
 // normalizePlanDetailPayload 保证学习计划详情的 tasks 字段始终为数组，避免前端本地投影时 .map 崩溃。
 func normalizePlanDetailPayload(value interface{}) interface{} {
+	// protojson 省略空字段后，PlanDetail 可能只剩 tasks 一个有数据的数组字段，
+	// 被 unwrapSingleListField 展开为裸数组。需要包回对象。
+	if arr, ok := value.([]interface{}); ok {
+		value = map[string]interface{}{
+			"tasks": arr,
+		}
+	}
 	payload, ok := value.(map[string]interface{})
 	if !ok {
 		return value
@@ -595,6 +683,24 @@ func normalizeQuestionDetailPayload(value interface{}) interface{} {
 		payload["tag_list"] = tags
 	} else {
 		payload["tag_list"] = []interface{}{}
+	}
+	// 保证 solution 内嵌数组字段非 nil
+	if solution, ok := payload["solution"].(map[string]interface{}); ok {
+		ensureArrayField(solution, "key_steps")
+		ensureArrayField(solution, "edge_cases")
+		ensureArrayField(solution, "common_mistakes")
+		ensureArrayField(solution, "recommended_tags")
+	}
+	// 保证 answer_template 内嵌数组字段非 nil
+	if tmpl, ok := payload["answer_template"].(map[string]interface{}); ok {
+		ensureArrayField(tmpl, "key_points")
+		ensureArrayField(tmpl, "follow_ups")
+		ensureArrayField(tmpl, "pitfalls")
+	}
+	// 保证 judge_config 内嵌数组字段非 nil
+	if jc, ok := payload["judge_config"].(map[string]interface{}); ok {
+		ensureArrayField(jc, "allowed_languages")
+		ensureArrayField(jc, "public_test_cases")
 	}
 	return payload
 }
@@ -640,6 +746,28 @@ func normalizePracticeRecommendationPayload(value interface{}) interface{} {
 			"priority":                     entry["priority"],
 			"occurrence_count":             entry["occurrence_count"],
 			"priority_explanation":         entry["priority_explanation"],
+		}
+		// 保证字符串字段有默认值，避免前端访问 undefined
+		if item["topic_problem_pattern"] == nil {
+			item["topic_problem_pattern"] = ""
+		}
+		if item["primary_question_set"] == nil {
+			item["primary_question_set"] = ""
+		}
+		if item["dominant_archive_phase_label"] == nil {
+			item["dominant_archive_phase_label"] = ""
+		}
+		if item["recommendation_mode"] == nil {
+			item["recommendation_mode"] = "topic"
+		}
+		if item["source_type"] == nil {
+			item["source_type"] = "learning_archive"
+		}
+		if item["priority_explanation"] == nil {
+			item["priority_explanation"] = ""
+		}
+		if item["occurrence_count"] == nil {
+			item["occurrence_count"] = 0
 		}
 		items = append(items, item)
 	}
@@ -703,6 +831,13 @@ func normalizeInterviewAnswerPayload(value interface{}) interface{} {
 // normalizeGrowthSummaryPayload 保证成长档案摘要里前端无条件遍历的数组字段始终存在，
 // 避免 proto omitempty 省略空数组导致前端 .map/.length 崩溃。
 func normalizeGrowthSummaryPayload(value interface{}) interface{} {
+	// protojson 省略空字段后，GrowthSummary 可能只剩一个有数据的数组字段，
+	// 被 unwrapSingleListField 展开为裸数组。需要包回对象。
+	if arr, ok := value.([]interface{}); ok {
+		value = map[string]interface{}{
+			"recent_study_logs": arr,
+		}
+	}
 	payload, ok := value.(map[string]interface{})
 	if !ok {
 		return value
@@ -714,13 +849,31 @@ func normalizeGrowthSummaryPayload(value interface{}) interface{} {
 	return payload
 }
 
-// normalizeWeeklyFocusPayload 保证本周补强主题的 themes 字段始终为数组。
+// normalizeWeeklyFocusPayload 保证本周补强主题的 themes 字段始终为数组，
+// 并保证每个 theme 内部的数组字段非 nil。
 func normalizeWeeklyFocusPayload(value interface{}) interface{} {
+	// protojson 省略空字段后，WeeklyFocus 可能只剩 themes 一个有数据的数组字段，
+	// 被 unwrapSingleListField 展开为裸数组。需要包回对象。
+	if arr, ok := value.([]interface{}); ok {
+		value = map[string]interface{}{
+			"themes": arr,
+		}
+	}
 	payload, ok := value.(map[string]interface{})
 	if !ok {
 		return value
 	}
 	ensureArrayField(payload, "themes")
+	if themes, ok := payload["themes"].([]interface{}); ok {
+		for _, raw := range themes {
+			if theme, ok := raw.(map[string]interface{}); ok {
+				ensureArrayField(theme, "focus_tags")
+				ensureArrayField(theme, "suggestions")
+				ensureArrayField(theme, "related_question_sets")
+				ensureArrayField(theme, "topic_codes")
+			}
+		}
+	}
 	return payload
 }
 
@@ -920,8 +1073,29 @@ func normalizeAdminTTSConfigPayload(value interface{}) interface{} {
 	}
 }
 
+// normalizeAdminListPayload 将 admin 列表响应（如 {industries: [...]}）展平为裸数组。
+func normalizeAdminListPayload(value interface{}, key string) interface{} {
+	// 已经是数组则直接返回
+	if arr, ok := value.([]interface{}); ok {
+		return arr
+	}
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	// 提取指定 key 的数组字段
+	if arr, ok := payload[key].([]interface{}); ok {
+		return arr
+	}
+	// 如果该字段为 nil，返回空数组
+	if payload[key] == nil {
+		return []interface{}{}
+	}
+	return value
+}
+
 // normalizePracticeStatsPayload 补齐被 proto omitempty 省略的零值统计字段，
-// 避免前端在未答题时读到 undefined 导致 toFixed 崩溃。
+// 并将 category_stats 内的新字段名映射回旧单体字段名。
 func normalizePracticeStatsPayload(value interface{}) interface{} {
 	payload, ok := value.(map[string]interface{})
 	if !ok {
@@ -935,6 +1109,19 @@ func normalizePracticeStatsPayload(value interface{}) interface{} {
 	ensureNumberField(payload, "today_count")
 	ensureNumberField(payload, "streak_days")
 	ensureArrayField(payload, "category_stats")
+	// 将 category_stats 内的新字段名映射回旧单体字段名
+	if stats, ok := payload["category_stats"].([]interface{}); ok {
+		for _, item := range stats {
+			if s, ok := item.(map[string]interface{}); ok {
+				if v, exists := s["answered"]; exists {
+					s["total"] = v
+				}
+				if v, exists := s["accuracy"]; exists {
+					s["accuracy_rate"] = v
+				}
+			}
+		}
+	}
 	return payload
 }
 
@@ -945,12 +1132,25 @@ func ensureNumberField(payload map[string]interface{}, key string) {
 	}
 }
 
+// normalizeMistakeTopicCardPayload 保证错因专题卡片的数组字段始终为非 nil 空数组。
+func normalizeMistakeTopicCardPayload(value interface{}) interface{} {
+	payload, ok := value.(map[string]interface{})
+	if !ok {
+		return value
+	}
+	ensureArrayField(payload, "root_causes")
+	ensureArrayField(payload, "self_check_list")
+	ensureArrayField(payload, "practice_directions")
+	ensureArrayField(payload, "recommended_actions")
+	ensureArrayField(payload, "related_question_sets")
+	return payload
+}
+
 // normalizeQuestionSetsPayload 保证题集列表/详情里的 focus_tags 和 questions 字段始终为数组，
-// 避免 proto omitempty 省略空数组后前端 .length 崩溃。
+// 并将详情响应的嵌套 {info, questions} 结构展平为旧单体的扁平格式。
 func normalizeQuestionSetsPayload(value interface{}) interface{} {
 	switch typed := value.(type) {
 	case []interface{}:
-		// 列表响应（已被 flattenPageResult 展开为裸数组）
 		for _, item := range typed {
 			if m, ok := item.(map[string]interface{}); ok {
 				ensureArrayField(m, "focus_tags")
@@ -959,11 +1159,14 @@ func normalizeQuestionSetsPayload(value interface{}) interface{} {
 		}
 		return typed
 	case map[string]interface{}:
-		// 详情响应（QuestionSetDetail: {info, questions}）
+		// 详情响应：将 {info: {...}, questions: [...]} 展平为扁平结构
 		if info, ok := typed["info"].(map[string]interface{}); ok {
-			ensureArrayField(info, "focus_tags")
-			ensureArrayField(info, "questions")
+			for k, v := range info {
+				typed[k] = v
+			}
+			delete(typed, "info")
 		}
+		ensureArrayField(typed, "focus_tags")
 		ensureArrayField(typed, "questions")
 		return typed
 	default:
@@ -2414,6 +2617,16 @@ func (gw *Gateway) handleGetQuestion(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
+	// 旧单体在题目详情中包含当前用户的笔记；新微服务不返回，Gateway 补查注入。
+	if userID, ok := getUserID(c); ok && gw.questionClient != nil {
+		if notesResp, err := gw.questionClient.ListNotes(c.Request.Context(), &questionv1.ListNotesRequest{
+			UserId:     userID,
+			QuestionId: id,
+			Page:       &sharedv1.PageParam{Page: 1, PageSize: 1},
+		}); err == nil && len(notesResp.Notes) > 0 {
+			resp.UserNote = notesResp.Notes[0]
+		}
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -2812,22 +3025,37 @@ func (gw *Gateway) handleGetRandomExam(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// handleListMistakeTopics 返回当前用户的错题主题聚合，补齐 `/api/v1/mistakes/topics` 入口。
+// handleListMistakeTopics 返回错因专题卡片列表。
+// 旧单体返回静态知识库卡片（7 个预定义专题），新微服务返回用户错误统计。
+// 为对齐旧单体行为，Gateway 逐个调用 GetMistakeTopic 获取静态卡片。
 func (gw *Gateway) handleListMistakeTopics(c *gin.Context) {
-	userID, ok := getUserID(c)
-	if !ok {
-		return
+	codesParam := strings.TrimSpace(c.Query("codes"))
+	var codes []string
+	if codesParam != "" {
+		for _, code := range strings.Split(codesParam, ",") {
+			if trimmed := strings.TrimSpace(code); trimmed != "" {
+				codes = append(codes, trimmed)
+			}
+		}
 	}
-	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "10"), 10, 32)
-	resp, err := gw.questionClient.ListMistakeTopics(c.Request.Context(), &questionv1.ListMistakeTopicsRequest{
-		UserId: userID,
-		Limit:  int32(limit),
-	})
-	if err != nil {
-		grpcErr(c, err)
-		return
+	// 旧单体行为：无 codes 参数时返回全部静态卡片
+	if len(codes) == 0 {
+		codes = defaultMistakeTopicCodes
 	}
-	c.JSON(http.StatusOK, resp)
+	var cards []interface{}
+	for _, code := range codes {
+		card, err := gw.questionClient.GetMistakeTopic(c.Request.Context(), &questionv1.GetMistakeTopicRequest{
+			Code: code,
+		})
+		if err != nil {
+			continue // 跳过不存在的专题
+		}
+		cards = append(cards, card)
+	}
+	if cards == nil {
+		cards = []interface{}{}
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": cards})
 }
 
 // handleGetMistakeTopic 根据错因专题编码查询单个专题卡片详情。
@@ -3390,6 +3618,14 @@ func (gw *Gateway) handleCreatePlan(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
+	// 旧单体同步返回完整计划详情；新微服务异步生成，CreatePlan 仅返回 plan_id。
+	// Gateway 在计划生成完成后补查一次完整详情返回，对齐旧单体行为。
+	if resp.PlanId > 0 {
+		if detail, err := gw.planClient.GetPlan(c.Request.Context(), &planv1.GetPlanRequest{PlanId: resp.PlanId, UserId: userID}); err == nil {
+			c.JSON(http.StatusOK, detail)
+			return
+		}
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -3561,6 +3797,7 @@ func (gw *Gateway) handleSubmitTaskFeedbackV1(c *gin.Context) {
 }
 
 // handleAdjustPlan 触发学习计划调整，允许前端仅提交空对象也能走默认调整流程。
+// 旧单体返回完整计划详情；新微服务返回调整摘要。Gateway 补查完整详情对齐旧单体。
 func (gw *Gateway) handleAdjustPlan(c *gin.Context) {
 	planID, ok := parseID(c, "id")
 	if !ok {
@@ -3577,7 +3814,7 @@ func (gw *Gateway) handleAdjustPlan(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := gw.planClient.AdjustPlan(c.Request.Context(), &planv1.AdjustPlanRequest{
+	_, err := gw.planClient.AdjustPlan(c.Request.Context(), &planv1.AdjustPlanRequest{
 		PlanId: planID,
 		Reason: strings.TrimSpace(req.Reason),
 		UserId: userID,
@@ -3586,7 +3823,12 @@ func (gw *Gateway) handleAdjustPlan(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	// 对齐旧单体：adjust 后返回完整计划详情
+	if detail, err := gw.planClient.GetPlan(c.Request.Context(), &planv1.GetPlanRequest{PlanId: planID, UserId: userID}); err == nil {
+		c.JSON(http.StatusOK, detail)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plan_id": planID, "status": "adjusted"})
 }
 
 func (gw *Gateway) handleCompanionChat(c *gin.Context) {
@@ -3750,9 +3992,11 @@ func (gw *Gateway) handleCreatePost(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title    string `json:"title"`
-		Content  string `json:"content"`
-		Category string `json:"category"`
+		Title    string   `json:"title"`
+		Content  string   `json:"content"`
+		Category string   `json:"category"`
+		PostType string   `json:"post_type"`
+		Tags     []string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -3764,6 +4008,7 @@ func (gw *Gateway) handleCreatePost(c *gin.Context) {
 	}
 	resp, err := gw.communityClient.CreatePost(c.Request.Context(), &communityv1.CreatePostRequest{
 		AuthorId: userID, Title: req.Title, Content: req.Content, Category: req.Category,
+		PostType: mapPostTypeFromLegacy(req.PostType), Tags: strings.Join(req.Tags, ","),
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -3782,15 +4027,16 @@ func (gw *Gateway) handleUpdatePost(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
+		Title   string   `json:"title"`
+		Content string   `json:"content"`
+		Tags    []string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	resp, err := gw.communityClient.UpdatePost(c.Request.Context(), &communityv1.UpdatePostRequest{
-		Id: id, AuthorId: userID, Title: req.Title, Content: req.Content,
+		Id: id, AuthorId: userID, Title: req.Title, Content: req.Content, Tags: strings.Join(req.Tags, ","),
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -5132,13 +5378,10 @@ func (gw *Gateway) handleAdminListTTSConfigs(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
-	defaultBindings := gin.H{
-		"interview": gw.getOptionalAdminConfigUint64(c.Request.Context(), "tts_default_interview"),
-		"companion": gw.getOptionalAdminConfigUint64(c.Request.Context(), "tts_default_companion"),
-	}
+
+	// 直接透传 admin 服务返回的数据，不覆盖
 	items := make([]gin.H, 0, len(resp.GetConfigs()))
 	for _, config := range resp.GetConfigs() {
-		supportStatus, supportMessage := resolveTTSSupportMeta(config.GetEngine())
 		items = append(items, gin.H{
 			"id":               config.GetId(),
 			"name":             config.GetName(),
@@ -5148,15 +5391,32 @@ func (gw *Gateway) handleAdminListTTSConfigs(c *gin.Context) {
 			"params_json":      config.GetParamsJson(),
 			"is_active":        config.GetIsActive(),
 			"sort_order":       config.GetSortOrder(),
-			"support_status":   supportStatus,
-			"support_message":  supportMessage,
+			"support_status":   config.GetSupportStatus(),   // 使用 admin 服务返回的值
+			"support_message":  config.GetSupportMessage(),  // 使用 admin 服务返回的值
+			"scene":            config.GetScene(),           // 使用 admin 服务返回的值
 			"created_at":       config.GetCreatedAt(),
 		})
 	}
+
+	// 转换 providers
+	providers := make([]gin.H, 0, len(resp.GetProviders()))
+	for _, p := range resp.GetProviders() {
+		providers = append(providers, gin.H{
+			"key":             p.GetKey(),
+			"label":           p.GetLabel(),
+			"support_status":  p.GetSupportStatus(),
+			"support_message": p.GetSupportMessage(),
+			"auth_template":   p.GetAuthTemplate(),
+			"params_template": p.GetParamsTemplate(),
+			"auth_fields":     p.GetAuthFields(),
+			"param_fields":    p.GetParamFields(),
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"configs":          items,
-		"providers":        buildLegacyTTSProviders(),
-		"default_bindings": defaultBindings,
+		"providers":        providers,
+		"default_bindings": resp.GetDefaultBindings(),
 	})
 }
 
@@ -5408,15 +5668,19 @@ func (gw *Gateway) handleAdminCreateRAGDocument(c *gin.Context) {
 		DocType    string            `json:"doc_type"`
 		Title      string            `json:"title"`
 		Content    string            `json:"content"`
-		Metadata   map[string]string `json:"metadata"`
+		Metadata   json.RawMessage   `json:"metadata"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	metadataStr := string(req.Metadata)
+	if metadataStr == "null" || metadataStr == "" {
+		metadataStr = ""
+	}
 	resp, err := gw.adminClient.CreateRAGDocument(c.Request.Context(), &adminv1.CreateRAGDocumentRequest{
 		Collection: req.Collection, DocType: req.DocType,
-		Title: req.Title, Content: req.Content, Metadata: req.Metadata,
+		Title: req.Title, Content: req.Content, Metadata: metadataStr,
 	})
 	if err != nil {
 		grpcErr(c, err)
@@ -5435,16 +5699,20 @@ func (gw *Gateway) handleAdminUpdateRAGDocument(c *gin.Context) {
 		DocType    string            `json:"doc_type"`
 		Title      string            `json:"title"`
 		Content    string            `json:"content"`
-		Metadata   map[string]string `json:"metadata"`
+		Metadata   json.RawMessage   `json:"metadata"`
 		IsActive   *bool             `json:"is_active"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	metadataStr := string(req.Metadata)
+	if metadataStr == "null" || metadataStr == "" {
+		metadataStr = ""
+	}
 	_, err := gw.adminClient.UpdateRAGDocument(c.Request.Context(), &adminv1.UpdateRAGDocumentRequest{
 		Id: id, Collection: req.Collection, DocType: req.DocType,
-		Title: req.Title, Content: req.Content, Metadata: req.Metadata, IsActive: req.IsActive,
+		Title: req.Title, Content: req.Content, Metadata: metadataStr, IsActive: req.IsActive,
 	})
 	if err != nil {
 		grpcErr(c, err)

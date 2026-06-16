@@ -62,6 +62,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	taskRepo := data.NewTaskRepo(db)
 	feedbackRepo := data.NewTaskFeedbackRepo(db)
 	adjustmentRepo := data.NewPlanAdjustmentRepo(db)
+	industryRepo := data.NewIndustryRepo(db)
 
 	// data 层：MQ 发布者
 	publisher, err := data.NewMQPublisher(bc.MQ)
@@ -82,7 +83,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	// biz 层：业务用例
-	planUseCase := biz.NewPlanUseCase(planRepo, taskRepo, feedbackRepo, adjustmentRepo, aiClient, diagClient, publisher, logger)
+	planUseCase := biz.NewPlanUseCase(planRepo, taskRepo, feedbackRepo, adjustmentRepo, industryRepo, aiClient, diagClient, publisher, logger)
 
 	// service 层：gRPC 服务实现
 	planService := service.NewPlanService(planUseCase)

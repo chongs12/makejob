@@ -28,14 +28,17 @@ type Server_GRPC struct {
 	Timeout string `yaml:"timeout"`
 }
 
-// RAG 向量检索配置
+// RAG 向量检索配置（对齐单体 rag.Config）
 type RAG struct {
 	MilvusAddr     string `yaml:"milvus_addr"`
+	MilvusUser     string `yaml:"milvus_user"`
+	MilvusPassword string `yaml:"milvus_password"`
 	CollectionName string `yaml:"collection_name"`
 	ArkAPIKey      string `yaml:"ark_api_key"`
 	ArkBaseURL     string `yaml:"ark_base_url"`
 	EmbedModel     string `yaml:"embed_model"`
 	TopK           int    `yaml:"top_k"`
+	ScoreThreshold float64 `yaml:"score_threshold"`
 }
 
 // MQ RabbitMQ 消息队列配置

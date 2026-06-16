@@ -25,6 +25,9 @@ var (
 	ErrInterviewNotRealtime = kratosErr.BadRequest("INTERVIEW_NOT_REALTIME", "面试不是实时模式")
 )
 
+// interviewTimeout 面试超时时间，超过此时间自动结束并生成报告。
+const interviewTimeout = 40 * time.Minute
+
 // InterviewUseCase 面试业务用例
 type InterviewUseCase struct {
 	repo       InterviewRepo
@@ -70,7 +73,6 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	if err != nil {
 		return nil, nil, kratosErr.New(400, "INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
 	}
-	_ = ind
 
 	// 补充默认值：resume_driven 模式下前端可能不传 difficulty 和 question_count
 	difficulty := strings.TrimSpace(req.Difficulty)
@@ -84,7 +86,8 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 
 	interview := &Interview{
 		UserID:         req.UserID,
-		IndustryCode:   req.IndustryCode,
+		IndustryID:     ind.ID,
+		IndustryCode:   req.IndustryCode, // 运行期保留，用于 AI 调用
 		Difficulty:     difficulty,
 		Status:         "ongoing",
 		InterviewMode:  req.InterviewMode,
@@ -96,23 +99,36 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	}
 
 	var firstQuestion *InterviewQuestion
-	if !isRealtimeMode(interview.InterviewMode) {
-		// 首题生成依赖外部 AI，必须放在事务外执行，避免长事务占用数据库连接。
-		aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
-			IndustryCode: req.IndustryCode,
-			Difficulty:   difficulty,
-			ResumeText:   req.ResumeText,
-			JobDesc:      req.JobDescription,
+	if !isRealtimeInterview(interview) {
+		// 调用 AI Gateway 的 StartInterview 获取 sessionID 和首题（对齐单体 InterviewAgent.StartInterview）
+		aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
+			InterviewID:   interview.ID,
+			IndustryCode:  req.IndustryCode,
+			Difficulty:    difficulty,
+			QuestionCount: questionCount,
+			ResumeText:    req.ResumeText,
+			JobDescription: req.JobDescription,
+			InterviewMode: req.InterviewMode,
 		})
 		if err != nil {
 			return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
 		}
-		if aiResp != nil {
-			firstQuestion = aiResp.Question
+
+		// 保存 sessionID 到 AISessionID 字段
+		interview.AISessionID = aiResp.SessionID
+
+		if aiResp.Question != "" {
+			firstQuestion = &InterviewQuestion{
+				Question:   aiResp.Question,
+				Topic:      aiResp.Topic,
+				Difficulty: aiResp.Difficulty,
+				Type:       aiResp.Type,
+				Hints:      aiResp.Hints,
+			}
 		}
 	}
 
-	// 创建面试记录与首题消息必须同事务提交，避免出现“只有会话没有首题”的伪成功状态。
+	// 创建面试记录与首题消息必须同事务提交，避免出现"只有会话没有首题"的伪成功状态。
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.repo.Create(txCtx, interview); err != nil {
 			return kratosErr.InternalServer("CREATE_FAILED", "创建面试失败").WithCause(err)
@@ -136,7 +152,7 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	return interview, firstQuestion, nil
 }
 
-// SubmitAnswer 提交答案并获取 AI 反馈
+// SubmitAnswer 提交答案并获取 AI 反馈（对齐单体 InterviewAgent.EvaluateAnswer + GetNextQuestion）
 func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userID uint64, index int32, answer string) (*AnswerFeedback, *InterviewQuestion, error) {
 	// 1. 获取面试会话
 	interview, err := uc.repo.GetByID(ctx, interviewID)
@@ -150,11 +166,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		return nil, nil, ErrInterviewNotOngoing
 	}
 
-	// 2. 预加载历史消息，后续先走 AI 计算，再统一在事务中落库，避免部分写入成功。
-	history, err := uc.repo.ListMessages(ctx, interviewID)
-	if err != nil {
-		return nil, nil, kratosErr.InternalServer("HISTORY_FAILED", "获取历史消息失败").WithCause(err)
-	}
+	// 2. 保存用户答案消息
 	msg := &InterviewMessage{
 		InterviewID:   interviewID,
 		Role:          "user",
@@ -162,32 +174,43 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		MessageType:   "text",
 		QuestionIndex: index,
 	}
-	historyForAI := append(append(make([]*InterviewMessage, 0, len(history)+1), history...), msg)
 
-	// 3. 调用 AI 服务评估答案（gRPC 跨服务调用）
-	aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
-		InterviewID:   interviewID,
-		IndustryCode:  interview.IndustryCode,
-		Difficulty:    interview.Difficulty,
-		History:       NormalizeHistoryMessages(historyForAI),
-		UserAnswer:    answer,
+	// 3. 调用 AI Gateway 的 EvaluateAnswer 评估答案（对齐单体 InterviewAgent.EvaluateAnswer）
+	evalResp, err := uc.ai.EvaluateAnswer(ctx, &EvaluateAnswerRequest{
+		SessionId:     interview.AISessionID,
 		QuestionIndex: index,
-		ResumeText:    interview.ResumeText,
-		JobDesc:       interview.JobDescription,
+		Answer:        answer,
 	})
 	if err != nil {
 		return nil, nil, kratosErr.InternalServer("AI_CALL_FAILED", "AI 服务调用失败").WithCause(err)
 	}
-	if aiResp == nil {
-		return nil, nil, kratosErr.InternalServer("AI_EMPTY_RESPONSE", "AI 服务返回空响应")
+
+	feedback := &AnswerFeedback{
+		Score:       evalResp.Score,
+		IsCorrect:   evalResp.IsCorrect,
+		Feedback:    evalResp.Feedback,
+		KeyPoints:   evalResp.KeyPoints,
+		Suggestions: evalResp.Suggestions,
+		FollowUp:    evalResp.FollowUp,
+	}
+	feedbackText := strings.TrimSpace(evalResp.Feedback)
+
+	// 4. 调用 AI Gateway 的 GetNextQuestionSession 获取下一题（对齐单体 InterviewAgent.GetNextQuestion）
+	var nextQuestion *InterviewQuestion
+	nextResp, err := uc.ai.GetNextQuestionSession(ctx, &GetNextQuestionSessionRequest{
+		SessionId: interview.AISessionID,
+	})
+	if err == nil && nextResp != nil && nextResp.Question != "" {
+		nextQuestion = &InterviewQuestion{
+			Question:   nextResp.Question,
+			Topic:      nextResp.Topic,
+			Difficulty: nextResp.Difficulty,
+			Type:       nextResp.Type,
+			Hints:      nextResp.Hints,
+		}
 	}
 
-	// 4. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
-	feedback := aiResp.Feedback
-	if feedback == nil {
-		feedback = &AnswerFeedback{}
-	}
-	feedbackText := strings.TrimSpace(feedback.Feedback)
+	// 5. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.repo.CreateMessage(txCtx, msg); err != nil {
 			return kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
@@ -204,7 +227,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 				return kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 回复失败").WithCause(err)
 			}
 		}
-		if nextQuestionMsg := BuildQuestionMessage(interviewID, index+1, aiResp.Question); nextQuestionMsg != nil {
+		if nextQuestionMsg := BuildQuestionMessage(interviewID, index+1, nextQuestion); nextQuestionMsg != nil {
 			if err := uc.repo.CreateMessage(txCtx, nextQuestionMsg); err != nil {
 				return kratosErr.InternalServer("SAVE_NEXT_QUESTION_FAILED", "保存下一题失败").WithCause(err)
 			}
@@ -233,7 +256,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		})
 	}()
 
-	return feedback, aiResp.Question, nil
+	return feedback, nextQuestion, nil
 }
 
 // GetInterview 获取面试详情
@@ -245,6 +268,9 @@ func (uc *InterviewUseCase) GetInterview(ctx context.Context, interviewID, userI
 	if interview.UserID != userID {
 		return nil, nil, ErrUnauthorized
 	}
+
+	// 超时自动结束：避免面试一直卡在 ongoing 状态
+	uc.autoFinishIfExpired(ctx, interview)
 
 	messages, err := uc.repo.ListMessages(ctx, interviewID)
 	if err != nil {
@@ -337,8 +363,17 @@ func (uc *InterviewUseCase) GetNextQuestion(ctx context.Context, interviewID, us
 }
 
 // ListInterviews 获取用户面试列表
+// ListInterviews 获取面试列表，自动结束超时的面试。
 func (uc *InterviewUseCase) ListInterviews(ctx context.Context, userID uint64, page, pageSize int32) ([]*Interview, int64, error) {
-	return uc.repo.ListByUser(ctx, userID, page, pageSize)
+	interviews, total, err := uc.repo.ListByUser(ctx, userID, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	// 超时自动结束：遍历列表中的 ongoing 面试
+	for _, iv := range interviews {
+		uc.autoFinishIfExpired(ctx, iv)
+	}
+	return interviews, total, nil
 }
 
 // GetInterviewStats 供 growth 服务调用的聚合接口（FIX I3: 使用 SQL 聚合避免全量加载）
@@ -392,12 +427,95 @@ func (uc *InterviewUseCase) ProcessResumeParse(ctx context.Context, interviewID,
 	return nil
 }
 
-// GenerateReport MQ 消费者：调用 AI 生成面试报告，保存报告记录并更新面试状态
+// GenerateReport MQ 消费者：调用 AI 生成面试报告，保存报告记录并更新面试状态（对齐单体 InterviewAgent.GenerateReport）
 func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, userID uint64) error {
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
 		return err
 	}
+
+	// 调用 AI Gateway 的 GenerateInterviewReport（对齐单体 InterviewAgent.GenerateReport）
+	reportResp, err := uc.ai.GenerateInterviewReport(ctx, &GenerateInterviewReportRequest{
+		SessionId: interview.AISessionID,
+	})
+	if err != nil {
+		// 降级：如果 AI 报告生成失败，使用本地评分逻辑
+		return uc.generateReportLocally(ctx, interviewID, userID, interview)
+	}
+
+	// 获取编程题诊断（本地逻辑，不依赖 AI）
+	messages, err := uc.repo.ListMessages(ctx, interviewID)
+	if err != nil {
+		return err
+	}
+	pairs := BuildQuestionAnswerPairs(messages)
+	codingAttempts, err := uc.repo.ListCodingAttempts(ctx, interviewID)
+	if err != nil {
+		return err
+	}
+	codingDiagnostics := uc.BuildCodingDiagnostics(ctx, interview, pairs, codingAttempts)
+
+	// 合并 AI 报告和本地编程诊断
+	dimensionScores := reportResp.DimensionScores
+	if dimensionScores == nil {
+		dimensionScores = make(map[string]float64)
+	}
+	strengths := reportResp.Strengths
+	weaknesses := reportResp.Weaknesses
+	suggestions := reportResp.Suggestions
+
+	for _, diagnostic := range codingDiagnostics {
+		if diagnostic == nil {
+			continue
+		}
+		dimensionScores[diagnostic.Topic] = diagnostic.Score
+		strengths = appendUniqueStrings(strengths, diagnostic.StrengthTags...)
+		weaknesses = appendUniqueStrings(weaknesses, diagnostic.MistakeTags...)
+		suggestions = appendUniqueStrings(suggestions, diagnostic.Suggestions...)
+	}
+
+	report := &InterviewReport{
+		InterviewID:           interviewID,
+		OverallScore:          reportResp.OverallScore,
+		DimensionScoresJSON:   marshalJSON(dimensionScores),
+		StrengthsJSON:         marshalJSON(strengths),
+		WeaknessesJSON:        marshalJSON(weaknesses),
+		SuggestionsJSON:       marshalJSON(suggestions),
+		Summary:               reportResp.Summary,
+		CodingDiagnosticsJSON: marshalJSON(codingDiagnostics),
+	}
+
+	// 在事务中完成报告创建和面试状态更新
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.reportRepo.Create(txCtx, report); err != nil {
+			return err
+		}
+		interview.Status = "completed"
+		interview.OverallScore = reportResp.OverallScore
+		return uc.repo.Update(txCtx, interview)
+	}); err != nil {
+		interview.Status = "report_failed"
+		_ = uc.repo.Update(ctx, interview)
+		return err
+	}
+
+	// 结束 AI 会话
+	if interview.AISessionID != "" {
+		_, _ = uc.ai.EndInterviewSession(ctx, &EndInterviewSessionRequest{
+			SessionId: interview.AISessionID,
+		})
+	}
+
+	if uc.publisher != nil {
+		if err := uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, weaknesses, strengths); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// generateReportLocally 本地降级报告生成（当 AI GenerateReport 失败时使用）
+func (uc *InterviewUseCase) generateReportLocally(ctx context.Context, interviewID, userID uint64, interview *Interview) error {
 	messages, err := uc.repo.ListMessages(ctx, interviewID)
 	if err != nil {
 		return err
@@ -471,7 +589,6 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 		CodingDiagnosticsJSON: marshalJSON(codingDiagnostics),
 	}
 
-	// FIX I1+I2: 在事务中完成报告创建和面试状态更新，reportRepo.Create 已使用 ON CONFLICT 保证幂等
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.reportRepo.Create(txCtx, report); err != nil {
 			return err
@@ -556,6 +673,30 @@ func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, us
 	return interview, nil
 }
 
+// autoFinishIfExpired 检查面试是否超时，如果超时自动结束并触发报告生成。
+// 用于 GetInterview、ListInterviews 等读取场景，确保过期面试不会一直卡在 ongoing 状态。
+func (uc *InterviewUseCase) autoFinishIfExpired(ctx context.Context, interview *Interview) {
+	if interview.Status != "ongoing" {
+		return
+	}
+	if interview.CreatedAt.IsZero() || time.Since(interview.CreatedAt) < interviewTimeout {
+		return
+	}
+	log.Infof("面试超时自动结束: interview_id=%d created_at=%v duration=%v", interview.ID, interview.CreatedAt, time.Since(interview.CreatedAt))
+	now := time.Now()
+	interview.Status = "report_generating"
+	interview.FinishedAt = &now
+	if err := uc.repo.Update(ctx, interview); err != nil {
+		log.Errorf("超时自动结束面试失败: interview_id=%d err=%v", interview.ID, err)
+		return
+	}
+	if uc.publisher != nil {
+		if err := uc.publisher.PublishInterviewReportGenerate(ctx, interview.ID, interview.UserID); err != nil {
+			log.Errorf("超时自动发布报告生成消息失败: interview_id=%d err=%v", interview.ID, err)
+		}
+	}
+}
+
 // GetReportResult 面试报告查询结果
 type GetReportResult struct {
 	Status            string
@@ -568,6 +709,8 @@ type GetReportResult struct {
 	Suggestions       []string
 	Summary           string
 	CodingDiagnostics []*CodingDiagnosisBiz
+	DurationSeconds   int32
+	CompletedAt       *time.Time
 }
 
 // CodingAnswerResult 编程题提交结果
@@ -723,20 +866,39 @@ func (uc *InterviewUseCase) IsRealtimeInterview(ctx context.Context, interviewID
 	if interview.Status != "ongoing" {
 		return false, ErrInterviewNotOngoing
 	}
-	return isRealtimeMode(interview.InterviewMode), nil
+	return isRealtimeInterview(interview), nil
 }
 
-// RealtimeContextResult 实时面试上下文结果
+// RealtimeContextResult 实时面试上下文结果（对齐单体 RealtimeInterviewContext）
 type RealtimeContextResult struct {
-	InterviewID   uint64
-	IndustryCode  string
-	Difficulty    string
-	History       []*InterviewMessage
-	CurrentTopic  string
-	QuestionIndex int32
+	InterviewID           uint64
+	IndustryCode          string
+	Live2DModelKey        string
+	TotalQuestions        int
+	AskedQuestionCount    int
+	AnsweredQuestionCount int
+	Difficulty            string
+	Topics                []string
+	WeakTopics            []string
+	InterviewMode         string
+	ResumeProfile         *ResumeProfileData
+	DialogID              string
+	HasStarted            bool
+	History               []*InterviewMessage
+	CurrentTopic          string
+	QuestionIndex         int32
 }
 
-// GetRealtimeContext 加载实时面试上下文（面试信息 + 最近 10 条消息）
+// ResumeProfileData 简历画像数据
+type ResumeProfileData struct {
+	Summary     string   `json:"summary"`
+	Skills      []string `json:"skills"`
+	Projects    []string `json:"projects"`
+	Strengths   []string `json:"strengths"`
+	WeakSignals []string `json:"weak_signals"`
+}
+
+// GetRealtimeContext 加载实时面试上下文（对齐单体：包含简历画像、面试模式等完整信息）
 func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID, userID uint64) (*RealtimeContextResult, error) {
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
@@ -748,7 +910,7 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 	if interview.Status != "ongoing" {
 		return nil, ErrInterviewNotOngoing
 	}
-	if !isRealtimeMode(interview.InterviewMode) {
+	if !isRealtimeInterview(interview) {
 		return nil, ErrInterviewNotRealtime
 	}
 
@@ -758,13 +920,34 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 		return nil, kratosErr.InternalServer("HISTORY_FAILED", "获取最近消息失败").WithCause(err)
 	}
 
+	// 解析简历画像（如果已解析）
+	var resumeProfile *ResumeProfileData
+	if strings.TrimSpace(interview.ResumeParsedJSON) != "" {
+		var profile ResumeProfileData
+		if jsonErr := json.Unmarshal([]byte(interview.ResumeParsedJSON), &profile); jsonErr == nil {
+			resumeProfile = &profile
+		}
+	}
+
+	// 判断面试模式
+	interviewMode := interview.InterviewMode
+	if interviewMode == "" && interview.Live2DModelKey != "" {
+		interviewMode = "realtime"
+	}
+
 	return &RealtimeContextResult{
-		InterviewID:   interview.ID,
-		IndustryCode:  interview.IndustryCode,
-		Difficulty:    interview.Difficulty,
-		History:       recentMessages,
-		CurrentTopic:  ResolveCurrentTopic(recentMessages),
-		QuestionIndex: interview.CurrentIndex,
+		InterviewID:    interview.ID,
+		IndustryCode:   interview.IndustryCode,
+		Live2DModelKey: interview.Live2DModelKey,
+		TotalQuestions: int(interview.QuestionCount),
+		Difficulty:     interview.Difficulty,
+		InterviewMode:  interviewMode,
+		ResumeProfile:  resumeProfile,
+		DialogID:       interview.AISessionID,
+		HasStarted:     interview.CurrentIndex > 0,
+		History:        recentMessages,
+		CurrentTopic:   ResolveCurrentTopic(recentMessages),
+		QuestionIndex:  interview.CurrentIndex,
 	}, nil
 }
 
@@ -780,7 +963,7 @@ func (uc *InterviewUseCase) BindRealtimeDialog(ctx context.Context, interviewID,
 	if interview.Status != "ongoing" {
 		return ErrInterviewNotOngoing
 	}
-	if !isRealtimeMode(interview.InterviewMode) {
+	if !isRealtimeInterview(interview) {
 		return ErrInterviewNotRealtime
 	}
 	return uc.repo.BindRealtimeDialog(ctx, interviewID, dialogID)
@@ -798,7 +981,7 @@ func (uc *InterviewUseCase) AppendRealtimeUserAnswer(ctx context.Context, interv
 	if interview.Status != "ongoing" {
 		return ErrInterviewNotOngoing
 	}
-	if !isRealtimeMode(interview.InterviewMode) {
+	if !isRealtimeInterview(interview) {
 		return ErrInterviewNotRealtime
 	}
 	msg := &InterviewMessage{
@@ -823,7 +1006,7 @@ func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, in
 	if interview.Status != "ongoing" {
 		return false, nil, ErrInterviewNotOngoing
 	}
-	if !isRealtimeMode(interview.InterviewMode) {
+	if !isRealtimeInterview(interview) {
 		return false, nil, ErrInterviewNotRealtime
 	}
 
@@ -875,7 +1058,7 @@ func (uc *InterviewUseCase) GetReport(ctx context.Context, interviewID, userID u
 	// 根据状态返回不同响应
 	switch interview.Status {
 	case "report_generating":
-		return &GetReportResult{Status: "generating"}, nil
+		return &GetReportResult{Status: "report_generating"}, nil
 	case "report_failed":
 		return &GetReportResult{Status: "failed"}, nil
 	case "completed":
@@ -916,6 +1099,8 @@ func (uc *InterviewUseCase) GetReport(ctx context.Context, interviewID, userID u
 			Suggestions:       unmarshalStringSlice(report.SuggestionsJSON),
 			Summary:           report.Summary,
 			CodingDiagnostics: codingDiagnostics,
+			DurationSeconds:   calcDurationSeconds(interview.StartedAt, interview.FinishedAt),
+			CompletedAt:       interview.FinishedAt,
 		}, nil
 	default:
 		return nil, ErrReportNotReady
@@ -931,14 +1116,22 @@ func marshalJSON(v any) string {
 	return string(data)
 }
 
-// unmarshalStringSlice 从 JSON 字符串解析字符串切片
+// calcDurationSeconds 计算面试时长（秒），任一时间点缺失返回 0。
+func calcDurationSeconds(started, finished *time.Time) int32 {
+	if started == nil || finished == nil {
+		return 0
+	}
+	return int32(finished.Sub(*started).Seconds())
+}
+
+// unmarshalStringSlice 从 JSON 字符串解析字符串切片，空输入返回空数组而非 nil。
 func unmarshalStringSlice(jsonStr string) []string {
 	if jsonStr == "" {
-		return nil
+		return []string{}
 	}
 	var result []string
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return nil
+		return []string{}
 	}
 	return result
 }
@@ -963,4 +1156,13 @@ func isRealtimeMode(mode string) bool {
 	default:
 		return false
 	}
+}
+
+// isRealtimeInterview 判断面试是否为实时模式（兼容 InterviewMode 未落库场景）
+// 优先检查 InterviewMode（内存值），其次通过 Live2DModelKey 非空推断
+func isRealtimeInterview(iv *Interview) bool {
+	if isRealtimeMode(iv.InterviewMode) {
+		return true
+	}
+	return strings.TrimSpace(iv.Live2DModelKey) != ""
 }

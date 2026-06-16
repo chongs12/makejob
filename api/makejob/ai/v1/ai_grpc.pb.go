@@ -25,6 +25,13 @@ const (
 	AIService_QuizAnalyzer_FullMethodName                     = "/makejob.ai.v1.AIService/QuizAnalyzer"
 	AIService_ResumeParser_FullMethodName                     = "/makejob.ai.v1.AIService/ResumeParser"
 	AIService_Live2DDirector_FullMethodName                   = "/makejob.ai.v1.AIService/Live2DDirector"
+	AIService_StartInterview_FullMethodName                   = "/makejob.ai.v1.AIService/StartInterview"
+	AIService_EvaluateAnswer_FullMethodName                   = "/makejob.ai.v1.AIService/EvaluateAnswer"
+	AIService_GetNextQuestionSession_FullMethodName           = "/makejob.ai.v1.AIService/GetNextQuestionSession"
+	AIService_GenerateInterviewReport_FullMethodName          = "/makejob.ai.v1.AIService/GenerateInterviewReport"
+	AIService_EndInterviewSession_FullMethodName              = "/makejob.ai.v1.AIService/EndInterviewSession"
+	AIService_GetGreeting_FullMethodName                      = "/makejob.ai.v1.AIService/GetGreeting"
+	AIService_GetEncouragement_FullMethodName                 = "/makejob.ai.v1.AIService/GetEncouragement"
 	AIService_RenderPrompt_FullMethodName                     = "/makejob.ai.v1.AIService/RenderPrompt"
 	AIService_DebugAI_FullMethodName                          = "/makejob.ai.v1.AIService/DebugAI"
 	AIService_GenerateQuestionCandidates_FullMethodName       = "/makejob.ai.v1.AIService/GenerateQuestionCandidates"
@@ -41,6 +48,15 @@ type AIServiceClient interface {
 	QuizAnalyzer(ctx context.Context, in *QuizAnalyzerRequest, opts ...grpc.CallOption) (*QuizAnalyzerResponse, error)
 	ResumeParser(ctx context.Context, in *ResumeParserRequest, opts ...grpc.CallOption) (*ResumeParserResponse, error)
 	Live2DDirector(ctx context.Context, in *Live2DDirectiveRequest, opts ...grpc.CallOption) (*Live2DDirectiveResponse, error)
+	// === Interview 会话式 RPC（对齐单体 InterviewAgent 接口）===
+	StartInterview(ctx context.Context, in *StartInterviewRequest, opts ...grpc.CallOption) (*StartInterviewResponse, error)
+	EvaluateAnswer(ctx context.Context, in *EvaluateAnswerRequest, opts ...grpc.CallOption) (*EvaluateAnswerResponse, error)
+	GetNextQuestionSession(ctx context.Context, in *GetNextQuestionSessionRequest, opts ...grpc.CallOption) (*GetNextQuestionSessionResponse, error)
+	GenerateInterviewReport(ctx context.Context, in *GenerateInterviewReportRequest, opts ...grpc.CallOption) (*GenerateInterviewReportResponse, error)
+	EndInterviewSession(ctx context.Context, in *EndInterviewSessionRequest, opts ...grpc.CallOption) (*EndInterviewSessionResponse, error)
+	// === Companion 扩展 RPC（对齐单体 GetGreeting/GetEncouragement）===
+	GetGreeting(ctx context.Context, in *GetGreetingRequest, opts ...grpc.CallOption) (*GetGreetingResponse, error)
+	GetEncouragement(ctx context.Context, in *GetEncouragementRequest, opts ...grpc.CallOption) (*GetEncouragementResponse, error)
 	// === Admin 调试 RPC ===
 	RenderPrompt(ctx context.Context, in *RenderPromptRequest, opts ...grpc.CallOption) (*RenderPromptResponse, error)
 	DebugAI(ctx context.Context, in *DebugAIRequest, opts ...grpc.CallOption) (*DebugAIResponse, error)
@@ -117,6 +133,76 @@ func (c *aIServiceClient) Live2DDirector(ctx context.Context, in *Live2DDirectiv
 	return out, nil
 }
 
+func (c *aIServiceClient) StartInterview(ctx context.Context, in *StartInterviewRequest, opts ...grpc.CallOption) (*StartInterviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartInterviewResponse)
+	err := c.cc.Invoke(ctx, AIService_StartInterview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) EvaluateAnswer(ctx context.Context, in *EvaluateAnswerRequest, opts ...grpc.CallOption) (*EvaluateAnswerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvaluateAnswerResponse)
+	err := c.cc.Invoke(ctx, AIService_EvaluateAnswer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GetNextQuestionSession(ctx context.Context, in *GetNextQuestionSessionRequest, opts ...grpc.CallOption) (*GetNextQuestionSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNextQuestionSessionResponse)
+	err := c.cc.Invoke(ctx, AIService_GetNextQuestionSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GenerateInterviewReport(ctx context.Context, in *GenerateInterviewReportRequest, opts ...grpc.CallOption) (*GenerateInterviewReportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateInterviewReportResponse)
+	err := c.cc.Invoke(ctx, AIService_GenerateInterviewReport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) EndInterviewSession(ctx context.Context, in *EndInterviewSessionRequest, opts ...grpc.CallOption) (*EndInterviewSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndInterviewSessionResponse)
+	err := c.cc.Invoke(ctx, AIService_EndInterviewSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GetGreeting(ctx context.Context, in *GetGreetingRequest, opts ...grpc.CallOption) (*GetGreetingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetGreetingResponse)
+	err := c.cc.Invoke(ctx, AIService_GetGreeting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GetEncouragement(ctx context.Context, in *GetEncouragementRequest, opts ...grpc.CallOption) (*GetEncouragementResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEncouragementResponse)
+	err := c.cc.Invoke(ctx, AIService_GetEncouragement_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *aIServiceClient) RenderPrompt(ctx context.Context, in *RenderPromptRequest, opts ...grpc.CallOption) (*RenderPromptResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RenderPromptResponse)
@@ -176,6 +262,15 @@ type AIServiceServer interface {
 	QuizAnalyzer(context.Context, *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error)
 	ResumeParser(context.Context, *ResumeParserRequest) (*ResumeParserResponse, error)
 	Live2DDirector(context.Context, *Live2DDirectiveRequest) (*Live2DDirectiveResponse, error)
+	// === Interview 会话式 RPC（对齐单体 InterviewAgent 接口）===
+	StartInterview(context.Context, *StartInterviewRequest) (*StartInterviewResponse, error)
+	EvaluateAnswer(context.Context, *EvaluateAnswerRequest) (*EvaluateAnswerResponse, error)
+	GetNextQuestionSession(context.Context, *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error)
+	GenerateInterviewReport(context.Context, *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error)
+	EndInterviewSession(context.Context, *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error)
+	// === Companion 扩展 RPC（对齐单体 GetGreeting/GetEncouragement）===
+	GetGreeting(context.Context, *GetGreetingRequest) (*GetGreetingResponse, error)
+	GetEncouragement(context.Context, *GetEncouragementRequest) (*GetEncouragementResponse, error)
 	// === Admin 调试 RPC ===
 	RenderPrompt(context.Context, *RenderPromptRequest) (*RenderPromptResponse, error)
 	DebugAI(context.Context, *DebugAIRequest) (*DebugAIResponse, error)
@@ -209,6 +304,27 @@ func (UnimplementedAIServiceServer) ResumeParser(context.Context, *ResumeParserR
 }
 func (UnimplementedAIServiceServer) Live2DDirector(context.Context, *Live2DDirectiveRequest) (*Live2DDirectiveResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Live2DDirector not implemented")
+}
+func (UnimplementedAIServiceServer) StartInterview(context.Context, *StartInterviewRequest) (*StartInterviewResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartInterview not implemented")
+}
+func (UnimplementedAIServiceServer) EvaluateAnswer(context.Context, *EvaluateAnswerRequest) (*EvaluateAnswerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EvaluateAnswer not implemented")
+}
+func (UnimplementedAIServiceServer) GetNextQuestionSession(context.Context, *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNextQuestionSession not implemented")
+}
+func (UnimplementedAIServiceServer) GenerateInterviewReport(context.Context, *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateInterviewReport not implemented")
+}
+func (UnimplementedAIServiceServer) EndInterviewSession(context.Context, *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EndInterviewSession not implemented")
+}
+func (UnimplementedAIServiceServer) GetGreeting(context.Context, *GetGreetingRequest) (*GetGreetingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetGreeting not implemented")
+}
+func (UnimplementedAIServiceServer) GetEncouragement(context.Context, *GetEncouragementRequest) (*GetEncouragementResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetEncouragement not implemented")
 }
 func (UnimplementedAIServiceServer) RenderPrompt(context.Context, *RenderPromptRequest) (*RenderPromptResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RenderPrompt not implemented")
@@ -351,6 +467,132 @@ func _AIService_Live2DDirector_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIService_StartInterview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartInterviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).StartInterview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_StartInterview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).StartInterview(ctx, req.(*StartInterviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_EvaluateAnswer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EvaluateAnswerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).EvaluateAnswer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_EvaluateAnswer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).EvaluateAnswer(ctx, req.(*EvaluateAnswerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GetNextQuestionSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNextQuestionSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GetNextQuestionSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GetNextQuestionSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GetNextQuestionSession(ctx, req.(*GetNextQuestionSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GenerateInterviewReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateInterviewReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GenerateInterviewReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GenerateInterviewReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GenerateInterviewReport(ctx, req.(*GenerateInterviewReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_EndInterviewSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndInterviewSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).EndInterviewSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_EndInterviewSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).EndInterviewSession(ctx, req.(*EndInterviewSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GetGreeting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetGreetingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GetGreeting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GetGreeting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GetGreeting(ctx, req.(*GetGreetingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GetEncouragement_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEncouragementRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GetEncouragement(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GetEncouragement_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GetEncouragement(ctx, req.(*GetEncouragementRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AIService_RenderPrompt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RenderPromptRequest)
 	if err := dec(in); err != nil {
@@ -446,6 +688,34 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Live2DDirector",
 			Handler:    _AIService_Live2DDirector_Handler,
+		},
+		{
+			MethodName: "StartInterview",
+			Handler:    _AIService_StartInterview_Handler,
+		},
+		{
+			MethodName: "EvaluateAnswer",
+			Handler:    _AIService_EvaluateAnswer_Handler,
+		},
+		{
+			MethodName: "GetNextQuestionSession",
+			Handler:    _AIService_GetNextQuestionSession_Handler,
+		},
+		{
+			MethodName: "GenerateInterviewReport",
+			Handler:    _AIService_GenerateInterviewReport_Handler,
+		},
+		{
+			MethodName: "EndInterviewSession",
+			Handler:    _AIService_EndInterviewSession_Handler,
+		},
+		{
+			MethodName: "GetGreeting",
+			Handler:    _AIService_GetGreeting_Handler,
+		},
+		{
+			MethodName: "GetEncouragement",
+			Handler:    _AIService_GetEncouragement_Handler,
 		},
 		{
 			MethodName: "RenderPrompt",

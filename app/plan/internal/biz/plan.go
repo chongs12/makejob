@@ -34,23 +34,42 @@ var (
 )
 
 // LearningPlan 学习计划实体（FIX P2: 添加 DeletedAt 支持软删除）
+// 对齐单体 learning_plans 表结构：非持久化字段标记 gorm:"-"
 type LearningPlan struct {
-	ID                uint64         `gorm:"primaryKey;autoIncrement"`
-	UserID            uint64         `gorm:"index;not null"`
-	Title             string         `gorm:"size:200;not null"`
-	Description       string         `gorm:"size:1000"`
-	Level             string         `gorm:"size:20;not null"`
-	DurationDays      int32          `gorm:"not null"`
-	DailyStudyMinutes int32          `gorm:"not null"`
-	Industry          string         `gorm:"size:50;not null"`
-	Status            string         `gorm:"size:20;not null;default:'generating'"`
-	CompletedTasks    int32          `gorm:"not null;default:0"`
-	TotalTasks        int32          `gorm:"not null;default:0"`
-	Phase             string         `gorm:"size:50"`
-	PhaseGoal         string         `gorm:"size:500"`
-	CreatedAt         time.Time      `gorm:"not null;autoCreateTime"`
-	UpdatedAt         time.Time      `gorm:"not null;autoUpdateTime"`
-	DeletedAt         gorm.DeletedAt `gorm:"index"`
+	ID         uint64         `gorm:"primaryKey;autoIncrement"`
+	UserID     uint64         `gorm:"index;not null"`
+	IndustryID uint64         `gorm:"column:industry_id;index;not null"`
+	Title      string         `gorm:"size:200;not null"`
+	Description string        `gorm:"size:1000"`
+	PlanJSON   string         `gorm:"column:plan_json;type:text"`
+	Status     string         `gorm:"size:20;not null;default:'generating'"`
+	TotalTasks int32          `gorm:"not null;default:0"`
+	CompletedTasks int32      `gorm:"not null;default:0"`
+	StartDate  *time.Time     `gorm:"column:start_date"`
+	EndDate    *time.Time     `gorm:"column:end_date"`
+	Phase      string         `gorm:"size:50"`
+	PhaseGoal  string         `gorm:"size:500"`
+	CreatedAt  time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt  time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt  gorm.DeletedAt `gorm:"index"`
+
+	// 运行期字段，仅内存流转，不落库
+	Level                    string `gorm:"-"`
+	DurationDays             int32  `gorm:"-"`
+	DailyStudyMinutes        int32  `gorm:"-"`
+	Industry                 string `gorm:"-"`
+	EntryPhase               string `gorm:"-"`
+	AdjustmentSummariesJSON  string `gorm:"-"`
+	AdjustmentReasonCodesJSON string `gorm:"-"`
+	PhaseBlueprintSummaryJSON string `gorm:"-"`
+}
+
+// PhaseBlueprintSummaryEntry 阶段蓝图摘要条目
+type PhaseBlueprintSummaryEntry struct {
+	Phase     string `json:"phase"`
+	PhaseGoal string `json:"phase_goal"`
+	StartDay  int    `json:"start_day"`
+	EndDay    int    `json:"end_day"`
 }
 
 // TableName 指定学习计划表名
@@ -110,25 +129,34 @@ func buildTaskReason(title, phase string) string {
 }
 
 // LearningTask 学习任务实体
+// 对齐单体 learning_tasks 表结构：非持久化字段标记 gorm:"-"
 type LearningTask struct {
-	ID              uint64         `gorm:"primaryKey;autoIncrement"`
-	PlanID          uint64         `gorm:"index;not null"`
-	Title           string         `gorm:"size:200;not null"`
-	Description     string         `gorm:"size:1000"`
-	TaskType        string         `gorm:"size:20;not null"`
-	Phase           string         `gorm:"size:50"`
-	DayNumber       int32          `gorm:"not null"`
-	DurationMinutes int32          `gorm:"not null"`
-	Priority        string         `gorm:"size:10;not null;default:'medium'"`
-	Status          string         `gorm:"size:20;not null;default:'pending'"`
-	CompletedAt     *time.Time     `gorm:"default:null"`
-	SortOrder       int32          `gorm:"not null;default:0"`
-	Source          string         `gorm:"size:50"`
-	SourceLabel     string         `gorm:"size:100"`
-	Reason          string         `gorm:"size:500"`
-	CreatedAt       time.Time      `gorm:"not null;autoCreateTime"`
-	UpdatedAt       time.Time      `gorm:"not null;autoUpdateTime"`
-	DeletedAt       gorm.DeletedAt `gorm:"index"`
+	ID           uint64         `gorm:"primaryKey;autoIncrement"`
+	PlanID       uint64         `gorm:"index;not null"`
+	Title        string         `gorm:"size:200;not null"`
+	Description  string         `gorm:"size:1000"`
+	TaskType     string         `gorm:"size:20;not null"`
+	Phase        string         `gorm:"size:50"`
+	PhaseGoal    string         `gorm:"column:phase_goal;size:500"`
+	TargetID     *uint64        `gorm:"column:target_id"`
+	Status       string         `gorm:"size:20;not null;default:'pending'"`
+	DueDate      *time.Time     `gorm:"column:due_date"`
+	CompletedAt  *time.Time     `gorm:"default:null"`
+	SortOrder    int32          `gorm:"not null;default:0"`
+	CreatedAt    time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt    time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt    gorm.DeletedAt `gorm:"index"`
+
+	// 运行期字段，仅内存流转，不落库
+	DayNumber           int32  `gorm:"-"`
+	DurationMinutes     int32  `gorm:"-"`
+	Priority            string `gorm:"-"`
+	Source              string `gorm:"-"`
+	SourceLabel         string `gorm:"-"`
+	Reason              string `gorm:"-"`
+	PriorityExplanation string `gorm:"-"`
+	SourceRef           string `gorm:"-"`
+	CollectionHint      string `gorm:"-"`
 }
 
 // TableName 指定学习任务表名
@@ -327,19 +355,26 @@ type PlanUseCase struct {
 	taskRepo       TaskRepo
 	feedbackRepo   TaskFeedbackRepo
 	adjustmentRepo PlanAdjustmentRepo
+	industryRepo   IndustryRepo
 	aiClient       PlanAgentClient
 	diagClient     DiagnosisClient
 	publisher      MQPublisher
 	logger         *log.Helper
 }
 
+// IndustryRepo 行业仓储接口，用于 code→id 解析
+type IndustryRepo interface {
+	GetIDByCode(ctx context.Context, code string) (uint64, error)
+}
+
 // NewPlanUseCase 创建学习计划业务用例
-func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, logger log.Logger) *PlanUseCase {
+func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, industryRepo IndustryRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, logger log.Logger) *PlanUseCase {
 	return &PlanUseCase{
 		repo:           repo,
 		taskRepo:       taskRepo,
 		feedbackRepo:   feedbackRepo,
 		adjustmentRepo: adjustmentRepo,
+		industryRepo:   industryRepo,
 		aiClient:       aiClient,
 		diagClient:     diagClient,
 		publisher:      publisher,
@@ -386,15 +421,23 @@ func (uc *PlanUseCase) CreatePlan(ctx context.Context, req *CreatePlanRequest) (
 		req.DailyHours = int32(math.Ceil(float64(req.DailyStudyMinutes) / 60))
 	}
 
+	// 解析 industry code → industry_id
+	industryID, err := uc.industryRepo.GetIDByCode(ctx, req.IndustryCode)
+	if err != nil {
+		return nil, kratosErr.BadRequest("INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
+	}
+
 	plan := &LearningPlan{
 		UserID:            req.UserID,
+		IndustryID:        industryID,
 		Title:             fmt.Sprintf("%s 学习计划", req.IndustryCode),
 		Description:       req.Goal,
+		Status:            "generating",
+		// 运行期字段保留，用于 AI 生成
 		Level:             req.Level,
 		DurationDays:      req.DurationDays,
 		DailyStudyMinutes: req.DailyStudyMinutes,
 		Industry:          req.IndustryCode,
-		Status:            "generating",
 	}
 	if err := uc.repo.Create(ctx, plan); err != nil {
 		return nil, kratosErr.InternalServer("CREATE_PLAN_FAILED", "创建学习计划失败").WithCause(err)

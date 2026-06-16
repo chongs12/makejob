@@ -34,7 +34,7 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 	// 构建富上下文消息：将 plan/goal 信息注入到 message 中供 AI 参考
 	message := buildEnrichedMessage(req)
 
-	result, err := s.uc.Chat(ctx, userID, message, req.GetContextType())
+	result, err := s.uc.Chat(ctx, userID, message, req.GetContextType(), req.GetLive2DModelKey())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -45,6 +45,7 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 		Action:      result.Action,
 		Suggestions: result.Suggestions,
 		AudioUrl:    result.AudioURL,
+		Live2DDirective: toProtoLive2DDirective(result.Live2DDirective),
 	}, nil
 }
 
@@ -156,4 +157,44 @@ func toGRPCError(err error) error {
 		return err
 	}
 	return kratosErr.InternalServer("INTERNAL", err.Error())
+}
+
+// toProtoLive2DDirective 将 biz Live2DDirectiveResponse 转换为 proto Live2DDirective
+func toProtoLive2DDirective(resp *biz.Live2DDirectiveResponse) *companionv1.Live2DDirective {
+	if resp == nil {
+		return nil
+	}
+	expressionMix := make([]*companionv1.Live2DDirectiveExpressionLayer, 0, len(resp.ExpressionMix))
+	for _, e := range resp.ExpressionMix {
+		expressionMix = append(expressionMix, &companionv1.Live2DDirectiveExpressionLayer{
+			Key:    e.Key,
+			Weight: float32(e.Weight),
+		})
+	}
+	parameterOverrides := make([]*companionv1.Live2DDirectiveParameterOverride, 0, len(resp.ParameterOverrides))
+	for _, p := range resp.ParameterOverrides {
+		parameterOverrides = append(parameterOverrides, &companionv1.Live2DDirectiveParameterOverride{
+			Id:    p.ID,
+			Value: float32(p.Value),
+		})
+	}
+	mouthOpen := float32(0)
+	if resp.MouthOpen != nil {
+		mouthOpen = float32(*resp.MouthOpen)
+	}
+	return &companionv1.Live2DDirective{
+		Reply:              resp.Reply,
+		Emotion:            resp.Emotion,
+		Action:             resp.Action,
+		ExpressionMix:      expressionMix,
+		ParameterOverrides: parameterOverrides,
+		MotionKey:          resp.MotionKey,
+		MotionGroup:        resp.MotionGroup,
+		MotionPriority:     resp.MotionPriority,
+		MotionDurationMs:   int32(resp.MotionDurationMS),
+		Intensity:          float32(resp.Intensity),
+		DurationMs:         int32(resp.DurationMS),
+		MouthOpen:          mouthOpen,
+		Source:             resp.Source,
+	}
 }

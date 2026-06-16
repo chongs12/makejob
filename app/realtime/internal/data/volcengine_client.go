@@ -1,136 +1,130 @@
 package data
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"time"
+	"strings"
+	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"makejob/app/realtime/internal/biz"
 	"makejob/app/realtime/internal/conf"
 )
 
-// ========== 二进制帧协议常量 ==========
+// 火山实时语音事件常量（对齐单体 realtime/volcengine/client.go）
 
 const (
-	// 帧头固定 12 字节
-	frameHeaderSize = 12
+	defaultRealtimeDialogAppKey = "PlgvMymc7f3tQnJ6"
 
-	// 消息类型
-	msgTypeFullClientRequest = 0x01 // 客户端请求
-	msgTypeServerResponse    = 0x09 // 服务端响应
-	msgTypeControl           = 100  // 控制事件
-	msgTypeASR               = 501  // ASR 语音识别
-	msgTypeChat              = 502  // Chat 对话
-	msgTypeTTS               = 503  // TTS 语音合成
+	EventStartConnection  int32 = 1
+	EventFinishConnection int32 = 2
+	EventStartSession     int32 = 100
+	EventFinishSession    int32 = 102
+	EventTaskRequest      int32 = 200
+	EventSayHello         int32 = 300
+	EventEndASR           int32 = 400
+	EventChatTextQuery    int32 = 501
+	EventChatTTSText      int32 = 500
+	EventChatRAGText      int32 = 502
 
-	// 序列化方式
-	serializationJSON    = 1
-	serializationProto   = 2
-	serializationFlatBuf = 3
-
-	// 压缩方式
-	compressionNone = 0
-	compressionGzip = 1
-
-	// Flag 位
-	flagPositiveSequence = 0x01
-
-	// FrameHeader 中 byte0 的值：version=1, header_size=12 → (1<<4)|12 = 0x1C
-	frameHeaderByte0 = 0x1C
+	EventConnectionStarted int32 = 50
+	EventSessionStarted    int32 = 150
+	EventSessionFinished   int32 = 152
+	EventSessionFailed     int32 = 153
+	EventTTSSentenceStart  int32 = 350
+	EventTTSSentenceEnd    int32 = 351
+	EventTTSResponse       int32 = 352
+	EventTTSEnded          int32 = 359
+	EventASRInfo           int32 = 450
+	EventASRResponse       int32 = 451
+	EventASREnded          int32 = 459
+	EventChatResponse      int32 = 550
+	EventChatTextQueryConfirmed int32 = 553
+	EventChatEnded         int32 = 559
 )
 
-// frameHeader 二进制帧头结构
-//
-// 布局（12 字节）:
-//
-//	[0]  version(4bit) | header_size(4bit) → 0x1C
-//	[1]  message_type（完整字节）
-//	[2]  flags
-//	[3]  serialization(4bit) | compression(4bit)
-//	[4-7]  reserved
-//	[8-10] payload_size（24bit 大端序）
-//	[11]   reserved
-type frameHeader struct {
-	MessageType   uint8
-	Flags         uint8
-	Serialization uint8
-	Compression   uint8
-	PayloadSize   uint32
+// startSessionPayload 启动会话时的配置载荷
+type startSessionPayload struct {
+	ASR    asrPayload    `json:"asr"`
+	TTS    ttsPayload    `json:"tts"`
+	Dialog dialogPayload `json:"dialog"`
 }
 
-// encode 将帧头编码为 12 字节
-func (h *frameHeader) encode() []byte {
-	buf := make([]byte, frameHeaderSize)
-	buf[0] = frameHeaderByte0
-	buf[1] = h.MessageType
-	buf[2] = h.Flags
-	buf[3] = (h.Serialization << 4) | (h.Compression & 0x0F)
-	// bytes 4-7 为 reserved，保持 0
-	// payload_size 写入 bytes 8-10（24bit 大端序）
-	payloadSizeBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(payloadSizeBytes, h.PayloadSize)
-	copy(buf[8:11], payloadSizeBytes[1:4])
-	return buf
+type asrPayload struct {
+	AudioInfo audioInfo              `json:"audio_info"`
+	Extra     map[string]interface{} `json:"extra"`
 }
 
-// decodeFrameHeader 从 12 字节解码帧头
-func decodeFrameHeader(data []byte) (*frameHeader, error) {
-	if len(data) < frameHeaderSize {
-		return nil, fmt.Errorf("帧头数据不足: 需要 %d 字节，实际 %d 字节", frameHeaderSize, len(data))
-	}
-	h := &frameHeader{
-		MessageType:   data[1],
-		Flags:         data[2],
-		Serialization: (data[3] >> 4) & 0x0F,
-		Compression:   data[3] & 0x0F,
-	}
-	// 从 bytes 8-10 读取 24bit payload size
-	payloadSizeBytes := []byte{0, data[8], data[9], data[10]}
-	h.PayloadSize = binary.BigEndian.Uint32(payloadSizeBytes)
-	return h, nil
+type audioInfo struct {
+	Format     string `json:"format"`
+	SampleRate int    `json:"sample_rate"`
+	Channel    int    `json:"channel"`
 }
 
-// volcEvent 火山引擎服务端事件
-type volcEvent struct {
-	Header  *frameHeader
-	Payload []byte
+type ttsPayload struct {
+	Speaker     string      `json:"speaker"`
+	AudioConfig audioConfig `json:"audio_config"`
 }
 
-// GetMessageType 返回事件消息类型
-func (e *volcEvent) GetMessageType() int {
-	return int(e.Header.MessageType)
+type audioConfig struct {
+	Channel    int    `json:"channel"`
+	Format     string `json:"format"`
+	SampleRate int    `json:"sample_rate"`
 }
 
-// GetPayload 返回事件载荷
-func (e *volcEvent) GetPayload() []byte {
-	return e.Payload
+type dialogPayload struct {
+	DialogID          string                 `json:"dialog_id"`
+	BotName           string                 `json:"bot_name"`
+	SystemRole        string                 `json:"system_role"`
+	SpeakingStyle     string                 `json:"speaking_style"`
+	CharacterManifest string                 `json:"character_manifest,omitempty"`
+	Location          *locationInfo          `json:"location,omitempty"`
+	Extra             map[string]interface{} `json:"extra"`
 }
 
-// ========== VolcengineClient 实现 ==========
+type locationInfo struct {
+	City string `json:"city"`
+}
 
-// volcengineClient 火山引擎 WebSocket 客户端
+type chatTextQueryPayload struct {
+	Content string `json:"content"`
+}
+
+type sayHelloPayload struct {
+	Content string `json:"content"`
+}
+
+type chatTTSTextPayload struct {
+	Start   bool   `json:"start"`
+	Content string `json:"content"`
+	End     bool   `json:"end"`
+}
+
+type chatRAGTextPayload struct {
+	ExternalRAG string `json:"external_rag"`
+}
+
+// volcengineClient 封装火山端到端实时语音 WebSocket 会话（对齐单体 Client）
 type volcengineClient struct {
-	conn  *websocket.Conn
-	appID string
-	token string
-	wsURL string
+	cfg       *conf.Volcengine
+	conn      *websocket.Conn
+	sessionID string
+	dialogID  string
+	events    chan biz.VolcEvent
+	writeMu   sync.Mutex
+	closeOnce sync.Once
 }
 
-// NewVolcEngineFactory 创建火山引擎连接工厂函数
+// NewVolcEngineFactory 创建火山引擎连接工厂函数（对齐单体 NewClient + Start 流程）
 func NewVolcEngineFactory(cfg *conf.Volcengine) biz.VolcEngineFactory {
 	return func(ctx context.Context) (biz.VolcEngineConn, error) {
-		client := &volcengineClient{
-			appID: cfg.AppID,
-			token: cfg.Token,
-			wsURL: cfg.WSUrl,
+		client, err := newVolcengineClient(cfg)
+		if err != nil {
+			return nil, err
 		}
 		if err := client.connect(ctx); err != nil {
 			return nil, err
@@ -139,190 +133,373 @@ func NewVolcEngineFactory(cfg *conf.Volcengine) biz.VolcEngineFactory {
 	}
 }
 
-// connect 建立与火山引擎的 WebSocket 连接
-func (c *volcengineClient) connect(ctx context.Context) error {
-	wsURL := c.wsURL
-	if wsURL == "" {
-		// 未配置 ws_url 时，通过 API 获取连接地址
-		endpoint, err := c.fetchEndpoint(ctx)
+// NewVolcEngineSessionFactory 创建火山引擎会话工厂函数（支持 StartOptions）
+func NewVolcEngineSessionFactory(cfg *conf.Volcengine) biz.VolcEngineSessionFactory {
+	return func(ctx context.Context, opts biz.VolcStartOptions) (biz.VolcEngineSessionConn, error) {
+		client, err := newVolcengineClient(cfg)
 		if err != nil {
-			return fmt.Errorf("获取火山引擎 WebSocket 端点失败: %w", err)
+			return nil, err
 		}
-		wsURL = endpoint
-	}
-
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-	}
-
-	header := http.Header{}
-	header.Set("X-Api-App-Key", c.appID)
-	header.Set("X-Api-Access-Key", c.token)
-	header.Set("X-Api-Resource-Id", "volc.bigasr.sauc.duration")
-	header.Set("X-Api-Connect-Id", fmt.Sprintf("rt-%d", time.Now().UnixNano()))
-
-	conn, _, err := dialer.DialContext(ctx, wsURL, header)
-	if err != nil {
-		return fmt.Errorf("火山引擎 WebSocket 连接失败: %w", err)
-	}
-	c.conn = conn
-
-	// 发送初始化请求
-	return c.sendInitRequest()
-}
-
-// fetchEndpoint 通过 API 获取火山引擎 WebSocket 端点
-func (c *volcengineClient) fetchEndpoint(ctx context.Context) (string, error) {
-	apiURL := "https://openspeech.bytedance.com/api/v1/ws/sauc/bigmodel"
-
-	reqBody := map[string]interface{}{
-		"app_id":     c.appID,
-		"token":      c.token,
-		"resource_id": "volc.bigasr.sauc.duration",
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("请求火山引擎 API 失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Code      int    `json:"code"`
-		WsURL     string `json:"ws_url"`
-		Message   string `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("解析 API 响应失败: %w", err)
-	}
-	if result.Code != 0 {
-		return "", fmt.Errorf("火山引擎 API 返回错误: code=%d, message=%s", result.Code, result.Message)
-	}
-	if result.WsURL == "" {
-		return "", fmt.Errorf("火山引擎 API 未返回 ws_url")
-	}
-	return result.WsURL, nil
-}
-
-// sendInitRequest 发送初始化配置请求（全双工模式 + JSON 序列化）
-func (c *volcengineClient) sendInitRequest() error {
-	initPayload := map[string]interface{}{
-		"appkey":    c.appID,
-		"cluster":   "volc.bigasr.sauc.duration",
-		"request_id": fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		"language":   "zh-CN",
-	}
-	payload, err := json.Marshal(initPayload)
-	if err != nil {
-		return fmt.Errorf("序列化初始化请求失败: %w", err)
-	}
-
-	hdr := &frameHeader{
-		MessageType:   msgTypeFullClientRequest,
-		Flags:         flagPositiveSequence,
-		Serialization: serializationJSON,
-		Compression:   compressionNone,
-		PayloadSize:   uint32(len(payload)),
-	}
-
-	msg := append(hdr.encode(), payload...)
-	return c.conn.WriteMessage(websocket.BinaryMessage, msg)
-}
-
-// SendAudio 发送音频数据到火山引擎
-func (c *volcengineClient) SendAudio(data []byte) error {
-	hdr := &frameHeader{
-		MessageType:   msgTypeFullClientRequest,
-		Flags:         flagPositiveSequence,
-		Serialization: serializationJSON,
-		Compression:   compressionNone,
-		PayloadSize:   uint32(len(data)),
-	}
-
-	msg := append(hdr.encode(), data...)
-	return c.conn.WriteMessage(websocket.BinaryMessage, msg)
-}
-
-// ReadEvent 读取火山引擎服务端事件
-func (c *volcengineClient) ReadEvent() (*biz.VolcEvent, error) {
-	msgType, data, err := c.conn.ReadMessage()
-	if err != nil {
-		return nil, fmt.Errorf("读取火山引擎消息失败: %w", err)
-	}
-
-	if msgType != websocket.BinaryMessage {
-		return nil, fmt.Errorf("预期二进制消息，收到类型: %d", msgType)
-	}
-
-	if len(data) < frameHeaderSize {
-		return nil, fmt.Errorf("消息长度不足: 需要至少 %d 字节", frameHeaderSize)
-	}
-
-	hdr, err := decodeFrameHeader(data[:frameHeaderSize])
-	if err != nil {
-		return nil, fmt.Errorf("解码帧头失败: %w", err)
-	}
-
-	payload := data[frameHeaderSize:]
-	// FIX R1: 实现 gzip 解压
-	if hdr.Compression == compressionGzip {
-		gr, err := gzip.NewReader(bytes.NewReader(payload))
+		dialogID, err := client.Start(ctx, opts)
 		if err != nil {
-			return nil, fmt.Errorf("创建 gzip reader 失败: %w", err)
+			return nil, err
 		}
-		defer gr.Close()
-		decompressed, err := io.ReadAll(gr)
-		if err != nil {
-			return nil, fmt.Errorf("gzip 解压失败: %w", err)
-		}
-		payload = decompressed
+		client.dialogID = dialogID
+		return client, nil
+	}
+}
+
+// VolcEngineSessionConn 火山引擎会话连接接口（扩展 VolcEngineConn）
+type VolcEngineSessionConn interface {
+	biz.VolcEngineConn
+	SendTextQuery(text string) error
+	SendSayHello(text string) error
+	SendEndASR() error
+	SendChatTTSText(content string) error
+	SendChatRAGText(externalRAG string) error
+	DialogID() string
+	Events() <-chan biz.VolcEvent
+}
+
+// newVolcengineClient 创建火山引擎客户端实例
+func newVolcengineClient(cfg *conf.Volcengine) (*volcengineClient, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("volcengine config is nil")
+	}
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("realtime dialog is disabled; set volcengine.enabled=true")
+	}
+	if strings.TrimSpace(cfg.AppID) == "" {
+		return nil, fmt.Errorf("realtime dialog config missing app_id")
+	}
+	if strings.TrimSpace(cfg.AccessToken) == "" {
+		return nil, fmt.Errorf("realtime dialog config missing access_token")
 	}
 
-	return &biz.VolcEvent{
-		Type:    int(hdr.MessageType),
-		Payload: payload,
+	return &volcengineClient{
+		cfg:    cfg,
+		events: make(chan biz.VolcEvent, 128),
 	}, nil
 }
 
-// InjectContext 注入上下文文本到火山引擎会话
-func (c *volcengineClient) InjectContext(text string) error {
-	payload := map[string]interface{}{
-		"event":   "inject_context",
-		"context": text,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("序列化上下文注入请求失败: %w", err)
-	}
-
-	hdr := &frameHeader{
-		MessageType:   msgTypeControl,
-		Flags:         0,
-		Serialization: serializationJSON,
-		Compression:   compressionNone,
-		PayloadSize:   uint32(len(data)),
-	}
-
-	msg := append(hdr.encode(), data...)
-	return c.conn.WriteMessage(websocket.BinaryMessage, msg)
+// connect 建立 WebSocket 连接并完成握手（简化版，兼容旧接口）
+func (c *volcengineClient) connect(ctx context.Context) error {
+	return c.StartWithDefaults(ctx)
 }
 
-// Close 关闭 WebSocket 连接
+// StartWithDefaults 使用默认配置启动会话
+func (c *volcengineClient) StartWithDefaults(ctx context.Context) error {
+	_, err := c.Start(ctx, biz.VolcStartOptions{})
+	return err
+}
+
+// Start 完成建连、鉴权和 StartSession，并返回服务端生成的 dialog_id（对齐单体 Client.Start）
+func (c *volcengineClient) Start(ctx context.Context, opts biz.VolcStartOptions) (string, error) {
+	baseURL := strings.TrimSpace(c.cfg.BaseURL)
+	if baseURL == "" {
+		baseURL = "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
+	}
+	appKey := defaultRealtimeDialogAppKey
+	resourceID := strings.TrimSpace(c.cfg.ResourceID)
+	if resourceID == "" {
+		resourceID = "volc.speech.dialog"
+	}
+
+	dialer := websocket.Dialer{}
+	headers := http.Header{
+		"X-Api-Resource-Id": []string{resourceID},
+		"X-Api-Access-Key":  []string{c.cfg.AccessToken},
+		"X-Api-App-Key":     []string{appKey},
+		"X-Api-App-ID":      []string{c.cfg.AppID},
+		"X-Api-Connect-Id":  []string{uuid.NewString()},
+	}
+
+	conn, _, err := dialer.DialContext(ctx, baseURL, headers)
+	if err != nil {
+		return "", fmt.Errorf("dial realtime dialog websocket failed: %w", err)
+	}
+	c.conn = conn
+	c.sessionID = strings.TrimSpace(opts.SessionID)
+	if c.sessionID == "" {
+		c.sessionID = uuid.NewString()
+	}
+
+	// 发送 StartConnection
+	if err := c.sendFullJSON(EventStartConnection, "", map[string]interface{}{}); err != nil {
+		return "", err
+	}
+	if _, err := c.readHandshakeMessage(EventConnectionStarted); err != nil {
+		return "", err
+	}
+
+	// 构建 StartSession 载荷
+	inputMode := firstNonEmpty(opts.InputMode, c.cfg.InputMode, "push_to_talk")
+	audioFormat := firstNonEmpty(c.cfg.AudioFormat, "pcm")
+	sampleRate := firstPositive(c.cfg.SampleRate, 16000)
+	ttsFormat := firstNonEmpty(c.cfg.TTSFormat, "pcm_s16le")
+	ttsSampleRate := firstPositive(c.cfg.TTSSampleRate, 24000)
+	speaker := firstNonEmpty(opts.Speaker, c.cfg.Speaker, "zh_female_vv_jupiter_bigtts")
+	botName := firstNonEmpty(opts.BotName, c.cfg.BotName, "Ariu")
+	systemRole := firstNonEmpty(opts.SystemRole, c.cfg.SystemRole, "你是一位专业、耐心、会逐题推进的中文技术面试官。")
+	speakingStyle := firstNonEmpty(opts.SpeakingStyle, c.cfg.SpeakingStyle, "请用口语化中文进行简洁播报，每次只问一个问题。")
+	characterPrompt := firstNonEmpty(opts.CharacterPrompt, c.cfg.CharacterPrompt)
+	locationCity := firstNonEmpty(opts.LocationCity, c.cfg.LocationCity)
+	recvTimeout := firstPositive(opts.RecvTimeout, c.cfg.RecvTimeout, 120)
+
+	payload := startSessionPayload{
+		ASR: asrPayload{
+			AudioInfo: audioInfo{
+				Format:     audioFormat,
+				SampleRate: sampleRate,
+				Channel:    1,
+			},
+			Extra: map[string]interface{}{
+				"end_smooth_window_ms": 1500,
+			},
+		},
+		TTS: ttsPayload{
+			Speaker: speaker,
+			AudioConfig: audioConfig{
+				Channel:    1,
+				Format:     ttsFormat,
+				SampleRate: ttsSampleRate,
+			},
+		},
+		Dialog: dialogPayload{
+			DialogID:          strings.TrimSpace(opts.DialogID),
+			BotName:           botName,
+			SystemRole:        systemRole,
+			SpeakingStyle:     speakingStyle,
+			CharacterManifest: strings.TrimSpace(characterPrompt),
+			Location: &locationInfo{
+				City: locationCity,
+			},
+			Extra: map[string]interface{}{
+				"strict_audit":           false,
+				"input_mod":              inputMode,
+				"recv_timeout":           recvTimeout,
+				"enable_user_query_exit": false,
+				"model":                  "1.2.1.1",
+			},
+		},
+	}
+
+	// 发送 StartSession
+	if err := c.sendFullJSON(EventStartSession, c.sessionID, payload); err != nil {
+		return "", err
+	}
+	msg, err := c.readHandshakeMessage(EventSessionStarted)
+	if err != nil {
+		return "", err
+	}
+
+	dialogID := ""
+	if len(msg.Payload) > 0 {
+		var response struct {
+			DialogID string `json:"dialog_id"`
+		}
+		if err := json.Unmarshal(msg.Payload, &response); err == nil {
+			dialogID = strings.TrimSpace(response.DialogID)
+		}
+	}
+
+	go c.readLoop()
+	return dialogID, nil
+}
+
+// Events 返回事件流通道
+func (c *volcengineClient) Events() <-chan biz.VolcEvent {
+	return c.events
+}
+
+// DialogID 返回服务端分配的 dialog_id
+func (c *volcengineClient) DialogID() string {
+	return c.dialogID
+}
+
+// SendAudio 向实时语音会话发送一段 PCM 音频块。
+func (c *volcengineClient) SendAudio(chunk []byte) error {
+	if len(chunk) == 0 {
+		return nil
+	}
+	frame, err := marshalProtocolMessage(protocolMessage{
+		MessageType:   messageTypeAudioClient,
+		Flag:          messageFlagWithEvent,
+		Serialization: serializationRaw,
+		Event:         EventTaskRequest,
+		SessionID:     c.sessionID,
+		Payload:       chunk,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal realtime audio chunk failed: %w", err)
+	}
+	return c.writeBinary(frame)
+}
+
+// SendTextQuery 向实时语音会话发送一段文本输入。
+func (c *volcengineClient) SendTextQuery(text string) error {
+	payload := chatTextQueryPayload{
+		Content: strings.TrimSpace(text),
+	}
+	return c.sendFullJSON(EventChatTextQuery, c.sessionID, payload)
+}
+
+// SendSayHello 主动唤起模型先播报一段内容。
+func (c *volcengineClient) SendSayHello(text string) error {
+	payload := sayHelloPayload{
+		Content: strings.TrimSpace(text),
+	}
+	return c.sendFullJSON(EventSayHello, c.sessionID, payload)
+}
+
+// SendEndASR 在 push_to_talk 模式下显式结束当前一轮用户语音输入。
+func (c *volcengineClient) SendEndASR() error {
+	return c.sendFullJSON(EventEndASR, c.sessionID, map[string]interface{}{})
+}
+
+// SendChatTTSText 向实时模型发送安抚话术（事件500）。
+func (c *volcengineClient) SendChatTTSText(content string) error {
+	payload := chatTTSTextPayload{
+		Start:   true,
+		Content: strings.TrimSpace(content),
+		End:     true,
+	}
+	return c.sendFullJSON(EventChatTTSText, c.sessionID, payload)
+}
+
+// SendChatRAGText 向实时模型注入外部RAG数据（事件502）。
+func (c *volcengineClient) SendChatRAGText(externalRAG string) error {
+	payload := chatRAGTextPayload{
+		ExternalRAG: externalRAG,
+	}
+	return c.sendFullJSON(EventChatRAGText, c.sessionID, payload)
+}
+
+// InjectContext 注入上下文文本（兼容旧接口，内部使用 SendChatRAGText）
+func (c *volcengineClient) InjectContext(text string) error {
+	return c.SendChatRAGText(text)
+}
+
+// ReadEvent 读取火山引擎服务端事件（兼容旧接口，从 events 通道读取）
+func (c *volcengineClient) ReadEvent() (*biz.VolcEvent, error) {
+	event, ok := <-c.events
+	if !ok {
+		return nil, fmt.Errorf("realtime event channel closed")
+	}
+	return &event, nil
+}
+
+// Close 结束当前实时语音会话并释放底层连接。
 func (c *volcengineClient) Close() error {
-	if c.conn != nil {
-		// 发送关闭帧
-		_ = c.conn.WriteMessage(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		return c.conn.Close()
+	var closeErr error
+	c.closeOnce.Do(func() {
+		if c.conn == nil {
+			close(c.events)
+			return
+		}
+		_ = c.sendFullJSON(EventFinishSession, c.sessionID, map[string]interface{}{})
+		_ = c.sendFullJSON(EventFinishConnection, "", map[string]interface{}{})
+		closeErr = c.conn.Close()
+		close(c.events)
+	})
+	return closeErr
+}
+
+// readLoop 持续消费服务端事件。
+func (c *volcengineClient) readLoop() {
+	defer c.Close()
+
+	for {
+		_, frame, err := c.conn.ReadMessage()
+		if err != nil {
+			return
+		}
+
+		msg, err := unmarshalProtocolMessage(frame)
+		if err != nil {
+			continue
+		}
+
+		c.events <- biz.VolcEvent{
+			Type:    int(msg.Event),
+			Payload: append([]byte(nil), msg.Payload...),
+		}
+	}
+}
+
+// readHandshakeMessage 在 readLoop 启动前同步读取一条握手响应。
+func (c *volcengineClient) readHandshakeMessage(expectedEvent int32) (*protocolMessage, error) {
+	for {
+		_, frame, err := c.conn.ReadMessage()
+		if err != nil {
+			return nil, fmt.Errorf("read realtime handshake message failed: %w", err)
+		}
+		msg, err := unmarshalProtocolMessage(frame)
+		if err != nil {
+			return nil, err
+		}
+		if msg.MessageType == messageTypeError {
+			return nil, fmt.Errorf("realtime dialog returned error code=%d body=%s", msg.ErrorCode, string(msg.Payload))
+		}
+		if msg.Event == expectedEvent {
+			return msg, nil
+		}
+		if msg.Event == EventSessionFailed {
+			return nil, fmt.Errorf("realtime session failed: %s", strings.TrimSpace(string(msg.Payload)))
+		}
+	}
+}
+
+// sendFullJSON 发送一条带 JSON payload 的完整客户端事件。
+func (c *volcengineClient) sendFullJSON(event int32, sessionID string, payload interface{}) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal realtime json payload failed: %w", err)
+	}
+	frame, err := marshalProtocolMessage(protocolMessage{
+		MessageType:   messageTypeFullClient,
+		Flag:          messageFlagWithEvent,
+		Serialization: serializationJSON,
+		Event:         event,
+		SessionID:     sessionID,
+		Payload:       body,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal realtime json frame failed: %w", err)
+	}
+	return c.writeBinary(frame)
+}
+
+// writeBinary 串行写入底层 WebSocket。
+func (c *volcengineClient) writeBinary(frame []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	if c.conn == nil {
+		return fmt.Errorf("realtime websocket is not connected")
+	}
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
+		return fmt.Errorf("write realtime websocket frame failed: %w", err)
 	}
 	return nil
 }
 
+// firstNonEmpty 返回第一个非空字符串。
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// firstPositive 返回第一个大于零的整数。
+func firstPositive(values ...int) int {
+	for _, v := range values {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
+}

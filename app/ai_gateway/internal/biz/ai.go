@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -27,14 +28,15 @@ type AIConfig struct {
 
 func (AIConfig) TableName() string { return "ai_configs" }
 
-// PromptTemplate Prompt 模板实体
+// PromptTemplate Prompt 模板实体（对齐单体后端 schema）
 type PromptTemplate struct {
 	model.BaseModel
-	Scene         string `gorm:"size:50;not null;index"`
-	Version       int    `gorm:"not null;default:1"`
-	TemplateText  string `gorm:"type:text;not null"`
-	VariablesJSON string `gorm:"type:text"`
-	IsActive      bool   `gorm:"not null;default:true;index"`
+	IndustryID      *uint  `json:"industry_id" gorm:"index;comment:所属行业ID，NULL表示通用"`
+	Name            string `json:"name" gorm:"size:100;not null;comment:模板名称"`
+	Scene           string `json:"scene" gorm:"size:20;not null;index;comment:使用场景"`
+	TemplateContent string `json:"template_content" gorm:"type:text;not null;comment:模板内容"`
+	Variables       string `json:"variables" gorm:"type:text;comment:模板变量说明JSON"`
+	IsActive        bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`
 }
 
 func (PromptTemplate) TableName() string { return "prompt_templates" }
@@ -108,16 +110,16 @@ func NewInterviewAgentUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // InterviewResult 面试出题返回结果
 type InterviewResult struct {
-	Question      string
-	Topic         string
-	Difficulty    string
-	Type          string
-	Hints         string
-	Feedback      string
-	Score         float64
-	ShouldEnd     bool
-	Live2DEmotion string
-	Live2DAction  string
+	Question      string  `json:"question"`
+	Topic         string  `json:"topic"`
+	Difficulty    string  `json:"difficulty"`
+	Type          string  `json:"type"`
+	Hints         string  `json:"hints"`
+	Feedback      string  `json:"feedback"`
+	Score         float64 `json:"score"`
+	ShouldEnd     bool    `json:"should_end"`
+	Live2DEmotion string  `json:"live2d_emotion"`
+	Live2DAction  string  `json:"live2d_action"`
 }
 
 // GenerateQuestion 生成面试题目或对用户回答进行反馈
@@ -135,7 +137,7 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
 		"industry_code":   industryCode,
 		"difficulty":      difficulty,
 		"user_answer":     userAnswer,
@@ -144,7 +146,8 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 		"question_index":  fmt.Sprintf("%d", questionIndex),
 	})
 
-	messages := []Message{{Role: "system", Content: promptText}}
+	schema := interviewResultSchema()
+	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
 	messages = append(messages, history...)
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
@@ -153,9 +156,9 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 		return nil, ErrLLMCallFailed
 	}
 
-	var result InterviewResult
-	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
-		return nil, ErrParseFailed
+	result, err := parseStructuredJSON[InterviewResult](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -224,7 +227,7 @@ func (uc *PlanAgentUseCase) GeneratePlan(ctx context.Context, industryCode, goal
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
 		"industry_code":      industryCode,
 		"goal":               goal,
 		"daily_hours":        fmt.Sprintf("%d", dailyHours),
@@ -232,7 +235,8 @@ func (uc *PlanAgentUseCase) GeneratePlan(ctx context.Context, industryCode, goal
 		"recent_activities":  joinStrings(recentActivities),
 	})
 
-	messages := []Message{{Role: "user", Content: promptText}}
+	schema := planResultSchema()
+	messages := []Message{{Role: "user", Content: buildJSONContractPrompt(promptText, schema)}}
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
@@ -240,9 +244,9 @@ func (uc *PlanAgentUseCase) GeneratePlan(ctx context.Context, industryCode, goal
 		return nil, ErrLLMCallFailed
 	}
 
-	var result PlanResult
-	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
-		return nil, ErrParseFailed
+	result, err := parseStructuredJSON[PlanResult](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -282,13 +286,15 @@ func NewCompanionAgentUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // CompanionResult 陪伴聊天返回结果
 type CompanionResult struct {
-	Reply       string   `json:"reply"`
-	Emotion     string   `json:"emotion"`
-	Suggestions []string `json:"suggestions"`
+	Reply          string              `json:"reply"`
+	Emotion        string              `json:"emotion"`
+	Suggestions    []string            `json:"suggestions"`
+	Action         string              `json:"action"`
+	Live2DDirective *Live2DDirectiveResult `json:"live2d_directive,omitempty"`
 }
 
 // Chat 生成陪伴聊天回复
-func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextType string, recentTopics []string) (*CompanionResult, error) {
+func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextType, username string, recentTopics []string) (*CompanionResult, error) {
 	const scene = "companion_agent"
 	start := time.Now()
 
@@ -302,13 +308,14 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
-		"user_message":   userMessage,
-		"context_type":   contextType,
-		"recent_topics":  joinStrings(recentTopics),
-	})
+	// 对齐单体实现：Prompt 模板作为 system message，用户消息作为 user message
+	promptText := renderCompanionPrompt(tpl.TemplateContent, userMessage, contextType, username, recentTopics)
 
-	messages := []Message{{Role: "user", Content: promptText}}
+	// 构建消息列表：system prompt + user message（对齐单体 prependSystemPrompt）
+	messages := []Message{
+		{Role: "system", Content: promptText},
+		{Role: "user", Content: userMessage},
+	}
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
@@ -316,11 +323,121 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrLLMCallFailed
 	}
 
-	var result CompanionResult
-	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
+	// 对齐单体实现：陪伴回复为纯文本，不解析 JSON；emotion 本地推导。
+	reply := strings.TrimSpace(resp.Content)
+	if reply == "" {
 		return nil, ErrParseFailed
 	}
-	return &result, nil
+	emotion := normalizeCompanionEmotion(contextType)
+	return &CompanionResult{
+		Reply:       reply,
+		Emotion:     emotion,
+		Suggestions: []string{},
+		Action:      companionActionForEmotion(emotion),
+	}, nil
+}
+
+// renderCompanionPrompt 渲染陪伴场景 Prompt 模板（对齐单体 renderPrompt）
+func renderCompanionPrompt(template, userMessage, contextType, username string, recentTopics []string) string {
+	rendered := strings.TrimSpace(template)
+	if rendered == "" {
+		return ""
+	}
+
+	// 对齐单体变量名
+	vars := map[string]string{
+		"user_emotion":        contextType,
+		"latest_user_message": userMessage,
+		"recent_topics":       joinStrings(recentTopics),
+		"username":            username,
+	}
+
+	for key, value := range vars {
+		placeholder := "{{" + key + "}}"
+		rendered = strings.ReplaceAll(rendered, placeholder, strings.TrimSpace(value))
+		rendered = strings.ReplaceAll(rendered, "{{ "+key+" }}", strings.TrimSpace(value))
+	}
+
+	return rendered
+}
+
+// GetGreeting 生成本地欢迎语（对齐单体 CompanionAgent.GetGreeting）
+func (uc *CompanionAgentUseCase) GetGreeting(ctx context.Context, level, timeOfDay string) (*CompanionResult, error) {
+	content := "你好，今天继续推进你的学习计划。"
+	emotion := "happy"
+	action := "wave"
+
+	switch strings.ToLower(strings.TrimSpace(timeOfDay)) {
+	case "morning":
+		content = "早上好，先用一个清晰的小目标打开今天的学习节奏。"
+	case "afternoon":
+		content = "下午好，保持专注，把今天最重要的一件学习任务收掉。"
+		emotion = "encouraging"
+		action = "nod"
+	case "evening":
+		content = "晚上好，适合做复盘和查漏补缺，把今天的收获沉淀下来。"
+		emotion = "neutral"
+		action = "idle"
+	case "night":
+		content = "夜深了，注意节奏，优先做轻量复盘，不要透支状态。"
+		emotion = "encouraging"
+		action = "nod"
+	}
+
+	if strings.EqualFold(strings.TrimSpace(level), "beginner") {
+		content += " 先稳住基础，不用追求一步到位。"
+	}
+	if strings.EqualFold(strings.TrimSpace(level), "advanced") {
+		content += " 今天可以主动挑战一个更难的问题。"
+	}
+
+	return &CompanionResult{
+		Reply:   content,
+		Emotion: emotion,
+		Action:  action,
+	}, nil
+}
+
+// GetEncouragement 生成本地鼓励语（对齐单体 CompanionAgent.GetEncouragement）
+func (uc *CompanionAgentUseCase) GetEncouragement(ctx context.Context, achievement string) (*CompanionResult, error) {
+	achievement = strings.TrimSpace(achievement)
+	if achievement == "" {
+		achievement = "当前这一步"
+	}
+
+	return &CompanionResult{
+		Reply:   achievement + " 做得不错，继续保持这个节奏，不要被短期波动打断。",
+		Emotion: "encouraging",
+		Action:  "nod",
+	}, nil
+}
+
+// companionActionForEmotion 根据情绪选择默认动作（对齐单体 companionActionForEmotion）
+func companionActionForEmotion(emotion string) string {
+	switch emotion {
+	case "happy":
+		return "wave"
+	case "encouraging":
+		return "nod"
+	case "thinking":
+		return "thinking"
+	default:
+		return "idle"
+	}
+}
+
+// normalizeCompanionEmotion 规范化陪伴场景情绪值，对齐单体本地推导逻辑。
+func normalizeCompanionEmotion(emotionHint string) string {
+	switch strings.ToLower(strings.TrimSpace(emotionHint)) {
+	case "happy", "excited":
+		return "happy"
+	case "sad", "tired":
+		return "encouraging"
+	case "frustrated", "confused":
+		return "thinking"
+	default:
+		return "neutral"
+	}
 }
 
 // saveLog 记录 LLM 调用日志
@@ -381,7 +498,7 @@ func (uc *QuizAnalyzerUseCase) Analyze(ctx context.Context, question, answer, to
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
 		"question":      question,
 		"answer":        answer,
 		"topic":         topic,
@@ -389,7 +506,8 @@ func (uc *QuizAnalyzerUseCase) Analyze(ctx context.Context, question, answer, to
 		"question_type": questionType,
 	})
 
-	messages := []Message{{Role: "user", Content: promptText}}
+	schema := quizResultSchema()
+	messages := []Message{{Role: "user", Content: buildJSONContractPrompt(promptText, schema)}}
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
@@ -397,9 +515,9 @@ func (uc *QuizAnalyzerUseCase) Analyze(ctx context.Context, question, answer, to
 		return nil, ErrLLMCallFailed
 	}
 
-	var result QuizResult
-	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
-		return nil, ErrParseFailed
+	result, err := parseStructuredJSON[QuizResult](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -461,7 +579,7 @@ func (uc *ResumeParserUseCase) Parse(ctx context.Context, resumeText string) (*R
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
 		"resume_text": resumeText,
 	})
 
@@ -515,12 +633,31 @@ func NewLive2DDirectorUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // Live2DDirectiveResult Live2D 指令返回结果
 type Live2DDirectiveResult struct {
-	Emotion     string `json:"emotion"`
-	Action      string `json:"action"`
-	Reply       string `json:"reply"`
-	MotionKey   string `json:"motion_key"`
-	MotionGroup string `json:"motion_group"`
-	DurationMs  int32  `json:"duration_ms"`
+	Emotion            string               `json:"emotion"`
+	Action             string               `json:"action"`
+	Reply              string               `json:"reply"`
+	MotionKey          string               `json:"motion_key"`
+	MotionGroup        string               `json:"motion_group"`
+	MotionPriority     string               `json:"motion_priority"`
+	MotionDurationMS   int                  `json:"motion_duration_ms"`
+	Intensity          float64              `json:"intensity"`
+	DurationMS         int                  `json:"duration_ms"`
+	MouthOpen          *float64             `json:"mouth_open"`
+	Source             string               `json:"source"`
+	ExpressionMix      []ExpressionLayer    `json:"expression_mix"`
+	ParameterOverrides []ParameterOverride  `json:"parameter_overrides"`
+}
+
+// ExpressionLayer Live2D 表情混合层
+type ExpressionLayer struct {
+	Key    string  `json:"key"`
+	Weight float64 `json:"weight"`
+}
+
+// ParameterOverride Live2D 参数覆盖
+type ParameterOverride struct {
+	ID    string  `json:"id"`
+	Value float64 `json:"value"`
 }
 
 // GenerateDirective 生成 Live2D 角色控制指令
@@ -538,7 +675,7 @@ func (uc *Live2DDirectorUseCase) GenerateDirective(ctx context.Context, contextT
 		return nil, ErrPromptRenderFailed
 	}
 
-	promptText := RenderPrompt(tpl.TemplateText, map[string]string{
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
 		"context":      contextText,
 		"emotion_hint": emotionHint,
 		"reply_text":   replyText,

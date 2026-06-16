@@ -23,7 +23,7 @@ type adminPromptRepoStub struct{}
 
 // GetActiveTemplate 返回固定模板。
 func (r *adminPromptRepoStub) GetActiveTemplate(context.Context, string) (*PromptTemplate, error) {
-	return &PromptTemplate{TemplateText: "hello {{name}}"}, nil
+	return &PromptTemplate{TemplateContent: "hello {{name}}"}, nil
 }
 
 // failingAdminPromptRepoStub 模拟模板仓库不可用，验证自定义提示词可绕过模板依赖。

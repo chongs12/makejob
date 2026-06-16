@@ -10,7 +10,8 @@ import (
 
 // industryModel 行业表 GORM model（与 question 服务共用同一张表）
 type industryModel struct {
-	Code string `gorm:"primaryKey;size:50"`
+	ID   uint64 `gorm:"column:id;primaryKey"`
+	Code string `gorm:"size:50"`
 	Name string `gorm:"size:200;not null"`
 }
 
@@ -33,6 +34,7 @@ func (r *industryRepo) GetIndustry(ctx context.Context, code string) (*biz.Indus
 		return nil, err
 	}
 	return &biz.Industry{
+		ID:   m.ID,
 		Code: m.Code,
 		Name: m.Name,
 	}, nil

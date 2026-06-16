@@ -8,11 +8,14 @@ server:
 
 rag:
   milvus_addr: "localhost:19530"
+  milvus_user: "root"
+  milvus_password: "Milvus"
   collection_name: "makejob_questions"
-  ark_api_key: ""
+  ark_api_key: "ark-1c544572-9c83-495d-a291-4fe31d71e8d5-91264"
   ark_base_url: "https://ark.cn-beijing.volces.com/api/v3"
   embed_model: "doubao-embedding-large-text-240915"
   top_k: 5
+  score_threshold: 0.0
 
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"

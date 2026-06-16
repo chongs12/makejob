@@ -47,6 +47,33 @@ message CompanionChatResponse {
   int32 audio_duration = 8;
   string audio_format = 9;
   int32 audio_sample_rate = 10;
+  Live2DDirective live2d_directive = 11;
+}
+
+message Live2DDirective {
+  string reply = 1;
+  string emotion = 2;
+  string action = 3;
+  repeated Live2DDirectiveExpressionLayer expression_mix = 4;
+  repeated Live2DDirectiveParameterOverride parameter_overrides = 5;
+  string motion_key = 6;
+  string motion_group = 7;
+  string motion_priority = 8;
+  int32 motion_duration_ms = 9;
+  float intensity = 10;
+  int32 duration_ms = 11;
+  float mouth_open = 12;
+  string source = 13;
+}
+
+message Live2DDirectiveExpressionLayer {
+  string key = 1;
+  float weight = 2;
+}
+
+message Live2DDirectiveParameterOverride {
+  string id = 1;
+  float value = 2;
 }
 
 message GetCompanionStateRequest {

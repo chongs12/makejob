@@ -32,6 +32,12 @@ type AIServiceClient interface {
 	InterviewAgent(ctx context.Context, req *InterviewAgentRequest) (*InterviewAgentResponse, error)
 	QuizAnalyzer(ctx context.Context, req *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error)
 	ResumeParser(ctx context.Context, req *ResumeParserRequest) (*ResumeParserResponse, error)
+	// 会话式面试接口（对齐单体 InterviewAgent）
+	StartInterview(ctx context.Context, req *StartInterviewRequest) (*StartInterviewResponse, error)
+	EvaluateAnswer(ctx context.Context, req *EvaluateAnswerRequest) (*EvaluateAnswerResponse, error)
+	GetNextQuestionSession(ctx context.Context, req *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error)
+	GenerateInterviewReport(ctx context.Context, req *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error)
+	EndInterviewSession(ctx context.Context, req *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error)
 }
 
 // LearningArchiveClient 学习档案服务的 gRPC 客户端接口
@@ -83,19 +89,23 @@ type RAGDocument struct {
 type Interview struct {
 	ID               uint64
 	UserID           uint64
-	IndustryCode     string
-	Difficulty       string
-	Status           string // created, in_progress, ongoing, report_generating, report_failed, completed
-	InterviewMode    string // standard, realtime_voice, coding
-	QuestionCount    int32
-	CurrentIndex     int32
-	OverallScore     float64
-	ResumeText       string
-	ResumeParsedJSON string // AI 解析简历后的结构化 JSON
-	JobDescription   string
+	IndustryID       uint64     // 对齐表 industry_id 外键
+	IndustryCode     string     `gorm:"-"` // 运行期字段，不落库
+	Difficulty       string     `gorm:"-"` // 运行期字段，不落库
+	Status           string     // created, in_progress, ongoing, report_generating, report_failed, completed
+	InterviewMode    string     `gorm:"-"` // 运行期字段，不落库
+	QuestionCount    int32      // 对应表 total_questions
+	CurrentIndex     int32      `gorm:"-"` // 运行期字段，由消息计数推导
+	OverallScore     float64    // 对应表 score
+	AIFeedback       string     // 对应表 ai_feedback
+	AISessionID      string     // 对应表 ai_session_id
+	ReportJSON       string     // 对应表 report_json
+	StartedAt        *time.Time // 对应表 started_at
+	ResumeText       string     `gorm:"-"` // 运行期字段，不落库
+	ResumeParsedJSON string     `gorm:"-"` // 运行期字段，不落库
+	JobDescription   string     `gorm:"-"` // 运行期字段，不落库
 	Live2DModelKey   string
-	RealtimeDialogID string
-	FinishedAt       *time.Time
+	FinishedAt       *time.Time // 对应表 ended_at
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -170,8 +180,29 @@ type AnswerFeedback struct {
 }
 
 type Live2DDirective struct {
-	Emotion string
-	Action  string
+	Emotion            string
+	Action             string
+	Reply              string
+	ExpressionMix      []ExpressionLayer
+	ParameterOverrides []ParameterOverride
+	MotionKey          string
+	MotionGroup        string
+	MotionPriority     string
+	MotionDurationMS   int
+	Intensity          float64
+	DurationMS         int
+	MouthOpen          *float64
+	Source             string
+}
+
+type ExpressionLayer struct {
+	Key    string
+	Weight float64
+}
+
+type ParameterOverride struct {
+	ID    string
+	Value float64
 }
 
 type QuizAnalyzerRequest struct {
@@ -200,6 +231,77 @@ type ResumeParserResponse struct {
 	Education  []string
 }
 
+// --- 会话式面试 DTO（对齐单体 InterviewAgent 接口）---
+
+type StartInterviewRequest struct {
+	InterviewID   uint64
+	IndustryCode  string
+	Difficulty    string
+	QuestionCount int32
+	ResumeText    string
+	JobDescription string
+	InterviewMode string
+}
+
+type StartInterviewResponse struct {
+	SessionID  string
+	Question   string
+	Topic      string
+	Difficulty string
+	Type       string
+	Hints      string
+}
+
+type EvaluateAnswerRequest struct {
+	SessionId     string
+	QuestionIndex int32
+	Answer        string
+}
+
+type EvaluateAnswerResponse struct {
+	Score      float64
+	IsCorrect  bool
+	Feedback   string
+	KeyPoints  []string
+	Suggestions string
+	FollowUp   string
+}
+
+type GetNextQuestionSessionRequest struct {
+	SessionId string
+}
+
+type GetNextQuestionSessionResponse struct {
+	Question   string
+	Topic      string
+	Difficulty string
+	Type       string
+	Hints      string
+	HasNext    bool
+}
+
+type GenerateInterviewReportRequest struct {
+	SessionId string
+}
+
+type GenerateInterviewReportResponse struct {
+	OverallScore    float64
+	Summary         string
+	DimensionScores map[string]float64
+	Strengths       []string
+	Weaknesses      []string
+	Suggestions     []string
+	AiFeedback      string
+}
+
+type EndInterviewSessionRequest struct {
+	SessionId string
+}
+
+type EndInterviewSessionResponse struct {
+	Success bool
+}
+
 type ArchiveEntry struct {
 	ID              uint64
 	UserID          uint64
@@ -218,6 +320,7 @@ type ArchiveEntry struct {
 }
 
 type Industry struct {
+	ID   uint64
 	Code string
 	Name string
 }

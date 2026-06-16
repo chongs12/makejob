@@ -71,6 +71,9 @@ export const PRACTICE_PAGE_SIZE = 10
  * 将树形分类拍平成选项列表，便于题库页直接挂接筛选器。
  */
 export function flattenCategories(nodes: CategoryNode[], level = 0): Array<{ id: number; name: string }> {
+  if (!Array.isArray(nodes)) {
+    return []
+  }
   return nodes.flatMap((node) => [
     { id: node.id, name: `${'　'.repeat(level)}${node.name}` },
     ...flattenCategories(node.children || [], level + 1),

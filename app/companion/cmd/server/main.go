@@ -67,15 +67,57 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create AI client: %w", err)
 	}
 
-	// data 层：TTS 客户端
-	ttsClient := data.NewTTsClient(bc.TTS)
-
-	// biz 层：业务用例
+	// data 层：TTS 客户端（支持多供应商）
+	ttsProvider := data.NewTTSProviderFactory(bc.TTS)
 	ttsVoice := ""
 	if bc.TTS != nil {
 		ttsVoice = bc.TTS.Voice
 	}
-	companionUseCase := biz.NewCompanionUseCase(companionRepo, aiClient, ttsClient, ttsVoice)
+	ttsClient := data.NewTTSClientAdapter(ttsProvider, ttsVoice)
+
+	// biz 层：业务用例
+	companionOpts := []biz.CompanionOption{}
+
+	// 创建场景级 TTS 服务（支持三级回退）
+	ttsConfigRepo := data.NewTTSConfigRepo(db)
+	live2DModelRepo := data.NewLive2DModelRepo(db)
+	adminConfigRepo := data.NewAdminConfigRepo(db)
+	sceneTTSService := biz.NewSceneTTSService(
+		ttsConfigRepo,
+		live2DModelRepo,
+		adminConfigRepo,
+		ttsProvider,
+		data.NewTTSProviderFromConfigRecord,
+	)
+	companionOpts = append(companionOpts, biz.WithSceneTTSService(sceneTTSService))
+
+	if bc.Services != nil {
+		if bc.Services.Growth != "" {
+			growthClient, err := data.NewGrowthClient(bc.Services.Growth)
+			if err != nil {
+				log.Warnf("failed to create growth client: %v", err)
+			} else {
+				companionOpts = append(companionOpts, biz.WithGrowthClient(growthClient))
+			}
+		}
+		if bc.Services.Interview != "" {
+			interviewClient, err := data.NewInterviewClient(bc.Services.Interview)
+			if err != nil {
+				log.Warnf("failed to create interview client: %v", err)
+			} else {
+				companionOpts = append(companionOpts, biz.WithInterviewClient(interviewClient))
+			}
+		}
+		if bc.Services.Plan != "" {
+			planClient, err := data.NewPlanClient(bc.Services.Plan)
+			if err != nil {
+				log.Warnf("failed to create plan client: %v", err)
+			} else {
+				companionOpts = append(companionOpts, biz.WithPlanClient(planClient))
+			}
+		}
+	}
+	companionUseCase := biz.NewCompanionUseCase(companionRepo, aiClient, ttsClient, ttsVoice, companionOpts...)
 
 	// service 层：gRPC 服务实现
 	companionService := service.NewCompanionService(companionUseCase)

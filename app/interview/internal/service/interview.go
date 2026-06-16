@@ -249,6 +249,10 @@ func (s *InterviewService) GetReport(ctx context.Context, req *interviewv1.GetRe
 		CorrectCount:    result.CorrectCount,
 		DimensionScores: result.DimensionScores,
 		Summary:         result.Summary,
+		DurationSeconds: result.DurationSeconds,
+	}
+	if result.CompletedAt != nil {
+		report.CompletedAt = result.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
 	}
 	if result.Strengths != nil {
 		report.Strengths = result.Strengths
@@ -341,7 +345,7 @@ func (s *InterviewService) IsRealtimeInterview(ctx context.Context, req *intervi
 	}, nil
 }
 
-// GetRealtimeContext 获取实时面试上下文
+// GetRealtimeContext 获取实时面试上下文（对齐单体：包含简历画像、面试模式等完整信息）
 func (s *InterviewService) GetRealtimeContext(ctx context.Context, req *interviewv1.GetRealtimeRequest) (*interviewv1.RealtimeInterviewContext, error) {
 	result, err := s.uc.GetRealtimeContext(ctx, req.InterviewId, resolveUserID(ctx, req.UserId))
 	if err != nil {
@@ -359,14 +363,34 @@ func (s *InterviewService) GetRealtimeContext(ctx context.Context, req *intervie
 		}
 	}
 
-	return &interviewv1.RealtimeInterviewContext{
+	resp := &interviewv1.RealtimeInterviewContext{
 		InterviewId:   result.InterviewID,
 		IndustryCode:  result.IndustryCode,
 		Difficulty:    result.Difficulty,
 		History:       msgs,
 		CurrentTopic:  result.CurrentTopic,
 		QuestionIndex: result.QuestionIndex,
-	}, nil
+		Live2DModelKey: result.Live2DModelKey,
+		TotalQuestions: int32(result.TotalQuestions),
+		InterviewMode:  result.InterviewMode,
+		Topics:         result.Topics,
+		WeakTopics:     result.WeakTopics,
+		DialogId:       result.DialogID,
+		HasStarted:     result.HasStarted,
+	}
+
+	// 填充简历画像
+	if result.ResumeProfile != nil {
+		resp.ResumeProfile = &interviewv1.ResumeProfile{
+			Summary:     result.ResumeProfile.Summary,
+			Skills:      result.ResumeProfile.Skills,
+			Projects:    result.ResumeProfile.Projects,
+			Strengths:   result.ResumeProfile.Strengths,
+			WeakSignals: result.ResumeProfile.WeakSignals,
+		}
+	}
+
+	return resp, nil
 }
 
 // BindRealtimeDialog 绑定实时对话 ID
@@ -428,9 +452,38 @@ func toProtoQuestion(q *biz.InterviewQuestion) *interviewv1.InterviewQuestion {
 		pq.EvaluationMode = q.EvalMode
 	}
 	if q.Live2DDirective != nil {
+		expressionMix := make([]*interviewv1.Live2DExpressionLayer, 0, len(q.Live2DDirective.ExpressionMix))
+		for _, e := range q.Live2DDirective.ExpressionMix {
+			expressionMix = append(expressionMix, &interviewv1.Live2DExpressionLayer{
+				Key:    e.Key,
+				Weight: e.Weight,
+			})
+		}
+		parameterOverrides := make([]*interviewv1.Live2DParameterOverride, 0, len(q.Live2DDirective.ParameterOverrides))
+		for _, p := range q.Live2DDirective.ParameterOverrides {
+			parameterOverrides = append(parameterOverrides, &interviewv1.Live2DParameterOverride{
+				Id:    p.ID,
+				Value: p.Value,
+			})
+		}
+		var mouthOpen float64
+		if q.Live2DDirective.MouthOpen != nil {
+			mouthOpen = *q.Live2DDirective.MouthOpen
+		}
 		pq.Live2DDirective = &interviewv1.Live2DDirective{
-			Emotion: q.Live2DDirective.Emotion,
-			Action:  q.Live2DDirective.Action,
+			Emotion:            q.Live2DDirective.Emotion,
+			Action:             q.Live2DDirective.Action,
+			Reply:              q.Live2DDirective.Reply,
+			ExpressionMix:      expressionMix,
+			ParameterOverrides: parameterOverrides,
+			MotionKey:          q.Live2DDirective.MotionKey,
+			MotionGroup:        q.Live2DDirective.MotionGroup,
+			MotionPriority:     q.Live2DDirective.MotionPriority,
+			MotionDurationMs:   int32(q.Live2DDirective.MotionDurationMS),
+			Intensity:          q.Live2DDirective.Intensity,
+			DurationMs:         int32(q.Live2DDirective.DurationMS),
+			MouthOpen:          mouthOpen,
+			Source:             q.Live2DDirective.Source,
 		}
 	}
 	return pq

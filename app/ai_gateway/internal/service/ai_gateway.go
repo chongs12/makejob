@@ -14,18 +14,20 @@ import (
 // AIGatewayService AI 网关 gRPC 服务实现，聚合全部 AI 场景用例
 type AIGatewayService struct {
 	aiv1.UnimplementedAIServiceServer
-	interviewUC  *biz.InterviewAgentUseCase
-	planUC       *biz.PlanAgentUseCase
-	companionUC  *biz.CompanionAgentUseCase
-	quizUC       *biz.QuizAnalyzerUseCase
-	resumeUC     *biz.ResumeParserUseCase
-	live2dUC     *biz.Live2DDirectorUseCase
-	adminUC      *biz.AdminUseCase
+	interviewUC        *biz.InterviewAgentUseCase
+	interviewSessionUC *biz.InterviewSessionUseCase
+	planUC             *biz.PlanAgentUseCase
+	companionUC        *biz.CompanionAgentUseCase
+	quizUC             *biz.QuizAnalyzerUseCase
+	resumeUC           *biz.ResumeParserUseCase
+	live2dUC           *biz.Live2DDirectorUseCase
+	adminUC            *biz.AdminUseCase
 }
 
 // NewAIGatewayService 创建 AI 网关 gRPC 服务
 func NewAIGatewayService(
 	interviewUC *biz.InterviewAgentUseCase,
+	interviewSessionUC *biz.InterviewSessionUseCase,
 	planUC *biz.PlanAgentUseCase,
 	companionUC *biz.CompanionAgentUseCase,
 	quizUC *biz.QuizAnalyzerUseCase,
@@ -34,13 +36,14 @@ func NewAIGatewayService(
 	adminUC *biz.AdminUseCase,
 ) *AIGatewayService {
 	return &AIGatewayService{
-		interviewUC: interviewUC,
-		planUC:      planUC,
-		companionUC: companionUC,
-		quizUC:      quizUC,
-		resumeUC:    resumeUC,
-		live2dUC:    live2dUC,
-		adminUC:     adminUC,
+		interviewUC:        interviewUC,
+		interviewSessionUC: interviewSessionUC,
+		planUC:             planUC,
+		companionUC:        companionUC,
+		quizUC:             quizUC,
+		resumeUC:           resumeUC,
+		live2dUC:           live2dUC,
+		adminUC:            adminUC,
 	}
 }
 
@@ -74,6 +77,100 @@ func (s *AIGatewayService) InterviewAgent(ctx context.Context, req *aiv1.Intervi
 	}, nil
 }
 
+// StartInterview 开始面试会话（对齐单体 InterviewAgent.StartInterview）
+func (s *AIGatewayService) StartInterview(ctx context.Context, req *aiv1.StartInterviewRequest) (*aiv1.StartInterviewResponse, error) {
+	result, err := s.interviewSessionUC.StartInterview(ctx, &biz.StartInterviewRequest{
+		InterviewID:   req.InterviewId,
+		IndustryCode:  req.IndustryCode,
+		Difficulty:    req.Difficulty,
+		QuestionCount: req.QuestionCount,
+		ResumeText:    req.ResumeText,
+		JobDescription: req.JobDescription,
+		InterviewMode: req.InterviewMode,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.StartInterviewResponse{
+		SessionId:  result.SessionID,
+		Question:   result.Question,
+		Topic:      result.Topic,
+		Difficulty: result.Difficulty,
+		Type:       result.Type,
+		Hints:      result.Hints,
+	}, nil
+}
+
+// EvaluateAnswer 评估用户答案（对齐单体 InterviewAgent.EvaluateAnswer）
+func (s *AIGatewayService) EvaluateAnswer(ctx context.Context, req *aiv1.EvaluateAnswerRequest) (*aiv1.EvaluateAnswerResponse, error) {
+	result, err := s.interviewSessionUC.EvaluateAnswer(ctx, &biz.EvaluateAnswerRequest{
+		SessionId:     req.SessionId,
+		QuestionIndex: req.QuestionIndex,
+		Answer:        req.Answer,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.EvaluateAnswerResponse{
+		Score:      result.Score,
+		IsCorrect:  result.IsCorrect,
+		Feedback:   result.Feedback,
+		KeyPoints:  result.KeyPoints,
+		Suggestions: result.Suggestions,
+		FollowUp:   result.FollowUp,
+	}, nil
+}
+
+// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion）
+func (s *AIGatewayService) GetNextQuestionSession(ctx context.Context, req *aiv1.GetNextQuestionSessionRequest) (*aiv1.GetNextQuestionSessionResponse, error) {
+	result, err := s.interviewSessionUC.GetNextQuestion(ctx, &biz.GetNextQuestionSessionRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GetNextQuestionSessionResponse{
+		Question:   result.Question,
+		Topic:      result.Topic,
+		Difficulty: result.Difficulty,
+		Type:       result.Type,
+		Hints:      result.Hints,
+		HasNext:    result.HasNext,
+	}, nil
+}
+
+// GenerateInterviewReport 生成面试报告（对齐单体 InterviewAgent.GenerateReport）
+func (s *AIGatewayService) GenerateInterviewReport(ctx context.Context, req *aiv1.GenerateInterviewReportRequest) (*aiv1.GenerateInterviewReportResponse, error) {
+	result, err := s.interviewSessionUC.GenerateReport(ctx, &biz.GenerateInterviewReportRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GenerateInterviewReportResponse{
+		OverallScore:    result.OverallScore,
+		Summary:         result.Summary,
+		DimensionScores: result.DimensionScores,
+		Strengths:       result.Strengths,
+		Weaknesses:      result.Weaknesses,
+		Suggestions:     result.Suggestions,
+		AiFeedback:      result.AiFeedback,
+	}, nil
+}
+
+// EndInterviewSession 结束面试会话（对齐单体 InterviewAgent.EndInterview）
+func (s *AIGatewayService) EndInterviewSession(ctx context.Context, req *aiv1.EndInterviewSessionRequest) (*aiv1.EndInterviewSessionResponse, error) {
+	result, err := s.interviewSessionUC.EndInterviewSession(ctx, &biz.EndInterviewSessionRequest{
+		SessionId: req.SessionId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.EndInterviewSessionResponse{
+		Success: result.Success,
+	}, nil
+}
+
 // PlanAgent 学习计划生成 handler
 func (s *AIGatewayService) PlanAgent(ctx context.Context, req *aiv1.PlanAgentRequest) (*aiv1.PlanAgentResponse, error) {
 	result, err := s.planUC.GeneratePlan(
@@ -100,16 +197,89 @@ func (s *AIGatewayService) CompanionAgent(ctx context.Context, req *aiv1.Compani
 		ctx,
 		req.Message,
 		req.ContextType,
+		req.GetUsername(),
 		req.RecentTopics,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// 构建 Live2DDirective proto（如果有）
+	var live2dDirective *aiv1.Live2DDirective
+	if result.Live2DDirective != nil {
+		live2dDirective = toProtoLive2DDirective(result.Live2DDirective)
+	}
+
 	return &aiv1.CompanionAgentResponse{
-		Reply:       result.Reply,
-		Emotion:     result.Emotion,
-		Suggestions: result.Suggestions,
+		Reply:          result.Reply,
+		Emotion:        result.Emotion,
+		Suggestions:    result.Suggestions,
+		Action:         result.Action,
+		Live2DDirective: live2dDirective,
 	}, nil
+}
+
+// GetGreeting 本地欢迎语 handler（对齐单体 CompanionAgent.GetGreeting）
+func (s *AIGatewayService) GetGreeting(ctx context.Context, req *aiv1.GetGreetingRequest) (*aiv1.GetGreetingResponse, error) {
+	result, err := s.companionUC.GetGreeting(ctx, req.GetLevel(), req.GetTimeOfDay())
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GetGreetingResponse{
+		Content: result.Reply,
+		Emotion: result.Emotion,
+		Action:  result.Action,
+	}, nil
+}
+
+// GetEncouragement 本地鼓励语 handler（对齐单体 CompanionAgent.GetEncouragement）
+func (s *AIGatewayService) GetEncouragement(ctx context.Context, req *aiv1.GetEncouragementRequest) (*aiv1.GetEncouragementResponse, error) {
+	result, err := s.companionUC.GetEncouragement(ctx, req.GetAchievement())
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GetEncouragementResponse{
+		Content: result.Reply,
+		Emotion: result.Emotion,
+		Action:  result.Action,
+	}, nil
+}
+
+// toProtoLive2DDirective 将 biz Live2DDirectiveResult 转换为 proto Live2DDirective
+func toProtoLive2DDirective(result *biz.Live2DDirectiveResult) *aiv1.Live2DDirective {
+	expressionMix := make([]*aiv1.Live2DDirectiveExpressionLayer, 0, len(result.ExpressionMix))
+	for _, e := range result.ExpressionMix {
+		expressionMix = append(expressionMix, &aiv1.Live2DDirectiveExpressionLayer{
+			Key:    e.Key,
+			Weight: float32(e.Weight),
+		})
+	}
+	parameterOverrides := make([]*aiv1.Live2DDirectiveParameterOverride, 0, len(result.ParameterOverrides))
+	for _, p := range result.ParameterOverrides {
+		parameterOverrides = append(parameterOverrides, &aiv1.Live2DDirectiveParameterOverride{
+			Id:    p.ID,
+			Value: float32(p.Value),
+		})
+	}
+	mouthOpen := float32(0)
+	if result.MouthOpen != nil {
+		mouthOpen = float32(*result.MouthOpen)
+	}
+	return &aiv1.Live2DDirective{
+		Emotion:            result.Emotion,
+		Action:             result.Action,
+		Reply:              result.Reply,
+		MotionKey:          result.MotionKey,
+		MotionGroup:        result.MotionGroup,
+		MotionPriority:     result.MotionPriority,
+		MotionDurationMs:   int32(result.MotionDurationMS),
+		Intensity:          float32(result.Intensity),
+		DurationMs:         int32(result.DurationMS),
+		MouthOpen:          mouthOpen,
+		Source:             result.Source,
+		ExpressionMix:      expressionMix,
+		ParameterOverrides: parameterOverrides,
+	}
 }
 
 // QuizAnalyzer 答题分析评估 handler
@@ -161,13 +331,38 @@ func (s *AIGatewayService) Live2DDirector(ctx context.Context, req *aiv1.Live2DD
 	if err != nil {
 		return nil, err
 	}
+	expressionMix := make([]*aiv1.Live2DDirectiveExpressionLayer, 0, len(result.ExpressionMix))
+	for _, e := range result.ExpressionMix {
+		expressionMix = append(expressionMix, &aiv1.Live2DDirectiveExpressionLayer{
+			Key:    e.Key,
+			Weight: float32(e.Weight),
+		})
+	}
+	parameterOverrides := make([]*aiv1.Live2DDirectiveParameterOverride, 0, len(result.ParameterOverrides))
+	for _, p := range result.ParameterOverrides {
+		parameterOverrides = append(parameterOverrides, &aiv1.Live2DDirectiveParameterOverride{
+			Id:    p.ID,
+			Value: float32(p.Value),
+		})
+	}
+	mouthOpen := float32(0)
+	if result.MouthOpen != nil {
+		mouthOpen = float32(*result.MouthOpen)
+	}
 	return &aiv1.Live2DDirectiveResponse{
-		Emotion:     result.Emotion,
-		Action:      result.Action,
-		Reply:       result.Reply,
-		MotionKey:   result.MotionKey,
-		MotionGroup: result.MotionGroup,
-		DurationMs:  result.DurationMs,
+		Emotion:            result.Emotion,
+		Action:             result.Action,
+		Reply:              result.Reply,
+		MotionKey:          result.MotionKey,
+		MotionGroup:        result.MotionGroup,
+		MotionPriority:     result.MotionPriority,
+		MotionDurationMs:   int32(result.MotionDurationMS),
+		Intensity:          float32(result.Intensity),
+		DurationMs:         int32(result.DurationMS),
+		MouthOpen:          mouthOpen,
+		Source:             result.Source,
+		ExpressionMix:      expressionMix,
+		ParameterOverrides: parameterOverrides,
 	}, nil
 }
 

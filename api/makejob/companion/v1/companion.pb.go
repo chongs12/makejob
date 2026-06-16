@@ -278,6 +278,7 @@ type CompanionChatResponse struct {
 	AudioDuration   int32                  `protobuf:"varint,8,opt,name=audio_duration,json=audioDuration,proto3" json:"audio_duration,omitempty"`
 	AudioFormat     string                 `protobuf:"bytes,9,opt,name=audio_format,json=audioFormat,proto3" json:"audio_format,omitempty"`
 	AudioSampleRate int32                  `protobuf:"varint,10,opt,name=audio_sample_rate,json=audioSampleRate,proto3" json:"audio_sample_rate,omitempty"`
+	Live2DDirective *Live2DDirective       `protobuf:"bytes,11,opt,name=live2d_directive,json=live2dDirective,proto3" json:"live2d_directive,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -382,6 +383,257 @@ func (x *CompanionChatResponse) GetAudioSampleRate() int32 {
 	return 0
 }
 
+func (x *CompanionChatResponse) GetLive2DDirective() *Live2DDirective {
+	if x != nil {
+		return x.Live2DDirective
+	}
+	return nil
+}
+
+type Live2DDirective struct {
+	state              protoimpl.MessageState              `protogen:"open.v1"`
+	Reply              string                              `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
+	Emotion            string                              `protobuf:"bytes,2,opt,name=emotion,proto3" json:"emotion,omitempty"`
+	Action             string                              `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
+	ExpressionMix      []*Live2DDirectiveExpressionLayer   `protobuf:"bytes,4,rep,name=expression_mix,json=expressionMix,proto3" json:"expression_mix,omitempty"`
+	ParameterOverrides []*Live2DDirectiveParameterOverride `protobuf:"bytes,5,rep,name=parameter_overrides,json=parameterOverrides,proto3" json:"parameter_overrides,omitempty"`
+	MotionKey          string                              `protobuf:"bytes,6,opt,name=motion_key,json=motionKey,proto3" json:"motion_key,omitempty"`
+	MotionGroup        string                              `protobuf:"bytes,7,opt,name=motion_group,json=motionGroup,proto3" json:"motion_group,omitempty"`
+	MotionPriority     string                              `protobuf:"bytes,8,opt,name=motion_priority,json=motionPriority,proto3" json:"motion_priority,omitempty"`
+	MotionDurationMs   int32                               `protobuf:"varint,9,opt,name=motion_duration_ms,json=motionDurationMs,proto3" json:"motion_duration_ms,omitempty"`
+	Intensity          float32                             `protobuf:"fixed32,10,opt,name=intensity,proto3" json:"intensity,omitempty"`
+	DurationMs         int32                               `protobuf:"varint,11,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	MouthOpen          float32                             `protobuf:"fixed32,12,opt,name=mouth_open,json=mouthOpen,proto3" json:"mouth_open,omitempty"`
+	Source             string                              `protobuf:"bytes,13,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *Live2DDirective) Reset() {
+	*x = Live2DDirective{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Live2DDirective) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Live2DDirective) ProtoMessage() {}
+
+func (x *Live2DDirective) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Live2DDirective.ProtoReflect.Descriptor instead.
+func (*Live2DDirective) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Live2DDirective) GetReply() string {
+	if x != nil {
+		return x.Reply
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetEmotion() string {
+	if x != nil {
+		return x.Emotion
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetExpressionMix() []*Live2DDirectiveExpressionLayer {
+	if x != nil {
+		return x.ExpressionMix
+	}
+	return nil
+}
+
+func (x *Live2DDirective) GetParameterOverrides() []*Live2DDirectiveParameterOverride {
+	if x != nil {
+		return x.ParameterOverrides
+	}
+	return nil
+}
+
+func (x *Live2DDirective) GetMotionKey() string {
+	if x != nil {
+		return x.MotionKey
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetMotionGroup() string {
+	if x != nil {
+		return x.MotionGroup
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetMotionPriority() string {
+	if x != nil {
+		return x.MotionPriority
+	}
+	return ""
+}
+
+func (x *Live2DDirective) GetMotionDurationMs() int32 {
+	if x != nil {
+		return x.MotionDurationMs
+	}
+	return 0
+}
+
+func (x *Live2DDirective) GetIntensity() float32 {
+	if x != nil {
+		return x.Intensity
+	}
+	return 0
+}
+
+func (x *Live2DDirective) GetDurationMs() int32 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
+func (x *Live2DDirective) GetMouthOpen() float32 {
+	if x != nil {
+		return x.MouthOpen
+	}
+	return 0
+}
+
+func (x *Live2DDirective) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type Live2DDirectiveExpressionLayer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Weight        float32                `protobuf:"fixed32,2,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Live2DDirectiveExpressionLayer) Reset() {
+	*x = Live2DDirectiveExpressionLayer{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Live2DDirectiveExpressionLayer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Live2DDirectiveExpressionLayer) ProtoMessage() {}
+
+func (x *Live2DDirectiveExpressionLayer) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Live2DDirectiveExpressionLayer.ProtoReflect.Descriptor instead.
+func (*Live2DDirectiveExpressionLayer) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Live2DDirectiveExpressionLayer) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *Live2DDirectiveExpressionLayer) GetWeight() float32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+type Live2DDirectiveParameterOverride struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Value         float32                `protobuf:"fixed32,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Live2DDirectiveParameterOverride) Reset() {
+	*x = Live2DDirectiveParameterOverride{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Live2DDirectiveParameterOverride) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Live2DDirectiveParameterOverride) ProtoMessage() {}
+
+func (x *Live2DDirectiveParameterOverride) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Live2DDirectiveParameterOverride.ProtoReflect.Descriptor instead.
+func (*Live2DDirectiveParameterOverride) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Live2DDirectiveParameterOverride) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Live2DDirectiveParameterOverride) GetValue() float32 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
+
 type GetCompanionStateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -391,7 +643,7 @@ type GetCompanionStateRequest struct {
 
 func (x *GetCompanionStateRequest) Reset() {
 	*x = GetCompanionStateRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +655,7 @@ func (x *GetCompanionStateRequest) String() string {
 func (*GetCompanionStateRequest) ProtoMessage() {}
 
 func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +668,7 @@ func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCompanionStateRequest.ProtoReflect.Descriptor instead.
 func (*GetCompanionStateRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetCompanionStateRequest) GetUserId() uint64 {
@@ -437,7 +689,7 @@ type CompanionState struct {
 
 func (x *CompanionState) Reset() {
 	*x = CompanionState{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +701,7 @@ func (x *CompanionState) String() string {
 func (*CompanionState) ProtoMessage() {}
 
 func (x *CompanionState) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +714,7 @@ func (x *CompanionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionState.ProtoReflect.Descriptor instead.
 func (*CompanionState) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CompanionState) GetEmotion() string {
@@ -496,7 +748,7 @@ type SynthesizeSpeechRequest struct {
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -508,7 +760,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -521,7 +773,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{6}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SynthesizeSpeechRequest) GetText() string {
@@ -548,7 +800,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +812,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +825,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{7}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudioData() []byte {
@@ -615,7 +867,7 @@ const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\x18focused_task_description\x18\x06 \x01(\tR\x16focusedTaskDescription\x122\n" +
 	"\x15completed_today_count\x18\a \x01(\x05R\x13completedTodayCount\x12.\n" +
 	"\x13skipped_today_count\x18\b \x01(\x05R\x11skippedTodayCount\x12,\n" +
-	"\x12latest_task_action\x18\t \x01(\tR\x10latestTaskAction\"\xc2\x02\n" +
+	"\x12latest_task_action\x18\t \x01(\tR\x10latestTaskAction\"\x94\x03\n" +
 	"\x15CompanionChatResponse\x12\x14\n" +
 	"\x05reply\x18\x01 \x01(\tR\x05reply\x12\x18\n" +
 	"\aemotion\x18\x02 \x01(\tR\aemotion\x12 \n" +
@@ -627,7 +879,32 @@ const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\x0eaudio_duration\x18\b \x01(\x05R\raudioDuration\x12!\n" +
 	"\faudio_format\x18\t \x01(\tR\vaudioFormat\x12*\n" +
 	"\x11audio_sample_rate\x18\n" +
-	" \x01(\x05R\x0faudioSampleRate\"3\n" +
+	" \x01(\x05R\x0faudioSampleRate\x12P\n" +
+	"\x10live2d_directive\x18\v \x01(\v2%.makejob.companion.v1.Live2DDirectiveR\x0flive2dDirective\"\xae\x04\n" +
+	"\x0fLive2DDirective\x12\x14\n" +
+	"\x05reply\x18\x01 \x01(\tR\x05reply\x12\x18\n" +
+	"\aemotion\x18\x02 \x01(\tR\aemotion\x12\x16\n" +
+	"\x06action\x18\x03 \x01(\tR\x06action\x12[\n" +
+	"\x0eexpression_mix\x18\x04 \x03(\v24.makejob.companion.v1.Live2DDirectiveExpressionLayerR\rexpressionMix\x12g\n" +
+	"\x13parameter_overrides\x18\x05 \x03(\v26.makejob.companion.v1.Live2DDirectiveParameterOverrideR\x12parameterOverrides\x12\x1d\n" +
+	"\n" +
+	"motion_key\x18\x06 \x01(\tR\tmotionKey\x12!\n" +
+	"\fmotion_group\x18\a \x01(\tR\vmotionGroup\x12'\n" +
+	"\x0fmotion_priority\x18\b \x01(\tR\x0emotionPriority\x12,\n" +
+	"\x12motion_duration_ms\x18\t \x01(\x05R\x10motionDurationMs\x12\x1c\n" +
+	"\tintensity\x18\n" +
+	" \x01(\x02R\tintensity\x12\x1f\n" +
+	"\vduration_ms\x18\v \x01(\x05R\n" +
+	"durationMs\x12\x1d\n" +
+	"\n" +
+	"mouth_open\x18\f \x01(\x02R\tmouthOpen\x12\x16\n" +
+	"\x06source\x18\r \x01(\tR\x06source\"J\n" +
+	"\x1eLive2DDirectiveExpressionLayer\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
+	"\x06weight\x18\x02 \x01(\x02R\x06weight\"H\n" +
+	" Live2DDirectiveParameterOverride\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x02R\x05value\"3\n" +
 	"\x18GetCompanionStateRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\x8b\x01\n" +
 	"\x0eCompanionState\x12\x18\n" +
@@ -659,33 +936,39 @@ func file_makejob_companion_v1_companion_proto_rawDescGZIP() []byte {
 	return file_makejob_companion_v1_companion_proto_rawDescData
 }
 
-var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_makejob_companion_v1_companion_proto_goTypes = []any{
-	(*CompanionChatRequest)(nil),     // 0: makejob.companion.v1.CompanionChatRequest
-	(*CompanionChatMessage)(nil),     // 1: makejob.companion.v1.CompanionChatMessage
-	(*CompanionChatContext)(nil),     // 2: makejob.companion.v1.CompanionChatContext
-	(*CompanionChatResponse)(nil),    // 3: makejob.companion.v1.CompanionChatResponse
-	(*GetCompanionStateRequest)(nil), // 4: makejob.companion.v1.GetCompanionStateRequest
-	(*CompanionState)(nil),           // 5: makejob.companion.v1.CompanionState
-	(*SynthesizeSpeechRequest)(nil),  // 6: makejob.companion.v1.SynthesizeSpeechRequest
-	(*SynthesizeSpeechResponse)(nil), // 7: makejob.companion.v1.SynthesizeSpeechResponse
-	(*timestamppb.Timestamp)(nil),    // 8: google.protobuf.Timestamp
+	(*CompanionChatRequest)(nil),             // 0: makejob.companion.v1.CompanionChatRequest
+	(*CompanionChatMessage)(nil),             // 1: makejob.companion.v1.CompanionChatMessage
+	(*CompanionChatContext)(nil),             // 2: makejob.companion.v1.CompanionChatContext
+	(*CompanionChatResponse)(nil),            // 3: makejob.companion.v1.CompanionChatResponse
+	(*Live2DDirective)(nil),                  // 4: makejob.companion.v1.Live2DDirective
+	(*Live2DDirectiveExpressionLayer)(nil),   // 5: makejob.companion.v1.Live2DDirectiveExpressionLayer
+	(*Live2DDirectiveParameterOverride)(nil), // 6: makejob.companion.v1.Live2DDirectiveParameterOverride
+	(*GetCompanionStateRequest)(nil),         // 7: makejob.companion.v1.GetCompanionStateRequest
+	(*CompanionState)(nil),                   // 8: makejob.companion.v1.CompanionState
+	(*SynthesizeSpeechRequest)(nil),          // 9: makejob.companion.v1.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil),         // 10: makejob.companion.v1.SynthesizeSpeechResponse
+	(*timestamppb.Timestamp)(nil),            // 11: google.protobuf.Timestamp
 }
 var file_makejob_companion_v1_companion_proto_depIdxs = []int32{
-	1, // 0: makejob.companion.v1.CompanionChatRequest.messages:type_name -> makejob.companion.v1.CompanionChatMessage
-	2, // 1: makejob.companion.v1.CompanionChatRequest.context:type_name -> makejob.companion.v1.CompanionChatContext
-	8, // 2: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
-	0, // 3: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
-	4, // 4: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
-	6, // 5: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
-	3, // 6: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
-	5, // 7: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
-	7, // 8: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1,  // 0: makejob.companion.v1.CompanionChatRequest.messages:type_name -> makejob.companion.v1.CompanionChatMessage
+	2,  // 1: makejob.companion.v1.CompanionChatRequest.context:type_name -> makejob.companion.v1.CompanionChatContext
+	4,  // 2: makejob.companion.v1.CompanionChatResponse.live2d_directive:type_name -> makejob.companion.v1.Live2DDirective
+	5,  // 3: makejob.companion.v1.Live2DDirective.expression_mix:type_name -> makejob.companion.v1.Live2DDirectiveExpressionLayer
+	6,  // 4: makejob.companion.v1.Live2DDirective.parameter_overrides:type_name -> makejob.companion.v1.Live2DDirectiveParameterOverride
+	11, // 5: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
+	7,  // 7: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
+	9,  // 8: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
+	3,  // 9: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
+	8,  // 10: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
+	10, // 11: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
+	9,  // [9:12] is the sub-list for method output_type
+	6,  // [6:9] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_makejob_companion_v1_companion_proto_init() }
@@ -699,7 +982,7 @@ func file_makejob_companion_v1_companion_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_companion_v1_companion_proto_rawDesc), len(file_makejob_companion_v1_companion_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

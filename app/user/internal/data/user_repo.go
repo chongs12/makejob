@@ -38,6 +38,15 @@ func (r *userRepo) GetByEmail(ctx context.Context, email string) (*biz.User, err
 	return &user, nil
 }
 
+// GetByUsername 按用户名查询用户（对齐单体 ExistsByUsername）
+func (r *userRepo) GetByUsername(ctx context.Context, username string) (*biz.User, error) {
+	var user biz.User
+	if err := r.db.WithContext(ctx).Where("username = ?", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *userRepo) BatchGetByIDs(ctx context.Context, ids []uint64) ([]*biz.User, error) {
 	var users []*biz.User
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error; err != nil {

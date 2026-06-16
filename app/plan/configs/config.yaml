@@ -1,10 +1,10 @@
 server:
   http:
     addr: 0.0.0.0:8007
-    timeout: 10s
+    timeout: 3m
   grpc:
     addr: 0.0.0.0:9007
-    timeout: 10s
+    timeout: 3m
 
 data:
   database:
@@ -25,4 +25,4 @@ mq:
   exchange: "makejob.async"
 
 ai:
-  service_addr: "localhost:9099"
+  service_addr: "localhost:9011"

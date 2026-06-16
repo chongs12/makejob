@@ -4,7 +4,7 @@ package model
 type StudyLog struct {
 	BaseModel
 	UserID           uint64 `gorm:"index;not null"`
-	DateKey          string `gorm:"size:10;index;not null"`
+	DateKey          string `gorm:"column:log_date;size:10;index;not null"`
 	PlanID           uint64
 	Summary          string `gorm:"size:500"`
 	Action           string `gorm:"size:50;index;not null"`

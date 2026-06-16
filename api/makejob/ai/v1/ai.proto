@@ -12,6 +12,17 @@ service AIService {
   rpc ResumeParser(ResumeParserRequest) returns (ResumeParserResponse);
   rpc Live2DDirector(Live2DDirectiveRequest) returns (Live2DDirectiveResponse);
 
+  // === Interview 会话式 RPC（对齐单体 InterviewAgent 接口）===
+  rpc StartInterview(StartInterviewRequest) returns (StartInterviewResponse);
+  rpc EvaluateAnswer(EvaluateAnswerRequest) returns (EvaluateAnswerResponse);
+  rpc GetNextQuestionSession(GetNextQuestionSessionRequest) returns (GetNextQuestionSessionResponse);
+  rpc GenerateInterviewReport(GenerateInterviewReportRequest) returns (GenerateInterviewReportResponse);
+  rpc EndInterviewSession(EndInterviewSessionRequest) returns (EndInterviewSessionResponse);
+
+  // === Companion 扩展 RPC（对齐单体 GetGreeting/GetEncouragement）===
+  rpc GetGreeting(GetGreetingRequest) returns (GetGreetingResponse);
+  rpc GetEncouragement(GetEncouragementRequest) returns (GetEncouragementResponse);
+
   // === Admin 调试 RPC ===
   rpc RenderPrompt(RenderPromptRequest) returns (RenderPromptResponse);
   rpc DebugAI(DebugAIRequest) returns (DebugAIResponse);
@@ -50,6 +61,81 @@ message InterviewAgentResponse {
   string live2d_action = 10;
 }
 
+// ============================================================
+// Interview 会话式 RPC 消息（对齐单体 InterviewAgent 接口）
+// ============================================================
+
+message StartInterviewRequest {
+  uint64 interview_id = 1;
+  string industry_code = 2;
+  string difficulty = 3;
+  int32 question_count = 4;
+  string resume_text = 5;
+  string job_description = 6;
+  string interview_mode = 7;
+}
+
+message StartInterviewResponse {
+  string session_id = 1;
+  string question = 2;
+  string topic = 3;
+  string difficulty = 4;
+  string type = 5;
+  string hints = 6;
+  Live2DDirective live2d_directive = 7;
+}
+
+message EvaluateAnswerRequest {
+  string session_id = 1;
+  int32 question_index = 2;
+  string answer = 3;
+}
+
+message EvaluateAnswerResponse {
+  double score = 1;
+  bool is_correct = 2;
+  string feedback = 3;
+  repeated string key_points = 4;
+  string suggestions = 5;
+  string follow_up = 6;
+}
+
+message GetNextQuestionSessionRequest {
+  string session_id = 1;
+}
+
+message GetNextQuestionSessionResponse {
+  string question = 1;
+  string topic = 2;
+  string difficulty = 3;
+  string type = 4;
+  string hints = 5;
+  bool has_next = 6;
+  Live2DDirective live2d_directive = 7;
+}
+
+message GenerateInterviewReportRequest {
+  string session_id = 1;
+}
+
+message GenerateInterviewReportResponse {
+  double overall_score = 1;
+  string summary = 2;
+  map<string, double> dimension_scores = 3;
+  repeated string strengths = 4;
+  repeated string weaknesses = 5;
+  repeated string suggestions = 6;
+  string ai_feedback = 7;
+}
+
+message EndInterviewSessionRequest {
+  string session_id = 1;
+}
+
+message EndInterviewSessionResponse {
+  bool success = 1;
+}
+
 message PlanAgentRequest {
   uint64 user_id = 1;
   string industry_code = 2;
@@ -78,12 +164,42 @@ message CompanionAgentRequest {
   string message = 2;
   string context_type = 3;
   repeated string recent_topics = 4;
+  string username = 5;
 }
 
 message CompanionAgentResponse {
   string reply = 1;
   string emotion = 2;
   repeated string suggestions = 3;
+  string action = 4;
+  Live2DDirective live2d_directive = 5;
+}
+
+// GetGreeting 本地欢迎语请求（对齐单体 CompanionAgent.GetGreeting）
+message GetGreetingRequest {
+  uint64 user_id = 1;
+  string level = 2;           // 用户级别：beginner/intermediate/advanced
+  string time_of_day = 3;     // 时间段：morning/afternoon/evening/night
+}
+
+// GetGreeting 本地欢迎语响应
+message GetGreetingResponse {
+  string content = 1;
+  string emotion = 2;
+  string action = 3;
+}
+
+// GetEncouragement 本地鼓励语请求（对齐单体 CompanionAgent.GetEncouragement）
+message GetEncouragementRequest {
+  uint64 user_id = 1;
+  string achievement = 2;     // 成就描述
+}
+
+// GetEncouragement 本地鼓励语响应
+message GetEncouragementResponse {
+  string content = 1;
+  string emotion = 2;
+  string action = 3;
 }
 
 message QuizAnalyzerRequest {
@@ -128,6 +244,40 @@ message Live2DDirectiveResponse {
   string motion_key = 4;
   string motion_group = 5;
   int32 duration_ms = 6;
+  string motion_priority = 7;
+  int32 motion_duration_ms = 8;
+  float intensity = 9;
+  float mouth_open = 10;
+  string source = 11;
+  repeated Live2DDirectiveExpressionLayer expression_mix = 12;
+  repeated Live2DDirectiveParameterOverride parameter_overrides = 13;
+}
+
+message Live2DDirectiveExpressionLayer {
+  string key = 1;
+  float weight = 2;
+}
+
+message Live2DDirectiveParameterOverride {
+  string id = 1;
+  float value = 2;
+}
+
+// Live2DDirective Live2D 控制指令（对齐单体 ai.Live2DDirective）
+message Live2DDirective {
+  string emotion = 1;
+  string action = 2;
+  string reply = 3;
+  repeated Live2DDirectiveExpressionLayer expression_mix = 4;
+  repeated Live2DDirectiveParameterOverride parameter_overrides = 5;
+  string motion_key = 6;
+  string motion_group = 7;
+  string motion_priority = 8;
+  int32 motion_duration_ms = 9;
+  float intensity = 10;
+  int32 duration_ms = 11;
+  float mouth_open = 12;
+  string source = 13;
 }
 
 // ============================================================

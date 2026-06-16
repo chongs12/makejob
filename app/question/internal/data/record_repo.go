@@ -23,7 +23,7 @@ func (r *recordRepo) Create(ctx context.Context, record *biz.UserQuestionRecord)
 		UserID:     record.UserID,
 		QuestionID: record.QuestionID,
 		IsCorrect:  record.IsCorrect,
-		Answer:     record.Answer,
+		UserAnswer: record.Answer,
 		Language:   record.Language,
 		Score:      record.Score,
 	}
@@ -43,7 +43,7 @@ func (r *recordRepo) GetByUserAndQuestion(ctx context.Context, userID, questionI
 		UserID:     m.UserID,
 		QuestionID: m.QuestionID,
 		IsCorrect:  m.IsCorrect,
-		Answer:     m.Answer,
+		Answer:     m.UserAnswer,
 		Language:   m.Language,
 		Score:      m.Score,
 		CreatedAt:  m.CreatedAt,
@@ -105,10 +105,12 @@ func (r *recordRepo) GetWrongQuestions(ctx context.Context, userID uint64, page,
 	var total int64
 	subQuery.Count(&total)
 
+	// 对齐单体：获取最后一次错误答案（列名 user_answer）
 	var rows []wrongQuestionRow
 	err := r.db.WithContext(ctx).
 		Table("(?) AS wq", subQuery).
-		Select("wq.question_id, q.title, wq.wrong_count, wq.last_wrong_at, '' AS last_answer").
+		Select("wq.question_id, q.title, wq.wrong_count, wq.last_wrong_at, "+
+			"(SELECT uqr.user_answer FROM user_question_records uqr WHERE uqr.question_id = wq.question_id AND uqr.user_id = ? AND uqr.is_correct = false ORDER BY uqr.id DESC LIMIT 1) AS last_answer", userID).
 		Joins("LEFT JOIN questions q ON q.id = wq.question_id").
 		Order("wq.wrong_count DESC").
 		Offset(int((page - 1) * pageSize)).

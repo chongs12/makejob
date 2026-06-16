@@ -178,7 +178,12 @@ func (s *CommunityService) ListComments(ctx context.Context, req *communityv1.Li
 }
 
 func (s *CommunityService) CreateComment(ctx context.Context, req *communityv1.CreateCommentRequest) (*communityv1.Comment, error) {
-	comment, err := s.uc.CreateComment(ctx, req.PostId, req.AuthorId, req.Content)
+	// P0: 从认证上下文获取用户 ID，禁止从请求体获取身份
+	authorID := auth.GetUserIDFromContext(ctx)
+	if authorID == 0 {
+		return nil, ErrUnauthorized
+	}
+	comment, err := s.uc.CreateComment(ctx, req.PostId, authorID, req.Content)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +232,15 @@ func (s *CommunityService) ListMyPosts(ctx context.Context, req *communityv1.Lis
 	if err != nil {
 		return nil, err
 	}
+	userID := auth.GetUserIDFromContext(ctx)
 	items := make([]*communityv1.PostSummary, len(posts))
 	for i, p := range posts {
-		items[i] = toProtoPostSummary(p)
+		summary := toProtoPostSummary(p)
+		summary.IsAuthor = true // 我的帖子列表，作者始终是自己
+		if userID > 0 {
+			summary.IsLiked = s.uc.IsLiked(ctx, uint64(p.ID))
+		}
+		items[i] = summary
 	}
 	return &communityv1.ListMyPostsResponse{
 		Posts: items,

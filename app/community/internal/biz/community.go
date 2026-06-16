@@ -19,12 +19,14 @@ var (
 	ErrTitleTooLong    = kratosErr.BadRequest("TITLE_TOO_LONG", "标题不能超过120字符")
 	ErrContentTooLong  = kratosErr.BadRequest("CONTENT_TOO_LONG", "内容不能超过5000字符")
 	ErrTooManyTags     = kratosErr.BadRequest("TOO_MANY_TAGS", "标签不能超过5个")
-	ErrPostTypeInvalid = kratosErr.BadRequest("POST_TYPE_INVALID", "帖子类型无效，仅支持 discussion/article/question") // FIX B5
+	ErrPostTypeInvalid = kratosErr.BadRequest("POST_TYPE_INVALID", "帖子类型无效，仅支持 article/moment") // 对齐单体枚举
+	ErrCommentRequired = kratosErr.BadRequest("COMMENT_REQUIRED", "评论内容不能为空")                       // 对齐单体校验
+	ErrCommentTooLong  = kratosErr.BadRequest("COMMENT_TOO_LONG", "评论内容不能超过1000字符")                // 对齐单体校验
 )
 
-// PostFilter 帖子查询过滤条件（FIX B5）
+// PostFilter 帖子查询过滤条件（对齐单体 post_type 枚举：article/moment）
 type PostFilter struct {
-	PostType string // discussion/article/question
+	PostType string // article/moment
 	Keyword  string // 搜索标题/内容
 	Tag      string // 标签过滤
 	SortBy   string // latest/popular/most_liked
@@ -59,22 +61,24 @@ type BaseModel struct {
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
-// Post 帖子领域实体
+// Post 帖子领域实体（对齐单体 community_posts 表结构）
 type Post struct {
 	BaseModel
 	AuthorID      uint64 `gorm:"index;not null"`
 	Title         string `gorm:"size:200;not null"`
-	Content       string `gorm:"type:text"`
-	Summary       string `gorm:"size:500"`
-	Tags          string `gorm:"size:500"`
-	PostType      string `gorm:"size:20;not null;default:'discussion'"`
-	Category      string `gorm:"size:50"`
-	AuthorName    string `gorm:"size:100"`
+	Content       string `gorm:"type:text;not null"` // 对齐单体：not null
+	Summary       string `gorm:"size:300"`            // 对齐单体：size:300
+	Tags          string `gorm:"size:300"`            // 对齐单体：size:300
+	PostType      string `gorm:"size:20;not null;index"` // 对齐单体：去掉 default
 	LikeCount     int32  `gorm:"not null;default:0"`
 	CommentCount  int32  `gorm:"not null;default:0"`
 	ViewCount     int32  `gorm:"not null;default:0"`
 	IsPinned      bool   `gorm:"not null;default:false"`
 	IsRecommended bool   `gorm:"not null;default:false"`
+
+	// 运行期字段，不落库
+	Category   string `gorm:"-"` // 表中无此列
+	AuthorName string `gorm:"-"` // 表中无此列，单体通过 Author 关联获取
 }
 
 // TableName 返回帖子表名（FIX B6: 符合全局规范）
@@ -119,23 +123,33 @@ func (uc *CommunityUseCase) ListPosts(ctx context.Context, page, pageSize int32,
 	return uc.repo.ListPostsFiltered(ctx, page, pageSize, filter)
 }
 
-// CreatePost 创建帖子（FIX B5: 添加 post_type/title/content 校验）
+// CreatePost 创建帖子（对齐单体 post_type 枚举 + content 必填 + 摘要截断）
 func (uc *CommunityUseCase) CreatePost(ctx context.Context, authorID uint64, title, content, postType, category, tags string) (*Post, error) {
-	// post_type 必填校验
+	// post_type 必填校验（对齐单体：article/moment）
 	if postType == "" {
 		return nil, ErrPostTypeInvalid
 	}
-	if postType != "discussion" && postType != "article" && postType != "question" {
+	if postType != "article" && postType != "moment" {
 		return nil, ErrPostTypeInvalid
 	}
-	// title 非空校验
-	if title == "" {
+	// article 类型 title 必填（对齐单体）
+	if postType == "article" && title == "" {
 		return nil, ErrTitleRequired
+	}
+	// moment 类型 title 可选，为空时自动生成
+	if postType == "moment" && title == "" {
+		title = content
+		if len([]rune(title)) > 120 {
+			title = string([]rune(title)[:120])
+		}
 	}
 	if len([]rune(title)) > 120 {
 		return nil, ErrTitleTooLong
 	}
-	// content 长度校验
+	// content 必填（对齐单体）
+	if content == "" {
+		return nil, kratosErr.BadRequest("CONTENT_REQUIRED", "内容不能为空")
+	}
 	if len([]rune(content)) > 5000 {
 		return nil, ErrContentTooLong
 	}
@@ -147,11 +161,11 @@ func (uc *CommunityUseCase) CreatePost(ctx context.Context, authorID uint64, tit
 		}
 	}
 
-	// 计算摘要
+	// 计算摘要（对齐单体：前 120 字符 + "..."）
 	runes := []rune(content)
 	summary := content
-	if len(runes) > 200 {
-		summary = string(runes[:200])
+	if len(runes) > 120 {
+		summary = string(runes[:120]) + "..."
 	}
 
 	post := &Post{
@@ -198,8 +212,16 @@ func (uc *CommunityUseCase) DeletePost(ctx context.Context, id, authorID uint64)
 	return uc.repo.DeletePostWithAssociations(ctx, id, authorID)
 }
 
-// CreateComment 创建评论并在事务中原子递增帖子评论计数。
+// CreateComment 创建评论并在事务中原子递增帖子评论计数（对齐单体：content 必填 + ≤1000 字符）。
 func (uc *CommunityUseCase) CreateComment(ctx context.Context, postID, authorID uint64, content string) (*Comment, error) {
+	// 评论内容校验（对齐单体）
+	if strings.TrimSpace(content) == "" {
+		return nil, ErrCommentRequired
+	}
+	if len([]rune(content)) > 1000 {
+		return nil, ErrCommentTooLong
+	}
+
 	post, err := uc.repo.GetPost(ctx, postID)
 	if err != nil {
 		return nil, err
@@ -265,10 +287,10 @@ func (uc *CommunityUseCase) UpdatePost(ctx context.Context, postID uint64, title
 	post.Title = title
 	post.Content = content
 	post.Tags = tags
-	// 重新计算摘要：取 content 前 200 个字符
+	// 重新计算摘要（对齐单体：前 120 字符 + "..."）
 	runes := []rune(content)
-	if len(runes) > 200 {
-		post.Summary = string(runes[:200])
+	if len(runes) > 120 {
+		post.Summary = string(runes[:120]) + "..."
 	} else {
 		post.Summary = content
 	}
@@ -280,7 +302,7 @@ func (uc *CommunityUseCase) UpdatePost(ctx context.Context, postID uint64, title
 }
 
 // ToggleLike 切换帖子点赞状态（已赞则取消，未赞则点赞）
-// FIX B4: 使用事务保证原子性，避免 like_count 与实际记录不一致
+// 对齐单体：事务内重读 like_count，避免并发不一致
 func (uc *CommunityUseCase) ToggleLike(ctx context.Context, postID uint64) (bool, int32, error) {
 	userID := auth.GetUserIDFromContext(ctx)
 
@@ -312,7 +334,6 @@ func (uc *CommunityUseCase) ToggleLike(ctx context.Context, postID uint64) (bool
 				return err
 			}
 			liked = false
-			likeCount = post.LikeCount - 1
 		} else {
 			// 未赞 → 点赞
 			like := &PostLike{
@@ -326,7 +347,15 @@ func (uc *CommunityUseCase) ToggleLike(ctx context.Context, postID uint64) (bool
 				return err
 			}
 			liked = true
-			likeCount = post.LikeCount + 1
+		}
+
+		// 对齐单体：事务内重读 like_count，避免并发不一致
+		updatedPost, err := uc.repo.GetPost(txCtx, postID)
+		if err != nil {
+			return err
+		}
+		if updatedPost != nil {
+			likeCount = updatedPost.LikeCount
 		}
 		return nil
 	})

@@ -267,22 +267,22 @@ func appendUniqueStrings(target []string, values ...string) []string {
 	return target
 }
 
-// decodeCodingDiagnostics 解析报告中的编程诊断 JSON 字段。
+// decodeCodingDiagnostics 解析报告中的编程诊断 JSON 字段，空输入返回空数组而非 nil。
 func decodeCodingDiagnostics(raw string) []*CodingDiagnosisBiz {
 	if strings.TrimSpace(raw) == "" {
-		return nil
+		return []*CodingDiagnosisBiz{}
 	}
 	var diagnostics []*CodingDiagnosisBiz
 	if err := json.Unmarshal([]byte(raw), &diagnostics); err != nil {
-		return nil
+		return []*CodingDiagnosisBiz{}
 	}
 	return diagnostics
 }
 
-// uniqueNonEmptyStrings 对字符串切片去重并过滤空值。
+// uniqueNonEmptyStrings 对字符串切片去重并过滤空值，空输入返回空数组而非 nil。
 func uniqueNonEmptyStrings(values []string) []string {
 	if len(values) == 0 {
-		return nil
+		return []string{}
 	}
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))

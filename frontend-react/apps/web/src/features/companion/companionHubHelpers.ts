@@ -31,6 +31,9 @@ export function buildInitialPlanForm(): CompanionGeneratePlanForm {
  * 将分类树拍平成弱项选项列表，便于入口页直接复用现有题库分类。
  */
 export function flattenCompanionCategories(nodes: CompanionCategoryNode[], level = 0): CompanionCategoryOption[] {
+  if (!Array.isArray(nodes)) {
+    return []
+  }
   return nodes.flatMap((node) => [
     {
       id: node.id,
@@ -134,6 +137,9 @@ export function applyWeeklyFocusToPlanForm(
   form: CompanionGeneratePlanForm,
   themes: WeeklyFocusTheme[],
 ): CompanionGeneratePlanForm {
+  if (!Array.isArray(themes)) {
+    return form
+  }
   const focusTags = Array.from(
     new Set(
       themes

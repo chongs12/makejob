@@ -367,11 +367,12 @@ type QuestionDetail struct {
 	IsFavorited     bool                   `protobuf:"varint,15,opt,name=is_favorited,json=isFavorited,proto3" json:"is_favorited,omitempty"`
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// 结构化 JSON 字段，由网关解析为前端期望的对象/数组
-	OptionsJson        string `protobuf:"bytes,17,opt,name=options_json,json=optionsJson,proto3" json:"options_json,omitempty"`
-	Answer             string `protobuf:"bytes,18,opt,name=answer,proto3" json:"answer,omitempty"`
-	SolutionJson       string `protobuf:"bytes,19,opt,name=solution_json,json=solutionJson,proto3" json:"solution_json,omitempty"`
-	JudgeConfigJson    string `protobuf:"bytes,20,opt,name=judge_config_json,json=judgeConfigJson,proto3" json:"judge_config_json,omitempty"`
-	AnswerTemplateJson string `protobuf:"bytes,21,opt,name=answer_template_json,json=answerTemplateJson,proto3" json:"answer_template_json,omitempty"`
+	OptionsJson        string        `protobuf:"bytes,17,opt,name=options_json,json=optionsJson,proto3" json:"options_json,omitempty"`
+	Answer             string        `protobuf:"bytes,18,opt,name=answer,proto3" json:"answer,omitempty"`
+	SolutionJson       string        `protobuf:"bytes,19,opt,name=solution_json,json=solutionJson,proto3" json:"solution_json,omitempty"`
+	JudgeConfigJson    string        `protobuf:"bytes,20,opt,name=judge_config_json,json=judgeConfigJson,proto3" json:"judge_config_json,omitempty"`
+	AnswerTemplateJson string        `protobuf:"bytes,21,opt,name=answer_template_json,json=answerTemplateJson,proto3" json:"answer_template_json,omitempty"`
+	UserNote           *NoteResponse `protobuf:"bytes,22,opt,name=user_note,json=userNote,proto3" json:"user_note,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -551,6 +552,13 @@ func (x *QuestionDetail) GetAnswerTemplateJson() string {
 		return x.AnswerTemplateJson
 	}
 	return ""
+}
+
+func (x *QuestionDetail) GetUserNote() *NoteResponse {
+	if x != nil {
+		return x.UserNote
+	}
+	return nil
 }
 
 type TestCase struct {
@@ -2753,6 +2761,7 @@ type ExamResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Questions        []*QuestionDetail      `protobuf:"bytes,1,rep,name=questions,proto3" json:"questions,omitempty"`
 	TimeLimitMinutes int32                  `protobuf:"varint,2,opt,name=time_limit_minutes,json=timeLimitMinutes,proto3" json:"time_limit_minutes,omitempty"`
+	ExamId           uint64                 `protobuf:"varint,3,opt,name=exam_id,json=examId,proto3" json:"exam_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2797,6 +2806,13 @@ func (x *ExamResponse) GetQuestions() []*QuestionDetail {
 func (x *ExamResponse) GetTimeLimitMinutes() int32 {
 	if x != nil {
 		return x.TimeLimitMinutes
+	}
+	return 0
+}
+
+func (x *ExamResponse) GetExamId() uint64 {
+	if x != nil {
+		return x.ExamId
 	}
 	return 0
 }
@@ -4873,7 +4889,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"industryId\x12\x12\n" +
 	"\x04tags\x18\t \x03(\tR\x04tags\"$\n" +
 	"\x12GetQuestionRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\x8b\x06\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\xcb\x06\n" +
 	"\x0eQuestionDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
@@ -4900,7 +4916,8 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x06answer\x18\x12 \x01(\tR\x06answer\x12#\n" +
 	"\rsolution_json\x18\x13 \x01(\tR\fsolutionJson\x12*\n" +
 	"\x11judge_config_json\x18\x14 \x01(\tR\x0fjudgeConfigJson\x120\n" +
-	"\x14answer_template_json\x18\x15 \x01(\tR\x12answerTemplateJson\"f\n" +
+	"\x14answer_template_json\x18\x15 \x01(\tR\x12answerTemplateJson\x12>\n" +
+	"\tuser_note\x18\x16 \x01(\v2!.makejob.question.v1.NoteResponseR\buserNote\"f\n" +
 	"\bTestCase\x12\x14\n" +
 	"\x05input\x18\x01 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x02 \x01(\tR\x0eexpectedOutput\x12\x1b\n" +
@@ -5104,10 +5121,11 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"categoryId\x12\x1e\n" +
 	"\n" +
 	"difficulty\x18\a \x01(\tR\n" +
-	"difficulty\"\x7f\n" +
+	"difficulty\"\x98\x01\n" +
 	"\fExamResponse\x12A\n" +
 	"\tquestions\x18\x01 \x03(\v2#.makejob.question.v1.QuestionDetailR\tquestions\x12,\n" +
-	"\x12time_limit_minutes\x18\x02 \x01(\x05R\x10timeLimitMinutes\"\x8f\x02\n" +
+	"\x12time_limit_minutes\x18\x02 \x01(\x05R\x10timeLimitMinutes\x12\x17\n" +
+	"\aexam_id\x18\x03 \x01(\x04R\x06examId\"\x8f\x02\n" +
 	"\x18GenerateTimedExamRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12%\n" +
@@ -5437,106 +5455,107 @@ var file_makejob_question_v1_question_proto_depIdxs = []int32{
 	7,  // 3: makejob.question.v1.QuestionDetail.category:type_name -> makejob.question.v1.CategoryInfo
 	6,  // 4: makejob.question.v1.QuestionDetail.test_cases:type_name -> makejob.question.v1.TestCase
 	71, // 5: makejob.question.v1.QuestionDetail.created_at:type_name -> google.protobuf.Timestamp
-	10, // 6: makejob.question.v1.CategoryTreeResponse.categories:type_name -> makejob.question.v1.CategoryNode
-	10, // 7: makejob.question.v1.CategoryNode.children:type_name -> makejob.question.v1.CategoryNode
-	12, // 8: makejob.question.v1.IndustryListResponse.industries:type_name -> makejob.question.v1.IndustryInfo
-	15, // 9: makejob.question.v1.SubmitAnswerResponse.judge_summary:type_name -> makejob.question.v1.JudgeSummary
-	16, // 10: makejob.question.v1.JudgeSummary.results:type_name -> makejob.question.v1.JudgeCaseResult
-	69, // 11: makejob.question.v1.ListFavoritesRequest.page:type_name -> makejob.shared.v1.PageParam
-	3,  // 12: makejob.question.v1.FavoriteListResponse.questions:type_name -> makejob.question.v1.QuestionSummary
-	70, // 13: makejob.question.v1.FavoriteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	71, // 14: makejob.question.v1.NoteResponse.created_at:type_name -> google.protobuf.Timestamp
-	71, // 15: makejob.question.v1.NoteResponse.updated_at:type_name -> google.protobuf.Timestamp
-	69, // 16: makejob.question.v1.ListNotesRequest.page:type_name -> makejob.shared.v1.PageParam
-	25, // 17: makejob.question.v1.NoteListResponse.notes:type_name -> makejob.question.v1.NoteResponse
-	70, // 18: makejob.question.v1.NoteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	31, // 19: makejob.question.v1.PracticeRecommendationResponse.questions:type_name -> makejob.question.v1.RecommendedQuestion
-	69, // 20: makejob.question.v1.WrongQuestionRequest.page:type_name -> makejob.shared.v1.PageParam
-	34, // 21: makejob.question.v1.WrongQuestionListResponse.entries:type_name -> makejob.question.v1.WrongQuestionEntry
-	70, // 22: makejob.question.v1.WrongQuestionListResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	71, // 23: makejob.question.v1.WrongQuestionEntry.last_wrong_at:type_name -> google.protobuf.Timestamp
-	36, // 24: makejob.question.v1.UserPracticeStats.category_stats:type_name -> makejob.question.v1.CategoryStat
-	5,  // 25: makejob.question.v1.ExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
-	5,  // 26: makejob.question.v1.GenerateTimedExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
-	71, // 27: makejob.question.v1.GenerateTimedExamResponse.started_at:type_name -> google.protobuf.Timestamp
-	71, // 28: makejob.question.v1.GenerateTimedExamResponse.expires_at:type_name -> google.protobuf.Timestamp
-	68, // 29: makejob.question.v1.SubmitExamRequest.answers:type_name -> makejob.question.v1.SubmitExamRequest.AnswersEntry
-	43, // 30: makejob.question.v1.SubmitExamResponse.question_results:type_name -> makejob.question.v1.QuestionResult
-	69, // 31: makejob.question.v1.ListQuestionSetsRequest.page:type_name -> makejob.shared.v1.PageParam
-	48, // 32: makejob.question.v1.ListQuestionSetsResponse.items:type_name -> makejob.question.v1.QuestionSetSummary
-	70, // 33: makejob.question.v1.ListQuestionSetsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	47, // 34: makejob.question.v1.QuestionSetSummary.questions:type_name -> makejob.question.v1.QuestionSetPreview
-	48, // 35: makejob.question.v1.QuestionSetDetail.info:type_name -> makejob.question.v1.QuestionSetSummary
-	3,  // 36: makejob.question.v1.QuestionSetDetail.questions:type_name -> makejob.question.v1.QuestionSummary
-	53, // 37: makejob.question.v1.ListMistakeTopicsResponse.topics:type_name -> makejob.question.v1.MistakeTopic
-	54, // 38: makejob.question.v1.MistakeTopic.recent_wrong_questions:type_name -> makejob.question.v1.MistakeQuestion
-	71, // 39: makejob.question.v1.MistakeQuestion.last_wrong_at:type_name -> google.protobuf.Timestamp
-	69, // 40: makejob.question.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
-	59, // 41: makejob.question.v1.AdminListQuestionsResponse.questions:type_name -> makejob.question.v1.AdminQuestionInfo
-	70, // 42: makejob.question.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
-	71, // 43: makejob.question.v1.AdminQuestionInfo.created_at:type_name -> google.protobuf.Timestamp
-	71, // 44: makejob.question.v1.AdminQuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 45: makejob.question.v1.QuestionService.ListQuestions:input_type -> makejob.question.v1.ListQuestionsRequest
-	4,  // 46: makejob.question.v1.QuestionService.GetQuestion:input_type -> makejob.question.v1.GetQuestionRequest
-	8,  // 47: makejob.question.v1.QuestionService.ListCategories:input_type -> makejob.question.v1.ListCategoriesRequest
-	72, // 48: makejob.question.v1.QuestionService.ListIndustries:input_type -> google.protobuf.Empty
-	13, // 49: makejob.question.v1.QuestionService.SubmitAnswer:input_type -> makejob.question.v1.SubmitAnswerRequest
-	17, // 50: makejob.question.v1.QuestionService.RunCode:input_type -> makejob.question.v1.RunCodeRequest
-	19, // 51: makejob.question.v1.QuestionService.CreateFavorite:input_type -> makejob.question.v1.CreateFavoriteRequest
-	20, // 52: makejob.question.v1.QuestionService.DeleteFavorite:input_type -> makejob.question.v1.DeleteFavoriteRequest
-	21, // 53: makejob.question.v1.QuestionService.ListFavorites:input_type -> makejob.question.v1.ListFavoritesRequest
-	24, // 54: makejob.question.v1.QuestionService.CreateNote:input_type -> makejob.question.v1.CreateNoteRequest
-	26, // 55: makejob.question.v1.QuestionService.UpdateNote:input_type -> makejob.question.v1.UpdateNoteRequest
-	27, // 56: makejob.question.v1.QuestionService.ListNotes:input_type -> makejob.question.v1.ListNotesRequest
-	29, // 57: makejob.question.v1.QuestionService.GetPracticeRecommendations:input_type -> makejob.question.v1.PracticeRecommendationRequest
-	32, // 58: makejob.question.v1.QuestionService.GetWrongQuestions:input_type -> makejob.question.v1.WrongQuestionRequest
-	0,  // 59: makejob.question.v1.QuestionService.GetUserPracticeStats:input_type -> makejob.question.v1.UserIDRequest
-	37, // 60: makejob.question.v1.QuestionService.GetRandomExam:input_type -> makejob.question.v1.RandomExamRequest
-	39, // 61: makejob.question.v1.QuestionService.GenerateTimedExam:input_type -> makejob.question.v1.GenerateTimedExamRequest
-	41, // 62: makejob.question.v1.QuestionService.SubmitExam:input_type -> makejob.question.v1.SubmitExamRequest
-	44, // 63: makejob.question.v1.QuestionService.DeleteNote:input_type -> makejob.question.v1.DeleteNoteRequest
-	45, // 64: makejob.question.v1.QuestionService.ListQuestionSets:input_type -> makejob.question.v1.ListQuestionSetsRequest
-	49, // 65: makejob.question.v1.QuestionService.GetQuestionSetDetail:input_type -> makejob.question.v1.GetQuestionSetDetailRequest
-	51, // 66: makejob.question.v1.QuestionService.ListMistakeTopics:input_type -> makejob.question.v1.ListMistakeTopicsRequest
-	55, // 67: makejob.question.v1.QuestionService.GetMistakeTopic:input_type -> makejob.question.v1.GetMistakeTopicRequest
-	57, // 68: makejob.question.v1.QuestionService.AdminListQuestions:input_type -> makejob.question.v1.AdminListQuestionsRequest
-	60, // 69: makejob.question.v1.QuestionService.AdminCreateQuestion:input_type -> makejob.question.v1.AdminCreateQuestionRequest
-	62, // 70: makejob.question.v1.QuestionService.AdminUpdateQuestion:input_type -> makejob.question.v1.AdminUpdateQuestionRequest
-	64, // 71: makejob.question.v1.QuestionService.AdminDeleteQuestion:input_type -> makejob.question.v1.AdminDeleteQuestionRequest
-	66, // 72: makejob.question.v1.QuestionService.GetAdminQuestionStats:input_type -> makejob.question.v1.GetAdminQuestionStatsRequest
-	2,  // 73: makejob.question.v1.QuestionService.ListQuestions:output_type -> makejob.question.v1.ListQuestionsResponse
-	5,  // 74: makejob.question.v1.QuestionService.GetQuestion:output_type -> makejob.question.v1.QuestionDetail
-	9,  // 75: makejob.question.v1.QuestionService.ListCategories:output_type -> makejob.question.v1.CategoryTreeResponse
-	11, // 76: makejob.question.v1.QuestionService.ListIndustries:output_type -> makejob.question.v1.IndustryListResponse
-	14, // 77: makejob.question.v1.QuestionService.SubmitAnswer:output_type -> makejob.question.v1.SubmitAnswerResponse
-	18, // 78: makejob.question.v1.QuestionService.RunCode:output_type -> makejob.question.v1.RunCodeResponse
-	22, // 79: makejob.question.v1.QuestionService.CreateFavorite:output_type -> makejob.question.v1.FavoriteResponse
-	22, // 80: makejob.question.v1.QuestionService.DeleteFavorite:output_type -> makejob.question.v1.FavoriteResponse
-	23, // 81: makejob.question.v1.QuestionService.ListFavorites:output_type -> makejob.question.v1.FavoriteListResponse
-	25, // 82: makejob.question.v1.QuestionService.CreateNote:output_type -> makejob.question.v1.NoteResponse
-	25, // 83: makejob.question.v1.QuestionService.UpdateNote:output_type -> makejob.question.v1.NoteResponse
-	28, // 84: makejob.question.v1.QuestionService.ListNotes:output_type -> makejob.question.v1.NoteListResponse
-	30, // 85: makejob.question.v1.QuestionService.GetPracticeRecommendations:output_type -> makejob.question.v1.PracticeRecommendationResponse
-	33, // 86: makejob.question.v1.QuestionService.GetWrongQuestions:output_type -> makejob.question.v1.WrongQuestionListResponse
-	35, // 87: makejob.question.v1.QuestionService.GetUserPracticeStats:output_type -> makejob.question.v1.UserPracticeStats
-	38, // 88: makejob.question.v1.QuestionService.GetRandomExam:output_type -> makejob.question.v1.ExamResponse
-	40, // 89: makejob.question.v1.QuestionService.GenerateTimedExam:output_type -> makejob.question.v1.GenerateTimedExamResponse
-	42, // 90: makejob.question.v1.QuestionService.SubmitExam:output_type -> makejob.question.v1.SubmitExamResponse
-	72, // 91: makejob.question.v1.QuestionService.DeleteNote:output_type -> google.protobuf.Empty
-	46, // 92: makejob.question.v1.QuestionService.ListQuestionSets:output_type -> makejob.question.v1.ListQuestionSetsResponse
-	50, // 93: makejob.question.v1.QuestionService.GetQuestionSetDetail:output_type -> makejob.question.v1.QuestionSetDetail
-	52, // 94: makejob.question.v1.QuestionService.ListMistakeTopics:output_type -> makejob.question.v1.ListMistakeTopicsResponse
-	56, // 95: makejob.question.v1.QuestionService.GetMistakeTopic:output_type -> makejob.question.v1.MistakeTopicCard
-	58, // 96: makejob.question.v1.QuestionService.AdminListQuestions:output_type -> makejob.question.v1.AdminListQuestionsResponse
-	61, // 97: makejob.question.v1.QuestionService.AdminCreateQuestion:output_type -> makejob.question.v1.AdminCreateQuestionResponse
-	63, // 98: makejob.question.v1.QuestionService.AdminUpdateQuestion:output_type -> makejob.question.v1.AdminUpdateQuestionResponse
-	65, // 99: makejob.question.v1.QuestionService.AdminDeleteQuestion:output_type -> makejob.question.v1.AdminDeleteQuestionResponse
-	67, // 100: makejob.question.v1.QuestionService.GetAdminQuestionStats:output_type -> makejob.question.v1.AdminQuestionStatsResponse
-	73, // [73:101] is the sub-list for method output_type
-	45, // [45:73] is the sub-list for method input_type
-	45, // [45:45] is the sub-list for extension type_name
-	45, // [45:45] is the sub-list for extension extendee
-	0,  // [0:45] is the sub-list for field type_name
+	25, // 6: makejob.question.v1.QuestionDetail.user_note:type_name -> makejob.question.v1.NoteResponse
+	10, // 7: makejob.question.v1.CategoryTreeResponse.categories:type_name -> makejob.question.v1.CategoryNode
+	10, // 8: makejob.question.v1.CategoryNode.children:type_name -> makejob.question.v1.CategoryNode
+	12, // 9: makejob.question.v1.IndustryListResponse.industries:type_name -> makejob.question.v1.IndustryInfo
+	15, // 10: makejob.question.v1.SubmitAnswerResponse.judge_summary:type_name -> makejob.question.v1.JudgeSummary
+	16, // 11: makejob.question.v1.JudgeSummary.results:type_name -> makejob.question.v1.JudgeCaseResult
+	69, // 12: makejob.question.v1.ListFavoritesRequest.page:type_name -> makejob.shared.v1.PageParam
+	3,  // 13: makejob.question.v1.FavoriteListResponse.questions:type_name -> makejob.question.v1.QuestionSummary
+	70, // 14: makejob.question.v1.FavoriteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 15: makejob.question.v1.NoteResponse.created_at:type_name -> google.protobuf.Timestamp
+	71, // 16: makejob.question.v1.NoteResponse.updated_at:type_name -> google.protobuf.Timestamp
+	69, // 17: makejob.question.v1.ListNotesRequest.page:type_name -> makejob.shared.v1.PageParam
+	25, // 18: makejob.question.v1.NoteListResponse.notes:type_name -> makejob.question.v1.NoteResponse
+	70, // 19: makejob.question.v1.NoteListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	31, // 20: makejob.question.v1.PracticeRecommendationResponse.questions:type_name -> makejob.question.v1.RecommendedQuestion
+	69, // 21: makejob.question.v1.WrongQuestionRequest.page:type_name -> makejob.shared.v1.PageParam
+	34, // 22: makejob.question.v1.WrongQuestionListResponse.entries:type_name -> makejob.question.v1.WrongQuestionEntry
+	70, // 23: makejob.question.v1.WrongQuestionListResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 24: makejob.question.v1.WrongQuestionEntry.last_wrong_at:type_name -> google.protobuf.Timestamp
+	36, // 25: makejob.question.v1.UserPracticeStats.category_stats:type_name -> makejob.question.v1.CategoryStat
+	5,  // 26: makejob.question.v1.ExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
+	5,  // 27: makejob.question.v1.GenerateTimedExamResponse.questions:type_name -> makejob.question.v1.QuestionDetail
+	71, // 28: makejob.question.v1.GenerateTimedExamResponse.started_at:type_name -> google.protobuf.Timestamp
+	71, // 29: makejob.question.v1.GenerateTimedExamResponse.expires_at:type_name -> google.protobuf.Timestamp
+	68, // 30: makejob.question.v1.SubmitExamRequest.answers:type_name -> makejob.question.v1.SubmitExamRequest.AnswersEntry
+	43, // 31: makejob.question.v1.SubmitExamResponse.question_results:type_name -> makejob.question.v1.QuestionResult
+	69, // 32: makejob.question.v1.ListQuestionSetsRequest.page:type_name -> makejob.shared.v1.PageParam
+	48, // 33: makejob.question.v1.ListQuestionSetsResponse.items:type_name -> makejob.question.v1.QuestionSetSummary
+	70, // 34: makejob.question.v1.ListQuestionSetsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	47, // 35: makejob.question.v1.QuestionSetSummary.questions:type_name -> makejob.question.v1.QuestionSetPreview
+	48, // 36: makejob.question.v1.QuestionSetDetail.info:type_name -> makejob.question.v1.QuestionSetSummary
+	3,  // 37: makejob.question.v1.QuestionSetDetail.questions:type_name -> makejob.question.v1.QuestionSummary
+	53, // 38: makejob.question.v1.ListMistakeTopicsResponse.topics:type_name -> makejob.question.v1.MistakeTopic
+	54, // 39: makejob.question.v1.MistakeTopic.recent_wrong_questions:type_name -> makejob.question.v1.MistakeQuestion
+	71, // 40: makejob.question.v1.MistakeQuestion.last_wrong_at:type_name -> google.protobuf.Timestamp
+	69, // 41: makejob.question.v1.AdminListQuestionsRequest.page:type_name -> makejob.shared.v1.PageParam
+	59, // 42: makejob.question.v1.AdminListQuestionsResponse.questions:type_name -> makejob.question.v1.AdminQuestionInfo
+	70, // 43: makejob.question.v1.AdminListQuestionsResponse.page_result:type_name -> makejob.shared.v1.PageResult
+	71, // 44: makejob.question.v1.AdminQuestionInfo.created_at:type_name -> google.protobuf.Timestamp
+	71, // 45: makejob.question.v1.AdminQuestionInfo.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 46: makejob.question.v1.QuestionService.ListQuestions:input_type -> makejob.question.v1.ListQuestionsRequest
+	4,  // 47: makejob.question.v1.QuestionService.GetQuestion:input_type -> makejob.question.v1.GetQuestionRequest
+	8,  // 48: makejob.question.v1.QuestionService.ListCategories:input_type -> makejob.question.v1.ListCategoriesRequest
+	72, // 49: makejob.question.v1.QuestionService.ListIndustries:input_type -> google.protobuf.Empty
+	13, // 50: makejob.question.v1.QuestionService.SubmitAnswer:input_type -> makejob.question.v1.SubmitAnswerRequest
+	17, // 51: makejob.question.v1.QuestionService.RunCode:input_type -> makejob.question.v1.RunCodeRequest
+	19, // 52: makejob.question.v1.QuestionService.CreateFavorite:input_type -> makejob.question.v1.CreateFavoriteRequest
+	20, // 53: makejob.question.v1.QuestionService.DeleteFavorite:input_type -> makejob.question.v1.DeleteFavoriteRequest
+	21, // 54: makejob.question.v1.QuestionService.ListFavorites:input_type -> makejob.question.v1.ListFavoritesRequest
+	24, // 55: makejob.question.v1.QuestionService.CreateNote:input_type -> makejob.question.v1.CreateNoteRequest
+	26, // 56: makejob.question.v1.QuestionService.UpdateNote:input_type -> makejob.question.v1.UpdateNoteRequest
+	27, // 57: makejob.question.v1.QuestionService.ListNotes:input_type -> makejob.question.v1.ListNotesRequest
+	29, // 58: makejob.question.v1.QuestionService.GetPracticeRecommendations:input_type -> makejob.question.v1.PracticeRecommendationRequest
+	32, // 59: makejob.question.v1.QuestionService.GetWrongQuestions:input_type -> makejob.question.v1.WrongQuestionRequest
+	0,  // 60: makejob.question.v1.QuestionService.GetUserPracticeStats:input_type -> makejob.question.v1.UserIDRequest
+	37, // 61: makejob.question.v1.QuestionService.GetRandomExam:input_type -> makejob.question.v1.RandomExamRequest
+	39, // 62: makejob.question.v1.QuestionService.GenerateTimedExam:input_type -> makejob.question.v1.GenerateTimedExamRequest
+	41, // 63: makejob.question.v1.QuestionService.SubmitExam:input_type -> makejob.question.v1.SubmitExamRequest
+	44, // 64: makejob.question.v1.QuestionService.DeleteNote:input_type -> makejob.question.v1.DeleteNoteRequest
+	45, // 65: makejob.question.v1.QuestionService.ListQuestionSets:input_type -> makejob.question.v1.ListQuestionSetsRequest
+	49, // 66: makejob.question.v1.QuestionService.GetQuestionSetDetail:input_type -> makejob.question.v1.GetQuestionSetDetailRequest
+	51, // 67: makejob.question.v1.QuestionService.ListMistakeTopics:input_type -> makejob.question.v1.ListMistakeTopicsRequest
+	55, // 68: makejob.question.v1.QuestionService.GetMistakeTopic:input_type -> makejob.question.v1.GetMistakeTopicRequest
+	57, // 69: makejob.question.v1.QuestionService.AdminListQuestions:input_type -> makejob.question.v1.AdminListQuestionsRequest
+	60, // 70: makejob.question.v1.QuestionService.AdminCreateQuestion:input_type -> makejob.question.v1.AdminCreateQuestionRequest
+	62, // 71: makejob.question.v1.QuestionService.AdminUpdateQuestion:input_type -> makejob.question.v1.AdminUpdateQuestionRequest
+	64, // 72: makejob.question.v1.QuestionService.AdminDeleteQuestion:input_type -> makejob.question.v1.AdminDeleteQuestionRequest
+	66, // 73: makejob.question.v1.QuestionService.GetAdminQuestionStats:input_type -> makejob.question.v1.GetAdminQuestionStatsRequest
+	2,  // 74: makejob.question.v1.QuestionService.ListQuestions:output_type -> makejob.question.v1.ListQuestionsResponse
+	5,  // 75: makejob.question.v1.QuestionService.GetQuestion:output_type -> makejob.question.v1.QuestionDetail
+	9,  // 76: makejob.question.v1.QuestionService.ListCategories:output_type -> makejob.question.v1.CategoryTreeResponse
+	11, // 77: makejob.question.v1.QuestionService.ListIndustries:output_type -> makejob.question.v1.IndustryListResponse
+	14, // 78: makejob.question.v1.QuestionService.SubmitAnswer:output_type -> makejob.question.v1.SubmitAnswerResponse
+	18, // 79: makejob.question.v1.QuestionService.RunCode:output_type -> makejob.question.v1.RunCodeResponse
+	22, // 80: makejob.question.v1.QuestionService.CreateFavorite:output_type -> makejob.question.v1.FavoriteResponse
+	22, // 81: makejob.question.v1.QuestionService.DeleteFavorite:output_type -> makejob.question.v1.FavoriteResponse
+	23, // 82: makejob.question.v1.QuestionService.ListFavorites:output_type -> makejob.question.v1.FavoriteListResponse
+	25, // 83: makejob.question.v1.QuestionService.CreateNote:output_type -> makejob.question.v1.NoteResponse
+	25, // 84: makejob.question.v1.QuestionService.UpdateNote:output_type -> makejob.question.v1.NoteResponse
+	28, // 85: makejob.question.v1.QuestionService.ListNotes:output_type -> makejob.question.v1.NoteListResponse
+	30, // 86: makejob.question.v1.QuestionService.GetPracticeRecommendations:output_type -> makejob.question.v1.PracticeRecommendationResponse
+	33, // 87: makejob.question.v1.QuestionService.GetWrongQuestions:output_type -> makejob.question.v1.WrongQuestionListResponse
+	35, // 88: makejob.question.v1.QuestionService.GetUserPracticeStats:output_type -> makejob.question.v1.UserPracticeStats
+	38, // 89: makejob.question.v1.QuestionService.GetRandomExam:output_type -> makejob.question.v1.ExamResponse
+	40, // 90: makejob.question.v1.QuestionService.GenerateTimedExam:output_type -> makejob.question.v1.GenerateTimedExamResponse
+	42, // 91: makejob.question.v1.QuestionService.SubmitExam:output_type -> makejob.question.v1.SubmitExamResponse
+	72, // 92: makejob.question.v1.QuestionService.DeleteNote:output_type -> google.protobuf.Empty
+	46, // 93: makejob.question.v1.QuestionService.ListQuestionSets:output_type -> makejob.question.v1.ListQuestionSetsResponse
+	50, // 94: makejob.question.v1.QuestionService.GetQuestionSetDetail:output_type -> makejob.question.v1.QuestionSetDetail
+	52, // 95: makejob.question.v1.QuestionService.ListMistakeTopics:output_type -> makejob.question.v1.ListMistakeTopicsResponse
+	56, // 96: makejob.question.v1.QuestionService.GetMistakeTopic:output_type -> makejob.question.v1.MistakeTopicCard
+	58, // 97: makejob.question.v1.QuestionService.AdminListQuestions:output_type -> makejob.question.v1.AdminListQuestionsResponse
+	61, // 98: makejob.question.v1.QuestionService.AdminCreateQuestion:output_type -> makejob.question.v1.AdminCreateQuestionResponse
+	63, // 99: makejob.question.v1.QuestionService.AdminUpdateQuestion:output_type -> makejob.question.v1.AdminUpdateQuestionResponse
+	65, // 100: makejob.question.v1.QuestionService.AdminDeleteQuestion:output_type -> makejob.question.v1.AdminDeleteQuestionResponse
+	67, // 101: makejob.question.v1.QuestionService.GetAdminQuestionStats:output_type -> makejob.question.v1.AdminQuestionStatsResponse
+	74, // [74:102] is the sub-list for method output_type
+	46, // [46:74] is the sub-list for method input_type
+	46, // [46:46] is the sub-list for extension type_name
+	46, // [46:46] is the sub-list for extension extendee
+	0,  // [0:46] is the sub-list for field type_name
 }
 
 func init() { file_makejob_question_v1_question_proto_init() }

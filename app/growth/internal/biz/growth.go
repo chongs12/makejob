@@ -27,6 +27,20 @@ type GrowthRepo interface {
 type QuestionClient interface {
 	GetUserPracticeStats(ctx context.Context, userID uint64) (*PracticeStats, error)
 	ListQuestionSets(ctx context.Context, industryCode string) ([]*QuestionSetBrief, error)
+	GetMistakeTopicByCode(ctx context.Context, code string) (*MistakeTopicCard, error)
+}
+
+// MistakeTopicCard 错因专题卡片，用于丰富焦点信号。
+type MistakeTopicCard struct {
+	Code                string
+	Tag                 string
+	Title               string
+	ProblemPattern      string
+	RootCauses          []string
+	SelfCheckList       []string
+	PracticeDirections  []string
+	RecommendedActions  []string
+	RelatedQuestionSets []string
 }
 
 // PlanClient 计划服务客户端接口
@@ -314,6 +328,8 @@ func NewGrowthUseCase(
 
 // GetGrowthSummary 获取用户成长摘要，聚合多个下游服务数据，失败时降级处理
 func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*GrowthSummary, error) {
+	// 将 incoming metadata 中的 JWT token 转发到 outgoing metadata，供下游服务鉴权
+	ctx = auth.ForwardAccessToken(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -432,6 +448,20 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 
 	_ = g.Wait() // 所有 goroutine 已做降级处理
 
+	// 保证数组字段始终非 nil，与旧单体行为一致，避免 protojson 省略或输出 null 导致前端崩溃
+	if weeklyStats == nil {
+		weeklyStats = []*WeeklyStat{}
+	}
+	if recentStudyLogs == nil {
+		recentStudyLogs = []*GrowthStudyLog{}
+	}
+	if recentInterviews == nil {
+		recentInterviews = []*GrowthInterviewSnapshot{}
+	}
+	if recentPlans == nil {
+		recentPlans = []*GrowthPlanSnapshot{}
+	}
+
 	// 组装响应
 	summary := &GrowthSummary{
 		WeeklyStats:      weeklyStats,
@@ -518,9 +548,9 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		}
 	}
 
-	// 焦点信号详情转换
+	// 焦点信号详情转换，尝试从错因专题知识库补充丰富字段
 	for _, sig := range focusSignals {
-		summary.FocusSignals = append(summary.FocusSignals, &GrowthFocusSignal{
+		signal := &GrowthFocusSignal{
 			FocusTag:            sig.Topic,
 			TopicTitle:          sig.Topic,
 			Source:              sig.Source,
@@ -528,7 +558,16 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 			RelatedQuestionSets: []string{},
 			RecommendedActions:  []string{},
 			OccurrenceCount:     int32(sig.Weight),
-		})
+		}
+		// 尝试将 topic 作为错因专题编码查找知识库卡片
+		if card, err := uc.questionClient.GetMistakeTopicByCode(gctx, sig.Topic); err == nil && card != nil {
+			signal.TopicCode = card.Code
+			signal.TopicTitle = card.Title
+			signal.TopicProblemPattern = card.ProblemPattern
+			signal.RelatedQuestionSets = card.RelatedQuestionSets
+			signal.RecommendedActions = card.RecommendedActions
+		}
+		summary.FocusSignals = append(summary.FocusSignals, signal)
 	}
 
 	// 趋势摘要
@@ -564,6 +603,8 @@ func focusSourceLabel(source string) string {
 
 // GetWeeklyFocus 获取本周学习重点，聚合焦点信号、弱项和计划数据生成推荐
 func (uc *GrowthUseCase) GetWeeklyFocus(ctx context.Context, userID uint64) (*WeeklyFocusResponse, error) {
+	// 将 incoming metadata 中的 JWT token 转发到 outgoing metadata，供下游服务鉴权
+	ctx = auth.ForwardAccessToken(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -652,10 +693,24 @@ func (uc *GrowthUseCase) GetWeeklyFocus(ctx context.Context, userID uint64) (*We
 		}
 	}
 
+	themes := buildWeeklyFocusThemes(focusSignals, weakTopics, reason)
+	// 尝试从错因专题知识库丰富每个 theme 的详细信息
+	for _, theme := range themes {
+		if len(theme.TopicCodes) > 0 {
+			if card, err := uc.questionClient.GetMistakeTopicByCode(gctx, theme.TopicCodes[0]); err == nil && card != nil {
+				if len(theme.RelatedQuestionSets) == 0 {
+					theme.RelatedQuestionSets = card.RelatedQuestionSets
+				}
+				if len(theme.Suggestions) == 0 {
+					theme.Suggestions = card.RecommendedActions
+				}
+			}
+		}
+	}
 	return &WeeklyFocusResponse{
 		Items:   items,
 		Summary: reason,
-		Themes:  buildWeeklyFocusThemes(focusSignals, weakTopics, reason),
+		Themes:  themes,
 	}, nil
 }
 
@@ -678,7 +733,7 @@ func buildWeeklyFocusThemes(focusSignals []*FocusSignal, weakTopics []string, re
 			Source:              sig.Source,
 			SourceLabel:         focusSourceLabel(sig.Source),
 			FocusTags:           []string{sig.Topic},
-			TopicCodes:          []string{},
+			TopicCodes:          []string{sig.Topic},
 			RelatedQuestionSets: []string{},
 			OccurrenceCount:     int32(sig.Weight),
 			Suggestions:         []string{},
@@ -699,7 +754,7 @@ func buildWeeklyFocusThemes(focusSignals []*FocusSignal, weakTopics []string, re
 			Source:              "weak_topics",
 			SourceLabel:         focusSourceLabel("weak_topics"),
 			FocusTags:           []string{topic},
-			TopicCodes:          []string{},
+			TopicCodes:          []string{topic},
 			RelatedQuestionSets: []string{},
 			Suggestions:         []string{},
 		})

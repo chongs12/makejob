@@ -38,7 +38,7 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 
 	questions, total, err := s.uc.ListQuestions(ctx, filter, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.QuestionSummary, len(questions))
@@ -69,13 +69,23 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQuestionRequest) (*questionv1.QuestionDetail, error) {
 	q, err := s.uc.GetQuestion(ctx, req.Id)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	// 查询当前用户是否收藏了该题目
 	var isFavorited bool
+	var userNote *questionv1.NoteResponse
 	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
 		isFavorited = s.uc.IsFavorited(ctx, userID, req.Id)
+		// 对齐单体：查询用户笔记
+		if note, noteErr := s.uc.GetUserNote(ctx, userID, req.Id); noteErr == nil && note != nil {
+			userNote = &questionv1.NoteResponse{
+				Id:        note.ID,
+				Content:   note.Content,
+				CreatedAt: timestamppb.New(note.CreatedAt),
+				UpdatedAt: timestamppb.New(note.UpdatedAt),
+			}
+		}
 	}
 
 	return &questionv1.QuestionDetail{
@@ -99,6 +109,7 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		JudgeConfigJson:    q.JudgeConfigJSON,
 		AnswerTemplateJson: q.AnswerTemplateJSON,
 		IsFavorited:        isFavorited,
+		UserNote:           userNote,
 	}, nil
 }
 
@@ -113,7 +124,7 @@ func (s *QuestionService) ListCategories(ctx context.Context, req *questionv1.Li
 	}
 	categories, err := s.uc.ListCategories(ctx, industryID)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	// Build tree: top-level nodes (ParentID == 0) with children
@@ -145,7 +156,7 @@ func (s *QuestionService) ListCategories(ctx context.Context, req *questionv1.Li
 func (s *QuestionService) ListIndustries(ctx context.Context, _ *emptypb.Empty) (*questionv1.IndustryListResponse, error) {
 	industries, err := s.uc.ListIndustries(ctx)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.IndustryInfo, len(industries))
@@ -165,7 +176,7 @@ func (s *QuestionService) ListIndustries(ctx context.Context, _ *emptypb.Empty) 
 func (s *QuestionService) SubmitAnswer(ctx context.Context, req *questionv1.SubmitAnswerRequest) (*questionv1.SubmitAnswerResponse, error) {
 	resp, err := s.uc.SubmitAnswer(ctx, req.QuestionId, req.UserId, req.Answer, req.Language)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	return &questionv1.SubmitAnswerResponse{
@@ -183,7 +194,7 @@ func (s *QuestionService) SubmitAnswer(ctx context.Context, req *questionv1.Subm
 func (s *QuestionService) RunCode(ctx context.Context, req *questionv1.RunCodeRequest) (*questionv1.RunCodeResponse, error) {
 	resp, err := s.uc.RunCode(ctx, req.QuestionId, req.Language, req.Code)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.RunCodeResponse{
 		Success:         resp.Success,
@@ -197,14 +208,14 @@ func (s *QuestionService) RunCode(ctx context.Context, req *questionv1.RunCodeRe
 
 func (s *QuestionService) CreateFavorite(ctx context.Context, req *questionv1.CreateFavoriteRequest) (*questionv1.FavoriteResponse, error) {
 	if err := s.uc.CreateFavorite(ctx, req.UserId, req.QuestionId); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.FavoriteResponse{IsFavorited: true}, nil
 }
 
 func (s *QuestionService) DeleteFavorite(ctx context.Context, req *questionv1.DeleteFavoriteRequest) (*questionv1.FavoriteResponse, error) {
 	if err := s.uc.DeleteFavorite(ctx, req.UserId, req.QuestionId); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.FavoriteResponse{IsFavorited: false}, nil
 }
@@ -218,7 +229,7 @@ func (s *QuestionService) ListFavorites(ctx context.Context, req *questionv1.Lis
 
 	questions, total, err := s.uc.ListFavorites(ctx, req.UserId, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.QuestionSummary, len(questions))
@@ -245,12 +256,17 @@ func (s *QuestionService) ListFavorites(ctx context.Context, req *questionv1.Lis
 func (s *QuestionService) CreateNote(ctx context.Context, req *questionv1.CreateNoteRequest) (*questionv1.NoteResponse, error) {
 	note, err := s.uc.CreateNote(ctx, req.UserId, req.QuestionId, req.Content)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
+	}
+
+	var questionID uint64
+	if note.QuestionID != nil {
+		questionID = *note.QuestionID
 	}
 
 	return &questionv1.NoteResponse{
 		Id:         note.ID,
-		QuestionId: note.QuestionID,
+		QuestionId: questionID,
 		Content:    note.Content,
 		CreatedAt:  timestamppb.New(note.CreatedAt),
 		UpdatedAt:  timestamppb.New(note.UpdatedAt),
@@ -260,7 +276,7 @@ func (s *QuestionService) CreateNote(ctx context.Context, req *questionv1.Create
 func (s *QuestionService) UpdateNote(ctx context.Context, req *questionv1.UpdateNoteRequest) (*questionv1.NoteResponse, error) {
 	note, err := s.uc.UpdateNote(ctx, req.Id, req.UserId, req.Content)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	return &questionv1.NoteResponse{
@@ -279,14 +295,18 @@ func (s *QuestionService) ListNotes(ctx context.Context, req *questionv1.ListNot
 
 	notes, total, err := s.uc.ListNotes(ctx, req.UserId, req.QuestionId, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.NoteResponse, len(notes))
 	for i, n := range notes {
+		var questionID uint64
+		if n.QuestionID != nil {
+			questionID = *n.QuestionID
+		}
 		items[i] = &questionv1.NoteResponse{
 			Id:         n.ID,
-			QuestionId: n.QuestionID,
+			QuestionId: questionID,
 			Content:    n.Content,
 			CreatedAt:  timestamppb.New(n.CreatedAt),
 			UpdatedAt:  timestamppb.New(n.UpdatedAt),
@@ -307,7 +327,7 @@ func (s *QuestionService) GetPracticeRecommendations(ctx context.Context, req *q
 	// FIX Q4: 从 request 读取 interview_id，支持面试驱动推荐
 	questions, reason, err := s.uc.GetPracticeRecommendations(ctx, req.GetUserId(), req.GetInterviewId())
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.RecommendedQuestion, len(questions))
@@ -361,7 +381,7 @@ func (s *QuestionService) GetWrongQuestions(ctx context.Context, req *questionv1
 
 	wrongQuestions, total, err := s.uc.GetWrongQuestions(ctx, req.UserId, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.WrongQuestionEntry, len(wrongQuestions))
@@ -391,7 +411,7 @@ func (s *QuestionService) GetWrongQuestions(ctx context.Context, req *questionv1
 func (s *QuestionService) GetUserPracticeStats(ctx context.Context, req *questionv1.UserIDRequest) (*questionv1.UserPracticeStats, error) {
 	totalAnswered, totalCorrect, accuracy, categoryStats, todayCount, err := s.uc.GetUserPracticeStats(ctx, req.UserId)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.CategoryStat, len(categoryStats))
@@ -423,7 +443,8 @@ func (s *QuestionService) GetUserPracticeStats(ctx context.Context, req *questio
 
 // GetRandomExam 根据请求中的筛选条件随机返回一组题目。
 func (s *QuestionService) GetRandomExam(ctx context.Context, req *questionv1.RandomExamRequest) (*questionv1.ExamResponse, error) {
-	questions, err := s.uc.GetRandomExam(ctx, &biz.GetRandomExamRequest{
+	exam, questions, err := s.uc.GetRandomExam(ctx, &biz.GetRandomExamRequest{
+		UserID:        req.UserId,
 		IndustryID:    req.IndustryId,
 		IndustryCode:  req.IndustryCode,
 		CategoryID:    req.CategoryId,
@@ -431,7 +452,7 @@ func (s *QuestionService) GetRandomExam(ctx context.Context, req *questionv1.Ran
 		QuestionCount: req.QuestionCount,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.QuestionDetail, len(questions))
@@ -448,14 +469,15 @@ func (s *QuestionService) GetRandomExam(ctx context.Context, req *questionv1.Ran
 
 	return &questionv1.ExamResponse{
 		Questions:        items,
-		TimeLimitMinutes: int32(len(questions)) * 5, // 5 minutes per question
+		TimeLimitMinutes: exam.TimeLimitMin,
+		ExamId:           exam.ID,
 	}, nil
 }
 
 // DeleteNote 删除笔记（P3-2）
 func (s *QuestionService) DeleteNote(ctx context.Context, req *questionv1.DeleteNoteRequest) (*emptypb.Empty, error) {
 	if err := s.uc.DeleteNote(ctx, req.NoteId, req.UserId); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -472,7 +494,7 @@ func (s *QuestionService) GenerateTimedExam(ctx context.Context, req *questionv1
 		TimeLimitMinutes: req.TimeLimitMinutes,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.QuestionDetail, len(questions))
@@ -505,7 +527,7 @@ func (s *QuestionService) GenerateTimedExam(ctx context.Context, req *questionv1
 func (s *QuestionService) SubmitExam(ctx context.Context, req *questionv1.SubmitExamRequest) (*questionv1.SubmitExamResponse, error) {
 	examResult, err := s.uc.SubmitExam(ctx, req.ExamId, req.UserId, req.Answers)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	results := make([]*questionv1.QuestionResult, len(examResult.QuestionResults))
@@ -537,7 +559,7 @@ func (s *QuestionService) ListQuestionSets(ctx context.Context, req *questionv1.
 
 	sets, total, err := s.uc.ListQuestionSets(ctx, req.IndustryCode, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.QuestionSetSummary, len(sets))
@@ -593,7 +615,7 @@ func (s *QuestionService) ListQuestionSets(ctx context.Context, req *questionv1.
 func (s *QuestionService) GetQuestionSetDetail(ctx context.Context, req *questionv1.GetQuestionSetDetailRequest) (*questionv1.QuestionSetDetail, error) {
 	set, questions, err := s.uc.GetQuestionSetDetail(ctx, req.SetId)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	info := &questionv1.QuestionSetSummary{
@@ -648,7 +670,7 @@ func slugify(title string) string {
 func (s *QuestionService) ListMistakeTopics(ctx context.Context, req *questionv1.ListMistakeTopicsRequest) (*questionv1.ListMistakeTopicsResponse, error) {
 	topics, err := s.uc.ListMistakeTopics(ctx, req.UserId)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.MistakeTopic, len(topics))
@@ -703,7 +725,7 @@ func (s *QuestionService) AdminListQuestions(ctx context.Context, req *questionv
 		Difficulty: req.GetDifficulty(),
 	}, page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 
 	items := make([]*questionv1.AdminQuestionInfo, len(questions))
@@ -741,7 +763,7 @@ func (s *QuestionService) AdminCreateQuestion(ctx context.Context, req *question
 		IsActive:           req.GetIsActive(),
 	}
 	if err := s.uc.CreateQuestion(ctx, question); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.AdminCreateQuestionResponse{Id: question.ID}, nil
 }
@@ -754,7 +776,7 @@ func (s *QuestionService) AdminUpdateQuestion(ctx context.Context, req *question
 	} else {
 		existing, err := s.uc.GetQuestion(ctx, req.GetId())
 		if err != nil {
-			return nil, err
+			return nil, toGRPCError(err)
 		}
 		isActive = existing.IsActive
 	}
@@ -778,7 +800,7 @@ func (s *QuestionService) AdminUpdateQuestion(ctx context.Context, req *question
 		IsActive:           isActive,
 	}
 	if err := s.uc.UpdateQuestion(ctx, question); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.AdminUpdateQuestionResponse{}, nil
 }
@@ -786,7 +808,7 @@ func (s *QuestionService) AdminUpdateQuestion(ctx context.Context, req *question
 // AdminDeleteQuestion 管理后台删除题目。
 func (s *QuestionService) AdminDeleteQuestion(ctx context.Context, req *questionv1.AdminDeleteQuestionRequest) (*questionv1.AdminDeleteQuestionResponse, error) {
 	if err := s.uc.DeleteQuestion(ctx, req.GetId()); err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.AdminDeleteQuestionResponse{}, nil
 }
@@ -795,7 +817,7 @@ func (s *QuestionService) AdminDeleteQuestion(ctx context.Context, req *question
 func (s *QuestionService) GetAdminQuestionStats(ctx context.Context, _ *questionv1.GetAdminQuestionStatsRequest) (*questionv1.AdminQuestionStatsResponse, error) {
 	totalQuestions, err := s.uc.GetAdminQuestionStats(ctx)
 	if err != nil {
-		return nil, err
+		return nil, toGRPCError(err)
 	}
 	return &questionv1.AdminQuestionStatsResponse{TotalQuestions: totalQuestions}, nil
 }
@@ -865,4 +887,15 @@ func toProtoJudgeSummary(summary *biz.JudgeSummary) *questionv1.JudgeSummary {
 		PassedCases: summary.PassedCases,
 		Results:     results,
 	}
+}
+
+// toGRPCError 将业务错误转换为 gRPC 兼容的 Kratos 错误
+func toGRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if kratosErr.FromError(err) != nil {
+		return err
+	}
+	return kratosErr.InternalServer("INTERNAL", err.Error())
 }

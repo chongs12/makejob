@@ -365,6 +365,13 @@ type AICallLogDetail struct {
 	RequestMessages string
 	RuntimeConfig   string
 	CreatedAt       time.Time
+	// P0 补齐字段
+	TaskID             uint64
+	PromptSource       string
+	SelectedPromptName string
+	SceneConfig        string
+	UpdatedAt          time.Time
+	IndustryID         uint64
 }
 
 type Live2DModelRecord struct {
@@ -378,6 +385,8 @@ type Live2DModelRecord struct {
 	TTSConfigID  uint64
 	IsActive     bool
 	CreatedAt    time.Time
+	// P0 补齐字段
+	UpdatedAt time.Time
 }
 
 type TTSConfigRecord struct {
@@ -390,6 +399,10 @@ type TTSConfigRecord struct {
 	IsActive       bool
 	SortOrder      int32
 	CreatedAt      time.Time
+	// P1 补齐字段
+	SupportStatus  string
+	SupportMessage string
+	Scene          string
 }
 
 type TagTaxonomyGroup struct {
@@ -498,6 +511,7 @@ type AdminUseCase struct {
 	scraperProvider  ScraperProvider
 	scraperCleaner   ScraperCleaner
 	scraperPublisher ScraperPublisher
+	ttsCatalog       *ProviderCatalog
 }
 
 // NewAdminUseCase 创建管理后台用例，注入仓库和下游服务客户端
@@ -508,6 +522,7 @@ func NewAdminUseCase(repo AdminRepo, userClient UserClient, questionClient Quest
 		questionClient:  questionClient,
 		interviewClient: interviewClient,
 		aiGatewayClient: aiGatewayClient,
+		ttsCatalog:      NewProviderCatalog(),
 	}
 }
 
@@ -807,15 +822,65 @@ func (uc *AdminUseCase) ListTTSConfigs(ctx context.Context) ([]*TTSConfigRecord,
 }
 
 func (uc *AdminUseCase) CreateTTSConfig(ctx context.Context, t *TTSConfigRecord) error {
+	// 校验 TTS 配置（对齐单体 ValidateTTSConfigInput）
+	if uc.ttsCatalog != nil {
+		normalizedAuth, normalizedParams, err := uc.ttsCatalog.ValidateTTSConfig(t.Engine, t.VoiceID, t.AuthConfigJSON, t.ParamsJSON)
+		if err != nil {
+			return err
+		}
+		t.AuthConfigJSON = normalizedAuth
+		t.ParamsJSON = normalizedParams
+	}
 	return uc.repo.CreateTTSConfig(ctx, t)
 }
 
 func (uc *AdminUseCase) UpdateTTSConfig(ctx context.Context, t *TTSConfigRecord) error {
+	// 校验 TTS 配置（对齐单体 ValidateTTSConfigInput）
+	if uc.ttsCatalog != nil {
+		normalizedAuth, normalizedParams, err := uc.ttsCatalog.ValidateTTSConfig(t.Engine, t.VoiceID, t.AuthConfigJSON, t.ParamsJSON)
+		if err != nil {
+			return err
+		}
+		t.AuthConfigJSON = normalizedAuth
+		t.ParamsJSON = normalizedParams
+	}
 	return uc.repo.UpdateTTSConfig(ctx, t)
 }
 
 func (uc *AdminUseCase) DeleteTTSConfig(ctx context.Context, id uint64) error {
 	return uc.repo.DeleteTTSConfig(ctx, id)
+}
+
+// GetTTSProviders 获取 TTS 供应商目录
+func (uc *AdminUseCase) GetTTSProviders() []*ProviderMeta {
+	if uc.ttsCatalog == nil {
+		return nil
+	}
+	return uc.ttsCatalog.ListAll()
+}
+
+// GetTTSSupportStatus 获取 TTS 供应商支持状态
+func (uc *AdminUseCase) GetTTSSupportStatus(engine string) (status, message string) {
+	if uc.ttsCatalog == nil {
+		return "unknown", "未知的 TTS 引擎"
+	}
+	return uc.ttsCatalog.GetSupportStatus(engine)
+}
+
+// GetTTSSceneDefaults 获取 TTS 场景默认配置
+func (uc *AdminUseCase) GetTTSSceneDefaults(ctx context.Context) (map[string]uint64, error) {
+	result := make(map[string]uint64)
+	for _, scene := range []string{"interview", "companion"} {
+		key := "tts_default_" + scene
+		value, err := uc.repo.GetAdminConfig(ctx, key)
+		if err == nil && value != "" {
+			var id uint64
+			if _, err := fmt.Sscanf(value, "%d", &id); err == nil && id > 0 {
+				result[scene] = id
+			}
+		}
+	}
+	return result, nil
 }
 
 // --- Scraper 管理 ---

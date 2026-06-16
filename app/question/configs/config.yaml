@@ -12,7 +12,7 @@ data:
     source: "host=localhost port=5434 user=postgres password=password dbname=makejob sslmode=disable"
 
 ai:
-  service_addr: "localhost:9014"
+  service_addr: "localhost:9011"
   coderunner_addr: "localhost:9013"
   ai_gateway_addr: "localhost:9011"
   admin_addr: "localhost:9014"

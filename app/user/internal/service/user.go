@@ -43,7 +43,7 @@ func (s *UserService) Register(ctx context.Context, req *userv1.RegisterRequest)
 		return nil, err
 	}
 
-	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 2*time.Hour)
+	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, s.jwtExpire)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s *UserService) Register(ctx context.Context, req *userv1.RegisterRequest)
 	return &userv1.AuthResponse{
 		Token:        accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(2 * time.Hour).Unix(),
+		ExpiresAt:    time.Now().Add(s.jwtExpire).Unix(),
 		User:         toProtoUser(user),
 	}, nil
 }
@@ -68,7 +68,7 @@ func (s *UserService) Login(ctx context.Context, req *userv1.LoginRequest) (*use
 		return nil, err
 	}
 
-	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, 2*time.Hour)
+	accessToken, err := auth.GenerateToken(uint64(user.ID), user.Email, user.Role, s.jwtSecret, s.jwtExpire)
 	if err != nil {
 		return nil, err
 	}
@@ -81,19 +81,24 @@ func (s *UserService) Login(ctx context.Context, req *userv1.LoginRequest) (*use
 	return &userv1.AuthResponse{
 		Token:        accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(2 * time.Hour).Unix(),
+		ExpiresAt:    time.Now().Add(s.jwtExpire).Unix(),
 		User:         toProtoUser(user),
 	}, nil
 }
 
-// RefreshToken 使用 refresh_token 换取新的 token 对
+// RefreshToken 使用 refresh_token 换取新的 token 对（对齐单体：验证用户仍存在）
 func (s *UserService) RefreshToken(ctx context.Context, req *userv1.RefreshTokenRequest) (*userv1.TokenResponse, error) {
 	claims, err := auth.ParseToken(req.RefreshToken, s.jwtSecret)
 	if err != nil {
 		return nil, errors.Unauthorized("INVALID_REFRESH_TOKEN", "refresh token 无效或已过期")
 	}
 
-	accessToken, err := auth.GenerateToken(claims.UserID, claims.Email, claims.Role, s.jwtSecret, 2*time.Hour)
+	// 对齐单体：验证用户仍存在，防止已删除用户刷新 token
+	if _, err := s.uc.GetUserByID(ctx, claims.UserID); err != nil {
+		return nil, errors.Unauthorized("USER_NOT_FOUND", "用户不存在或已被删除")
+	}
+
+	accessToken, err := auth.GenerateToken(claims.UserID, claims.Email, claims.Role, s.jwtSecret, s.jwtExpire)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +111,7 @@ func (s *UserService) RefreshToken(ctx context.Context, req *userv1.RefreshToken
 	return &userv1.TokenResponse{
 		Token:        accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(2 * time.Hour).Unix(),
+		ExpiresAt:    time.Now().Add(s.jwtExpire).Unix(),
 	}, nil
 }
 

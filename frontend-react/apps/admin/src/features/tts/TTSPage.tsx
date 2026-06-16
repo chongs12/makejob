@@ -153,7 +153,7 @@ async function updateTTSSceneDefaults(token: string | null, payload: Record<stri
  * 返回适合新建配置时使用的默认供应商。
  */
 function resolveDefaultProvider(providers: TTSProviderDescriptor[]): TTSProviderDescriptor | undefined {
-  return providers.find((provider) => provider.support_status === 'ready') || providers[0]
+  return providers.find((provider) => provider.support_status === 'supported') || providers[0]
 }
 
 /**
@@ -406,7 +406,7 @@ export function TTSPage() {
   const effectiveParamsPreview = useMemo(() => buildEffectiveParamsPreview(form, paramsPreview), [form, paramsPreview])
   const formError = useMemo(() => validateTTSForm(form, authPreview, paramsPreview), [authPreview, form, paramsPreview])
   const readyConfigOptions = useMemo(() => {
-    return (configsQuery.data?.configs || []).filter((config) => config.support_status === 'ready')
+    return (configsQuery.data?.configs || []).filter((config) => config.support_status === 'supported')
   }, [configsQuery.data?.configs])
 
   useEffect(() => {
@@ -730,7 +730,7 @@ export function TTSPage() {
             />
           </label>
 
-          <div className={`admin-tts-editor__status ${currentProvider?.support_status === 'ready' ? 'is-valid' : 'is-error'}`}>
+          <div className={`admin-tts-editor__status ${currentProvider?.support_status === 'supported' ? 'is-valid' : 'is-error'}`}>
             <strong>供应商状态</strong>
             <span>{currentProvider?.support_message || '当前供应商元数据缺失。'}</span>
           </div>

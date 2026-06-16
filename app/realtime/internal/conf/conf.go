@@ -48,11 +48,31 @@ type JWT struct {
 	ServiceSecret string `yaml:"service_secret"`
 }
 
-// Volcengine 火山引擎语音服务配置
+// Volcengine 火山引擎语音服务配置（对齐单体 volcengine.realtime 段）
 type Volcengine struct {
-	AppID string `yaml:"app_id"`
-	Token string `yaml:"token"`
-	WSUrl string `yaml:"ws_url"`
+	// 基础连接
+	AppID  string `yaml:"app_id"`
+	Token  string `yaml:"token"`
+	WSUrl  string `yaml:"ws_url"`
+
+	// 实时对话高级配置（对齐单体 VolcRealtimeDialogConfig）
+	Enabled         bool   `yaml:"enabled"`
+	BaseURL         string `yaml:"base_url"`
+	AccessToken     string `yaml:"access_token"`
+	AppKey          string `yaml:"app_key"`
+	ResourceID      string `yaml:"resource_id"`
+	Speaker         string `yaml:"speaker"`
+	InputMode       string `yaml:"input_mode"`
+	AudioFormat     string `yaml:"audio_format"`
+	SampleRate      int    `yaml:"sample_rate"`
+	TTSFormat       string `yaml:"tts_format"`
+	TTSSampleRate   int    `yaml:"tts_sample_rate"`
+	BotName         string `yaml:"bot_name"`
+	SystemRole      string `yaml:"system_role"`
+	SpeakingStyle   string `yaml:"speaking_style"`
+	CharacterPrompt string `yaml:"character_prompt"`
+	LocationCity    string `yaml:"location_city"`
+	RecvTimeout     int    `yaml:"recv_timeout"`
 }
 
 // DependentServices 下游依赖服务地址配置

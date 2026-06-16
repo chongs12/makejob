@@ -19,7 +19,8 @@ func NewIndustryRepo(db *gorm.DB) biz.IndustryRepo {
 
 func (r *industryRepo) List(ctx context.Context) ([]*biz.Industry, error) {
 	var models []model.Industry
-	if err := r.db.WithContext(ctx).Find(&models).Error; err != nil {
+	// 对齐单体：只返回启用的行业
+	if err := r.db.WithContext(ctx).Where("is_active = ?", true).Find(&models).Error; err != nil {
 		return nil, err
 	}
 

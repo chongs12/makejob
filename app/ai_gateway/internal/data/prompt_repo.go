@@ -23,7 +23,7 @@ func (r *promptRepo) GetActiveTemplate(ctx context.Context, scene string) (*biz.
 		var tpl biz.PromptTemplate
 		err := r.db.WithContext(ctx).
 			Where("scene = ? AND is_active = ?", candidateScene, true).
-			Order("version DESC").
+			Order("id DESC").
 			First(&tpl).Error
 		if err == nil {
 			return &tpl, nil

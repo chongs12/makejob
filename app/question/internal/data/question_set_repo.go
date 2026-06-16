@@ -102,7 +102,7 @@ func (r *questionSetRepo) GetQuestions(ctx context.Context, setID uint64) ([]*bi
 			Difficulty:   m.Difficulty,
 			Type:         m.Type,
 			IndustryCode: m.IndustryCode,
-			CategoryID:   m.CategoryID,
+			CategoryID:   uint64(m.CategoryID),
 		}
 	}
 	return questions, nil

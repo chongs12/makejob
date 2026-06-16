@@ -138,6 +138,45 @@ func (a *interviewAIStub) ResumeParser(context.Context, *ResumeParserRequest) (*
 	return nil, errors.New("not implemented")
 }
 
+// StartInterview 返回预置首题和 sessionID（对齐单体 InterviewAgent.StartInterview）。
+func (a *interviewAIStub) StartInterview(_ context.Context, req *StartInterviewRequest) (*StartInterviewResponse, error) {
+	a.interviewCall++
+	if a.repo != nil && a.repo.inTransaction {
+		return nil, errors.New("ai should not be called inside transaction")
+	}
+	if a.err != nil {
+		return nil, a.err
+	}
+	return &StartInterviewResponse{
+		SessionID:  "test-session-id",
+		Question:   a.question.Question,
+		Topic:      a.question.Topic,
+		Difficulty: a.question.Difficulty,
+		Type:       a.question.Type,
+		Hints:      a.question.Hints,
+	}, nil
+}
+
+// EvaluateAnswer 返回未实现错误，当前测试不会走到这里。
+func (a *interviewAIStub) EvaluateAnswer(context.Context, *EvaluateAnswerRequest) (*EvaluateAnswerResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+// GetNextQuestionSession 返回未实现错误，当前测试不会走到这里。
+func (a *interviewAIStub) GetNextQuestionSession(context.Context, *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+// GenerateInterviewReport 返回未实现错误，当前测试不会走到这里。
+func (a *interviewAIStub) GenerateInterviewReport(context.Context, *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+// EndInterviewSession 返回未实现错误，当前测试不会走到这里。
+func (a *interviewAIStub) EndInterviewSession(context.Context, *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 // interviewIndustryStub 始终返回固定行业，用于通过行业校验。
 type interviewIndustryStub struct{}
 
