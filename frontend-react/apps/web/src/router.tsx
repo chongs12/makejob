@@ -11,6 +11,8 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { type QueryClient } from '@tanstack/react-query'
+import { Button, Input, Avatar, Badge } from 'antd'
+import { SearchOutlined, EditOutlined, UserOutlined, DownOutlined } from '@ant-design/icons'
 import { AUTH_EXPIRED_EVENT_NAME } from '@makejob/api-client'
 import { useAuthStore } from './state/auth'
 import { useFrontendIndustryPreference } from './shared/frontendIndustryPreference'
@@ -328,56 +330,147 @@ function RootLayout() {
     <div className="app-shell">
       <AuthBootstrap />
 
-      <header className="topbar">
-        <div className="topbar-inner">
-          <Link className="brand-block" to="/">
-            <div className="brand-mark">MakeJob</div>
-            <div className="brand-subtitle">{effectiveIndustryLabel} 刷题、面试、学习陪伴一体化入口</div>
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          background: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(16px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+          borderBottom: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1280,
+            margin: '0 auto',
+            padding: '0 24px',
+            height: 56,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 32,
+          }}
+        >
+          {/* Logo */}
+          <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #f97316, #fb923c)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 14,
+                fontWeight: 800,
+                color: '#fff',
+              }}
+            >
+              M
+            </div>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#1c1917', letterSpacing: -0.5 }}>MakeJob</span>
           </Link>
 
-          <nav className="top-nav">
+          {/* Nav */}
+          <nav style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             {navigationItems.map((item) => (
               <Link
-                className={`nav-link ${item.match ? 'nav-link-active' : ''}`}
                 key={item.to}
                 to={item.to}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: item.match ? 600 : 500,
+                  color: item.match ? '#1c1917' : '#78716c',
+                  background: item.match ? '#f5f5f4' : 'transparent',
+                  textDecoration: 'none',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!item.match) {
+                    e.currentTarget.style.background = '#fafaf9'
+                    e.currentTarget.style.color = '#1c1917'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!item.match) {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = '#78716c'
+                  }
+                }}
               >
                 {item.label}
               </Link>
             ))}
           </nav>
 
-          <form className="search-form" onSubmit={handleHeaderSearch}>
-            <input
+          {/* Search */}
+          <form onSubmit={handleHeaderSearch} style={{ flex: 1, maxWidth: 360, display: 'flex', alignItems: 'center' }}>
+            <Input
+              prefix={<SearchOutlined style={{ color: '#a8a29e' }} />}
+              placeholder="搜索题目、面经..."
               value={headerKeyword}
-              onChange={(event) => setHeaderKeyword(event.target.value)}
-              placeholder={`搜索 ${effectiveIndustryLabel} 题目、面经、学习主题`}
+              onChange={(e) => setHeaderKeyword(e.target.value)}
+              style={{ borderRadius: 10, background: '#f5f5f4', border: '1px solid transparent' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#e7e5e4' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'transparent' }}
             />
-            <button className="secondary-button" type="submit">搜索</button>
           </form>
 
-          <div className="nav-actions">
-            <Link className="nav-action-link" to={accessToken ? '/growth' : '/auth/login'}>
-              {accountLabel}
-            </Link>
-            <button className="primary-button nav-publish-button" type="button" onClick={handlePublish}>
-              发布
-            </button>
-          </div>
-        </div>
-
-        <div className="topbar-status">
-          <div className="topbar-status-inner">
-            <span>当前路径：{pathname}</span>
-            <span>当前方向：{effectiveIndustryLabel}</span>
-            <span>用户：{user?.username || '游客'}</span>
-            <span>会员：{user?.membershipLevel || 'free'}</span>
-            <span>状态：{accessToken ? '已登录' : '未登录'}</span>
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             {accessToken ? (
-              <button className="logout-link" type="button" onClick={() => logout()}>
-                退出登录
-              </button>
-            ) : null}
+              <>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={handlePublish}
+                  style={{
+                    borderRadius: 8,
+                    background: '#f97316',
+                    borderColor: '#f97316',
+                    fontWeight: 600,
+                  }}
+                >
+                  发布
+                </Button>
+                <Link to="/growth" style={{ textDecoration: 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Avatar size={28} icon={<UserOutlined />} style={{ background: '#e7e5e4', color: '#78716c' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1c1917' }}>{user?.username || '用户'}</span>
+                    <DownOutlined style={{ fontSize: 10, color: '#a8a29e' }} />
+                  </div>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/auth/login" style={{ textDecoration: 'none' }}>
+                  <Button
+                    type="text"
+                    style={{ fontWeight: 600, color: '#78716c', borderRadius: 8 }}
+                  >
+                    登录
+                  </Button>
+                </Link>
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={handlePublish}
+                  style={{
+                    borderRadius: 8,
+                    background: '#f97316',
+                    borderColor: '#f97316',
+                    fontWeight: 600,
+                  }}
+                >
+                  发布
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>

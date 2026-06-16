@@ -357,6 +357,11 @@ func (uc *QuestionUseCase) GetWrongQuestions(ctx context.Context, userID uint64,
 	return uc.recordRepo.GetWrongQuestions(ctx, userID, page, pageSize)
 }
 
+// GetAnsweredQuestionIDs 批量查询用户已答题的题目 ID 集合
+func (uc *QuestionUseCase) GetAnsweredQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error) {
+	return uc.recordRepo.GetAnsweredQuestionIDs(ctx, userID, questionIDs)
+}
+
 // GetPracticeRecommendations 增强推荐算法：面试驱动加权
 // interviewID > 0 时，优先推荐面试相关分类的薄弱题目
 func (uc *QuestionUseCase) GetPracticeRecommendations(ctx context.Context, userID uint64, interviewID uint64) ([]*Question, string, error) {

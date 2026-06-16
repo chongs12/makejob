@@ -41,6 +41,18 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 		return nil, toGRPCError(err)
 	}
 
+	// 批量查询当前用户已答题的题目 ID
+	answeredMap := make(map[uint64]bool)
+	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
+		questionIDs := make([]uint64, len(questions))
+		for i, q := range questions {
+			questionIDs[i] = q.ID
+		}
+		if m, err := s.uc.GetAnsweredQuestionIDs(ctx, userID, questionIDs); err == nil {
+			answeredMap = m
+		}
+	}
+
 	items := make([]*questionv1.QuestionSummary, len(questions))
 	for i, q := range questions {
 		items[i] = &questionv1.QuestionSummary{
@@ -53,6 +65,7 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 			CategoryId:   q.CategoryID,
 			IndustryId:   q.IndustryID,
 			Tags:         q.Tags,
+			IsAnswered:   answeredMap[q.ID],
 		}
 	}
 
@@ -72,15 +85,25 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		return nil, toGRPCError(err)
 	}
 
-	// 查询当前用户是否收藏了该题目
+	// 查询当前用户是否收藏/已答该题目
 	var isFavorited bool
+	var isAnswered bool
 	var userNote *questionv1.NoteResponse
 	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
 		isFavorited = s.uc.IsFavorited(ctx, userID, req.Id)
-		// 对齐单体：查询用户笔记
+		// 查询是否已答
+		if answeredMap, ansErr := s.uc.GetAnsweredQuestionIDs(ctx, userID, []uint64{req.Id}); ansErr == nil {
+			isAnswered = answeredMap[req.Id]
+		}
+		// 查询用户笔记
 		if note, noteErr := s.uc.GetUserNote(ctx, userID, req.Id); noteErr == nil && note != nil {
+			var questionID uint64
+			if note.QuestionID != nil {
+				questionID = *note.QuestionID
+			}
 			userNote = &questionv1.NoteResponse{
 				Id:        note.ID,
+				QuestionId: questionID,
 				Content:   note.Content,
 				CreatedAt: timestamppb.New(note.CreatedAt),
 				UpdatedAt: timestamppb.New(note.UpdatedAt),
@@ -109,6 +132,7 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 		JudgeConfigJson:    q.JudgeConfigJSON,
 		AnswerTemplateJson: q.AnswerTemplateJSON,
 		IsFavorited:        isFavorited,
+		IsAnswered:         isAnswered,
 		UserNote:           userNote,
 	}, nil
 }

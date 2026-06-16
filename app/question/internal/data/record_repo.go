@@ -181,3 +181,23 @@ func (r *recordRepo) GetTodayCount(ctx context.Context, userID uint64) (int32, e
 		Count(&count).Error
 	return int32(count), err
 }
+
+// GetAnsweredQuestionIDs 批量查询用户已答题的题目 ID 集合
+func (r *recordRepo) GetAnsweredQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error) {
+	if len(questionIDs) == 0 {
+		return nil, nil
+	}
+	var ids []uint64
+	err := r.db.WithContext(ctx).Model(&model.UserQuestionRecord{}).
+		Where("user_id = ? AND question_id IN ?", userID, questionIDs).
+		Distinct("question_id").
+		Pluck("question_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint64]bool, len(ids))
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}

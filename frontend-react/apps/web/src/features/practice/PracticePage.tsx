@@ -2,6 +2,25 @@ import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Button, Input, Select, Tag, Spin, Empty, Pagination, Progress } from 'antd'
+import {
+  SearchOutlined,
+  CheckCircleFilled,
+  CheckCircleOutlined,
+  StarFilled,
+  FireOutlined,
+  TrophyOutlined,
+  RiseOutlined,
+  BookOutlined,
+  RocketOutlined,
+  RightOutlined,
+  ThunderboltOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  HeartOutlined,
+  UndoOutlined,
+  CloseCircleOutlined,
+} from '@ant-design/icons'
 import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
 import {
@@ -14,7 +33,7 @@ import {
 import { findFrontendIndustryById } from '../../shared/frontendIndustryPreference'
 import { useFrontendIndustriesQuery, usePracticeStatsQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
-import { AsyncEmptyState, AsyncInlineState, AsyncStatusCard } from '../../shared/asyncState'
+import { AsyncEmptyState, AsyncInlineState } from '../../shared/asyncState'
 import { filterPracticeCollectionQuestions } from '../../shared/practiceCollectionMode'
 import {
   buildPracticeCategoriesQueryKey,
@@ -53,6 +72,45 @@ import {
   resolvePracticeTarget,
 } from '../../shared/practiceCatalog'
 
+const THEME = {
+  bg: '#fafafa',
+  cardBg: '#ffffff',
+  primary: '#f97316',
+  primaryDark: '#ea580c',
+  primaryLight: '#fff7ed',
+  accent: '#3b82f6',
+  textMain: '#1c1917',
+  textSecondary: '#57534e',
+  textMuted: '#a8a29e',
+  border: '#e7e5e4',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  info: '#3b82f6',
+  shadow: '0 1px 3px rgba(0,0,0,0.04)',
+  shadowCard: '0 4px 20px rgba(0,0,0,0.06)',
+  radius: 16,
+}
+
+const cardBase = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  boxShadow: THEME.shadow,
+  border: `1px solid ${THEME.border}`,
+}
+
+const difficultyColor: Record<string, string> = {
+  easy: '#22c55e',
+  medium: '#f59e0b',
+  hard: '#ef4444',
+}
+
+const difficultyBg: Record<string, string> = {
+  easy: '#f0fdf4',
+  medium: '#fffbeb',
+  hard: '#fef2f2',
+}
+
 /**
  * 提供刷题总入口，统一承接题库筛选、题单补练、错因专题和模拟练习。
  */
@@ -68,7 +126,7 @@ export function PracticePage() {
   const page = routeSearch.page || 1
   const focusTags = useMemo(() => readPracticeRouteFocusTags(routeSearch), [routeSearch])
   const [keywordInput, setKeywordInput] = useState(() => keyword)
-  const [examMessage, setExamMessage] = useState('等待组卷')
+  const [examMessage, setExamMessage] = useState('')
   const industriesQuery = useFrontendIndustriesQuery()
 
   const selectedIndustry = useMemo(
@@ -116,6 +174,7 @@ export function PracticePage() {
     queryFn: () => fetchQuestionSetDetail(selectedIndustry?.id || null, activeQuestionSetSlug),
     enabled: Boolean(activeQuestionSetSlug),
   })
+
   const activeTopicCode = routeSearch.topic || ''
   const activeTopicQuery = useQuery({
     queryKey: ['mistake-topic-detail', activeTopicCode],
@@ -133,9 +192,10 @@ export function PracticePage() {
 
   const practiceRecommendationsQuery = useQuery({
     queryKey: buildPracticeRecommendationsQueryKey(accessToken),
-    queryFn: () => fetchPracticeRecommendations(accessToken as string, 6),
+    queryFn: () => fetchPracticeRecommendations(accessToken as string, 4),
     enabled: Boolean(accessToken),
   })
+
   const recommendationTopicCodes = useMemo(
     () =>
       Array.from(
@@ -147,12 +207,14 @@ export function PracticePage() {
       ),
     [practiceRecommendationsQuery.data?.items],
   )
+
   const recommendationTopicsQuery = useQuery({
     queryKey: ['practice-recommendation-topics', recommendationTopicCodes],
     queryFn: () => fetchMistakeTopics(recommendationTopicCodes, accessToken),
     enabled: Boolean(recommendationTopicCodes.length),
     staleTime: 5 * 60 * 1000,
   })
+
   const recommendationTopicMap = useMemo(
     () => new Map((recommendationTopicsQuery.data || []).map((topic) => [topic.code, topic])),
     [recommendationTopicsQuery.data],
@@ -162,18 +224,18 @@ export function PracticePage() {
     () => flattenCategories(categoriesQuery.data || []),
     [categoriesQuery.data],
   )
+
   const isQuestionSetCollectionMode = Boolean(activeQuestionSetSlug)
+
   const filteredQuestionSetQuestions = useMemo(
-    () => filterPracticeCollectionQuestions(activeQuestionSetQuery.data?.questions || [], {
-      keyword,
-      difficulty,
-    }),
+    () =>
+      filterPracticeCollectionQuestions(activeQuestionSetQuery.data?.questions || [], {
+        keyword,
+        difficulty,
+      }),
     [activeQuestionSetQuery.data?.questions, difficulty, keyword],
   )
 
-  /**
-   * 合并并清洗题库路由参数后统一跳转，保证筛选状态和补练上下文都能固化到 URL。
-   */
   function navigatePractice(nextSearch: Partial<PracticeRouteSearch>, replace = false): void {
     const pickField = <K extends keyof PracticeRouteSearch>(key: K): PracticeRouteSearch[K] =>
       Object.prototype.hasOwnProperty.call(nextSearch, key) ? nextSearch[key] : routeSearch[key]
@@ -200,39 +262,21 @@ export function PracticePage() {
     })
   }
 
-  /**
-   * 在行业列表恢复后同步前台公共偏好，保证刷题、面试和陪伴使用同一方向上下文。
-   */
   useEffect(() => {
     const normalizedIndustryCode = effectiveIndustryCode.trim()
-    if (!normalizedIndustryCode) {
-      return
-    }
-
+    if (!normalizedIndustryCode) return
     persistSelectedFrontendIndustryCode(normalizedIndustryCode)
   }, [effectiveIndustryCode])
 
-  /**
-   * 当路由中的题库搜索条件变化时，同步更新输入框展示值，保证刷新和回退后仍能还原状态。
-   */
   useEffect(() => {
     setKeywordInput(keyword)
   }, [keyword])
 
-  /**
-   * 应用搜索条件并回到第一页，避免保留过期分页状态。
-   */
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    navigatePractice({
-      keyword: keywordInput.trim(),
-      page: 1,
-    })
+    navigatePractice({ keyword: keywordInput.trim(), page: 1 })
   }
 
-  /**
-   * 切换刷题行业时重置分类和分页，避免沿用上一行业的筛选状态。
-   */
   function handleIndustryChange(nextIndustryCode: string) {
     navigatePractice({
       industry: nextIndustryCode,
@@ -248,15 +292,11 @@ export function PracticePage() {
     setExamMessage(`已切换到 ${formatFrontendIndustryLabel(resolvePreferredFrontendIndustry(industriesQuery.data || [], nextIndustryCode), nextIndustryCode)} 题库。`)
   }
 
-  /**
-   * 生成随机练习或限时模拟，并跳转到第一道题。
-   */
   async function handleGenerateExam(mode: 'random' | 'timed') {
     if (!accessToken) {
       requestLoginPrompt('/practice', 'missing')
       return
     }
-
     try {
       const exam = await generateExamRequest({
         token: accessToken,
@@ -265,19 +305,15 @@ export function PracticePage() {
         industryId: selectedIndustry?.id || null,
         categoryId,
       })
-
       const firstQuestion = exam.questions?.[0]
       if (!firstQuestion) {
         setExamMessage('当前条件下没有可用题目')
         return
       }
-
       setExamMessage(mode === 'timed' ? '限时模拟已生成' : '随机练习已生成')
       navigate({
         to: firstQuestion.type === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId',
-        params: {
-          questionId: String(firstQuestion.id),
-        },
+        params: { questionId: String(firstQuestion.id) },
       })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
@@ -288,9 +324,6 @@ export function PracticePage() {
     }
   }
 
-  /**
-   * 清空当前补练上下文，只保留用户手动选择的基础筛选条件。
-   */
   function handleClearPracticeContext(): void {
     navigatePractice({
       questionSet: undefined,
@@ -302,16 +335,11 @@ export function PracticePage() {
     })
   }
 
-  /**
-   * 在当前补练上下文中切换到指定题单，尽量把模糊专题入口收敛成稳定题目集合。
-   */
   function handleApplyQuestionSetContext(questionSetSlug: string): void {
-    navigatePractice({
-      questionSet: questionSetSlug,
-      page: 1,
-    })
+    navigatePractice({ questionSet: questionSetSlug, page: 1 })
   }
 
+  // ===== Question Set Mode =====
   if (isQuestionSetCollectionMode) {
     const QUESTION_SET_PAGE_SIZE = 15
     const questionSetTotal = filteredQuestionSetQuestions.length
@@ -323,675 +351,729 @@ export function PracticePage() {
     )
 
     return (
-      <section className="page-panel">
-        <div style={{ marginBottom: 24 }}>
-          <Link
-            className="secondary-link"
-            to="/practice"
-            search={buildPracticeRouteSearch({
-              industryCode: effectiveIndustryCode,
-              page: 1,
-            })}
-          >
-            ← 返回题库
-          </Link>
-        </div>
+      <div style={{ background: THEME.bg, minHeight: '100vh', padding: '32px 24px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ marginBottom: 16 }}>
+            <Link
+              to="/practice"
+              search={buildPracticeRouteSearch({ industryCode: effectiveIndustryCode, page: 1 })}
+              style={{ fontSize: 13, color: THEME.textSecondary, textDecoration: 'none' }}
+            >
+              ← 返回题库
+            </Link>
+          </div>
 
-        {activeQuestionSetQuery.isLoading ? <AsyncStatusCard message="题单加载中..." /> : null}
-
-        {activeQuestionSetQuery.isError ? (
-          <AsyncStatusCard
-            message={extractErrorMessage(activeQuestionSetQuery.error, '题单详情加载失败')}
-            tone="error"
-          />
-        ) : null}
-
-        {activeQuestionSetQuery.data ? (
-          <>
-            <div className="status-card" style={{ marginBottom: 24 }}>
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">题单练习</span>
-                  <h2>{activeQuestionSetQuery.data.title}</h2>
-                </div>
-                <span>{questionSetTotal}/{activeQuestionSetQuery.data.question_count} 题</span>
-              </div>
-              {activeQuestionSetQuery.data.description ? (
-                <p style={{ marginTop: 12 }}>{activeQuestionSetQuery.data.description}</p>
-              ) : null}
+          {activeQuestionSetQuery.isLoading && (
+            <div style={{ padding: 40, textAlign: 'center' }}>
+              <Spin tip="题单加载中..." />
             </div>
+          )}
 
-            {questionSetPageQuestions.length ? (
-              <div className="grid-cards">
-                {questionSetPageQuestions.map((question) => (
-                  <article className="feature-card" key={`question-set-mode-${question.id}`}>
-                    <div className="card-inline">
-                      <strong>#{question.id}</strong>
-                      <span>{difficultyLabel(question.difficulty)}</span>
-                    </div>
-                    <h2>{question.title}</h2>
-                    <p>题型：{questionTypeLabel(question.type)}</p>
-                    <p>来源：{resolvePracticeQuestionSetTitle(activeQuestionSetSlug)}</p>
-                    <div style={{ marginTop: 12 }}>
-                      <Link className="secondary-link" to={resolvePracticeTarget(question.id, question.type)} params={{ questionId: String(question.id) }}>
-                        进入做题
-                      </Link>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <AsyncEmptyState
-                title="当前题单下没有题目"
-                message="该题单暂无题目数据，请稍后再试。"
-              />
-            )}
+          {activeQuestionSetQuery.isError && (
+            <div style={{ padding: 24, textAlign: 'center', color: THEME.danger }}>
+              {extractErrorMessage(activeQuestionSetQuery.error, '题单详情加载失败')}
+            </div>
+          )}
 
-            {questionSetTotalPages > 1 ? (
-              <div className="card-inline" style={{ marginTop: 24 }}>
-                <span>共 {questionSetTotal} 题，第 {questionSetPage}/{questionSetTotalPages} 页</span>
-                <div className="page-actions">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={questionSetPage <= 1}
-                    onClick={() => navigatePractice({ page: Math.max(questionSetPage - 1, 1) })}
-                  >
-                    上一页
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={questionSetPage >= questionSetTotalPages}
-                    onClick={() => navigatePractice({ page: questionSetPage + 1 })}
-                  >
-                    下一页
-                  </button>
+          {activeQuestionSetQuery.data && (
+            <>
+              <div
+                style={{
+                  ...cardBase,
+                  padding: '20px 24px',
+                  marginBottom: 24,
+                  background: THEME.primaryLight,
+                  border: `1px solid ${THEME.primary}30`,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: THEME.primary, marginBottom: 4 }}>题单练习</div>
+                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: THEME.textMain }}>{activeQuestionSetQuery.data.title}</h2>
+                    {activeQuestionSetQuery.data.description ? (
+                      <p style={{ margin: '8px 0 0', fontSize: 13, color: THEME.textSecondary }}>{activeQuestionSetQuery.data.description}</p>
+                    ) : null}
+                  </div>
+                  <Tag style={{ borderRadius: 10, fontSize: 13, fontWeight: 600, background: '#fff', border: `1px solid ${THEME.border}` }}>
+                    {questionSetTotal}/{activeQuestionSetQuery.data.question_count} 题
+                  </Tag>
                 </div>
               </div>
-            ) : null}
-          </>
-        ) : null}
-      </section>
+
+              <QuestionTable
+                questions={questionSetPageQuestions}
+                industries={industriesQuery.data || []}
+                fallbackIndustryCode={effectiveIndustryCode}
+              />
+
+              {questionSetTotalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                  <Pagination
+                    current={questionSetPage}
+                    total={questionSetTotal}
+                    pageSize={QUESTION_SET_PAGE_SIZE}
+                    onChange={(p) => navigatePractice({ page: p })}
+                    showSizeChanger={false}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     )
   }
 
+  // ===== Main Mode =====
+  const totalPages = useMemo(() => {
+    const total = questionsQuery.data?.total || 0
+    return Math.max(1, Math.ceil(total / PRACTICE_PAGE_SIZE))
+  }, [questionsQuery.data?.total])
+
+  const questions = questionsQuery.data?.list || []
+
   return (
-    <section className="page-panel">
-      <span className="page-tag">刷题总览</span>
-      <h1>刷题模式</h1>
-      <p className="page-copy">
-        这一版已经接入真实题目列表、练习统计、错题本、收藏夹、笔记和代码题编辑器。当前题库方向：{effectiveIndustryLabel}。
-      </p>
+    <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
+        {/* Header */}
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: THEME.textMain }}>
+            {effectiveIndustryLabel} 题库
+          </h1>
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: THEME.textSecondary }}>
+            按关键词、难度、分类筛选题目，或直接开始练习
+          </p>
+        </div>
 
-      <div className="channel-portal-grid">
-        <article className="channel-entry-card">
-          <span className="section-kicker">题目训练</span>
-          <h2>从筛题到做题</h2>
-          <p>按关键词、难度、分类缩小范围，直接进入普通题详情页或代码题编辑器。</p>
-          <Link className="secondary-link" to="/practice">当前页继续筛题</Link>
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">复盘沉淀</span>
-          <h2>错题、收藏、笔记</h2>
-          <p>把高频错题、值得重做的题和个人题解收束到同一个练习域里，形成复盘闭环。</p>
-          {accessToken ? (
-            <Link className="secondary-link" to="/practice/notes">直接看笔记</Link>
-          ) : (
-            <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
-              直接看笔记
-            </button>
-          )}
-        </article>
-        <article className="channel-entry-card">
-          <span className="section-kicker">模拟练习</span>
-          <h2>随机练习与限时模拟</h2>
-          <p>从题库入口直接生成练习流，不额外跳后台工具页，保持单一训练主线。</p>
-          <button className="secondary-button" type="button" onClick={() => void handleGenerateExam('timed')}>
-            立即开始模拟
-          </button>
-        </article>
-      </div>
+        {/* Filter Bar */}
+        <div
+          style={{
+            ...cardBase,
+            padding: '16px 20px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Select
+            value={effectiveIndustryCode}
+            disabled={industriesQuery.isLoading || !industriesQuery.data?.length}
+            onChange={handleIndustryChange}
+            style={{ minWidth: 120, borderRadius: 10 }}
+            dropdownStyle={{ borderRadius: 10 }}
+            placeholder="行业"
+          >
+            {industriesQuery.data?.map((industry) => (
+              <Select.Option key={industry.id} value={industry.code}>{industry.name}</Select.Option>
+            ))}
+            {!industriesQuery.data?.length && (
+              <Select.Option value={effectiveIndustryCode}>{effectiveIndustryLabel}</Select.Option>
+            )}
+          </Select>
 
-      <div className="quick-links">
-        {accessToken ? (
-          <Link className="secondary-link" to="/practice/wrong">进入错题本</Link>
-        ) : (
-          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}>
-            进入错题本
-          </button>
-        )}
-        {accessToken ? (
-          <Link className="secondary-link" to="/practice/favorites">查看收藏夹</Link>
-        ) : (
-          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/favorites', 'missing')}>
-            查看收藏夹
-          </button>
-        )}
-        {accessToken ? (
-          <Link className="secondary-link" to="/practice/notes">查看笔记</Link>
-        ) : (
-          <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/notes', 'missing')}>
-            查看笔记
-          </button>
-        )}
-      </div>
+          <Select
+            value={difficulty || undefined}
+            onChange={(val) => navigatePractice({ difficulty: val || '', page: 1 })}
+            allowClear
+            placeholder="难度"
+            style={{ minWidth: 100, borderRadius: 10 }}
+            dropdownStyle={{ borderRadius: 10 }}
+          >
+            <Select.Option value="easy">简单</Select.Option>
+            <Select.Option value="medium">中等</Select.Option>
+            <Select.Option value="hard">困难</Select.Option>
+          </Select>
 
-      {(routeSearch.title || routeSearch.reason || focusTags.length || routeSearch.questionSet || routeSearch.topic) ? (
-        <article className="status-card" style={{ marginTop: 24 }}>
-          <div className="card-inline">
-            <div>
-              <span className="section-kicker">{resolvePracticeRouteSourceLabel(routeSearch.source || '')}</span>
-              <h2>{routeSearch.title || '当前补练上下文'}</h2>
-            </div>
-            <button className="secondary-button" type="button" onClick={handleClearPracticeContext}>
-              清空上下文
-            </button>
+          <Select
+            value={categoryId || undefined}
+            onChange={(val) => navigatePractice({ category: val || undefined, page: 1 })}
+            allowClear
+            placeholder="分类"
+            style={{ minWidth: 140, borderRadius: 10 }}
+            dropdownStyle={{ borderRadius: 10 }}
+          >
+            {categoryOptions.map((item) => (
+              <Select.Option key={item.id} value={item.id}>{item.name}</Select.Option>
+            ))}
+          </Select>
+
+          <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 180, display: 'flex' }}>
+            <Input
+              prefix={<SearchOutlined style={{ color: THEME.textMuted }} />}
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
+              placeholder="搜索题目关键词"
+              style={{ borderRadius: 10 }}
+              allowClear
+            />
+          </form>
+
+          <Button
+            size="small"
+            onClick={() => void handleGenerateExam('random')}
+            style={{ borderRadius: 8, fontWeight: 600 }}
+          >
+            <ThunderboltOutlined /> 随机练习
+          </Button>
+          <Button
+            size="small"
+            onClick={() => void handleGenerateExam('timed')}
+            style={{ borderRadius: 8, fontWeight: 600 }}
+          >
+            <FireOutlined /> 限时模拟
+          </Button>
+        </div>
+
+        {/* Stats Bar */}
+        {accessToken && statsQuery.data && (
+          <div
+            style={{
+              ...cardBase,
+              padding: '14px 20px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px 24px',
+            }}
+          >
+            <StatItem label="今日完成" value={String(statsQuery.data.today_count)} color={THEME.primary} />
+            <StatItem label="累计作答" value={String(statsQuery.data.total_answered)} color={THEME.textMain} />
+            <StatItem label="正确率" value={`${statsQuery.data.accuracy_rate.toFixed(0)}%`} color={THEME.success} />
+            <StatItem label="连续打卡" value={`${statsQuery.data.streak_days} 天`} color={THEME.warning} />
+            <StatItem label="错题待复习" value={String(collectionsOverviewQuery.data?.wrongQuestions ?? 0)} color={THEME.danger} />
+            <StatItem label="已收藏" value={String(collectionsOverviewQuery.data?.favorites ?? 0)} color={THEME.accent} />
           </div>
-          {routeSearch.reason ? <p style={{ marginTop: 12 }}>{routeSearch.reason}</p> : null}
-          {routeSearch.questionSet ? (
-            <p style={{ marginTop: 12 }}>
-              当前题单：<strong>{resolvePracticeQuestionSetTitle(routeSearch.questionSet)}</strong>
-            </p>
-          ) : null}
-          {activeTopicQuery.data ? (
-            <p style={{ marginTop: 12 }}>
-              当前专题：<strong>{activeTopicQuery.data.title}</strong>
-            </p>
-          ) : null}
-          {focusTags.length ? (
-            <div className="community-tag-row" style={{ marginTop: 12 }}>
-              {focusTags.map((tag) => (
-                <span key={`practice-focus-${tag}`}>{tag}</span>
-              ))}
+        )}
+
+        {/* Context Banner */}
+        {(routeSearch.title || routeSearch.reason || focusTags.length || routeSearch.questionSet || routeSearch.topic) && (
+          <div
+            style={{
+              ...cardBase,
+              padding: '14px 20px',
+              marginBottom: 16,
+              background: '#eff6ff',
+              border: `1px solid ${THEME.accent}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: THEME.accent }}>
+                {resolvePracticeRouteSourceLabel(routeSearch.source || '')}
+              </span>
+              <span style={{ fontSize: 13, color: THEME.textMain }}>{routeSearch.title || '当前补练上下文'}</span>
+              {routeSearch.reason && (
+                <span style={{ fontSize: 12, color: THEME.textSecondary }}>{routeSearch.reason}</span>
+              )}
             </div>
-          ) : null}
-          {routeSearch.topic ? (
-            <div className="page-actions" style={{ marginTop: 12 }}>
-              <Link className="secondary-link" to={resolveMistakeTopicRoute()} params={{ topicCode: routeSearch.topic }}>
-                查看对应错因专题
-              </Link>
-            </div>
-          ) : null}
-          {activeTopicQuery.isLoading ? <AsyncInlineState message="正在读取当前专题上下文..." style={{ marginTop: 12 }} /> : null}
-          {activeTopicQuery.isError ? (
-            <AsyncInlineState
-              message={extractErrorMessage(activeTopicQuery.error, '专题上下文读取失败')}
-              style={{ marginTop: 12 }}
-              tone="error"
-            />
-          ) : null}
-          {activeTopicQuery.data?.problem_pattern && activeTopicQuery.data.problem_pattern !== routeSearch.reason ? (
-            <p style={{ marginTop: 12 }}>{activeTopicQuery.data.problem_pattern}</p>
-          ) : null}
-          {activeTopicQuery.data?.related_question_sets.length && !routeSearch.questionSet ? (
-            <div style={{ marginTop: 16 }}>
-              <strong>该专题已绑定正式题单，建议直接进入以下练习集合</strong>
-              <div className="page-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
-                {activeTopicQuery.data.related_question_sets.map((item) => (
-                  <button className="secondary-button" key={item} type="button" onClick={() => handleApplyQuestionSetContext(item)}>
-                    {resolvePracticeQuestionSetTitle(item)}
-                  </button>
-                ))}
+            <Button size="small" onClick={handleClearPracticeContext} style={{ borderRadius: 8 }}>
+              <CloseCircleOutlined /> 清空上下文
+            </Button>
+          </div>
+        )}
+
+        {examMessage && (
+          <div
+            style={{
+              ...cardBase,
+              padding: '12px 20px',
+              marginBottom: 16,
+              background: '#f0fdf4',
+              border: `1px solid ${THEME.success}20`,
+              fontSize: 13,
+              color: THEME.success,
+            }}
+          >
+            {examMessage}
+          </div>
+        )}
+
+        {/* Main Layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24 }}>
+          {/* Left: Table */}
+          <div>
+            {questionsQuery.isLoading && (
+              <div style={{ padding: 60, textAlign: 'center' }}>
+                <Spin tip="题目列表加载中..." />
               </div>
-            </div>
-          ) : null}
-          {activeQuestionSetQuery.isLoading ? <AsyncInlineState message="正在加载当前题单..." style={{ marginTop: 12 }} /> : null}
-          {activeQuestionSetQuery.isError ? (
-            <AsyncInlineState
-              message={extractErrorMessage(activeQuestionSetQuery.error, '题单详情加载失败')}
-              style={{ marginTop: 12 }}
-              tone="error"
-            />
-          ) : null}
-          {activeQuestionSetQuery.data ? (
-            <div style={{ marginTop: 16 }}>
-              <strong>当前已进入正式题单模式</strong>
-              <p style={{ marginTop: 12 }}>
-                下方主列表会固定在
-                <strong> {activeQuestionSetQuery.data.title} </strong>
-                这组题目内继续筛选；你现在改关键词或难度，不会退回到全量题库搜索。
-              </p>
-              {activeQuestionSetQuery.data.questions.length ? (
-                <div style={{ marginTop: 12 }}>
-                  {activeQuestionSetQuery.data.questions.slice(0, 3).map((item) => (
-                    <div key={`active-question-set-preview-${item.id}`} style={{ marginBottom: 8 }}>
-                      <Link className="secondary-link" to={resolvePracticeTarget(item.id, item.type)} params={{ questionId: String(item.id) }}>
-                        {item.title}
-                      </Link>
+            )}
+
+            {questionsQuery.isError && (
+              <div style={{ padding: 40, textAlign: 'center', color: THEME.danger }}>
+                {extractErrorMessage(questionsQuery.error, '题目列表加载失败')}
+              </div>
+            )}
+
+            {questionsQuery.data && (
+              <>
+                {questions.length ? (
+                  <>
+                    <QuestionTable
+                      questions={questions}
+                      industries={industriesQuery.data || []}
+                      fallbackIndustryCode={effectiveIndustryCode}
+                    />
+                    <div style={{ marginTop: 20, display: 'flex', justifyContent: 'center' }}>
+                      <Pagination
+                        current={page}
+                        total={questionsQuery.data.total}
+                        pageSize={PRACTICE_PAGE_SIZE}
+                        onChange={(p) => navigatePractice({ page: p })}
+                        showSizeChanger={false}
+                      />
                     </div>
+                  </>
+                ) : (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={
+                      <div>
+                        <div style={{ fontWeight: 600, color: THEME.textMain, marginBottom: 4 }}>当前筛选条件下暂无题目</div>
+                        <Button
+                          onClick={() =>
+                            navigatePractice({
+                              keyword: '',
+                              difficulty: '',
+                              category: undefined,
+                              page: 1,
+                              questionSet: undefined,
+                              topic: undefined,
+                              focus: undefined,
+                              source: undefined,
+                              title: undefined,
+                              reason: undefined,
+                            })
+                          }
+                        >
+                          重置筛选
+                        </Button>
+                      </div>
+                    }
+                  />
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right: Sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Recommendations */}
+            {accessToken && (
+              <div style={{ ...cardBase, padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <RocketOutlined style={{ fontSize: 16, color: THEME.primary }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain }}>推荐补练</span>
+                </div>
+
+                {practiceRecommendationsQuery.isLoading && <Spin size="small" />}
+
+                {practiceRecommendationsQuery.data?.items?.length ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {practiceRecommendationsQuery.data.items.map((item) => {
+                      const linkedTopic = item.topic_code ? recommendationTopicMap.get(item.topic_code) || null : null
+                      const collectionSearch = buildPracticeRecommendationRouteSearch(
+                        {
+                          focus_tag: item.focus_tag,
+                          topic_code: item.topic_code,
+                          primary_question_set: item.primary_question_set,
+                          reason: item.reason,
+                          question_title: item.question.title,
+                        },
+                        linkedTopic,
+                      )
+                      const diffColor = difficultyColor[item.question.difficulty] || THEME.textMuted
+                      return (
+                        <div
+                          key={`rec-${item.question.id}`}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            border: `1px solid ${THEME.border}`,
+                            background: '#fafaf9',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = THEME.primary
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = THEME.border
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: THEME.textMain,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flex: 1,
+                              }}
+                            >
+                              {item.question.title}
+                            </span>
+                            <Tag
+                              style={{
+                                margin: 0,
+                                borderRadius: 8,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                color: diffColor,
+                                background: `${diffColor}10`,
+                                border: 'none',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {difficultyLabel(item.question.difficulty)}
+                            </Tag>
+                          </div>
+                          <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 6 }}>
+                            {item.focus_tag}
+                          </div>
+                          <Link
+                            to="/practice"
+                            search={collectionSearch}
+                            style={{ fontSize: 12, color: THEME.primary, fontWeight: 600, textDecoration: 'none' }}
+                          >
+                            进入补练 →
+                          </Link>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : !practiceRecommendationsQuery.isLoading ? (
+                  <div style={{ fontSize: 12, color: THEME.textMuted }}>
+                    先做几道题，系统会根据错因给出推荐
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* Question Sets */}
+            <div style={{ ...cardBase, padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <BookOutlined style={{ fontSize: 16, color: THEME.accent }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain }}>核心题单</span>
+              </div>
+
+              {questionSetsQuery.isLoading && <Spin size="small" />}
+
+              {questionSetsQuery.data?.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {questionSetsQuery.data.map((set) => (
+                    <button
+                      key={set.slug}
+                      type="button"
+                      onClick={() => handleApplyQuestionSetContext(set.slug)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: `1px solid ${THEME.border}`,
+                        background: '#fafaf9',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s ease',
+                        width: '100%',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = THEME.accent
+                        e.currentTarget.style.background = '#fff'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = THEME.border
+                        e.currentTarget.style.background = '#fafaf9'
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain }}>{set.title}</span>
+                      <span style={{ fontSize: 11, color: THEME.textMuted }}>{set.question_count} 题</span>
+                    </button>
                   ))}
                 </div>
+              ) : !questionSetsQuery.isLoading ? (
+                <div style={{ fontSize: 12, color: THEME.textMuted }}>暂无题单</div>
               ) : null}
             </div>
-          ) : null}
-        </article>
-      ) : null}
 
-      {accessToken && statsQuery.data ? (
-        <div className="stats-grid">
-          <article className="feature-card">
-            <h2>累计作答</h2>
-            <p>{statsQuery.data.total_answered}</p>
-          </article>
-          <article className="feature-card">
-            <h2>正确数</h2>
-            <p>{statsQuery.data.correct_count}</p>
-          </article>
-          <article className="feature-card">
-            <h2>正确率</h2>
-            <p>{statsQuery.data.accuracy_rate.toFixed(2)}%</p>
-          </article>
-          <article className="feature-card">
-            <h2>连续练习</h2>
-            <p>{statsQuery.data.streak_days} 天</p>
-          </article>
-          <article className="feature-card">
-            <h2>错题待复习</h2>
-            <p>{collectionsOverviewQuery.data?.wrongQuestions ?? '-'}</p>
-          </article>
-          <article className="feature-card">
-            <h2>已收藏</h2>
-            <p>{collectionsOverviewQuery.data?.favorites ?? '-'}</p>
-          </article>
-          <article className="feature-card">
-            <h2>笔记沉淀</h2>
-            <p>{collectionsOverviewQuery.data?.notes ?? '-'}</p>
-          </article>
-          <article className="feature-card">
-            <h2>今日完成</h2>
-            <p>{statsQuery.data.today_count}</p>
-          </article>
-        </div>
-      ) : null}
-
-      <article className="status-card" style={{ marginTop: 24 }}>
-        <div className="card-inline">
-          <div>
-            <span className="section-kicker">对症练习推荐</span>
-            <h2>先补最近反复暴露的问题</h2>
-          </div>
-          {accessToken ? (
-            <Link className="secondary-link" to="/practice/wrong">查看错题本</Link>
-          ) : (
-            <button className="secondary-link interactive-link-button" type="button" onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}>
-              登录后查看错题本
-            </button>
-          )}
-        </div>
-
-        {accessToken ? (
-          <>
-            {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在根据最近错因生成推荐..." style={{ marginTop: 12 }} /> : null}
-
-            {practiceRecommendationsQuery.isError ? (
-              <AsyncInlineState
-                message={extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
-                style={{ marginTop: 12 }}
-                tone="error"
-              />
-            ) : null}
-
-            {practiceRecommendationsQuery.data?.focus_tags.length ? (
-              <div className="community-tag-row" style={{ marginTop: 12 }}>
-                {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
-                  <span key={tag}>{tag}</span>
-                ))}
+            {/* Quick Links */}
+            <div style={{ ...cardBase, padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <RiseOutlined style={{ fontSize: 16, color: THEME.success }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain }}>快速入口</span>
               </div>
-            ) : null}
-
-            {practiceRecommendationsQuery.data?.items.length ? (
-              <div className="grid-cards" style={{ marginTop: 18 }}>
-                {practiceRecommendationsQuery.data.items.map((item) => {
-                  const linkedTopic = item.topic_code ? recommendationTopicMap.get(item.topic_code) || null : null
-                  const collectionSearch = buildPracticeRecommendationRouteSearch({
-                    focus_tag: item.focus_tag,
-                    topic_code: item.topic_code,
-                    primary_question_set: item.primary_question_set,
-                    reason: item.reason,
-                    question_title: item.question.title,
-                  }, linkedTopic)
-
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {[
+                  { to: '/practice/wrong', label: '错题本', icon: <UndoOutlined /> },
+                  { to: '/practice/favorites', label: '收藏夹', icon: <HeartOutlined /> },
+                  { to: '/practice/notes', label: '学习笔记', icon: <EditOutlined /> },
+                  { to: '/growth', label: '成长档案', icon: <TrophyOutlined /> },
+                ].map((item) => {
+                  const requiresAuth = !accessToken
+                  const content = (
+                    <div
+                      key={item.to}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        fontSize: 13,
+                        color: THEME.textSecondary,
+                        transition: 'all 0.2s ease',
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#fafaf9'
+                        e.currentTarget.style.color = THEME.textMain
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = THEME.textSecondary
+                      }}
+                    >
+                      <span style={{ fontSize: 14, color: THEME.textMuted }}>{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <RightOutlined style={{ fontSize: 10, color: THEME.textMuted }} />
+                    </div>
+                  )
+                  if (requiresAuth) {
+                    return (
+                      <button
+                        key={item.to}
+                        type="button"
+                        onClick={() => requestLoginPrompt(item.to, 'missing')}
+                        style={{ all: 'unset', display: 'block', width: '100%' }}
+                      >
+                        {content}
+                      </button>
+                    )
+                  }
                   return (
-                    <article className="feature-card" key={`practice-recommendation-${item.question.id}`}>
-                      <div className="card-inline">
-                        <strong>{item.question.title}</strong>
-                        <span>{difficultyLabel(item.question.difficulty)}</span>
-                      </div>
-                      {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
-                      {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
-                      <p>聚焦标签：{item.focus_tag}</p>
-                      <p>{item.reason}</p>
-                      <p>推荐优先级：第 {item.priority} 位</p>
-                      <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
-                      <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
-                      {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
-                      {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
-                      {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
-                      {item.related_question_sets?.length ? (
-                        <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
-                      ) : null}
-                      <p>题型：{questionTypeLabel(item.question.type)}</p>
-                      {item.recommended_actions?.length ? (
-                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                          {item.recommended_actions.map((action) => (
-                            <li key={`${item.question.id}-${action}`}>{action}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <div className="page-actions" style={{ marginTop: 12 }}>
-                        <Link
-                          className="secondary-link"
-                          to="/practice"
-                          search={collectionSearch}
-                        >
-                          进入这组补练
-                        </Link>
-                        <Link
-                          className="secondary-link"
-                          to={resolvePracticeRecommendationRoute(item.question.type)}
-                          params={{ questionId: String(item.question.id) }}
-                        >
-                          直接开始补练
-                        </Link>
-                        {item.topic_code ? (
-                          <Link
-                            className="secondary-link"
-                            to={resolveMistakeTopicRoute()}
-                            params={{ topicCode: item.topic_code }}
-                          >
-                            查看错因专题
-                          </Link>
-                        ) : null}
-                      </div>
-                    </article>
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      preload="intent"
+                      style={{ textDecoration: 'none', display: 'block' }}
+                    >
+                      {content}
+                    </Link>
                   )
                 })}
               </div>
-            ) : null}
-
-            {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
-              <AsyncEmptyState
-                title="还没有形成推荐"
-                message="先做几道编程题或主观题，系统会根据错因标签逐步给出更具体的补题建议。"
-                style={{ marginTop: 18 }}
-                action={(
-                  <button className="secondary-button" type="button" onClick={() => void handleGenerateExam('random')}>
-                    先开始随机练习
-                  </button>
-                )}
-              />
-            ) : null}
-          </>
-        ) : (
-          <AsyncEmptyState
-            title="登录后解锁对症练习推荐"
-            message="登录后系统会根据最近错因、错题本和面试记录，自动生成更具体的补题建议。"
-            style={{ marginTop: 18 }}
-            action={(
-              <button className="secondary-button" type="button" onClick={() => requestLoginPrompt('/practice', 'missing')}>
-                去登录
-              </button>
-            )}
-          />
-        )}
-      </article>
-
-      <article className="status-card" style={{ marginTop: 24 }}>
-        <div className="card-inline">
-          <div>
-            <span className="section-kicker">核心题单</span>
-            <h2>{effectiveIndustryLabel} 最值得先打通的主题</h2>
+            </div>
           </div>
-          <Link className="secondary-link" to="/practice">继续按筛选做题</Link>
         </div>
+      </div>
+    </div>
+  )
+}
 
-        {questionSetsQuery.isLoading ? <AsyncInlineState message="正在整理当前方向的核心题单..." style={{ marginTop: 12 }} /> : null}
+/* ===== Sub Components ===== */
 
-        {questionSetsQuery.isError ? (
-          <AsyncInlineState
-            message={extractErrorMessage(questionSetsQuery.error, '核心题单加载失败')}
-            style={{ marginTop: 12 }}
-            tone="error"
-          />
-        ) : null}
+function StatItem({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: 12, color: THEME.textMuted }}>{label}</span>
+    </div>
+  )
+}
 
-        {questionSetsQuery.data?.length ? (
-          <div className="grid-cards" style={{ marginTop: 18 }}>
-            {questionSetsQuery.data.map((set) => (
-              <article className="feature-card" key={set.slug}>
-                <div className="card-inline">
-                  <strong>{set.title}</strong>
-                  <span>{set.question_count} 题</span>
-                </div>
-                <p>{set.description}</p>
-                {set.focus_tags.length ? (
-                  <div className="community-tag-row" style={{ marginTop: 12 }}>
-                    {set.focus_tags.map((tag) => (
-                      <span key={`${set.slug}-${tag}`}>{tag}</span>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="page-actions" style={{ marginTop: 12 }}>
-                  <Link
-                    className="secondary-link"
-                    to="/practice"
-                    search={buildPracticeRouteSearch({
-                      industryCode: effectiveIndustryCode,
-                      questionSetSlug: set.slug,
-                      focusTags: set.focus_tags,
-                      source: 'question_set',
-                      title: set.title,
-                      reason: set.description,
-                    })}
-                  >
-                    进入本题单
-                  </Link>
-                </div>
-                {set.questions.length ? (
-                  <div style={{ marginTop: 12 }}>
-                    {set.questions.map((item) => (
-                      <div key={`${set.slug}-question-${item.id}`} style={{ marginBottom: 8 }}>
-                        <Link
-                          className="secondary-link"
-                          to={resolvePracticeTarget(item.id, item.type)}
-                          params={{ questionId: String(item.id) }}
-                        >
-                          {item.title}
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : null}
-
-        {!questionSetsQuery.isLoading && !questionSetsQuery.isError && !questionSetsQuery.data?.length ? (
-          <AsyncEmptyState
-            title="当前方向还没有整理出核心题单"
-            message="优先补齐该行业下的高价值题目后，这里会自动收敛成更稳定的主题入口。"
-            style={{ marginTop: 18 }}
-            action={(
-              <button className="secondary-button" type="button" onClick={() => handleIndustryChange(DEFAULT_FRONTEND_INDUSTRY_CODE)}>
-                切回默认方向
-              </button>
-            )}
-          />
-        ) : null}
-      </article>
-
-      <form className="stack-form" onSubmit={handleSearchSubmit}>
-        <label className="field">
-          <span>行业筛选</span>
-          <select
-            value={effectiveIndustryCode}
-            disabled={industriesQuery.isLoading || !industriesQuery.data?.length}
-            onChange={(event) => handleIndustryChange(event.target.value)}
-          >
-            {industriesQuery.data?.map((industry) => (
-              <option key={industry.id} value={industry.code}>
-                {industry.name}
-              </option>
-            ))}
-            {!industriesQuery.data?.length ? (
-              <option value={effectiveIndustryCode}>{effectiveIndustryLabel}</option>
-            ) : null}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>搜索题目</span>
-          <input
-            value={keywordInput}
-            onChange={(event) => setKeywordInput(event.target.value)}
-            placeholder="输入关键词"
-          />
-        </label>
-
-        <label className="field">
-          <span>难度筛选</span>
-          <select
-            value={difficulty}
-            onChange={(event) => {
-              navigatePractice({
-                difficulty: event.target.value,
-                page: 1,
-              })
-            }}
-          >
-            <option value="">全部</option>
-            <option value="easy">简单</option>
-            <option value="medium">中等</option>
-            <option value="hard">困难</option>
-          </select>
-        </label>
-
-        <label className="field">
-          <span>分类筛选</span>
-          <select
-            value={categoryId || ''}
-            onChange={(event) => {
-              navigatePractice({
-                category: event.target.value ? Number(event.target.value) : undefined,
-                page: 1,
-              })
-            }}
-          >
-            <option value="">全部分类</option>
-            {categoryOptions.map((item) => (
-              <option key={item.id} value={item.id}>{item.name}</option>
-            ))}
-          </select>
-        </label>
-
-        {industriesQuery.isError ? (
-          <AsyncInlineState
-            className="companion-empty-text"
-            message={extractErrorMessage(industriesQuery.error, '行业列表读取失败，当前将回退到默认题库方向。')}
-            tone="error"
-          />
-        ) : null}
-
-        <div className="page-actions">
-          <button className="primary-button" type="submit">
-            搜索
-          </button>
-          <button className="secondary-button" type="button" onClick={() => void handleGenerateExam('random')}>
-            随机练习
-          </button>
-          <button className="secondary-button" type="button" onClick={() => void handleGenerateExam('timed')}>
-            限时模拟
-          </button>
-        </div>
-      </form>
-
-      <div className="status-card" style={{ marginTop: 24 }}>
-        练习提示：{examMessage}
+function QuestionTable({
+  questions,
+  industries,
+  fallbackIndustryCode,
+}: {
+  questions: Array<{
+    id: number
+    title: string
+    difficulty: string
+    type: string
+    category_id: number
+    industry_id: number
+    category_name?: string
+    pass_rate?: number
+    is_favorite?: boolean
+    is_answered?: boolean
+  }>
+  industries: Array<{ id: number; code: string; name: string }>
+  fallbackIndustryCode: string
+}) {
+  return (
+    <div
+      style={{
+        ...cardBase,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Table Header */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '44px 1fr 120px 80px 60px 44px',
+          gap: 12,
+          padding: '12px 20px',
+          background: '#fafaf9',
+          borderBottom: `1px solid ${THEME.border}`,
+          fontSize: 12,
+          fontWeight: 600,
+          color: THEME.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        }}
+      >
+        <span>状态</span>
+        <span>题目</span>
+        <span style={{ textAlign: 'center' }}>分类</span>
+        <span style={{ textAlign: 'center' }}>通过率</span>
+        <span style={{ textAlign: 'center' }}>难度</span>
+        <span></span>
       </div>
 
-      {questionsQuery.isLoading ? <AsyncStatusCard message="题目列表加载中..." style={{ marginTop: 24 }} /> : null}
+      {/* Table Rows */}
+      <div>
+        {questions.map((question, index) => {
+          const passRate = typeof question.pass_rate === 'number' ? question.pass_rate : null
+          const passRateColor = passRate === null ? THEME.textMuted : passRate >= 70 ? THEME.success : passRate >= 40 ? THEME.warning : THEME.danger
+          const diffColor = difficultyColor[question.difficulty] || THEME.textMuted
+          const diffBg = difficultyBg[question.difficulty] || '#f5f5f4'
 
-      {questionsQuery.isError ? (
-        <AsyncStatusCard
-          message={questionsQuery.error instanceof Error ? questionsQuery.error.message : '题目列表加载失败'}
-          style={{ marginTop: 24 }}
-          tone="error"
-        />
-      ) : null}
-
-      {questionsQuery.data ? (
-        <>
-          {questionsQuery.data.list.length ? (
-            <div className="grid-cards" style={{ marginTop: 24 }}>
-              {questionsQuery.data.list.map((question) => (
-                <article className="feature-card" key={question.id}>
-                  <div className="card-inline">
-                    <strong>#{question.id}</strong>
-                    <span>{difficultyLabel(question.difficulty)}</span>
-                  </div>
-                  <h2>{question.title}</h2>
-                  <p>行业：{formatFrontendIndustryLabel(findFrontendIndustryById(industriesQuery.data || [], question.industry_id), effectiveIndustryCode)}</p>
-                  <p>题型：{questionTypeLabel(question.type)}</p>
-                  <p>分类：{question.category_name || question.category_id}</p>
-                  <p>通过率：{typeof question.pass_rate === 'number' ? `${question.pass_rate}%` : '暂无'}</p>
-                  <div style={{ marginTop: 12 }}>
-                    <Link className="secondary-link" to={question.type === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'} params={{ questionId: String(question.id) }}>
-                      进入做题
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <AsyncEmptyState
-              title="当前筛选条件下暂无题目"
-              message="可以切换行业、难度或分类后再试，或者直接使用随机练习快速开始。"
-              style={{ marginTop: 24 }}
-              action={(
-                <button className="secondary-button" type="button" onClick={() => navigatePractice({
-                  keyword: '',
-                  difficulty: '',
-                  category: undefined,
-                  page: 1,
-                  questionSet: undefined,
-                  topic: undefined,
-                  focus: undefined,
-                  source: undefined,
-                  title: undefined,
-                  reason: undefined,
-                })}>
-                  重置筛选
-                </button>
-              )}
-            />
-          )}
-
-          <div className="card-inline" style={{ marginTop: 24 }}>
-            <span>共 {questionsQuery.data.total} 题</span>
-            <div className="page-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={page <= 1}
-                onClick={() => navigatePractice({ page: Math.max(page - 1, 1) })}
+          return (
+            <Link
+              key={question.id}
+              to={
+                question.type === 'code'
+                  ? '/practice/editor/$questionId'
+                  : '/practice/$questionId'
+              }
+              params={{ questionId: String(question.id) }}
+              style={{ textDecoration: 'none', display: 'block' }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '44px 1fr 120px 80px 60px 44px',
+                  gap: 12,
+                  alignItems: 'center',
+                  padding: '12px 20px',
+                  borderBottom: index === questions.length - 1 ? 'none' : `1px solid ${THEME.border}`,
+                  transition: 'background 0.15s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#fafaf9'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
               >
-                上一页
-              </button>
-              <span>第 {page} 页</span>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={questionsQuery.data.list.length < PRACTICE_PAGE_SIZE}
-                onClick={() => navigatePractice({ page: page + 1 })}
-              >
-                下一页
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </section>
+                {/* Status */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {question.is_answered ? (
+                    <CheckCircleFilled style={{ fontSize: 16, color: THEME.success }} />
+                  ) : question.is_favorite ? (
+                    <StarFilled style={{ fontSize: 16, color: THEME.warning }} />
+                  ) : (
+                    <CheckCircleOutlined style={{ fontSize: 16, color: '#d6d3d1' }} />
+                  )}
+                </div>
+
+                {/* Title + Type */}
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: THEME.textMain,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      marginBottom: 2,
+                    }}
+                  >
+                    {question.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: THEME.textMuted }}>
+                    {questionTypeLabel(question.type)} · #{question.id}
+                  </div>
+                </div>
+
+                {/* Category */}
+                <div style={{ textAlign: 'center', fontSize: 12, color: THEME.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {question.category_name || '-'}
+                </div>
+
+                {/* Pass Rate */}
+                <div style={{ textAlign: 'center' }}>
+                  {passRate !== null ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 4,
+                          borderRadius: 2,
+                          background: '#e7e5e4',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${passRate}%`,
+                            height: '100%',
+                            borderRadius: 2,
+                            background: passRateColor,
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: passRateColor }}>{passRate}%</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 11, color: THEME.textMuted }}>-</span>
+                  )}
+                </div>
+
+                {/* Difficulty */}
+                <div style={{ textAlign: 'center' }}>
+                  <Tag
+                    style={{
+                      margin: 0,
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: diffColor,
+                      background: diffBg,
+                      border: 'none',
+                    }}
+                  >
+                    {difficultyLabel(question.difficulty)}
+                  </Tag>
+                </div>
+
+                {/* Favorite */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {question.is_favorite ? (
+                    <StarFilled style={{ fontSize: 14, color: THEME.warning }} />
+                  ) : (
+                    <StarFilled style={{ fontSize: 14, color: '#e7e5e4' }} />
+                  )}
+                </div>
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+    </div>
   )
 }

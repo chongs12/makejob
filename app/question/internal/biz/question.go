@@ -27,6 +27,8 @@ type RecordRepo interface {
 	GetMistakeTopics(ctx context.Context, userID uint64) ([]*MistakeTopic, error)
 	// GetTodayCount 查询用户今天练习的题目数量
 	GetTodayCount(ctx context.Context, userID uint64) (int32, error)
+	// GetAnsweredQuestionIDs 批量查询用户已答题的题目 ID 集合
+	GetAnsweredQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error)
 }
 
 type FavoriteRepo interface {

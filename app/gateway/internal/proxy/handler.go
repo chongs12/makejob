@@ -371,6 +371,12 @@ func flattenPageResult(value map[string]interface{}) (map[string]interface{}, bo
 		if key == "page_result" {
 			continue
 		}
+		// 允许 list 字段为 null，视为空数组
+		if candidate == nil {
+			listFieldCount++
+			listValue = []interface{}{}
+			continue
+		}
 		if _, ok := candidate.([]interface{}); !ok {
 			return nil, false
 		}

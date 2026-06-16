@@ -17,6 +17,7 @@ export interface PracticeQuestion {
   category_name?: string
   pass_rate?: number
   is_favorite?: boolean
+  is_answered?: boolean
   tags?: string
 }
 

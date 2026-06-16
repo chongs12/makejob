@@ -207,6 +207,7 @@ type QuestionSummary struct {
 	CategoryId    uint64                 `protobuf:"varint,7,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
 	IndustryId    uint64                 `protobuf:"varint,8,opt,name=industry_id,json=industryId,proto3" json:"industry_id,omitempty"`
 	Tags          []string               `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty"`
+	IsAnswered    bool                   `protobuf:"varint,10,opt,name=is_answered,json=isAnswered,proto3" json:"is_answered,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -304,6 +305,13 @@ func (x *QuestionSummary) GetTags() []string {
 	return nil
 }
 
+func (x *QuestionSummary) GetIsAnswered() bool {
+	if x != nil {
+		return x.IsAnswered
+	}
+	return false
+}
+
 type GetQuestionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -373,6 +381,7 @@ type QuestionDetail struct {
 	JudgeConfigJson    string        `protobuf:"bytes,20,opt,name=judge_config_json,json=judgeConfigJson,proto3" json:"judge_config_json,omitempty"`
 	AnswerTemplateJson string        `protobuf:"bytes,21,opt,name=answer_template_json,json=answerTemplateJson,proto3" json:"answer_template_json,omitempty"`
 	UserNote           *NoteResponse `protobuf:"bytes,22,opt,name=user_note,json=userNote,proto3" json:"user_note,omitempty"`
+	IsAnswered         bool          `protobuf:"varint,23,opt,name=is_answered,json=isAnswered,proto3" json:"is_answered,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -559,6 +568,13 @@ func (x *QuestionDetail) GetUserNote() *NoteResponse {
 		return x.UserNote
 	}
 	return nil
+}
+
+func (x *QuestionDetail) GetIsAnswered() bool {
+	if x != nil {
+		return x.IsAnswered
+	}
+	return false
 }
 
 type TestCase struct {
@@ -4873,7 +4889,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x15ListQuestionsResponse\x12B\n" +
 	"\tquestions\x18\x01 \x03(\v2$.makejob.question.v1.QuestionSummaryR\tquestions\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\x8b\x02\n" +
+	"pageResult\"\xac\x02\n" +
 	"\x0fQuestionSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1e\n" +
@@ -4887,9 +4903,12 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"categoryId\x12\x1f\n" +
 	"\vindustry_id\x18\b \x01(\x04R\n" +
 	"industryId\x12\x12\n" +
-	"\x04tags\x18\t \x03(\tR\x04tags\"$\n" +
+	"\x04tags\x18\t \x03(\tR\x04tags\x12\x1f\n" +
+	"\vis_answered\x18\n" +
+	" \x01(\bR\n" +
+	"isAnswered\"$\n" +
 	"\x12GetQuestionRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\xcb\x06\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\xec\x06\n" +
 	"\x0eQuestionDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
@@ -4917,7 +4936,9 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\rsolution_json\x18\x13 \x01(\tR\fsolutionJson\x12*\n" +
 	"\x11judge_config_json\x18\x14 \x01(\tR\x0fjudgeConfigJson\x120\n" +
 	"\x14answer_template_json\x18\x15 \x01(\tR\x12answerTemplateJson\x12>\n" +
-	"\tuser_note\x18\x16 \x01(\v2!.makejob.question.v1.NoteResponseR\buserNote\"f\n" +
+	"\tuser_note\x18\x16 \x01(\v2!.makejob.question.v1.NoteResponseR\buserNote\x12\x1f\n" +
+	"\vis_answered\x18\x17 \x01(\bR\n" +
+	"isAnswered\"f\n" +
 	"\bTestCase\x12\x14\n" +
 	"\x05input\x18\x01 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x02 \x01(\tR\x0eexpectedOutput\x12\x1b\n" +

@@ -83,6 +83,7 @@ message QuestionSummary {
   uint64 category_id = 7;
   uint64 industry_id = 8;
   repeated string tags = 9;
+  bool is_answered = 10;
 }
 
 message GetQuestionRequest {
@@ -113,6 +114,7 @@ message QuestionDetail {
   string judge_config_json = 20;
   string answer_template_json = 21;
   NoteResponse user_note = 22;
+  bool is_answered = 23;
 }
 
 message TestCase {
