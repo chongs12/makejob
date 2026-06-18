@@ -479,6 +479,7 @@ type EvaluateAnswerRequest struct {
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	QuestionIndex int32                  `protobuf:"varint,2,opt,name=question_index,json=questionIndex,proto3" json:"question_index,omitempty"`
 	Answer        string                 `protobuf:"bytes,3,opt,name=answer,proto3" json:"answer,omitempty"`
+	RagContext    string                 `protobuf:"bytes,4,opt,name=rag_context,json=ragContext,proto3" json:"rag_context,omitempty"` // RAG 检索到的参考知识，注入到评分 prompt
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -530,6 +531,13 @@ func (x *EvaluateAnswerRequest) GetQuestionIndex() int32 {
 func (x *EvaluateAnswerRequest) GetAnswer() string {
 	if x != nil {
 		return x.Answer
+	}
+	return ""
+}
+
+func (x *EvaluateAnswerRequest) GetRagContext() string {
+	if x != nil {
+		return x.RagContext
 	}
 	return ""
 }
@@ -621,6 +629,7 @@ func (x *EvaluateAnswerResponse) GetFollowUp() string {
 type GetNextQuestionSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	RagContext    string                 `protobuf:"bytes,2,opt,name=rag_context,json=ragContext,proto3" json:"rag_context,omitempty"` // RAG 检索到的参考知识，注入到出题 prompt
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -658,6 +667,13 @@ func (*GetNextQuestionSessionRequest) Descriptor() ([]byte, []int) {
 func (x *GetNextQuestionSessionRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
+	}
+	return ""
+}
+
+func (x *GetNextQuestionSessionRequest) GetRagContext() string {
+	if x != nil {
+		return x.RagContext
 	}
 	return ""
 }
@@ -1797,6 +1813,7 @@ type ResumeParserResponse struct {
 	Education     []string               `protobuf:"bytes,3,rep,name=education,proto3" json:"education,omitempty"`
 	Projects      []string               `protobuf:"bytes,4,rep,name=projects,proto3" json:"projects,omitempty"`
 	Summary       string                 `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
+	WeakSignals   []string               `protobuf:"bytes,6,rep,name=weak_signals,json=weakSignals,proto3" json:"weak_signals,omitempty"` // 候选人薄弱信号，用于简历驱动面试针对性追问
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1864,6 +1881,13 @@ func (x *ResumeParserResponse) GetSummary() string {
 		return x.Summary
 	}
 	return ""
+}
+
+func (x *ResumeParserResponse) GetWeakSignals() []string {
+	if x != nil {
+		return x.WeakSignals
+	}
+	return nil
 }
 
 type Live2DDirectiveRequest struct {
@@ -3153,12 +3177,14 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"difficulty\x12\x12\n" +
 	"\x04type\x18\x05 \x01(\tR\x04type\x12\x14\n" +
 	"\x05hints\x18\x06 \x01(\tR\x05hints\x12I\n" +
-	"\x10live2d_directive\x18\a \x01(\v2\x1e.makejob.ai.v1.Live2DDirectiveR\x0flive2dDirective\"u\n" +
+	"\x10live2d_directive\x18\a \x01(\v2\x1e.makejob.ai.v1.Live2DDirectiveR\x0flive2dDirective\"\x96\x01\n" +
 	"\x15EvaluateAnswerRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12%\n" +
 	"\x0equestion_index\x18\x02 \x01(\x05R\rquestionIndex\x12\x16\n" +
-	"\x06answer\x18\x03 \x01(\tR\x06answer\"\xc7\x01\n" +
+	"\x06answer\x18\x03 \x01(\tR\x06answer\x12\x1f\n" +
+	"\vrag_context\x18\x04 \x01(\tR\n" +
+	"ragContext\"\xc7\x01\n" +
 	"\x16EvaluateAnswerResponse\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x01R\x05score\x12\x1d\n" +
 	"\n" +
@@ -3167,10 +3193,12 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\n" +
 	"key_points\x18\x04 \x03(\tR\tkeyPoints\x12 \n" +
 	"\vsuggestions\x18\x05 \x01(\tR\vsuggestions\x12\x1b\n" +
-	"\tfollow_up\x18\x06 \x01(\tR\bfollowUp\">\n" +
+	"\tfollow_up\x18\x06 \x01(\tR\bfollowUp\"_\n" +
 	"\x1dGetNextQuestionSessionRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\x82\x02\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1f\n" +
+	"\vrag_context\x18\x02 \x01(\tR\n" +
+	"ragContext\"\x82\x02\n" +
 	"\x1eGetNextQuestionSessionResponse\x12\x1a\n" +
 	"\bquestion\x18\x01 \x01(\tR\bquestion\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x1e\n" +
@@ -3270,7 +3298,7 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\x0ecorrect_answer\x18\x06 \x01(\tR\rcorrectAnswer\"6\n" +
 	"\x13ResumeParserRequest\x12\x1f\n" +
 	"\vresume_text\x18\x01 \x01(\tR\n" +
-	"resumeText\"\xa2\x01\n" +
+	"resumeText\"\xc5\x01\n" +
 	"\x14ResumeParserResponse\x12\x16\n" +
 	"\x06skills\x18\x01 \x03(\tR\x06skills\x12\x1e\n" +
 	"\n" +
@@ -3278,7 +3306,8 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"experience\x12\x1c\n" +
 	"\teducation\x18\x03 \x03(\tR\teducation\x12\x1a\n" +
 	"\bprojects\x18\x04 \x03(\tR\bprojects\x12\x18\n" +
-	"\asummary\x18\x05 \x01(\tR\asummary\"t\n" +
+	"\asummary\x18\x05 \x01(\tR\asummary\x12!\n" +
+	"\fweak_signals\x18\x06 \x03(\tR\vweakSignals\"t\n" +
 	"\x16Live2DDirectiveRequest\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12!\n" +
 	"\femotion_hint\x18\x02 \x01(\tR\vemotionHint\x12\x1d\n" +

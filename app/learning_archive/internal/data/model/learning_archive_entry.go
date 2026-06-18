@@ -10,14 +10,17 @@ import (
 // 注意：若使用 Raw SQL 聚合 mistake_tags，必须显式补 deleted_at IS NULL 过滤条件。
 type LearningArchiveEntry struct {
 	gorm.Model
-	UserID          uint64 `gorm:"index;not null"`
-	SourceType      string `gorm:"size:50;not null;index"`
-	SourceRef       string `gorm:"size:100"`
-	InterviewID     uint64 `gorm:"index"`
+	UserID          uint64 `gorm:"index;not null;uniqueIndex:idx_learning_archive_user_source"`
+	SourceType      string `gorm:"size:50;not null;index;uniqueIndex:idx_learning_archive_user_source"`
+	SourceRef       string `gorm:"size:100;uniqueIndex:idx_learning_archive_user_source"`
+	InterviewID     uint64 `gorm:"index;uniqueIndex:idx_learning_archive_user_source"`
 	QuestionIndex   int32
 	IndustryCode    string    `gorm:"size:50;index"`
 	PlanPhase       string    `gorm:"size:50"`
 	PlanPhaseGoal   string    `gorm:"size:200"`
+	EntryPhase      string    `gorm:"size:50"`
+	TaskPhase       string    `gorm:"size:50"`
+	TaskPhaseGoal   string    `gorm:"size:200"`
 	Language        string    `gorm:"size:30"`
 	MistakeTags     string    `gorm:"type:text"` // JSON array
 	StrengthTags    string    `gorm:"type:text"` // JSON array

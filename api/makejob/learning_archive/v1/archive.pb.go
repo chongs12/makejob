@@ -82,8 +82,12 @@ type WriteArchiveEntryRequest struct {
 	Suggestions     []string               `protobuf:"bytes,12,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
 	EvidenceSummary string                 `protobuf:"bytes,13,opt,name=evidence_summary,json=evidenceSummary,proto3" json:"evidence_summary,omitempty"`
 	OccurredAt      *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// --- 新增：学习阶段字段，对齐单体 LearningArchiveEntry ---
+	EntryPhase    string `protobuf:"bytes,15,opt,name=entry_phase,json=entryPhase,proto3" json:"entry_phase,omitempty"`
+	TaskPhase     string `protobuf:"bytes,16,opt,name=task_phase,json=taskPhase,proto3" json:"task_phase,omitempty"`
+	TaskPhaseGoal string `protobuf:"bytes,17,opt,name=task_phase_goal,json=taskPhaseGoal,proto3" json:"task_phase_goal,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WriteArchiveEntryRequest) Reset() {
@@ -214,6 +218,27 @@ func (x *WriteArchiveEntryRequest) GetOccurredAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *WriteArchiveEntryRequest) GetEntryPhase() string {
+	if x != nil {
+		return x.EntryPhase
+	}
+	return ""
+}
+
+func (x *WriteArchiveEntryRequest) GetTaskPhase() string {
+	if x != nil {
+		return x.TaskPhase
+	}
+	return ""
+}
+
+func (x *WriteArchiveEntryRequest) GetTaskPhaseGoal() string {
+	if x != nil {
+		return x.TaskPhaseGoal
+	}
+	return ""
+}
+
 type BatchWriteRequest struct {
 	state         protoimpl.MessageState      `protogen:"open.v1"`
 	Entries       []*WriteArchiveEntryRequest `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
@@ -317,11 +342,15 @@ type ArchiveEntry struct {
 	StrengthTags    []string               `protobuf:"bytes,11,rep,name=strength_tags,json=strengthTags,proto3" json:"strength_tags,omitempty"`
 	Suggestions     []string               `protobuf:"bytes,12,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
 	EvidenceSummary string                 `protobuf:"bytes,13,opt,name=evidence_summary,json=evidenceSummary,proto3" json:"evidence_summary,omitempty"`
-	PlanPhaseGoal   string                 `protobuf:"bytes,16,opt,name=plan_phase_goal,json=planPhaseGoal,proto3" json:"plan_phase_goal,omitempty"`
 	OccurredAt      *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	PlanPhaseGoal   string                 `protobuf:"bytes,16,opt,name=plan_phase_goal,json=planPhaseGoal,proto3" json:"plan_phase_goal,omitempty"`
+	// --- 新增 ---
+	EntryPhase    string `protobuf:"bytes,17,opt,name=entry_phase,json=entryPhase,proto3" json:"entry_phase,omitempty"`
+	TaskPhase     string `protobuf:"bytes,18,opt,name=task_phase,json=taskPhase,proto3" json:"task_phase,omitempty"`
+	TaskPhaseGoal string `protobuf:"bytes,19,opt,name=task_phase_goal,json=taskPhaseGoal,proto3" json:"task_phase_goal,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ArchiveEntry) Reset() {
@@ -445,13 +474,6 @@ func (x *ArchiveEntry) GetEvidenceSummary() string {
 	return ""
 }
 
-func (x *ArchiveEntry) GetPlanPhaseGoal() string {
-	if x != nil {
-		return x.PlanPhaseGoal
-	}
-	return ""
-}
-
 func (x *ArchiveEntry) GetOccurredAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.OccurredAt
@@ -464,6 +486,34 @@ func (x *ArchiveEntry) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *ArchiveEntry) GetPlanPhaseGoal() string {
+	if x != nil {
+		return x.PlanPhaseGoal
+	}
+	return ""
+}
+
+func (x *ArchiveEntry) GetEntryPhase() string {
+	if x != nil {
+		return x.EntryPhase
+	}
+	return ""
+}
+
+func (x *ArchiveEntry) GetTaskPhase() string {
+	if x != nil {
+		return x.TaskPhase
+	}
+	return ""
+}
+
+func (x *ArchiveEntry) GetTaskPhaseGoal() string {
+	if x != nil {
+		return x.TaskPhaseGoal
+	}
+	return ""
 }
 
 type ListByUserRequest struct {
@@ -562,6 +612,58 @@ func (x *ArchiveEntryList) GetEntries() []*ArchiveEntry {
 	return nil
 }
 
+type GetWeakTopicsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // 默认 10
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWeakTopicsRequest) Reset() {
+	*x = GetWeakTopicsRequest{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWeakTopicsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWeakTopicsRequest) ProtoMessage() {}
+
+func (x *GetWeakTopicsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWeakTopicsRequest.ProtoReflect.Descriptor instead.
+func (*GetWeakTopicsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetWeakTopicsRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *GetWeakTopicsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
 type WeakTopicList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Topics        []string               `protobuf:"bytes,1,rep,name=topics,proto3" json:"topics,omitempty"`
@@ -571,7 +673,7 @@ type WeakTopicList struct {
 
 func (x *WeakTopicList) Reset() {
 	*x = WeakTopicList{}
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[7]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -583,7 +685,7 @@ func (x *WeakTopicList) String() string {
 func (*WeakTopicList) ProtoMessage() {}
 
 func (x *WeakTopicList) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[7]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -596,7 +698,7 @@ func (x *WeakTopicList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeakTopicList.ProtoReflect.Descriptor instead.
 func (*WeakTopicList) Descriptor() ([]byte, []int) {
-	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{7}
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *WeakTopicList) GetTopics() []string {
@@ -606,16 +708,77 @@ func (x *WeakTopicList) GetTopics() []string {
 	return nil
 }
 
+type GetFocusSignalsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`                                  // 默认 3
+	IndustryCode  string                 `protobuf:"bytes,3,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"` // 可选：按行业过滤
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFocusSignalsRequest) Reset() {
+	*x = GetFocusSignalsRequest{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFocusSignalsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFocusSignalsRequest) ProtoMessage() {}
+
+func (x *GetFocusSignalsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFocusSignalsRequest.ProtoReflect.Descriptor instead.
+func (*GetFocusSignalsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetFocusSignalsRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *GetFocusSignalsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *GetFocusSignalsRequest) GetIndustryCode() string {
+	if x != nil {
+		return x.IndustryCode
+	}
+	return ""
+}
+
 type FocusSignalList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Signals       []*FocusSignal         `protobuf:"bytes,1,rep,name=signals,proto3" json:"signals,omitempty"`
+	TrendSummary  *GrowthTrendSummary    `protobuf:"bytes,2,opt,name=trend_summary,json=trendSummary,proto3" json:"trend_summary,omitempty"` // 从首个焦点信号派生的趋势摘要
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FocusSignalList) Reset() {
 	*x = FocusSignalList{}
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[8]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -627,7 +790,7 @@ func (x *FocusSignalList) String() string {
 func (*FocusSignalList) ProtoMessage() {}
 
 func (x *FocusSignalList) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[8]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -640,7 +803,7 @@ func (x *FocusSignalList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusSignalList.ProtoReflect.Descriptor instead.
 func (*FocusSignalList) Descriptor() ([]byte, []int) {
-	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{8}
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FocusSignalList) GetSignals() []*FocusSignal {
@@ -650,18 +813,50 @@ func (x *FocusSignalList) GetSignals() []*FocusSignal {
 	return nil
 }
 
+func (x *FocusSignalList) GetTrendSummary() *GrowthTrendSummary {
+	if x != nil {
+		return x.TrendSummary
+	}
+	return nil
+}
+
+// FocusSignal 对齐单体 trainingFocusSignal 和 growth.proto GrowthFocusSignal 的完整结构。
+// 旧字段 topic(1)/weight(2)/source(3) 保留编号以兼容已生成的 stub，
+// 语义上 topic ≈ tag，weight 废弃（用 occurrence_count 替代）。
 type FocusSignal struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Weight        float64                `protobuf:"fixed64,2,opt,name=weight,proto3" json:"weight,omitempty"`
-	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// --- 旧字段（保留编号兼容） ---
+	Topic  string  `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`     // 废弃，改用 tag
+	Weight float64 `protobuf:"fixed64,2,opt,name=weight,proto3" json:"weight,omitempty"` // 废弃，改用 occurrence_count
+	Source string  `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`   // 保留：learning_archive / interview_report / mixed
+	// --- 核心标识 ---
+	Tag                 string `protobuf:"bytes,10,opt,name=tag,proto3" json:"tag,omitempty"`                                                              // 错因标签原文，如 "状态定义不清"
+	TopicCode           string `protobuf:"bytes,11,opt,name=topic_code,json=topicCode,proto3" json:"topic_code,omitempty"`                                 // 专题编码，如 "state-definition"
+	TopicTitle          string `protobuf:"bytes,12,opt,name=topic_title,json=topicTitle,proto3" json:"topic_title,omitempty"`                              // 专题标题
+	TopicProblemPattern string `protobuf:"bytes,13,opt,name=topic_problem_pattern,json=topicProblemPattern,proto3" json:"topic_problem_pattern,omitempty"` // 问题模式描述
+	// --- 计数 ---
+	OccurrenceCount          int32 `protobuf:"varint,14,opt,name=occurrence_count,json=occurrenceCount,proto3" json:"occurrence_count,omitempty"`                              // 总出现次数
+	ArchiveOccurrenceCount   int32 `protobuf:"varint,15,opt,name=archive_occurrence_count,json=archiveOccurrenceCount,proto3" json:"archive_occurrence_count,omitempty"`       // 归档来源出现次数
+	InterviewOccurrenceCount int32 `protobuf:"varint,16,opt,name=interview_occurrence_count,json=interviewOccurrenceCount,proto3" json:"interview_occurrence_count,omitempty"` // 面试来源出现次数
+	// --- 阶段 ---
+	DominantArchivePhase      string `protobuf:"bytes,17,opt,name=dominant_archive_phase,json=dominantArchivePhase,proto3" json:"dominant_archive_phase,omitempty"`                  // 主要归档阶段（drill/foundation/mock/review）
+	DominantArchivePhaseLabel string `protobuf:"bytes,18,opt,name=dominant_archive_phase_label,json=dominantArchivePhaseLabel,proto3" json:"dominant_archive_phase_label,omitempty"` // 阶段中文标签
+	// --- 推荐 ---
+	RelatedQuestionSets []string `protobuf:"bytes,19,rep,name=related_question_sets,json=relatedQuestionSets,proto3" json:"related_question_sets,omitempty"` // 关联题集编码
+	RecommendedActions  []string `protobuf:"bytes,20,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`      // 推荐动作
+	PrimaryQuestionSet  string   `protobuf:"bytes,21,opt,name=primary_question_set,json=primaryQuestionSet,proto3" json:"primary_question_set,omitempty"`    // 首选题集编码
+	// --- 解释 ---
+	SourceLabel    string `protobuf:"bytes,22,opt,name=source_label,json=sourceLabel,proto3" json:"source_label,omitempty"`          // 来源展示标签："练习归档" / "面试报告" / "练习 + 面试"
+	Reason         string `protobuf:"bytes,23,opt,name=reason,proto3" json:"reason,omitempty"`                                       // 可直接展示的推荐理由文案
+	SourceRef      string `protobuf:"bytes,24,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`                // 来源引用（用于追溯）
+	CollectionHint string `protobuf:"bytes,25,opt,name=collection_hint,json=collectionHint,proto3" json:"collection_hint,omitempty"` // 首选题集编码提示（= primary_question_set）
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *FocusSignal) Reset() {
 	*x = FocusSignal{}
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[9]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +868,7 @@ func (x *FocusSignal) String() string {
 func (*FocusSignal) ProtoMessage() {}
 
 func (x *FocusSignal) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[9]
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +881,7 @@ func (x *FocusSignal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FocusSignal.ProtoReflect.Descriptor instead.
 func (*FocusSignal) Descriptor() ([]byte, []int) {
-	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{9}
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FocusSignal) GetTopic() string {
@@ -710,13 +905,700 @@ func (x *FocusSignal) GetSource() string {
 	return ""
 }
 
+func (x *FocusSignal) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetTopicCode() string {
+	if x != nil {
+		return x.TopicCode
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetTopicTitle() string {
+	if x != nil {
+		return x.TopicTitle
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetTopicProblemPattern() string {
+	if x != nil {
+		return x.TopicProblemPattern
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetOccurrenceCount() int32 {
+	if x != nil {
+		return x.OccurrenceCount
+	}
+	return 0
+}
+
+func (x *FocusSignal) GetArchiveOccurrenceCount() int32 {
+	if x != nil {
+		return x.ArchiveOccurrenceCount
+	}
+	return 0
+}
+
+func (x *FocusSignal) GetInterviewOccurrenceCount() int32 {
+	if x != nil {
+		return x.InterviewOccurrenceCount
+	}
+	return 0
+}
+
+func (x *FocusSignal) GetDominantArchivePhase() string {
+	if x != nil {
+		return x.DominantArchivePhase
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetDominantArchivePhaseLabel() string {
+	if x != nil {
+		return x.DominantArchivePhaseLabel
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetRelatedQuestionSets() []string {
+	if x != nil {
+		return x.RelatedQuestionSets
+	}
+	return nil
+}
+
+func (x *FocusSignal) GetRecommendedActions() []string {
+	if x != nil {
+		return x.RecommendedActions
+	}
+	return nil
+}
+
+func (x *FocusSignal) GetPrimaryQuestionSet() string {
+	if x != nil {
+		return x.PrimaryQuestionSet
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetSourceLabel() string {
+	if x != nil {
+		return x.SourceLabel
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetSourceRef() string {
+	if x != nil {
+		return x.SourceRef
+	}
+	return ""
+}
+
+func (x *FocusSignal) GetCollectionHint() string {
+	if x != nil {
+		return x.CollectionHint
+	}
+	return ""
+}
+
+// GrowthTrendSummary 从焦点信号中派生的趋势摘要，对齐 growth.proto 的 GrowthTrendSummary。
+type GrowthTrendSummary struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	DominantSource      string                 `protobuf:"bytes,1,opt,name=dominant_source,json=dominantSource,proto3" json:"dominant_source,omitempty"`
+	DominantSourceLabel string                 `protobuf:"bytes,2,opt,name=dominant_source_label,json=dominantSourceLabel,proto3" json:"dominant_source_label,omitempty"`
+	TopFocusTag         string                 `protobuf:"bytes,3,opt,name=top_focus_tag,json=topFocusTag,proto3" json:"top_focus_tag,omitempty"`
+	TopTopicCode        string                 `protobuf:"bytes,4,opt,name=top_topic_code,json=topTopicCode,proto3" json:"top_topic_code,omitempty"`
+	TopTopicTitle       string                 `protobuf:"bytes,5,opt,name=top_topic_title,json=topTopicTitle,proto3" json:"top_topic_title,omitempty"`
+	Summary             string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *GrowthTrendSummary) Reset() {
+	*x = GrowthTrendSummary{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrowthTrendSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrowthTrendSummary) ProtoMessage() {}
+
+func (x *GrowthTrendSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrowthTrendSummary.ProtoReflect.Descriptor instead.
+func (*GrowthTrendSummary) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GrowthTrendSummary) GetDominantSource() string {
+	if x != nil {
+		return x.DominantSource
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetDominantSourceLabel() string {
+	if x != nil {
+		return x.DominantSourceLabel
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopFocusTag() string {
+	if x != nil {
+		return x.TopFocusTag
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopTopicCode() string {
+	if x != nil {
+		return x.TopTopicCode
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetTopTopicTitle() string {
+	if x != nil {
+		return x.TopTopicTitle
+	}
+	return ""
+}
+
+func (x *GrowthTrendSummary) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+type GetPracticeRecommendationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`                                // 默认 3（信号数），每个信号扩展出若干题目关键词
+	InterviewId   uint64                 `protobuf:"varint,3,opt,name=interview_id,json=interviewId,proto3" json:"interview_id,omitempty"` // 可选：限定某次面试的归档
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPracticeRecommendationsRequest) Reset() {
+	*x = GetPracticeRecommendationsRequest{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPracticeRecommendationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPracticeRecommendationsRequest) ProtoMessage() {}
+
+func (x *GetPracticeRecommendationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPracticeRecommendationsRequest.ProtoReflect.Descriptor instead.
+func (*GetPracticeRecommendationsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetPracticeRecommendationsRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *GetPracticeRecommendationsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *GetPracticeRecommendationsRequest) GetInterviewId() uint64 {
+	if x != nil {
+		return x.InterviewId
+	}
+	return 0
+}
+
+type PracticeRecommendationList struct {
+	state           protoimpl.MessageState    `protogen:"open.v1"`
+	Recommendations []*PracticeRecommendation `protobuf:"bytes,1,rep,name=recommendations,proto3" json:"recommendations,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PracticeRecommendationList) Reset() {
+	*x = PracticeRecommendationList{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PracticeRecommendationList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PracticeRecommendationList) ProtoMessage() {}
+
+func (x *PracticeRecommendationList) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PracticeRecommendationList.ProtoReflect.Descriptor instead.
+func (*PracticeRecommendationList) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PracticeRecommendationList) GetRecommendations() []*PracticeRecommendation {
+	if x != nil {
+		return x.Recommendations
+	}
+	return nil
+}
+
+type PracticeRecommendation struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	FocusTag        string                 `protobuf:"bytes,1,opt,name=focus_tag,json=focusTag,proto3" json:"focus_tag,omitempty"`                       // 焦点标签
+	TopicCode       string                 `protobuf:"bytes,2,opt,name=topic_code,json=topicCode,proto3" json:"topic_code,omitempty"`                    // 专题编码
+	TopicTitle      string                 `protobuf:"bytes,3,opt,name=topic_title,json=topicTitle,proto3" json:"topic_title,omitempty"`                 // 专题标题
+	Keywords        []string               `protobuf:"bytes,4,rep,name=keywords,proto3" json:"keywords,omitempty"`                                       // 用于搜索题目的关键词列表
+	OccurrenceCount int32                  `protobuf:"varint,5,opt,name=occurrence_count,json=occurrenceCount,proto3" json:"occurrence_count,omitempty"` // 出现次数（排序权重）
+	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`                                           // 推荐理由
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *PracticeRecommendation) Reset() {
+	*x = PracticeRecommendation{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PracticeRecommendation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PracticeRecommendation) ProtoMessage() {}
+
+func (x *PracticeRecommendation) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PracticeRecommendation.ProtoReflect.Descriptor instead.
+func (*PracticeRecommendation) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PracticeRecommendation) GetFocusTag() string {
+	if x != nil {
+		return x.FocusTag
+	}
+	return ""
+}
+
+func (x *PracticeRecommendation) GetTopicCode() string {
+	if x != nil {
+		return x.TopicCode
+	}
+	return ""
+}
+
+func (x *PracticeRecommendation) GetTopicTitle() string {
+	if x != nil {
+		return x.TopicTitle
+	}
+	return ""
+}
+
+func (x *PracticeRecommendation) GetKeywords() []string {
+	if x != nil {
+		return x.Keywords
+	}
+	return nil
+}
+
+func (x *PracticeRecommendation) GetOccurrenceCount() int32 {
+	if x != nil {
+		return x.OccurrenceCount
+	}
+	return 0
+}
+
+func (x *PracticeRecommendation) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ListMistakeTopicsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMistakeTopicsRequest) Reset() {
+	*x = ListMistakeTopicsRequest{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMistakeTopicsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMistakeTopicsRequest) ProtoMessage() {}
+
+func (x *ListMistakeTopicsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMistakeTopicsRequest.ProtoReflect.Descriptor instead.
+func (*ListMistakeTopicsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{16}
+}
+
+type ListMistakeTopicsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topics        []*MistakeTopicSummary `protobuf:"bytes,1,rep,name=topics,proto3" json:"topics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMistakeTopicsResponse) Reset() {
+	*x = ListMistakeTopicsResponse{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMistakeTopicsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMistakeTopicsResponse) ProtoMessage() {}
+
+func (x *ListMistakeTopicsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMistakeTopicsResponse.ProtoReflect.Descriptor instead.
+func (*ListMistakeTopicsResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListMistakeTopicsResponse) GetTopics() []*MistakeTopicSummary {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+// MistakeTopicSummary 专题概要（列表页用）
+type MistakeTopicSummary struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Code           string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Tag            string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	Title          string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	ProblemPattern string                 `protobuf:"bytes,4,opt,name=problem_pattern,json=problemPattern,proto3" json:"problem_pattern,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *MistakeTopicSummary) Reset() {
+	*x = MistakeTopicSummary{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MistakeTopicSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MistakeTopicSummary) ProtoMessage() {}
+
+func (x *MistakeTopicSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MistakeTopicSummary.ProtoReflect.Descriptor instead.
+func (*MistakeTopicSummary) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *MistakeTopicSummary) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *MistakeTopicSummary) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *MistakeTopicSummary) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *MistakeTopicSummary) GetProblemPattern() string {
+	if x != nil {
+		return x.ProblemPattern
+	}
+	return ""
+}
+
+type GetMistakeTopicRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMistakeTopicRequest) Reset() {
+	*x = GetMistakeTopicRequest{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMistakeTopicRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMistakeTopicRequest) ProtoMessage() {}
+
+func (x *GetMistakeTopicRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMistakeTopicRequest.ProtoReflect.Descriptor instead.
+func (*GetMistakeTopicRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *GetMistakeTopicRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+// MistakeTopicCard 专题详情卡片，对齐单体 MistakeTopicCard 完整结构。
+type MistakeTopicCard struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Code                string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Tag                 string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	Title               string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	ProblemPattern      string                 `protobuf:"bytes,4,opt,name=problem_pattern,json=problemPattern,proto3" json:"problem_pattern,omitempty"`
+	RootCauses          []string               `protobuf:"bytes,5,rep,name=root_causes,json=rootCauses,proto3" json:"root_causes,omitempty"`
+	SelfCheckList       []string               `protobuf:"bytes,6,rep,name=self_check_list,json=selfCheckList,proto3" json:"self_check_list,omitempty"`
+	PracticeDirections  []string               `protobuf:"bytes,7,rep,name=practice_directions,json=practiceDirections,proto3" json:"practice_directions,omitempty"`
+	RecommendedActions  []string               `protobuf:"bytes,8,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
+	RelatedQuestionSets []string               `protobuf:"bytes,9,rep,name=related_question_sets,json=relatedQuestionSets,proto3" json:"related_question_sets,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *MistakeTopicCard) Reset() {
+	*x = MistakeTopicCard{}
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MistakeTopicCard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MistakeTopicCard) ProtoMessage() {}
+
+func (x *MistakeTopicCard) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_learning_archive_v1_archive_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MistakeTopicCard.ProtoReflect.Descriptor instead.
+func (*MistakeTopicCard) Descriptor() ([]byte, []int) {
+	return file_makejob_learning_archive_v1_archive_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *MistakeTopicCard) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *MistakeTopicCard) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *MistakeTopicCard) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *MistakeTopicCard) GetProblemPattern() string {
+	if x != nil {
+		return x.ProblemPattern
+	}
+	return ""
+}
+
+func (x *MistakeTopicCard) GetRootCauses() []string {
+	if x != nil {
+		return x.RootCauses
+	}
+	return nil
+}
+
+func (x *MistakeTopicCard) GetSelfCheckList() []string {
+	if x != nil {
+		return x.SelfCheckList
+	}
+	return nil
+}
+
+func (x *MistakeTopicCard) GetPracticeDirections() []string {
+	if x != nil {
+		return x.PracticeDirections
+	}
+	return nil
+}
+
+func (x *MistakeTopicCard) GetRecommendedActions() []string {
+	if x != nil {
+		return x.RecommendedActions
+	}
+	return nil
+}
+
+func (x *MistakeTopicCard) GetRelatedQuestionSets() []string {
+	if x != nil {
+		return x.RelatedQuestionSets
+	}
+	return nil
+}
+
 var File_makejob_learning_archive_v1_archive_proto protoreflect.FileDescriptor
 
 const file_makejob_learning_archive_v1_archive_proto_rawDesc = "" +
 	"\n" +
 	")makejob/learning_archive/v1/archive.proto\x12\x1bmakejob.learning_archive.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"(\n" +
 	"\rUserIDRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\x97\x04\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xff\x04\n" +
 	"\x18WriteArchiveEntryRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x1f\n" +
 	"\vsource_type\x18\x02 \x01(\tR\n" +
@@ -736,11 +1618,16 @@ const file_makejob_learning_archive_v1_archive_proto_rawDesc = "" +
 	"\vsuggestions\x18\f \x03(\tR\vsuggestions\x12)\n" +
 	"\x10evidence_summary\x18\r \x01(\tR\x0fevidenceSummary\x12;\n" +
 	"\voccurred_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt\"d\n" +
+	"occurredAt\x12\x1f\n" +
+	"\ventry_phase\x18\x0f \x01(\tR\n" +
+	"entryPhase\x12\x1d\n" +
+	"\n" +
+	"task_phase\x18\x10 \x01(\tR\ttaskPhase\x12&\n" +
+	"\x0ftask_phase_goal\x18\x11 \x01(\tR\rtaskPhaseGoal\"d\n" +
 	"\x11BatchWriteRequest\x12O\n" +
 	"\aentries\x18\x01 \x03(\v25.makejob.learning_archive.v1.WriteArchiveEntryRequestR\aentries\".\n" +
 	"\x12BatchWriteResponse\x12\x18\n" +
-	"\awritten\x18\x01 \x01(\x05R\awritten\"\xd6\x04\n" +
+	"\awritten\x18\x01 \x01(\x05R\awritten\"\xbe\x05\n" +
 	"\fArchiveEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12\x1f\n" +
@@ -758,33 +1645,112 @@ const file_makejob_learning_archive_v1_archive_proto_rawDesc = "" +
 	" \x03(\tR\vmistakeTags\x12#\n" +
 	"\rstrength_tags\x18\v \x03(\tR\fstrengthTags\x12 \n" +
 	"\vsuggestions\x18\f \x03(\tR\vsuggestions\x12)\n" +
-	"\x10evidence_summary\x18\r \x01(\tR\x0fevidenceSummary\x12&\n" +
-	"\x0fplan_phase_goal\x18\x10 \x01(\tR\rplanPhaseGoal\x12;\n" +
+	"\x10evidence_summary\x18\r \x01(\tR\x0fevidenceSummary\x12;\n" +
 	"\voccurred_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x129\n" +
 	"\n" +
-	"created_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"B\n" +
+	"created_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12&\n" +
+	"\x0fplan_phase_goal\x18\x10 \x01(\tR\rplanPhaseGoal\x12\x1f\n" +
+	"\ventry_phase\x18\x11 \x01(\tR\n" +
+	"entryPhase\x12\x1d\n" +
+	"\n" +
+	"task_phase\x18\x12 \x01(\tR\ttaskPhase\x12&\n" +
+	"\x0ftask_phase_goal\x18\x13 \x01(\tR\rtaskPhaseGoal\"B\n" +
 	"\x11ListByUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\"W\n" +
 	"\x10ArchiveEntryList\x12C\n" +
-	"\aentries\x18\x01 \x03(\v2).makejob.learning_archive.v1.ArchiveEntryR\aentries\"'\n" +
+	"\aentries\x18\x01 \x03(\v2).makejob.learning_archive.v1.ArchiveEntryR\aentries\"E\n" +
+	"\x14GetWeakTopicsRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"'\n" +
 	"\rWeakTopicList\x12\x16\n" +
-	"\x06topics\x18\x01 \x03(\tR\x06topics\"U\n" +
+	"\x06topics\x18\x01 \x03(\tR\x06topics\"l\n" +
+	"\x16GetFocusSignalsRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12#\n" +
+	"\rindustry_code\x18\x03 \x01(\tR\findustryCode\"\xab\x01\n" +
 	"\x0fFocusSignalList\x12B\n" +
-	"\asignals\x18\x01 \x03(\v2(.makejob.learning_archive.v1.FocusSignalR\asignals\"S\n" +
+	"\asignals\x18\x01 \x03(\v2(.makejob.learning_archive.v1.FocusSignalR\asignals\x12T\n" +
+	"\rtrend_summary\x18\x02 \x01(\v2/.makejob.learning_archive.v1.GrowthTrendSummaryR\ftrendSummary\"\x8d\x06\n" +
 	"\vFocusSignal\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
 	"\x06weight\x18\x02 \x01(\x01R\x06weight\x12\x16\n" +
-	"\x06source\x18\x03 \x01(\tR\x06source2\xc1\x04\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x10\n" +
+	"\x03tag\x18\n" +
+	" \x01(\tR\x03tag\x12\x1d\n" +
+	"\n" +
+	"topic_code\x18\v \x01(\tR\ttopicCode\x12\x1f\n" +
+	"\vtopic_title\x18\f \x01(\tR\n" +
+	"topicTitle\x122\n" +
+	"\x15topic_problem_pattern\x18\r \x01(\tR\x13topicProblemPattern\x12)\n" +
+	"\x10occurrence_count\x18\x0e \x01(\x05R\x0foccurrenceCount\x128\n" +
+	"\x18archive_occurrence_count\x18\x0f \x01(\x05R\x16archiveOccurrenceCount\x12<\n" +
+	"\x1ainterview_occurrence_count\x18\x10 \x01(\x05R\x18interviewOccurrenceCount\x124\n" +
+	"\x16dominant_archive_phase\x18\x11 \x01(\tR\x14dominantArchivePhase\x12?\n" +
+	"\x1cdominant_archive_phase_label\x18\x12 \x01(\tR\x19dominantArchivePhaseLabel\x122\n" +
+	"\x15related_question_sets\x18\x13 \x03(\tR\x13relatedQuestionSets\x12/\n" +
+	"\x13recommended_actions\x18\x14 \x03(\tR\x12recommendedActions\x120\n" +
+	"\x14primary_question_set\x18\x15 \x01(\tR\x12primaryQuestionSet\x12!\n" +
+	"\fsource_label\x18\x16 \x01(\tR\vsourceLabel\x12\x16\n" +
+	"\x06reason\x18\x17 \x01(\tR\x06reason\x12\x1d\n" +
+	"\n" +
+	"source_ref\x18\x18 \x01(\tR\tsourceRef\x12'\n" +
+	"\x0fcollection_hint\x18\x19 \x01(\tR\x0ecollectionHint\"\xfd\x01\n" +
+	"\x12GrowthTrendSummary\x12'\n" +
+	"\x0fdominant_source\x18\x01 \x01(\tR\x0edominantSource\x122\n" +
+	"\x15dominant_source_label\x18\x02 \x01(\tR\x13dominantSourceLabel\x12\"\n" +
+	"\rtop_focus_tag\x18\x03 \x01(\tR\vtopFocusTag\x12$\n" +
+	"\x0etop_topic_code\x18\x04 \x01(\tR\ftopTopicCode\x12&\n" +
+	"\x0ftop_topic_title\x18\x05 \x01(\tR\rtopTopicTitle\x12\x18\n" +
+	"\asummary\x18\x06 \x01(\tR\asummary\"u\n" +
+	"!GetPracticeRecommendationsRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12!\n" +
+	"\finterview_id\x18\x03 \x01(\x04R\vinterviewId\"{\n" +
+	"\x1aPracticeRecommendationList\x12]\n" +
+	"\x0frecommendations\x18\x01 \x03(\v23.makejob.learning_archive.v1.PracticeRecommendationR\x0frecommendations\"\xd4\x01\n" +
+	"\x16PracticeRecommendation\x12\x1b\n" +
+	"\tfocus_tag\x18\x01 \x01(\tR\bfocusTag\x12\x1d\n" +
+	"\n" +
+	"topic_code\x18\x02 \x01(\tR\ttopicCode\x12\x1f\n" +
+	"\vtopic_title\x18\x03 \x01(\tR\n" +
+	"topicTitle\x12\x1a\n" +
+	"\bkeywords\x18\x04 \x03(\tR\bkeywords\x12)\n" +
+	"\x10occurrence_count\x18\x05 \x01(\x05R\x0foccurrenceCount\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\"\x1a\n" +
+	"\x18ListMistakeTopicsRequest\"e\n" +
+	"\x19ListMistakeTopicsResponse\x12H\n" +
+	"\x06topics\x18\x01 \x03(\v20.makejob.learning_archive.v1.MistakeTopicSummaryR\x06topics\"z\n" +
+	"\x13MistakeTopicSummary\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x10\n" +
+	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12'\n" +
+	"\x0fproblem_pattern\x18\x04 \x01(\tR\x0eproblemPattern\",\n" +
+	"\x16GetMistakeTopicRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\"\xd6\x02\n" +
+	"\x10MistakeTopicCard\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x10\n" +
+	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12'\n" +
+	"\x0fproblem_pattern\x18\x04 \x01(\tR\x0eproblemPattern\x12\x1f\n" +
+	"\vroot_causes\x18\x05 \x03(\tR\n" +
+	"rootCauses\x12&\n" +
+	"\x0fself_check_list\x18\x06 \x03(\tR\rselfCheckList\x12/\n" +
+	"\x13practice_directions\x18\a \x03(\tR\x12practiceDirections\x12/\n" +
+	"\x13recommended_actions\x18\b \x03(\tR\x12recommendedActions\x122\n" +
+	"\x15related_question_sets\x18\t \x03(\tR\x13relatedQuestionSets2\xe5\a\n" +
 	"\x16LearningArchiveService\x12n\n" +
 	"\n" +
 	"WriteEntry\x125.makejob.learning_archive.v1.WriteArchiveEntryRequest\x1a).makejob.learning_archive.v1.ArchiveEntry\x12t\n" +
 	"\x11BatchWriteEntries\x12..makejob.learning_archive.v1.BatchWriteRequest\x1a/.makejob.learning_archive.v1.BatchWriteResponse\x12k\n" +
 	"\n" +
-	"ListByUser\x12..makejob.learning_archive.v1.ListByUserRequest\x1a-.makejob.learning_archive.v1.ArchiveEntryList\x12g\n" +
-	"\rGetWeakTopics\x12*.makejob.learning_archive.v1.UserIDRequest\x1a*.makejob.learning_archive.v1.WeakTopicList\x12k\n" +
-	"\x0fGetFocusSignals\x12*.makejob.learning_archive.v1.UserIDRequest\x1a,.makejob.learning_archive.v1.FocusSignalListB3Z1makejob/api/makejob/learning_archive/v1;archivev1b\x06proto3"
+	"ListByUser\x12..makejob.learning_archive.v1.ListByUserRequest\x1a-.makejob.learning_archive.v1.ArchiveEntryList\x12n\n" +
+	"\rGetWeakTopics\x121.makejob.learning_archive.v1.GetWeakTopicsRequest\x1a*.makejob.learning_archive.v1.WeakTopicList\x12t\n" +
+	"\x0fGetFocusSignals\x123.makejob.learning_archive.v1.GetFocusSignalsRequest\x1a,.makejob.learning_archive.v1.FocusSignalList\x12\x95\x01\n" +
+	"\x1aGetPracticeRecommendations\x12>.makejob.learning_archive.v1.GetPracticeRecommendationsRequest\x1a7.makejob.learning_archive.v1.PracticeRecommendationList\x12\x82\x01\n" +
+	"\x11ListMistakeTopics\x125.makejob.learning_archive.v1.ListMistakeTopicsRequest\x1a6.makejob.learning_archive.v1.ListMistakeTopicsResponse\x12u\n" +
+	"\x0fGetMistakeTopic\x123.makejob.learning_archive.v1.GetMistakeTopicRequest\x1a-.makejob.learning_archive.v1.MistakeTopicCardB3Z1makejob/api/makejob/learning_archive/v1;archivev1b\x06proto3"
 
 var (
 	file_makejob_learning_archive_v1_archive_proto_rawDescOnce sync.Once
@@ -798,42 +1764,62 @@ func file_makejob_learning_archive_v1_archive_proto_rawDescGZIP() []byte {
 	return file_makejob_learning_archive_v1_archive_proto_rawDescData
 }
 
-var file_makejob_learning_archive_v1_archive_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_makejob_learning_archive_v1_archive_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_makejob_learning_archive_v1_archive_proto_goTypes = []any{
-	(*UserIDRequest)(nil),            // 0: makejob.learning_archive.v1.UserIDRequest
-	(*WriteArchiveEntryRequest)(nil), // 1: makejob.learning_archive.v1.WriteArchiveEntryRequest
-	(*BatchWriteRequest)(nil),        // 2: makejob.learning_archive.v1.BatchWriteRequest
-	(*BatchWriteResponse)(nil),       // 3: makejob.learning_archive.v1.BatchWriteResponse
-	(*ArchiveEntry)(nil),             // 4: makejob.learning_archive.v1.ArchiveEntry
-	(*ListByUserRequest)(nil),        // 5: makejob.learning_archive.v1.ListByUserRequest
-	(*ArchiveEntryList)(nil),         // 6: makejob.learning_archive.v1.ArchiveEntryList
-	(*WeakTopicList)(nil),            // 7: makejob.learning_archive.v1.WeakTopicList
-	(*FocusSignalList)(nil),          // 8: makejob.learning_archive.v1.FocusSignalList
-	(*FocusSignal)(nil),              // 9: makejob.learning_archive.v1.FocusSignal
-	(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
+	(*UserIDRequest)(nil),                     // 0: makejob.learning_archive.v1.UserIDRequest
+	(*WriteArchiveEntryRequest)(nil),          // 1: makejob.learning_archive.v1.WriteArchiveEntryRequest
+	(*BatchWriteRequest)(nil),                 // 2: makejob.learning_archive.v1.BatchWriteRequest
+	(*BatchWriteResponse)(nil),                // 3: makejob.learning_archive.v1.BatchWriteResponse
+	(*ArchiveEntry)(nil),                      // 4: makejob.learning_archive.v1.ArchiveEntry
+	(*ListByUserRequest)(nil),                 // 5: makejob.learning_archive.v1.ListByUserRequest
+	(*ArchiveEntryList)(nil),                  // 6: makejob.learning_archive.v1.ArchiveEntryList
+	(*GetWeakTopicsRequest)(nil),              // 7: makejob.learning_archive.v1.GetWeakTopicsRequest
+	(*WeakTopicList)(nil),                     // 8: makejob.learning_archive.v1.WeakTopicList
+	(*GetFocusSignalsRequest)(nil),            // 9: makejob.learning_archive.v1.GetFocusSignalsRequest
+	(*FocusSignalList)(nil),                   // 10: makejob.learning_archive.v1.FocusSignalList
+	(*FocusSignal)(nil),                       // 11: makejob.learning_archive.v1.FocusSignal
+	(*GrowthTrendSummary)(nil),                // 12: makejob.learning_archive.v1.GrowthTrendSummary
+	(*GetPracticeRecommendationsRequest)(nil), // 13: makejob.learning_archive.v1.GetPracticeRecommendationsRequest
+	(*PracticeRecommendationList)(nil),        // 14: makejob.learning_archive.v1.PracticeRecommendationList
+	(*PracticeRecommendation)(nil),            // 15: makejob.learning_archive.v1.PracticeRecommendation
+	(*ListMistakeTopicsRequest)(nil),          // 16: makejob.learning_archive.v1.ListMistakeTopicsRequest
+	(*ListMistakeTopicsResponse)(nil),         // 17: makejob.learning_archive.v1.ListMistakeTopicsResponse
+	(*MistakeTopicSummary)(nil),               // 18: makejob.learning_archive.v1.MistakeTopicSummary
+	(*GetMistakeTopicRequest)(nil),            // 19: makejob.learning_archive.v1.GetMistakeTopicRequest
+	(*MistakeTopicCard)(nil),                  // 20: makejob.learning_archive.v1.MistakeTopicCard
+	(*timestamppb.Timestamp)(nil),             // 21: google.protobuf.Timestamp
 }
 var file_makejob_learning_archive_v1_archive_proto_depIdxs = []int32{
-	10, // 0: makejob.learning_archive.v1.WriteArchiveEntryRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	21, // 0: makejob.learning_archive.v1.WriteArchiveEntryRequest.occurred_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: makejob.learning_archive.v1.BatchWriteRequest.entries:type_name -> makejob.learning_archive.v1.WriteArchiveEntryRequest
-	10, // 2: makejob.learning_archive.v1.ArchiveEntry.occurred_at:type_name -> google.protobuf.Timestamp
-	10, // 3: makejob.learning_archive.v1.ArchiveEntry.created_at:type_name -> google.protobuf.Timestamp
+	21, // 2: makejob.learning_archive.v1.ArchiveEntry.occurred_at:type_name -> google.protobuf.Timestamp
+	21, // 3: makejob.learning_archive.v1.ArchiveEntry.created_at:type_name -> google.protobuf.Timestamp
 	4,  // 4: makejob.learning_archive.v1.ArchiveEntryList.entries:type_name -> makejob.learning_archive.v1.ArchiveEntry
-	9,  // 5: makejob.learning_archive.v1.FocusSignalList.signals:type_name -> makejob.learning_archive.v1.FocusSignal
-	1,  // 6: makejob.learning_archive.v1.LearningArchiveService.WriteEntry:input_type -> makejob.learning_archive.v1.WriteArchiveEntryRequest
-	2,  // 7: makejob.learning_archive.v1.LearningArchiveService.BatchWriteEntries:input_type -> makejob.learning_archive.v1.BatchWriteRequest
-	5,  // 8: makejob.learning_archive.v1.LearningArchiveService.ListByUser:input_type -> makejob.learning_archive.v1.ListByUserRequest
-	0,  // 9: makejob.learning_archive.v1.LearningArchiveService.GetWeakTopics:input_type -> makejob.learning_archive.v1.UserIDRequest
-	0,  // 10: makejob.learning_archive.v1.LearningArchiveService.GetFocusSignals:input_type -> makejob.learning_archive.v1.UserIDRequest
-	4,  // 11: makejob.learning_archive.v1.LearningArchiveService.WriteEntry:output_type -> makejob.learning_archive.v1.ArchiveEntry
-	3,  // 12: makejob.learning_archive.v1.LearningArchiveService.BatchWriteEntries:output_type -> makejob.learning_archive.v1.BatchWriteResponse
-	6,  // 13: makejob.learning_archive.v1.LearningArchiveService.ListByUser:output_type -> makejob.learning_archive.v1.ArchiveEntryList
-	7,  // 14: makejob.learning_archive.v1.LearningArchiveService.GetWeakTopics:output_type -> makejob.learning_archive.v1.WeakTopicList
-	8,  // 15: makejob.learning_archive.v1.LearningArchiveService.GetFocusSignals:output_type -> makejob.learning_archive.v1.FocusSignalList
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	11, // 5: makejob.learning_archive.v1.FocusSignalList.signals:type_name -> makejob.learning_archive.v1.FocusSignal
+	12, // 6: makejob.learning_archive.v1.FocusSignalList.trend_summary:type_name -> makejob.learning_archive.v1.GrowthTrendSummary
+	15, // 7: makejob.learning_archive.v1.PracticeRecommendationList.recommendations:type_name -> makejob.learning_archive.v1.PracticeRecommendation
+	18, // 8: makejob.learning_archive.v1.ListMistakeTopicsResponse.topics:type_name -> makejob.learning_archive.v1.MistakeTopicSummary
+	1,  // 9: makejob.learning_archive.v1.LearningArchiveService.WriteEntry:input_type -> makejob.learning_archive.v1.WriteArchiveEntryRequest
+	2,  // 10: makejob.learning_archive.v1.LearningArchiveService.BatchWriteEntries:input_type -> makejob.learning_archive.v1.BatchWriteRequest
+	5,  // 11: makejob.learning_archive.v1.LearningArchiveService.ListByUser:input_type -> makejob.learning_archive.v1.ListByUserRequest
+	7,  // 12: makejob.learning_archive.v1.LearningArchiveService.GetWeakTopics:input_type -> makejob.learning_archive.v1.GetWeakTopicsRequest
+	9,  // 13: makejob.learning_archive.v1.LearningArchiveService.GetFocusSignals:input_type -> makejob.learning_archive.v1.GetFocusSignalsRequest
+	13, // 14: makejob.learning_archive.v1.LearningArchiveService.GetPracticeRecommendations:input_type -> makejob.learning_archive.v1.GetPracticeRecommendationsRequest
+	16, // 15: makejob.learning_archive.v1.LearningArchiveService.ListMistakeTopics:input_type -> makejob.learning_archive.v1.ListMistakeTopicsRequest
+	19, // 16: makejob.learning_archive.v1.LearningArchiveService.GetMistakeTopic:input_type -> makejob.learning_archive.v1.GetMistakeTopicRequest
+	4,  // 17: makejob.learning_archive.v1.LearningArchiveService.WriteEntry:output_type -> makejob.learning_archive.v1.ArchiveEntry
+	3,  // 18: makejob.learning_archive.v1.LearningArchiveService.BatchWriteEntries:output_type -> makejob.learning_archive.v1.BatchWriteResponse
+	6,  // 19: makejob.learning_archive.v1.LearningArchiveService.ListByUser:output_type -> makejob.learning_archive.v1.ArchiveEntryList
+	8,  // 20: makejob.learning_archive.v1.LearningArchiveService.GetWeakTopics:output_type -> makejob.learning_archive.v1.WeakTopicList
+	10, // 21: makejob.learning_archive.v1.LearningArchiveService.GetFocusSignals:output_type -> makejob.learning_archive.v1.FocusSignalList
+	14, // 22: makejob.learning_archive.v1.LearningArchiveService.GetPracticeRecommendations:output_type -> makejob.learning_archive.v1.PracticeRecommendationList
+	17, // 23: makejob.learning_archive.v1.LearningArchiveService.ListMistakeTopics:output_type -> makejob.learning_archive.v1.ListMistakeTopicsResponse
+	20, // 24: makejob.learning_archive.v1.LearningArchiveService.GetMistakeTopic:output_type -> makejob.learning_archive.v1.MistakeTopicCard
+	17, // [17:25] is the sub-list for method output_type
+	9,  // [9:17] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_makejob_learning_archive_v1_archive_proto_init() }
@@ -847,7 +1833,7 @@ func file_makejob_learning_archive_v1_archive_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_learning_archive_v1_archive_proto_rawDesc), len(file_makejob_learning_archive_v1_archive_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

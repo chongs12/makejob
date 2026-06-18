@@ -180,14 +180,18 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 	})
 
 	// 构造评估 prompt
-	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+	vars := map[string]string{
 		"industry_code":   session.IndustryCode,
 		"difficulty":      session.Difficulty,
 		"user_answer":     req.Answer,
 		"resume_text":     session.ResumeText,
 		"job_description": session.JobDescription,
 		"question_index":  fmt.Sprintf("%d", req.QuestionIndex),
-	})
+	}
+	if req.RAGContext != "" {
+		vars["rag_context"] = req.RAGContext
+	}
+	promptText := RenderPrompt(tpl.TemplateContent, vars)
 
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
@@ -255,13 +259,17 @@ func (uc *InterviewSessionUseCase) GetNextQuestion(ctx context.Context, req *Get
 	nextIndex := session.CurrentIndex + 1
 
 	// 构造下一题 prompt
-	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+	vars := map[string]string{
 		"industry_code":   session.IndustryCode,
 		"difficulty":      session.Difficulty,
 		"resume_text":     session.ResumeText,
 		"job_description": session.JobDescription,
 		"question_index":  fmt.Sprintf("%d", nextIndex),
-	})
+	}
+	if req.RAGContext != "" {
+		vars["rag_context"] = req.RAGContext
+	}
+	promptText := RenderPrompt(tpl.TemplateContent, vars)
 
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
@@ -448,6 +456,7 @@ type EvaluateAnswerRequest struct {
 	SessionId     string
 	QuestionIndex int32
 	Answer        string
+	RAGContext    string // RAG 检索到的参考知识
 }
 
 // EvaluateAnswerResponse 评估答案响应
@@ -462,7 +471,8 @@ type EvaluateAnswerResponse struct {
 
 // GetNextQuestionSessionRequest 获取下一题请求
 type GetNextQuestionSessionRequest struct {
-	SessionId string
+	SessionId  string
+	RAGContext string // RAG 检索到的参考知识
 }
 
 // GetNextQuestionSessionResponse 获取下一题响应

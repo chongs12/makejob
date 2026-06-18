@@ -127,9 +127,12 @@ func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParse
 	}
 
 	return &biz.ResumeParserResponse{
-		Skills:     resp.Skills,
-		Experience: resp.Experience,
-		Education:  resp.Education,
+		Skills:      resp.Skills,
+		Experience:  resp.Experience,
+		Education:   resp.Education,
+		Projects:    resp.Projects,
+		Summary:     resp.Summary,
+		WeakSignals: resp.WeakSignals,
 	}, nil
 }
 
@@ -164,6 +167,7 @@ func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateA
 		SessionId:     req.SessionId,
 		QuestionIndex: req.QuestionIndex,
 		Answer:        req.Answer,
+		RagContext:    req.RAGContext,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("EvaluateAnswer gRPC call failed: %w", err)
@@ -179,10 +183,11 @@ func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateA
 	}, nil
 }
 
-// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion）
+// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion + EnhanceQuestionPrompt）
 func (c *aiServiceClient) GetNextQuestionSession(ctx context.Context, req *biz.GetNextQuestionSessionRequest) (*biz.GetNextQuestionSessionResponse, error) {
 	resp, err := c.client.GetNextQuestionSession(ctx, &aiv1.GetNextQuestionSessionRequest{
-		SessionId: req.SessionId,
+		SessionId:  req.SessionId,
+		RagContext: req.RAGContext,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("GetNextQuestionSession gRPC call failed: %w", err)

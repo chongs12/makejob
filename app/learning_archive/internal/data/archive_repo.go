@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -80,6 +79,25 @@ func (r *archiveRepo) ListByUser(ctx context.Context, userID uint64, limit int32
 	return entries, nil
 }
 
+// ListRecentByUser 按用户读取最近档案，支持可选的 interviewID 过滤和更大的 limit。
+func (r *archiveRepo) ListRecentByUser(ctx context.Context, userID uint64, limit int32, interviewID *uint64) ([]*biz.ArchiveEntry, error) {
+	query := r.getDB(ctx).WithContext(ctx).
+		Where("user_id = ?", userID).
+		Where("source_type <> ?", biz.ArchiveSourceTypeInterviewFinishedMarker)
+	if interviewID != nil {
+		query = query.Where("interview_id = ?", *interviewID)
+	}
+	var models []model.LearningArchiveEntry
+	if err := query.Order("occurred_at DESC").Limit(int(limit)).Find(&models).Error; err != nil {
+		return nil, err
+	}
+	entries := make([]*biz.ArchiveEntry, len(models))
+	for i, m := range models {
+		entries[i] = toBiz(&m)
+	}
+	return entries, nil
+}
+
 // GetBySource 按幂等来源键读取历史条目，若不存在则返回 nil。
 func (r *archiveRepo) GetBySource(ctx context.Context, userID, interviewID uint64, sourceType, sourceRef string) (*biz.ArchiveEntry, error) {
 	query := r.getDB(ctx).WithContext(ctx).Model(&model.LearningArchiveEntry{}).
@@ -110,22 +128,20 @@ func (r *archiveRepo) HasInterviewFinishedMarker(ctx context.Context, interviewI
 	return count > 0, nil
 }
 
-func (r *archiveRepo) GetWeakTopics(ctx context.Context, userID uint64) ([]string, error) {
-	// 查询用户最近的错误标签，按出现次数排序
+// GetWeakTopics 查询用户高频薄弱标签，按出现次数降序返回。
+func (r *archiveRepo) GetWeakTopics(ctx context.Context, userID uint64, limit int32) ([]string, error) {
 	type topicCount struct {
 		Tag   string
 		Count int
 	}
 
-	// Raw SQL 不会自动继承 GORM 软删除条件，这里显式过滤 deleted_at。
 	rows, err := r.db.WithContext(ctx).
 		Raw(`SELECT jsonb_array_elements_text(mistake_tags::jsonb) as tag, COUNT(*) as count
 			 FROM learning_archive_entries
 			 WHERE user_id = ? AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
-			 GROUP BY tag ORDER BY count DESC LIMIT 10`, userID).
+			 GROUP BY tag ORDER BY count DESC LIMIT ?`, userID, limit).
 		Rows()
 	if err != nil {
-		// 如果 JSON 查询失败，返回空
 		return nil, err
 	}
 	defer rows.Close()
@@ -139,39 +155,6 @@ func (r *archiveRepo) GetWeakTopics(ctx context.Context, userID uint64) ([]strin
 		topics = append(topics, tc.Tag)
 	}
 	return topics, nil
-}
-
-func (r *archiveRepo) GetFocusSignals(ctx context.Context, userID uint64) ([]*biz.FocusSignal, error) {
-	// 查询最近 30 天的学习记录，按来源类型聚合
-	var signals []*biz.FocusSignal
-
-	type sourceCount struct {
-		SourceType string
-		Count      int
-	}
-	var results []sourceCount
-
-	if err := r.db.WithContext(ctx).
-		Model(&model.LearningArchiveEntry{}).
-		Select("source_type, COUNT(*) as count").
-		Where("user_id = ? AND occurred_at > ? AND source_type <> ?", userID, time.Now().AddDate(0, 0, -30), biz.ArchiveSourceTypeInterviewFinishedMarker).
-		Group("source_type").
-		Find(&results).Error; err != nil {
-		return nil, err
-	}
-
-	for _, res := range results {
-		signals = append(signals, &biz.FocusSignal{
-			Topic:  res.SourceType,
-			Weight: float64(res.Count),
-			Source: "learning_archive",
-		})
-	}
-
-	if signals == nil {
-		return []*biz.FocusSignal{}, nil
-	}
-	return signals, nil
 }
 
 // --- 转换函数 ---
@@ -190,6 +173,9 @@ func toModel(e *biz.ArchiveEntry) *model.LearningArchiveEntry {
 		IndustryCode:    e.IndustryCode,
 		PlanPhase:       e.PlanPhase,
 		PlanPhaseGoal:   e.PlanPhaseGoal,
+		EntryPhase:      e.EntryPhase,
+		TaskPhase:       e.TaskPhase,
+		TaskPhaseGoal:   e.TaskPhaseGoal,
 		Language:        e.Language,
 		MistakeTags:     string(mistakeTags),
 		StrengthTags:    string(strengthTags),
@@ -221,6 +207,9 @@ func toBiz(m *model.LearningArchiveEntry) *biz.ArchiveEntry {
 		IndustryCode:    m.IndustryCode,
 		PlanPhase:       m.PlanPhase,
 		PlanPhaseGoal:   m.PlanPhaseGoal,
+		EntryPhase:      m.EntryPhase,
+		TaskPhase:       m.TaskPhase,
+		TaskPhaseGoal:   m.TaskPhaseGoal,
 		Language:        m.Language,
 		MistakeTags:     mistakeTags,
 		StrengthTags:    strengthTags,
@@ -230,3 +219,5 @@ func toBiz(m *model.LearningArchiveEntry) *biz.ArchiveEntry {
 		CreatedAt:       m.CreatedAt,
 	}
 }
+
+

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
@@ -359,7 +360,30 @@ type PlanUseCase struct {
 	aiClient       PlanAgentClient
 	diagClient     DiagnosisClient
 	publisher      MQPublisher
+	archiveClient  LearningArchiveClient
 	logger         *log.Helper
+}
+
+// LearningArchiveClient 学习档案 gRPC 客户端接口。
+type LearningArchiveClient interface {
+	WritePlanFeedback(ctx context.Context, entry *PlanFeedbackArchiveEntry) error
+}
+
+// PlanFeedbackArchiveEntry 计划反馈诊断写入学习档案的参数。
+type PlanFeedbackArchiveEntry struct {
+	UserID        uint64
+	FeedbackID    uint64
+	IndustryCode  string
+	PlanPhase     string
+	PlanPhaseGoal string
+	EntryPhase    string
+	TaskPhase     string
+	TaskPhaseGoal string
+	Language      string
+	MistakeTags   []string
+	Suggestions   []string
+	EvidenceSummary string
+	OccurredAt    time.Time
 }
 
 // IndustryRepo 行业仓储接口，用于 code→id 解析
@@ -368,7 +392,7 @@ type IndustryRepo interface {
 }
 
 // NewPlanUseCase 创建学习计划业务用例
-func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, industryRepo IndustryRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, logger log.Logger) *PlanUseCase {
+func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, industryRepo IndustryRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, archiveClient LearningArchiveClient, logger log.Logger) *PlanUseCase {
 	return &PlanUseCase{
 		repo:           repo,
 		taskRepo:       taskRepo,
@@ -378,6 +402,7 @@ func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackR
 		aiClient:       aiClient,
 		diagClient:     diagClient,
 		publisher:      publisher,
+		archiveClient:  archiveClient,
 		logger:         log.NewHelper(logger),
 	}
 }
@@ -735,7 +760,7 @@ func (uc *PlanUseCase) SubmitTaskFeedback(ctx context.Context, userID, planID, t
 	return feedback, nil
 }
 
-// ProcessFeedbackDiagnosis 处理诊断消息并保存诊断结果。
+// ProcessFeedbackDiagnosis 处理诊断消息并保存诊断结果，并同步写入学习档案。
 func (uc *PlanUseCase) ProcessFeedbackDiagnosis(ctx context.Context, feedbackID uint64, feedbackText, difficultyFeeling string, problemAreas []string) error {
 	feedback, err := uc.feedbackRepo.GetByID(ctx, feedbackID)
 	if err != nil {
@@ -760,7 +785,123 @@ func (uc *PlanUseCase) ProcessFeedbackDiagnosis(ctx context.Context, feedbackID 
 	if err := uc.feedbackRepo.Update(ctx, feedback); err != nil {
 		return kratosErr.InternalServer("SAVE_DIAGNOSIS_FAILED", "保存诊断结果失败").WithCause(err)
 	}
+
+	uc.syncPlanFeedbackArchive(ctx, feedback, task, diagnosisJSON)
 	return nil
+}
+
+// syncPlanFeedbackArchive 将反馈诊断结果同步写入学习档案（通过 gRPC）。
+func (uc *PlanUseCase) syncPlanFeedbackArchive(ctx context.Context, feedback *TaskFeedback, task *LearningTask, diagnosisJSON string) {
+	if uc.archiveClient == nil {
+		return
+	}
+
+	var result struct {
+		Score       float64  `json:"score"`
+		IsCorrect   bool     `json:"is_correct"`
+		Feedback    string   `json:"feedback"`
+		KeyPoints   []string `json:"key_points"`
+		Suggestions string   `json:"suggestions"`
+	}
+	if err := json.Unmarshal([]byte(diagnosisJSON), &result); err != nil {
+		uc.logger.Warnf("解析诊断结果 JSON 失败: %v", err)
+		return
+	}
+
+	mistakeTags := normalizeFeedbackMistakeTags(result.KeyPoints, result.IsCorrect)
+	if len(mistakeTags) == 0 {
+		return
+	}
+
+	suggestions := []string{}
+	if result.Suggestions != "" {
+		suggestions = []string{result.Suggestions}
+	}
+
+	plan, _ := uc.repo.GetByID(ctx, feedback.PlanID)
+	industryCode := ""
+	planPhase := ""
+	planPhaseGoal := ""
+	entryPhase := ""
+	if plan != nil {
+		industryCode = fmt.Sprintf("%d", plan.IndustryID)
+		planPhase = plan.Phase
+		planPhaseGoal = plan.PhaseGoal
+		entryPhase = plan.EntryPhase
+	}
+
+	taskPhase := ""
+	taskPhaseGoal := ""
+	if task != nil {
+		taskPhase = task.Phase
+		taskPhaseGoal = task.PhaseGoal
+	}
+
+	occurredAt := feedback.CreatedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now()
+	}
+
+	entry := &PlanFeedbackArchiveEntry{
+		UserID:          feedback.UserID,
+		FeedbackID:      feedback.ID,
+		IndustryCode:    industryCode,
+		PlanPhase:       planPhase,
+		PlanPhaseGoal:   planPhaseGoal,
+		EntryPhase:      entryPhase,
+		TaskPhase:       taskPhase,
+		TaskPhaseGoal:   taskPhaseGoal,
+		MistakeTags:     mistakeTags,
+		Suggestions:     suggestions,
+		EvidenceSummary: result.Feedback,
+		OccurredAt:      occurredAt,
+	}
+
+	if err := uc.archiveClient.WritePlanFeedback(ctx, entry); err != nil {
+		uc.logger.Warnf("同步计划反馈学习档案失败: feedback_id=%d, err=%v", feedback.ID, err)
+	}
+}
+
+// normalizeFeedbackMistakeTags 从诊断关键点中推断错因标签。
+func normalizeFeedbackMistakeTags(keyPoints []string, isCorrect bool) []string {
+	if isCorrect {
+		return nil
+	}
+	result := make([]string, 0, len(keyPoints))
+	for _, kp := range keyPoints {
+		kp = strings.TrimSpace(kp)
+		if kp == "" {
+			continue
+		}
+		switch {
+		case strings.Contains(kp, "边界"):
+			result = appendUniqueStr(result, "边界条件生疏")
+		case strings.Contains(kp, "复杂度"):
+			result = appendUniqueStr(result, "复杂度意识薄弱")
+		case strings.Contains(kp, "状态") || strings.Contains(kp, "定义"):
+			result = appendUniqueStr(result, "状态定义不清")
+		case strings.Contains(kp, "循环") || strings.Contains(kp, "索引"):
+			result = appendUniqueStr(result, "循环/索引控制不稳")
+		case strings.Contains(kp, "数据结构"):
+			result = appendUniqueStr(result, "数据结构选择不当")
+		case strings.Contains(kp, "调试"):
+			result = appendUniqueStr(result, "调试路径混乱")
+		case strings.Contains(kp, "实现") || strings.Contains(kp, "不完整"):
+			result = appendUniqueStr(result, "代码实现不完整")
+		default:
+			result = appendUniqueStr(result, "状态定义不清")
+		}
+	}
+	return result
+}
+
+func appendUniqueStr(existing []string, s string) []string {
+	for _, e := range existing {
+		if e == s {
+			return existing
+		}
+	}
+	return append(existing, s)
 }
 
 // MarkFeedbackDiagnosisFailed 在消息最终失败后将反馈诊断标记为失败。

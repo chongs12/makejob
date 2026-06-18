@@ -79,11 +79,27 @@ type PlanInfo struct {
 	TotalTasks     int32
 }
 
-// FocusSignal 学习焦点信号
+// FocusSignal 学习焦点信号（从 learning_archive 服务获取的完整结构）
 type FocusSignal struct {
-	Topic  string
-	Weight float64
-	Source string
+	Topic                     string
+	Weight                    float64
+	Source                    string
+	Tag                       string
+	TopicCode                 string
+	TopicTitle                string
+	TopicProblemPattern       string
+	RelatedQuestionSets       []string
+	RecommendedActions        []string
+	PrimaryQuestionSet        string
+	OccurrenceCount           int
+	ArchiveOccurrenceCount    int
+	InterviewOccurrenceCount  int
+	DominantArchivePhase      string
+	DominantArchivePhaseLabel string
+	SourceLabel               string
+	Reason                    string
+	SourceRef                 string
+	CollectionHint            string
 }
 
 // InterviewStats 面试统计
@@ -182,6 +198,8 @@ type GrowthFocusSignal struct {
 	Source                    string
 	SourceLabel               string
 	Reason                    string
+	SourceRef                 string
+	CollectionHint            string
 }
 
 // GrowthTrendSummary 趋势摘要
@@ -548,24 +566,30 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		}
 	}
 
-	// 焦点信号详情转换，尝试从错因专题知识库补充丰富字段
+	// 焦点信号详情转换，直接使用 learning_archive 返回的丰富字段
 	for _, sig := range focusSignals {
 		signal := &GrowthFocusSignal{
-			FocusTag:            sig.Topic,
-			TopicTitle:          sig.Topic,
-			Source:              sig.Source,
-			SourceLabel:         focusSourceLabel(sig.Source),
-			RelatedQuestionSets: []string{},
-			RecommendedActions:  []string{},
-			OccurrenceCount:     int32(sig.Weight),
+			FocusTag:                 sig.Tag,
+			TopicCode:                sig.TopicCode,
+			TopicTitle:               sig.TopicTitle,
+			TopicProblemPattern:      sig.TopicProblemPattern,
+			RelatedQuestionSets:      sig.RelatedQuestionSets,
+			RecommendedActions:       sig.RecommendedActions,
+			PrimaryQuestionSet:       sig.PrimaryQuestionSet,
+			DominantArchivePhase:     sig.DominantArchivePhase,
+			DominantArchivePhaseLabel: sig.DominantArchivePhaseLabel,
+			OccurrenceCount:          int32(sig.OccurrenceCount),
+			ArchiveOccurrenceCount:   int32(sig.ArchiveOccurrenceCount),
+			InterviewOccurrenceCount: int32(sig.InterviewOccurrenceCount),
+			Source:                   sig.Source,
+			SourceLabel:              sig.SourceLabel,
+			Reason:                   sig.Reason,
+			SourceRef:                sig.SourceRef,
+			CollectionHint:           sig.CollectionHint,
 		}
-		// 尝试将 topic 作为错因专题编码查找知识库卡片
-		if card, err := uc.questionClient.GetMistakeTopicByCode(gctx, sig.Topic); err == nil && card != nil {
-			signal.TopicCode = card.Code
-			signal.TopicTitle = card.Title
-			signal.TopicProblemPattern = card.ProblemPattern
-			signal.RelatedQuestionSets = card.RelatedQuestionSets
-			signal.RecommendedActions = card.RecommendedActions
+		// 兜底：如果 TopicTitle 为空，用 Tag 填充
+		if signal.TopicTitle == "" {
+			signal.TopicTitle = sig.Tag
 		}
 		summary.FocusSignals = append(summary.FocusSignals, signal)
 	}
@@ -575,9 +599,10 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 		top := focusSignals[0]
 		summary.TrendSummary = &GrowthTrendSummary{
 			DominantSource:      top.Source,
-			DominantSourceLabel: focusSourceLabel(top.Source),
-			TopFocusTag:         top.Topic,
-			TopTopicTitle:       top.Topic,
+			DominantSourceLabel: top.SourceLabel,
+			TopFocusTag:         top.Tag,
+			TopTopicCode:        top.TopicCode,
+			TopTopicTitle:       top.TopicTitle,
 			Summary:             buildRecommendationReason(focusSignals, weakTopics, planInfo),
 		}
 	}
@@ -694,19 +719,6 @@ func (uc *GrowthUseCase) GetWeeklyFocus(ctx context.Context, userID uint64) (*We
 	}
 
 	themes := buildWeeklyFocusThemes(focusSignals, weakTopics, reason)
-	// 尝试从错因专题知识库丰富每个 theme 的详细信息
-	for _, theme := range themes {
-		if len(theme.TopicCodes) > 0 {
-			if card, err := uc.questionClient.GetMistakeTopicByCode(gctx, theme.TopicCodes[0]); err == nil && card != nil {
-				if len(theme.RelatedQuestionSets) == 0 {
-					theme.RelatedQuestionSets = card.RelatedQuestionSets
-				}
-				if len(theme.Suggestions) == 0 {
-					theme.Suggestions = card.RecommendedActions
-				}
-			}
-		}
-	}
 	return &WeeklyFocusResponse{
 		Items:   items,
 		Summary: reason,
@@ -728,15 +740,15 @@ func buildWeeklyFocusThemes(focusSignals []*FocusSignal, weakTopics []string, re
 		}
 		seen[sig.Topic] = struct{}{}
 		themes = append(themes, &WeeklyFocusTheme{
-			Title:               sig.Topic,
-			Reason:              reason,
+			Title:               sig.Tag,
+			Reason:              sig.Reason,
 			Source:              sig.Source,
-			SourceLabel:         focusSourceLabel(sig.Source),
-			FocusTags:           []string{sig.Topic},
-			TopicCodes:          []string{sig.Topic},
-			RelatedQuestionSets: []string{},
-			OccurrenceCount:     int32(sig.Weight),
-			Suggestions:         []string{},
+			SourceLabel:         sig.SourceLabel,
+			FocusTags:           []string{sig.Tag},
+			TopicCodes:          []string{sig.TopicCode},
+			RelatedQuestionSets: sig.RelatedQuestionSets,
+			OccurrenceCount:     int32(sig.OccurrenceCount),
+			Suggestions:         sig.RecommendedActions,
 		})
 	}
 

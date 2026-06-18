@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
@@ -27,18 +29,19 @@ type RAGSyncPublisher interface {
 }
 
 type QuestionUseCase struct {
-	questionRepo    QuestionRepo
-	recordRepo      RecordRepo
-	favoriteRepo    FavoriteRepo
-	noteRepo        NoteRepo
-	categoryRepo    CategoryRepo
-	industryRepo    IndustryRepo
-	quizAnalyzer    QuizAnalyzerClient
-	codeRunner      CodeRunnerClient
-	examRepo        ExamRepo
-	questionSetRepo QuestionSetRepo
-	generator       QuestionGeneratorClient
-	ragSyncPub      RAGSyncPublisher
+	questionRepo          QuestionRepo
+	recordRepo            RecordRepo
+	favoriteRepo          FavoriteRepo
+	noteRepo              NoteRepo
+	categoryRepo          CategoryRepo
+	industryRepo          IndustryRepo
+	quizAnalyzer          QuizAnalyzerClient
+	codeRunner            CodeRunnerClient
+	examRepo              ExamRepo
+	questionSetRepo       QuestionSetRepo
+	generator             QuestionGeneratorClient
+	ragSyncPub            RAGSyncPublisher
+	learningArchiveClient LearningArchiveClient
 }
 
 // NewQuestionUseCase 创建题库业务用例
@@ -54,19 +57,21 @@ func NewQuestionUseCase(
 	examRepo ExamRepo,
 	questionSetRepo QuestionSetRepo,
 	generator QuestionGeneratorClient,
+	learningArchiveClient LearningArchiveClient,
 ) *QuestionUseCase {
 	return &QuestionUseCase{
-		questionRepo:    questionRepo,
-		recordRepo:      recordRepo,
-		favoriteRepo:    favoriteRepo,
-		noteRepo:        noteRepo,
-		categoryRepo:    categoryRepo,
-		industryRepo:    industryRepo,
-		quizAnalyzer:    quizAnalyzer,
-		codeRunner:      codeRunner,
-		examRepo:        examRepo,
-		questionSetRepo: questionSetRepo,
-		generator:       generator,
+		questionRepo:          questionRepo,
+		recordRepo:            recordRepo,
+		favoriteRepo:          favoriteRepo,
+		noteRepo:              noteRepo,
+		categoryRepo:          categoryRepo,
+		industryRepo:          industryRepo,
+		quizAnalyzer:          quizAnalyzer,
+		codeRunner:            codeRunner,
+		examRepo:              examRepo,
+		questionSetRepo:       questionSetRepo,
+		generator:             generator,
+		learningArchiveClient: learningArchiveClient,
 	}
 }
 
@@ -209,7 +214,7 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		}
 	}
 
-	// 保存答题记录
+	// 保存答题记录（Upsert 去重）
 	record := &UserQuestionRecord{
 		UserID:     userID,
 		QuestionID: questionID,
@@ -218,9 +223,12 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		Language:   language,
 		Score:      resp.Score,
 	}
-	if err := uc.recordRepo.Create(ctx, record); err != nil {
+	if err := uc.recordRepo.Upsert(ctx, record); err != nil {
 		log.Errorf("保存答题记录失败: question_id=%d, user_id=%d, err=%v", questionID, userID, err)
 	}
+
+	// 同步学习档案
+	uc.syncPracticeLearningArchive(ctx, userID, question, record, resp)
 
 	return resp, nil
 }
@@ -362,10 +370,123 @@ func (uc *QuestionUseCase) GetAnsweredQuestionIDs(ctx context.Context, userID ui
 	return uc.recordRepo.GetAnsweredQuestionIDs(ctx, userID, questionIDs)
 }
 
-// GetPracticeRecommendations 增强推荐算法：面试驱动加权
-// interviewID > 0 时，优先推荐面试相关分类的薄弱题目
+// GetMistakeTopicCard 通过 gRPC 从 learning_archive 服务查询错因专题详情。
+func (uc *QuestionUseCase) GetMistakeTopicCard(ctx context.Context, code string) (*MistakeTopicCard, error) {
+	if uc.learningArchiveClient == nil {
+		topic, found := ResolveMistakeTopicByCode(code)
+		if !found {
+			return nil, nil
+		}
+		return topic, nil
+	}
+	topic, found := uc.learningArchiveClient.GetMistakeTopic(ctx, code)
+	if !found {
+		return nil, nil
+	}
+	return topic, nil
+}
+
+// GetPracticeRecommendations 增强推荐算法：基于学习档案的错因标签驱动推荐
+// 通过 gRPC 从 learning_archive 服务获取焦点信号，搜索匹配题目推荐给用户
 func (uc *QuestionUseCase) GetPracticeRecommendations(ctx context.Context, userID uint64, interviewID uint64) ([]*Question, string, error) {
-	// 基于错题推荐薄弱知识点的题目
+	// 尝试从 learning_archive 服务获取焦点信号生成增强推荐
+	if uc.learningArchiveClient != nil {
+		signals, err := uc.learningArchiveClient.GetFocusSignals(ctx, userID, defaultTrainingFocusSignalLimit)
+		if err == nil && len(signals) > 0 {
+			questions, reason := uc.buildRecommendationsFromSignals(ctx, signals, interviewID)
+			if len(questions) > 0 {
+				return questions, reason, nil
+			}
+		}
+	}
+
+	// 回退到基于错题的简单推荐
+	return uc.buildRecommendationsFromWrongQuestions(ctx, userID, interviewID)
+}
+
+// buildRecommendationsFromSignals 基于训练重点信号推荐题目
+func (uc *QuestionUseCase) buildRecommendationsFromSignals(ctx context.Context, signals []FocusSignalData, interviewID uint64) ([]*Question, string) {
+	type scoredQuestion struct {
+		question *Question
+		score    float64
+	}
+
+	var scored []scoredQuestion
+	seenIDs := make(map[uint64]struct{})
+	reasonParts := make([]string, 0, len(signals))
+
+	for _, signal := range signals {
+		// 使用信号的推荐动作作为关键词搜索题目
+		keywords := []string{signal.Tag}
+		if signal.TopicTitle != "" {
+			keywords = append(keywords, signal.TopicTitle)
+		}
+
+		for _, keyword := range keywords {
+			questions, _, err := uc.questionRepo.List(ctx, &QuestionFilter{
+				Keyword: keyword,
+			}, 1, 5)
+			if err != nil {
+				continue
+			}
+
+			for _, q := range questions {
+				if _, exists := seenIDs[q.ID]; exists {
+					continue
+				}
+				seenIDs[q.ID] = struct{}{}
+
+				score := float64(signal.OccurrenceCount) * 1.0
+				if interviewID > 0 {
+					score *= 2.0
+				}
+				switch q.Difficulty {
+				case "hard":
+					score *= 1.5
+				case "medium":
+					score *= 1.2
+				}
+
+				scored = append(scored, scoredQuestion{question: q, score: score})
+			}
+		}
+
+		if signal.Reason != "" {
+			reasonParts = append(reasonParts, signal.Reason)
+		}
+	}
+
+	if len(scored) == 0 {
+		return nil, ""
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	limit := 10
+	if len(scored) < limit {
+		limit = len(scored)
+	}
+
+	questions := make([]*Question, limit)
+	for i := 0; i < limit; i++ {
+		questions[i] = scored[i].question
+	}
+
+	reason := "基于学习档案中的高频薄弱点推荐"
+	if len(reasonParts) > 0 {
+		reason = reasonParts[0]
+	}
+	if interviewID > 0 {
+		reason = "基于面试场景和学习档案薄弱点推荐"
+	}
+
+	return questions, reason
+}
+
+// buildRecommendationsFromWrongQuestions 基于错题记录推荐（回退方案）
+func (uc *QuestionUseCase) buildRecommendationsFromWrongQuestions(ctx context.Context, userID uint64, interviewID uint64) ([]*Question, string, error) {
 	wrong, _, err := uc.recordRepo.GetWrongQuestions(ctx, userID, 1, 20)
 	if err != nil {
 		return nil, "", err
@@ -375,7 +496,6 @@ func (uc *QuestionUseCase) GetPracticeRecommendations(ctx context.Context, userI
 		return nil, "暂无推荐", nil
 	}
 
-	// 获取错题对应的题目，并计算加权得分
 	type scoredQuestion struct {
 		question *Question
 		score    float64
@@ -388,18 +508,12 @@ func (uc *QuestionUseCase) GetPracticeRecommendations(ctx context.Context, userI
 			continue
 		}
 
-		// 基础得分 = 错误次数加权
 		score := float64(w.WrongCount) * 1.0
-
-		// 面试驱动加权：如果指定了面试 ID，相关分类题目得分 ×2
 		if interviewID > 0 {
-			// 面试驱动策略：coding 类型和对应行业加权
 			if q.IndustryCode != "" {
 				score *= 2.0
 			}
 		}
-
-		// 难度加权：hard > medium > easy
 		switch q.Difficulty {
 		case "hard":
 			score *= 1.5
@@ -410,12 +524,10 @@ func (uc *QuestionUseCase) GetPracticeRecommendations(ctx context.Context, userI
 		scored = append(scored, scoredQuestion{question: q, score: score})
 	}
 
-	// 按加权得分排序
 	sort.Slice(scored, func(i, j int) bool {
 		return scored[i].score > scored[j].score
 	})
 
-	// 取前 10 题
 	limit := 10
 	if len(scored) < limit {
 		limit = len(scored)
@@ -641,8 +753,8 @@ func (uc *QuestionUseCase) SubmitExam(ctx context.Context, examID, userID uint64
 			correctCount++
 		}
 
-		// 保存答题记录
-		if err := uc.recordRepo.Create(ctx, &UserQuestionRecord{
+		// 保存答题记录（Upsert 去重）
+		if err := uc.recordRepo.Upsert(ctx, &UserQuestionRecord{
 			UserID:     userID,
 			QuestionID: qID,
 			ExamID:     examID,
@@ -724,6 +836,73 @@ func (uc *QuestionUseCase) GetQuestionSetDetail(ctx context.Context, setID uint6
 // GetQuestionSetQuestions 获取题集内的题目列表（不含题集元数据）。
 func (uc *QuestionUseCase) GetQuestionSetQuestions(ctx context.Context, setID uint64) ([]*Question, error) {
 	return uc.questionSetRepo.GetQuestions(ctx, setID)
+}
+
+// AdminCreateQuestionSet 管理后台创建题单
+func (uc *QuestionUseCase) AdminCreateQuestionSet(ctx context.Context, set *QuestionSet) error {
+	if set.Name == "" {
+		return kratosErr.BadRequest("INVALID_NAME", "题单名称不能为空")
+	}
+	return uc.questionSetRepo.Create(ctx, set)
+}
+
+// AdminUpdateQuestionSet 管理后台更新题单
+func (uc *QuestionUseCase) AdminUpdateQuestionSet(ctx context.Context, set *QuestionSet) error {
+	if set.ID == 0 {
+		return kratosErr.BadRequest("INVALID_ID", "题单 ID 不能为空")
+	}
+	existing, err := uc.questionSetRepo.GetByID(ctx, set.ID)
+	if err != nil || existing == nil {
+		return ErrQuestionSetNotFound
+	}
+	return uc.questionSetRepo.Update(ctx, set)
+}
+
+// AdminDeleteQuestionSet 管理后台删除题单（级联删除关联项）
+func (uc *QuestionUseCase) AdminDeleteQuestionSet(ctx context.Context, id uint64) error {
+	if id == 0 {
+		return kratosErr.BadRequest("INVALID_ID", "题单 ID 不能为空")
+	}
+	return uc.questionSetRepo.Delete(ctx, id)
+}
+
+// AdminGetQuestionSetDetail 管理后台获取题单详情（含关联题目）
+func (uc *QuestionUseCase) AdminGetQuestionSetDetail(ctx context.Context, setID uint64) (*QuestionSet, []*Question, error) {
+	set, err := uc.questionSetRepo.GetByID(ctx, setID)
+	if err != nil || set == nil {
+		return nil, nil, ErrQuestionSetNotFound
+	}
+	questions, err := uc.questionSetRepo.GetQuestions(ctx, setID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return set, questions, nil
+}
+
+// AdminAddQuestionsToSet 管理后台向题单添加题目
+func (uc *QuestionUseCase) AdminAddQuestionsToSet(ctx context.Context, setID uint64, questionIDs []uint64) (int32, error) {
+	if setID == 0 {
+		return 0, kratosErr.BadRequest("INVALID_ID", "题单 ID 不能为空")
+	}
+	if len(questionIDs) == 0 {
+		return 0, nil
+	}
+	existing, err := uc.questionSetRepo.GetByID(ctx, setID)
+	if err != nil || existing == nil {
+		return 0, ErrQuestionSetNotFound
+	}
+	return uc.questionSetRepo.AddQuestions(ctx, setID, questionIDs)
+}
+
+// AdminRemoveQuestionsFromSet 管理后台从题单移除题目
+func (uc *QuestionUseCase) AdminRemoveQuestionsFromSet(ctx context.Context, setID uint64, questionIDs []uint64) (int32, error) {
+	if setID == 0 {
+		return 0, kratosErr.BadRequest("INVALID_ID", "题单 ID 不能为空")
+	}
+	if len(questionIDs) == 0 {
+		return 0, nil
+	}
+	return uc.questionSetRepo.RemoveQuestions(ctx, setID, questionIDs)
 }
 
 // ListMistakeTopics 获取用户错题知识点聚合
@@ -811,4 +990,145 @@ func (uc *QuestionUseCase) PipelineGenerateQuestions(ctx context.Context, req *G
 	}
 
 	return created, nil
+}
+
+// syncPracticeLearningArchive 将代码题或主观题的分析结果同步到学习档案中（通过 gRPC 写入 learning_archive 服务）
+func (uc *QuestionUseCase) syncPracticeLearningArchive(
+	ctx context.Context,
+	userID uint64,
+	question *Question,
+	record *UserQuestionRecord,
+	resp *QuizAnalyzerResponse,
+) {
+	if uc.learningArchiveClient == nil || question == nil || record == nil || resp == nil {
+		return
+	}
+
+	// 仅对编程题和主观题同步学习档案
+	if question.Type != "code" && question.Type != "subjective" {
+		return
+	}
+
+	analysisJSON := resp.Feedback
+	if analysisJSON == "" && resp.Suggestions == "" {
+		return
+	}
+
+	// 构建错因标签
+	mistakeTags := normalizePracticeArchiveTags(resp.KeyPoints, resp.IsCorrect)
+	if len(mistakeTags) == 0 {
+		return
+	}
+
+	strengthTagsJSON, _ := json.Marshal(normalizePracticeArchiveStrengths(resp.IsCorrect))
+	mistakeTagsJSON, _ := json.Marshal(mistakeTags)
+	suggestionsJSON, _ := json.Marshal(normalizePracticeArchiveSuggestions(resp.Suggestions))
+	sourceRef := fmt.Sprintf("practice:%d:%d", userID, question.ID)
+
+	entry := &LearningArchiveEntry{
+		UserID:           userID,
+		SourceType:       LearningArchiveSourcePracticeQuestion,
+		SourceRef:        sourceRef,
+		QuestionIndex:    0,
+		IndustryCode:     strconv.FormatUint(question.IndustryID, 10),
+		TaskPhase:        LearningPhaseDrill,
+		TaskPhaseGoal:    BuildLearningPhaseGoal(LearningPhaseDrill),
+		Language:         DetectQuestionLanguage(question),
+		MistakeTagsJSON:  string(mistakeTagsJSON),
+		StrengthTagsJSON: string(strengthTagsJSON),
+		SuggestionsJSON:  string(suggestionsJSON),
+		EvidenceSummary:  strings.Join(resp.KeyPoints, "；"),
+	}
+	if record.CreatedAt.IsZero() {
+		entry.OccurredAt = nil
+	} else {
+		entry.OccurredAt = &record.CreatedAt
+	}
+
+	if err := uc.learningArchiveClient.WriteEntry(ctx, entry); err != nil {
+		log.Warnf("同步学习档案失败: user_id=%d, question_id=%d, err=%v", userID, question.ID, err)
+	}
+}
+
+// normalizePracticeArchiveTags 统一收敛练习题分析得到的错因标签
+func normalizePracticeArchiveTags(keyPoints []string, isCorrect bool) []string {
+	if isCorrect {
+		return []string{}
+	}
+
+	result := make([]string, 0, len(keyPoints)+1)
+	for _, kp := range keyPoints {
+		trimmed := strings.TrimSpace(kp)
+		if trimmed == "" {
+			continue
+		}
+		// 根据关键词推断错因标签
+		switch {
+		case strings.Contains(trimmed, "边界"):
+			result = appendUniquePracticeStrings(result, "边界条件生疏")
+		case strings.Contains(trimmed, "复杂度"):
+			result = appendUniquePracticeStrings(result, "复杂度意识薄弱")
+		case strings.Contains(trimmed, "状态") || strings.Contains(trimmed, "定义"):
+			result = appendUniquePracticeStrings(result, "状态定义不清")
+		case strings.Contains(trimmed, "循环") || strings.Contains(trimmed, "索引"):
+			result = appendUniquePracticeStrings(result, "循环/索引控制不稳")
+		case strings.Contains(trimmed, "数据结构"):
+			result = appendUniquePracticeStrings(result, "数据结构选择不当")
+		case strings.Contains(trimmed, "调试"):
+			result = appendUniquePracticeStrings(result, "调试路径混乱")
+		case strings.Contains(trimmed, "实现") || strings.Contains(trimmed, "不完整"):
+			result = appendUniquePracticeStrings(result, "代码实现不完整")
+		}
+	}
+	if len(result) == 0 {
+		result = append(result, "状态定义不清")
+	}
+	return result
+}
+
+// normalizePracticeArchiveStrengths 统一收敛练习题分析中的正向标签
+func normalizePracticeArchiveStrengths(isCorrect bool) []string {
+	result := make([]string, 0, 1)
+	if isCorrect {
+		result = append(result, "本题已形成可用解法")
+	}
+	return result
+}
+
+// normalizePracticeArchiveSuggestions 清理练习题分析中的改进建议
+func normalizePracticeArchiveSuggestions(feedback string) []string {
+	result := make([]string, 0)
+	if trimmed := strings.TrimSpace(feedback); trimmed != "" {
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+// appendUniquePracticeStrings 追加不重复的非空字符串
+func appendUniquePracticeStrings(values []string, next ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values)+len(next))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	for _, value := range next {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
 }

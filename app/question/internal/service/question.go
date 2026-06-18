@@ -186,6 +186,7 @@ func (s *QuestionService) ListIndustries(ctx context.Context, _ *emptypb.Empty) 
 	items := make([]*questionv1.IndustryInfo, len(industries))
 	for i, ind := range industries {
 		items[i] = &questionv1.IndustryInfo{
+			Id:   ind.ID,
 			Code: ind.Code,
 			Name: ind.Name,
 			Icon: ind.Icon,
@@ -594,6 +595,8 @@ func (s *QuestionService) ListQuestionSets(ctx context.Context, req *questionv1.
 			Description:   set.Description,
 			QuestionCount: set.QuestionCount,
 			Slug:          slugify(set.Name),
+			Questions:     []*questionv1.QuestionSetPreview{},
+			FocusTags:     []string{},
 		}
 
 		// 加载题集内的题目预览，供前端列表卡片展示
@@ -716,10 +719,13 @@ func (s *QuestionService) ListMistakeTopics(ctx context.Context, req *questionv1
 	}, nil
 }
 
-// GetMistakeTopic 根据错因专题编码查询单个专题卡片详情。
+// GetMistakeTopic 根据错因专题编码查询单个专题卡片详情（委托 learning_archive 服务）。
 func (s *QuestionService) GetMistakeTopic(ctx context.Context, req *questionv1.GetMistakeTopicRequest) (*questionv1.MistakeTopicCard, error) {
-	topic, found := biz.GetMistakeTopicByCode(req.GetCode())
-	if !found {
+	topic, err := s.uc.GetMistakeTopicCard(ctx, req.GetCode())
+	if err != nil {
+		return nil, err
+	}
+	if topic == nil {
 		return nil, kratosErr.NotFound("MISTAKE_TOPIC_NOT_FOUND", "错因专题不存在")
 	}
 
@@ -872,6 +878,135 @@ func toProtoAdminQuestion(question *biz.Question) *questionv1.AdminQuestionInfo 
 		CategoryName:       question.CategoryName,
 		IndustryName:       question.IndustryName,
 	}
+}
+
+// AdminCreateQuestionSet 管理后台创建题单
+func (s *QuestionService) AdminCreateQuestionSet(ctx context.Context, req *questionv1.AdminCreateQuestionSetRequest) (*questionv1.AdminCreateQuestionSetResponse, error) {
+	set := &biz.QuestionSet{
+		Name:         req.GetName(),
+		Description:  req.GetDescription(),
+		IndustryCode: req.GetIndustryCode(),
+		CoverImage:   req.GetCoverImage(),
+	}
+	if err := s.uc.AdminCreateQuestionSet(ctx, set); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &questionv1.AdminCreateQuestionSetResponse{Id: set.ID}, nil
+}
+
+// AdminUpdateQuestionSet 管理后台更新题单
+func (s *QuestionService) AdminUpdateQuestionSet(ctx context.Context, req *questionv1.AdminUpdateQuestionSetRequest) (*questionv1.AdminUpdateQuestionSetResponse, error) {
+	set := &biz.QuestionSet{
+		ID:           req.GetId(),
+		Name:         req.GetName(),
+		Description:  req.GetDescription(),
+		IndustryCode: req.GetIndustryCode(),
+		CoverImage:   req.GetCoverImage(),
+	}
+	if err := s.uc.AdminUpdateQuestionSet(ctx, set); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &questionv1.AdminUpdateQuestionSetResponse{}, nil
+}
+
+// AdminDeleteQuestionSet 管理后台删除题单
+func (s *QuestionService) AdminDeleteQuestionSet(ctx context.Context, req *questionv1.AdminDeleteQuestionSetRequest) (*questionv1.AdminDeleteQuestionSetResponse, error) {
+	if err := s.uc.AdminDeleteQuestionSet(ctx, req.GetId()); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &questionv1.AdminDeleteQuestionSetResponse{}, nil
+}
+
+// AdminListQuestionSets 管理后台查询题单列表
+func (s *QuestionService) AdminListQuestionSets(ctx context.Context, req *questionv1.AdminListQuestionSetsRequest) (*questionv1.AdminListQuestionSetsResponse, error) {
+	var page, pageSize int32 = 1, 20
+	if req.GetPage() != nil {
+		page = req.GetPage().GetPage()
+		pageSize = req.GetPage().GetPageSize()
+	}
+
+	sets, total, err := s.uc.ListQuestionSets(ctx, req.GetIndustryCode(), page, pageSize)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	items := make([]*questionv1.AdminQuestionSetInfo, len(sets))
+	for i, set := range sets {
+		info := &questionv1.AdminQuestionSetInfo{
+			Id:            set.ID,
+			Name:          set.Name,
+			Description:   set.Description,
+			IndustryCode:  set.IndustryCode,
+			CoverImage:    set.CoverImage,
+			QuestionCount: set.QuestionCount,
+		}
+		if !set.CreatedAt.IsZero() {
+			info.CreatedAt = timestamppb.New(set.CreatedAt)
+		}
+		items[i] = info
+	}
+
+	return &questionv1.AdminListQuestionSetsResponse{
+		Items: items,
+		PageResult: &sharedv1.PageResult{
+			Total:    total,
+			Page:     page,
+			PageSize: pageSize,
+		},
+	}, nil
+}
+
+// AdminGetQuestionSet 管理后台获取题单详情（含关联题目）
+func (s *QuestionService) AdminGetQuestionSet(ctx context.Context, req *questionv1.AdminGetQuestionSetRequest) (*questionv1.AdminQuestionSetDetail, error) {
+	set, questions, err := s.uc.AdminGetQuestionSetDetail(ctx, req.GetId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	info := &questionv1.AdminQuestionSetInfo{
+		Id:            set.ID,
+		Name:          set.Name,
+		Description:   set.Description,
+		IndustryCode:  set.IndustryCode,
+		CoverImage:    set.CoverImage,
+		QuestionCount: set.QuestionCount,
+	}
+	if !set.CreatedAt.IsZero() {
+		info.CreatedAt = timestamppb.New(set.CreatedAt)
+	}
+
+	items := make([]*questionv1.AdminQuestionSetItem, len(questions))
+	for i, q := range questions {
+		items[i] = &questionv1.AdminQuestionSetItem{
+			QuestionId: q.ID,
+			Title:      q.Title,
+			Difficulty: q.Difficulty,
+			Type:       q.Type,
+		}
+	}
+
+	return &questionv1.AdminQuestionSetDetail{
+		Info:      info,
+		Questions: items,
+	}, nil
+}
+
+// AdminAddQuestionsToSet 管理后台向题单添加题目
+func (s *QuestionService) AdminAddQuestionsToSet(ctx context.Context, req *questionv1.AdminAddQuestionsToSetRequest) (*questionv1.AdminAddQuestionsToSetResponse, error) {
+	added, err := s.uc.AdminAddQuestionsToSet(ctx, req.GetSetId(), req.GetQuestionIds())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &questionv1.AdminAddQuestionsToSetResponse{AddedCount: added}, nil
+}
+
+// AdminRemoveQuestionsFromSet 管理后台从题单移除题目
+func (s *QuestionService) AdminRemoveQuestionsFromSet(ctx context.Context, req *questionv1.AdminRemoveQuestionsFromSetRequest) (*questionv1.AdminRemoveQuestionsFromSetResponse, error) {
+	removed, err := s.uc.AdminRemoveQuestionsFromSet(ctx, req.GetSetId(), req.GetQuestionIds())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &questionv1.AdminRemoveQuestionsFromSetResponse{RemovedCount: removed}, nil
 }
 
 // splitProtoTags 将后台透传的逗号标签转换为领域切片。

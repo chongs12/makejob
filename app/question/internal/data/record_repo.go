@@ -19,6 +19,7 @@ func NewRecordRepo(db *gorm.DB) biz.RecordRepo {
 }
 
 func (r *recordRepo) Create(ctx context.Context, record *biz.UserQuestionRecord) error {
+	now := time.Now().Unix()
 	m := &model.UserQuestionRecord{
 		UserID:     record.UserID,
 		QuestionID: record.QuestionID,
@@ -26,8 +27,38 @@ func (r *recordRepo) Create(ctx context.Context, record *biz.UserQuestionRecord)
 		UserAnswer: record.Answer,
 		Language:   record.Language,
 		Score:      record.Score,
+		CreatedAt:  now,
 	}
 	return r.db.WithContext(ctx).Create(m).Error
+}
+
+// Upsert 按 user_id + question_id 去重，同一题只保留最新答题记录
+func (r *recordRepo) Upsert(ctx context.Context, record *biz.UserQuestionRecord) error {
+	now := time.Now().Unix()
+	m := &model.UserQuestionRecord{
+		UserID:     record.UserID,
+		QuestionID: record.QuestionID,
+		IsCorrect:  record.IsCorrect,
+		UserAnswer: record.Answer,
+		Language:   record.Language,
+		Score:      record.Score,
+		CreatedAt:  now,
+	}
+
+	var existing model.UserQuestionRecord
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND question_id = ?", record.UserID, record.QuestionID).
+		First(&existing).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+	if err == gorm.ErrRecordNotFound {
+		return r.db.WithContext(ctx).Create(m).Error
+	}
+
+	m.ID = existing.ID
+	m.CreatedAt = existing.CreatedAt
+	return r.db.WithContext(ctx).Save(m).Error
 }
 
 func (r *recordRepo) GetByUserAndQuestion(ctx context.Context, userID, questionID uint64) (*biz.UserQuestionRecord, error) {
@@ -46,7 +77,7 @@ func (r *recordRepo) GetByUserAndQuestion(ctx context.Context, userID, questionI
 		Answer:     m.UserAnswer,
 		Language:   m.Language,
 		Score:      m.Score,
-		CreatedAt:  m.CreatedAt,
+		CreatedAt:  time.Unix(m.CreatedAt, 0),
 	}, nil
 }
 
@@ -175,9 +206,11 @@ func (r *recordRepo) GetMistakeTopics(ctx context.Context, userID uint64) ([]*bi
 // GetTodayCount 查询用户今天练习的题目数量。
 func (r *recordRepo) GetTodayCount(ctx context.Context, userID uint64) (int32, error) {
 	var count int64
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	endOfDay := startOfDay + 86400
 	err := r.db.WithContext(ctx).Model(&model.UserQuestionRecord{}).
-		Where("user_id = ? AND DATE(created_at) = ?", userID, today).
+		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startOfDay, endOfDay).
 		Count(&count).Error
 	return int32(count), err
 }

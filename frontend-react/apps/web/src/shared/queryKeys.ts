@@ -61,15 +61,15 @@ export function buildPracticeQuestionsQueryKey(params: {
 /**
  * 生成题单摘要列表查询键，按当前行业区分缓存。
  */
-export function buildPracticeQuestionSetsQueryKey(industryId: number | null) {
-  return [...PRACTICE_QUESTION_SETS_QUERY_ROOT, industryId] as const
+export function buildPracticeQuestionSetsQueryKey(industryCode: string | null) {
+  return [...PRACTICE_QUESTION_SETS_QUERY_ROOT, industryCode] as const
 }
 
 /**
  * 生成题单详情查询键，确保详情缓存和题单摘要缓存能明确拆分。
  */
-export function buildPracticeQuestionSetDetailQueryKey(industryId: number | null, slug: string) {
-  return [...PRACTICE_QUESTION_SET_DETAIL_QUERY_ROOT, industryId, slug] as const
+export function buildPracticeQuestionSetDetailQueryKey(industryCode: string | null, slug: string) {
+  return [...PRACTICE_QUESTION_SET_DETAIL_QUERY_ROOT, industryCode, slug] as const
 }
 
 /**

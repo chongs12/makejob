@@ -111,6 +111,13 @@ const difficultyBg: Record<string, string> = {
   hard: '#fef2f2',
 }
 
+function resolveSetColor(slug: string): string {
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
+  let hash = 0
+  for (let i = 0; i < slug.length; i++) hash = slug.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
+
 /**
  * 提供刷题总入口，统一承接题库筛选、题单补练、错因专题和模拟练习。
  */
@@ -141,6 +148,8 @@ export function PracticePage() {
     queryKey: buildPracticeCategoriesQueryKey(effectiveIndustryCode),
     queryFn: () => fetchCategories(effectiveIndustryCode),
     enabled: Boolean(effectiveIndustryCode),
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const questionsQuery = useQuery({
@@ -161,19 +170,22 @@ export function PracticePage() {
       categoryId,
     }),
     enabled: !activeQuestionSetSlug,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const questionSetsQuery = useQuery({
-    queryKey: buildPracticeQuestionSetsQueryKey(selectedIndustry?.id || null),
-    queryFn: () => fetchQuestionSets(selectedIndustry?.id || null),
-    enabled: Boolean(selectedIndustry?.id),
+    queryKey: buildPracticeQuestionSetsQueryKey(effectiveIndustryCode),
+    queryFn: () => fetchQuestionSets(effectiveIndustryCode),
+    enabled: Boolean(effectiveIndustryCode),
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
-  const activeQuestionSetQuery = useQuery({
-    queryKey: buildPracticeQuestionSetDetailQueryKey(selectedIndustry?.id || null, activeQuestionSetSlug),
-    queryFn: () => fetchQuestionSetDetail(selectedIndustry?.id || null, activeQuestionSetSlug),
-    enabled: Boolean(activeQuestionSetSlug),
-  })
+  const activeQuestionSetFromList = useMemo(
+    () => (questionSetsQuery.data || []).find((set) => set.slug === activeQuestionSetSlug) || null,
+    [questionSetsQuery.data, activeQuestionSetSlug],
+  )
 
   const activeTopicCode = routeSearch.topic || ''
   const activeTopicQuery = useQuery({
@@ -229,12 +241,20 @@ export function PracticePage() {
 
   const filteredQuestionSetQuestions = useMemo(
     () =>
-      filterPracticeCollectionQuestions(activeQuestionSetQuery.data?.questions || [], {
+      filterPracticeCollectionQuestions(activeQuestionSetFromList?.questions || [], {
         keyword,
         difficulty,
       }),
-    [activeQuestionSetQuery.data?.questions, difficulty, keyword],
+    [activeQuestionSetFromList?.questions, difficulty, keyword],
   )
+
+  // ===== 提前计算所有 hooks，避免条件分支跳过 hooks 调用 =====
+  const totalPages = useMemo(() => {
+    const total = questionsQuery.data?.total || 0
+    return Math.max(1, Math.ceil(total / PRACTICE_PAGE_SIZE))
+  }, [questionsQuery.data?.total])
+
+  const questions = questionsQuery.data?.list || []
 
   function navigatePractice(nextSearch: Partial<PracticeRouteSearch>, replace = false): void {
     const pickField = <K extends keyof PracticeRouteSearch>(key: K): PracticeRouteSearch[K] =>
@@ -341,7 +361,7 @@ export function PracticePage() {
 
   // ===== Question Set Mode =====
   if (isQuestionSetCollectionMode) {
-    const QUESTION_SET_PAGE_SIZE = 15
+    const QUESTION_SET_PAGE_SIZE = 20
     const questionSetTotal = filteredQuestionSetQuestions.length
     const questionSetTotalPages = Math.max(1, Math.ceil(questionSetTotal / QUESTION_SET_PAGE_SIZE))
     const questionSetPage = Math.min(page, questionSetTotalPages)
@@ -350,64 +370,224 @@ export function PracticePage() {
       questionSetPage * QUESTION_SET_PAGE_SIZE,
     )
 
+    // 计算难度分布
+    const difficultyStats = filteredQuestionSetQuestions.reduce(
+      (acc, q) => {
+        const key = q.difficulty || 'unknown'
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>,
+    )
+
     return (
-      <div style={{ background: THEME.bg, minHeight: '100vh', padding: '32px 24px' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ marginBottom: 16 }}>
+      <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+        <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 24px' }}>
+          {/* 返回链接 */}
+          <div style={{ marginBottom: 24 }}>
             <Link
               to="/practice"
               search={buildPracticeRouteSearch({ industryCode: effectiveIndustryCode, page: 1 })}
-              style={{ fontSize: 13, color: THEME.textSecondary, textDecoration: 'none' }}
+              style={{
+                fontSize: 14,
+                color: THEME.textSecondary,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
             >
-              ← 返回题库
+              <RightOutlined style={{ fontSize: 10, transform: 'rotate(180deg)' }} />
+              返回题库
             </Link>
           </div>
 
-          {activeQuestionSetQuery.isLoading && (
-            <div style={{ padding: 40, textAlign: 'center' }}>
+          {questionSetsQuery.isLoading && (
+            <div style={{ padding: 60, textAlign: 'center' }}>
               <Spin tip="题单加载中..." />
             </div>
           )}
 
-          {activeQuestionSetQuery.isError && (
-            <div style={{ padding: 24, textAlign: 'center', color: THEME.danger }}>
-              {extractErrorMessage(activeQuestionSetQuery.error, '题单详情加载失败')}
+          {questionSetsQuery.isError && (
+            <div style={{ padding: 40, textAlign: 'center', color: THEME.danger }}>
+              {extractErrorMessage(questionSetsQuery.error, '题单加载失败')}
             </div>
           )}
 
-          {activeQuestionSetQuery.data && (
+          {!questionSetsQuery.isLoading && !activeQuestionSetFromList && (
+            <div style={{ padding: 40, textAlign: 'center', color: THEME.textMuted }}>
+              未找到题单
+            </div>
+          )}
+
+          {activeQuestionSetFromList && (
             <>
+              {/* 顶部信息区 */}
               <div
                 style={{
                   ...cardBase,
-                  padding: '20px 24px',
+                  padding: '32px',
                   marginBottom: 24,
-                  background: THEME.primaryLight,
-                  border: `1px solid ${THEME.primary}30`,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: THEME.primary, marginBottom: 4 }}>题单练习</div>
-                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: THEME.textMain }}>{activeQuestionSetQuery.data.title}</h2>
-                    {activeQuestionSetQuery.data.description ? (
-                      <p style={{ margin: '8px 0 0', fontSize: 13, color: THEME.textSecondary }}>{activeQuestionSetQuery.data.description}</p>
-                    ) : null}
+                {/* 标题 */}
+                <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: THEME.textMain, lineHeight: 1.3 }}>
+                  {activeQuestionSetFromList.title}
+                </h1>
+
+                {/* 描述 */}
+                {activeQuestionSetFromList.description ? (
+                  <p style={{ margin: '12px 0 0', fontSize: 15, color: THEME.textSecondary, lineHeight: 1.7 }}>
+                    {activeQuestionSetFromList.description}
+                  </p>
+                ) : null}
+
+                {/* 进度条和统计 */}
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontSize: 14, color: THEME.textSecondary }}>
+                      进度
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: THEME.textMain }}>
+                      0 / {questionSetTotal} 题
+                    </span>
                   </div>
-                  <Tag style={{ borderRadius: 10, fontSize: 13, fontWeight: 600, background: '#fff', border: `1px solid ${THEME.border}` }}>
-                    {questionSetTotal}/{activeQuestionSetQuery.data.question_count} 题
-                  </Tag>
+                  <div style={{ height: 8, borderRadius: 4, background: '#f5f5f4', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: '0%',
+                        borderRadius: 4,
+                        background: THEME.primary,
+                        transition: 'width 0.5s ease',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 难度分布 */}
+                <div style={{ marginTop: 20, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.success }} />
+                    <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                      简单 <span style={{ fontWeight: 600, color: THEME.textMain }}>{difficultyStats.easy || 0}</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.warning }} />
+                    <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                      中等 <span style={{ fontWeight: 600, color: THEME.textMain }}>{difficultyStats.medium || 0}</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.danger }} />
+                    <span style={{ fontSize: 13, color: THEME.textSecondary }}>
+                      困难 <span style={{ fontWeight: 600, color: THEME.textMain }}>{difficultyStats.hard || 0}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <QuestionTable
-                questions={questionSetPageQuestions}
-                industries={industriesQuery.data || []}
-                fallbackIndustryCode={effectiveIndustryCode}
-              />
+              {/* 题目列表 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {questionSetPageQuestions.map((question, index) => {
+                  const diffColor = question.difficulty === 'easy' ? THEME.success : question.difficulty === 'hard' ? THEME.danger : THEME.warning
+                  const diffBg = question.difficulty === 'easy' ? '#f0fdf4' : question.difficulty === 'hard' ? '#fef2f2' : '#fffbeb'
+                  const questionIndex = (questionSetPage - 1) * QUESTION_SET_PAGE_SIZE + index + 1
 
+                  return (
+                    <Link
+                      key={question.id}
+                      to={question.type === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
+                      params={{ questionId: String(question.id) }}
+                      style={{ textDecoration: 'none' }}
+                    >
+                      <div
+                        style={{
+                          ...cardBase,
+                          padding: '16px 20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 16,
+                          transition: 'all 0.15s ease',
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = THEME.primary
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(249,115,22,0.1)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = THEME.border
+                          e.currentTarget.style.boxShadow = THEME.shadow
+                        }}
+                      >
+                        {/* 状态图标 */}
+                        {question.is_answered ? (
+                          <CheckCircleFilled style={{ fontSize: 18, color: THEME.success, flexShrink: 0 }} />
+                        ) : (
+                          <div
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: '50%',
+                              border: `2px solid ${THEME.border}`,
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+
+                        {/* 题号 */}
+                        <span
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 500,
+                            color: THEME.textMuted,
+                            fontFamily: 'monospace',
+                            minWidth: 28,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {questionIndex}
+                        </span>
+
+                        {/* 题目标题 */}
+                        <span
+                          style={{
+                            flex: 1,
+                            fontSize: 14,
+                            fontWeight: 500,
+                            color: THEME.textMain,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {question.title}
+                        </span>
+
+                        {/* 难度标签 */}
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: diffColor,
+                            background: diffBg,
+                            padding: '2px 10px',
+                            borderRadius: 6,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {difficultyLabel(question.difficulty)}
+                        </span>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+
+              {/* 分页 */}
               {questionSetTotalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
                   <Pagination
                     current={questionSetPage}
                     total={questionSetTotal}
@@ -425,13 +605,6 @@ export function PracticePage() {
   }
 
   // ===== Main Mode =====
-  const totalPages = useMemo(() => {
-    const total = questionsQuery.data?.total || 0
-    return Math.max(1, Math.ceil(total / PRACTICE_PAGE_SIZE))
-  }, [questionsQuery.data?.total])
-
-  const questions = questionsQuery.data?.list || []
-
   return (
     <div style={{ background: THEME.bg, minHeight: '100vh' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
@@ -768,38 +941,61 @@ export function PracticePage() {
               {questionSetsQuery.isLoading && <Spin size="small" />}
 
               {questionSetsQuery.data?.length ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {questionSetsQuery.data.map((set) => (
-                    <button
-                      key={set.slug}
-                      type="button"
-                      onClick={() => handleApplyQuestionSetContext(set.slug)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        borderRadius: 10,
-                        border: `1px solid ${THEME.border}`,
-                        background: '#fafaf9',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        width: '100%',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = THEME.accent
-                        e.currentTarget.style.background = '#fff'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = THEME.border
-                        e.currentTarget.style.background = '#fafaf9'
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain }}>{set.title}</span>
-                      <span style={{ fontSize: 11, color: THEME.textMuted }}>{set.question_count} 题</span>
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {questionSetsQuery.data.map((set) => {
+                    const setColor = resolveSetColor(set.slug)
+                    return (
+                      <button
+                        key={set.slug}
+                        type="button"
+                        onClick={() => handleApplyQuestionSetContext(set.slug)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 0,
+                          padding: 0,
+                          borderRadius: 10,
+                          border: `1px solid ${THEME.border}`,
+                          background: THEME.cardBg,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s ease',
+                          width: '100%',
+                          overflow: 'hidden',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = setColor
+                          e.currentTarget.style.boxShadow = THEME.shadowCard
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = THEME.border
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                      >
+                        <div style={{ width: 4, background: setColor, flexShrink: 0, alignSelf: 'stretch' }} />
+                        <div style={{ padding: '10px 12px', flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {set.title}
+                            </span>
+                            <Tag color="blue" style={{ margin: 0, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                              {set.question_count} 题
+                            </Tag>
+                          </div>
+                          {set.focus_tags?.length ? (
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {set.focus_tags.slice(0, 2).map((tag) => (
+                                <span key={tag} style={{ fontSize: 11, color: THEME.textMuted }}>#{tag}</span>
+                              ))}
+                              {set.focus_tags.length > 2 ? (
+                                <span style={{ fontSize: 11, color: THEME.textMuted }}>+{set.focus_tags.length - 2}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               ) : !questionSetsQuery.isLoading ? (
                 <div style={{ fontSize: 12, color: THEME.textMuted }}>暂无题单</div>

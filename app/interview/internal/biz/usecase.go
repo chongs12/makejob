@@ -175,11 +175,15 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		QuestionIndex: index,
 	}
 
-	// 3. 调用 AI Gateway 的 EvaluateAnswer 评估答案（对齐单体 InterviewAgent.EvaluateAnswer）
+	// 3. RAG 检索增强（降级处理，失败不影响主流程）
+	ragContext := uc.retrieveRAGContext(ctx, interview, answer)
+
+	// 4. 调用 AI Gateway 的 EvaluateAnswer 评估答案（对齐单体 InterviewAgent.EvaluateAnswer + EnhanceFeedbackPrompt）
 	evalResp, err := uc.ai.EvaluateAnswer(ctx, &EvaluateAnswerRequest{
 		SessionId:     interview.AISessionID,
 		QuestionIndex: index,
 		Answer:        answer,
+		RAGContext:    ragContext,
 	})
 	if err != nil {
 		return nil, nil, kratosErr.InternalServer("AI_CALL_FAILED", "AI 服务调用失败").WithCause(err)
@@ -195,10 +199,11 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 	}
 	feedbackText := strings.TrimSpace(evalResp.Feedback)
 
-	// 4. 调用 AI Gateway 的 GetNextQuestionSession 获取下一题（对齐单体 InterviewAgent.GetNextQuestion）
+	// 5. 调用 AI Gateway 的 GetNextQuestionSession 获取下一题（对齐单体 InterviewAgent.GetNextQuestion + EnhanceQuestionPrompt）
 	var nextQuestion *InterviewQuestion
 	nextResp, err := uc.ai.GetNextQuestionSession(ctx, &GetNextQuestionSessionRequest{
-		SessionId: interview.AISessionID,
+		SessionId:  interview.AISessionID,
+		RAGContext: ragContext,
 	})
 	if err == nil && nextResp != nil && nextResp.Question != "" {
 		nextQuestion = &InterviewQuestion{
@@ -210,7 +215,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		}
 	}
 
-	// 5. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
+	// 6. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.repo.CreateMessage(txCtx, msg); err != nil {
 			return kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
@@ -257,6 +262,33 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 	}()
 
 	return feedback, nextQuestion, nil
+}
+
+// retrieveRAGContext 检索 RAG 参考知识，失败时返回空字符串（降级处理）。
+func (uc *InterviewUseCase) retrieveRAGContext(ctx context.Context, interview *Interview, userAnswer string) string {
+	if uc.rag == nil {
+		return ""
+	}
+	query := strings.TrimSpace(userAnswer + " " + interview.IndustryCode)
+	if query == "" {
+		query = interview.IndustryCode + " 面试问题"
+	}
+	docs, err := uc.rag.Retrieve(ctx, query, 5)
+	if err != nil {
+		log.Warnf("RAG 检索失败，降级处理: interview_id=%d, err=%v", interview.ID, err)
+		return ""
+	}
+	if len(docs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i, doc := range docs {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(doc.Content)
+	}
+	return sb.String()
 }
 
 // GetInterview 获取面试详情

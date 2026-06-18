@@ -1,0 +1,85 @@
+# MakeJob 项目术语表
+
+## 核心概念
+
+### 可观测性 (Observability)
+系统内部状态的可见性程度，通过外部输出（指标、日志、链路追踪）推断系统内部状态的能力。
+
+### 三大支柱 (Three Pillars)
+1. **指标 (Metrics)**: 数值型数据，用于监控系统性能和业务指标
+2. **日志 (Logs)**: 文本型记录，用于记录事件和错误信息
+3. **链路追踪 (Traces)**: 分布式请求的完整路径，用于理解请求流程
+
+### OpenTelemetry
+云原生可观测性标准框架，提供统一的API、SDK和工具集，用于生成、收集和导出遥测数据。
+
+## 技术组件
+
+### OTLP (OpenTelemetry Protocol)
+OpenTelemetry的标准协议，用于传输遥测数据。支持gRPC和HTTP两种传输方式。
+
+### 跨度 (Span)
+链路追踪的基本单位，代表一个操作单元。包含操作名、开始时间、结束时间、属性和事件。
+
+### 采样策略 (Sampling Strategy)
+决定哪些请求的链路数据需要采集的策略。包括全量采集、概率采样、智能采样等。
+
+### 上下文传播 (Context Propagation)
+在分布式系统中，将链路上下文从一个服务传递到另一个服务的机制。
+
+## 项目特定术语
+
+### 微服务架构
+MakeJob采用15个微服务的架构，每个服务负责特定的业务领域。
+
+### Gateway服务
+HTTP入口点，负责接收客户端请求并转发到相应的后端服务。
+
+### Kratos框架
+Go微服务框架，提供服务发现、负载均衡、中间件等功能。
+
+### gRPC服务间通信
+微服务之间使用gRPC进行通信，通过Protobuf定义服务接口。
+
+## 面试域术语
+
+### 简历驱动面试 (Resume-Driven Interview)
+用户上传简历文本，系统解析出候选人技能、项目经历、薄弱信号，生成针对性面试问题的面试模式。
+
+### RAG 增强 (RAG Enhancement)
+在 AI 出题和评分前，从向量数据库（Milvus）检索相关知识，注入到 LLM prompt 中提升生成质量的机制。Interview 服务负责检索，通过 gRPC `rag_context` 字段传给 AI Gateway。
+
+### 实时语音面试 (Realtime Voice Interview)
+通过 WebSocket 连接火山引擎实时语音 API，集成 ASR（语音识别）+ LLM（对话生成）+ TTS（语音合成）的端到端语音面试模式。
+
+### PromptEnhancer 模式
+单体架构中 RAG 嵌入在 InterviewAgent 内部的增强模式。微服务中改为 Interview 服务外部检索 + proto 字段传递的解耦模式。
+
+### WeakSignals（候选人薄弱信号）
+简历解析时 LLM 提取的候选人潜在薄弱点，用于在简历驱动面试中引导 AI 针对性追问。
+
+## 实施范围
+
+### 试点服务
+选择Gateway服务作为可观测性实现的试点，验证方案后再推广到其他服务。
+
+### 实施阶段
+1. **Phase 1**: 请求链路追踪 + 日志增强（已完成）
+2. **Phase 2**: Prometheus Metrics（已完成）
+3. **Phase 3**: OpenTelemetry集成 - 完整链路追踪（待实施）
+4. **Phase 4**: 指标监控增强（待规划）
+5. **Phase 5**: 日志聚合（待规划）
+6. **Phase 6**: 告警系统（待规划）
+
+### 技术选型
+- **核心框架**: OpenTelemetry
+- **导出协议**: OTLP
+- **传播方式**: gRPC元数据传播
+- **采样策略**: 全量采集
+- **instrumentation**: 自动+手动结合
+
+### 时间安排
+- **Phase 3**: 1周（完整链路追踪）
+- **Phase 4**: 1周（指标监控增强）
+- **Phase 5**: 1周（日志聚合）
+- **Phase 6**: 1周（告警系统）

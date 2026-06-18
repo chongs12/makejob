@@ -20,6 +20,8 @@ type QuestionRepo interface {
 
 type RecordRepo interface {
 	Create(ctx context.Context, record *UserQuestionRecord) error
+	// Upsert 按 user_id + question_id 去重，同一题只保留最新答题记录
+	Upsert(ctx context.Context, record *UserQuestionRecord) error
 	GetByUserAndQuestion(ctx context.Context, userID, questionID uint64) (*UserQuestionRecord, error)
 	GetCategoryStats(ctx context.Context, userID uint64) ([]*CategoryStat, error)
 	GetWrongQuestions(ctx context.Context, userID uint64, page, pageSize int32) ([]*WrongQuestion, int64, error)
@@ -57,6 +59,39 @@ type IndustryRepo interface {
 	List(ctx context.Context) ([]*Industry, error)
 	GetByCode(ctx context.Context, code string) (*Industry, error)
 	GetByID(ctx context.Context, id uint64) (*Industry, error)
+}
+
+// LearningArchiveRepo 学习档案条目仓储接口（已废弃，由 LearningArchiveClient 替代）
+// 保留用于向后兼容，新代码应使用 LearningArchiveClient。
+type LearningArchiveRepo interface {
+	Upsert(ctx context.Context, entry *LearningArchiveEntry) error
+	ListRecentByUser(ctx context.Context, userID uint64, limit int, interviewID *uint64) ([]*LearningArchiveEntry, error)
+}
+
+// LearningArchiveClient 学习档案 gRPC 客户端接口，替代本地 LearningArchiveRepo。
+type LearningArchiveClient interface {
+	WriteEntry(ctx context.Context, entry *LearningArchiveEntry) error
+	GetFocusSignals(ctx context.Context, userID uint64, limit int32) ([]FocusSignalData, error)
+	GetMistakeTopic(ctx context.Context, code string) (*MistakeTopicCard, bool)
+}
+
+// FocusSignalData 从 learning_archive 服务获取的焦点信号数据。
+type FocusSignalData struct {
+	Tag                       string
+	TopicCode                 string
+	TopicTitle                string
+	TopicProblemPattern       string
+	RelatedQuestionSets       []string
+	RecommendedActions        []string
+	PrimaryQuestionSet        string
+	OccurrenceCount           int
+	ArchiveOccurrenceCount    int
+	InterviewOccurrenceCount  int
+	DominantArchivePhase      string
+	DominantArchivePhaseLabel string
+	Source                    string
+	SourceLabel               string
+	Reason                    string
 }
 
 // QuizAnalyzerClient AI 答案分析客户端接口
@@ -98,6 +133,13 @@ type QuestionSetRepo interface {
 	List(ctx context.Context, industryCode string, page, pageSize int32) ([]*QuestionSet, int64, error)
 	GetByID(ctx context.Context, id uint64) (*QuestionSet, error)
 	GetQuestions(ctx context.Context, setID uint64) ([]*Question, error)
+	// 管理后台 CRUD
+	Create(ctx context.Context, set *QuestionSet) error
+	Update(ctx context.Context, set *QuestionSet) error
+	Delete(ctx context.Context, id uint64) error
+	AddQuestions(ctx context.Context, setID uint64, questionIDs []uint64) (int32, error)
+	RemoveQuestions(ctx context.Context, setID uint64, questionIDs []uint64) (int32, error)
+	GetQuestionIDs(ctx context.Context, setID uint64) ([]uint64, error)
 }
 
 // 领域实体
@@ -317,4 +359,40 @@ type MistakeTopic struct {
 	WrongCount   int32
 	TotalCount   int32
 	Accuracy     float64
+}
+
+// 学习档案来源类型常量
+const (
+	LearningArchiveSourceInterviewCoding  = "interview_coding"
+	LearningArchiveSourcePracticeQuestion = "practice_question"
+	LearningArchiveSourcePlanTaskFeedback = "plan_task_feedback"
+)
+
+// 学习阶段常量
+const (
+	LearningPhaseFoundation = "foundation"
+	LearningPhaseDrill      = "drill"
+	LearningPhaseReview     = "review"
+	LearningPhaseMock       = "mock"
+)
+
+// LearningArchiveEntry 学习档案条目领域实体
+type LearningArchiveEntry struct {
+	ID               uint64
+	UserID           uint64
+	SourceType       string
+	SourceRef        string
+	InterviewID      uint64
+	QuestionIndex    int
+	IndustryCode     string
+	TaskPhase        string
+	TaskPhaseGoal    string
+	Language         string
+	MistakeTagsJSON  string
+	StrengthTagsJSON string
+	SuggestionsJSON  string
+	EvidenceSummary  string
+	OccurredAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }

@@ -89,6 +89,7 @@ message EvaluateAnswerRequest {
   string session_id = 1;
   int32 question_index = 2;
   string answer = 3;
+  string rag_context = 4;  // RAG 检索到的参考知识，注入到评分 prompt
 }
 
 message EvaluateAnswerResponse {
@@ -102,6 +103,7 @@ message EvaluateAnswerResponse {
 
 message GetNextQuestionSessionRequest {
   string session_id = 1;
+  string rag_context = 2;  // RAG 检索到的参考知识，注入到出题 prompt
 }
 
 message GetNextQuestionSessionResponse {
@@ -229,6 +231,7 @@ message ResumeParserResponse {
   repeated string education = 3;
   repeated string projects = 4;
   string summary = 5;
+  repeated string weak_signals = 6;  // 候选人薄弱信号，用于简历驱动面试针对性追问
 }
 
 message Live2DDirectiveRequest {

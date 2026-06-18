@@ -85,6 +85,17 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// 创建考试和题集仓储
 	examRepo := data.NewExamRepo(db)
 	questionSetRepo := data.NewQuestionSetRepo(db)
+
+	// 创建 learning_archive gRPC 客户端（替代本地 LearningArchiveRepo）
+	archiveServiceToken, err := buildServiceAccessToken(bc.JWT.Secret)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create learning_archive service token: %w", err)
+	}
+	learningArchiveClient, err := data.NewLearningArchiveClient(bc.DependentServices, archiveServiceToken)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create learning_archive client: %w", err)
+	}
+
 	adminConn, err := grpc.Dial(bc.AI.AdminAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create admin client: %w", err)
@@ -99,6 +110,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		questionRepo, recordRepo, favoriteRepo, noteRepo,
 		categoryRepo, industryRepo, quizAnalyzer,
 		codeRunner, examRepo, questionSetRepo, questionGenerator,
+		learningArchiveClient,
 	)
 
 	// 创建 MQ 发布器用于 RAG 同步
@@ -138,6 +150,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	if c, ok := questionGenerator.(closer); ok {
 		closers = append(closers, c)
 	}
+	if c, ok := learningArchiveClient.(closer); ok {
+		closers = append(closers, c)
+	}
 	closers = append(closers, adminConn)
 	closers = append(closers, mqPublisher)
 
@@ -158,4 +173,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 // buildAdminAccessToken 为题目服务生成内部 Admin 回写令牌，供异步 MQ 任务调用受保护的管理 RPC。
 func buildAdminAccessToken(jwtSecret string) (string, error) {
 	return auth.GenerateToken(0, "question-service@internal", "admin", jwtSecret, 24*time.Hour)
+}
+
+// buildServiceAccessToken 为题目服务生成内部服务令牌，供调用 learning_archive 等受保护的 gRPC 服务。
+func buildServiceAccessToken(jwtSecret string) (string, error) {
+	return auth.GenerateToken(0, "question-service@internal", "service", jwtSecret, 24*time.Hour)
 }

@@ -8,11 +8,12 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
-	MQ     *MQ     `yaml:"mq"`
-	AI     *AI     `yaml:"ai"`
+	Server            *Server            `yaml:"server"`
+	Data              *Data              `yaml:"data"`
+	JWT               *JWT               `yaml:"jwt"`
+	MQ                *MQ                `yaml:"mq"`
+	AI                *AI                `yaml:"ai"`
+	DependentServices *DependentServices `yaml:"dependent_services"`
 }
 
 type Server struct {
@@ -59,6 +60,11 @@ type AI struct {
 	ServiceAddr string `yaml:"service_addr"`
 }
 
+// DependentServices 下游依赖服务地址配置。
+type DependentServices struct {
+	LearningArchiveAddr string `yaml:"learning_archive_addr"`
+}
+
 // Load 从 YAML 文件加载配置
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
@@ -95,6 +101,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.AI == nil {
 		bc.AI = &AI{}
+	}
+	if bc.DependentServices == nil {
+		bc.DependentServices = &DependentServices{}
 	}
 	if bc.Server.HTTP.Timeout == "" {
 		bc.Server.HTTP.Timeout = "10s"

@@ -12,18 +12,23 @@ import (
 	archivev1 "makejob/api/makejob/learning_archive/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
+	"makejob/pkg/auth"
 )
 
 // learningArchiveClient 实现 biz.LearningArchiveClient 接口
-// 通过 gRPC 调用 LearningArchive 服务
+// 通过 gRPC 调用 LearningArchive 服务。
 type learningArchiveClient struct {
 	client archivev1.LearningArchiveServiceClient
 	conn   *grpc.ClientConn
 }
 
-// NewLearningArchiveClient 创建学习档案客户端
-func NewLearningArchiveClient(cfg *conf.Archive) (biz.LearningArchiveClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+// NewLearningArchiveClient 创建学习档案客户端，注入内部服务 Token 绕过用户鉴权。
+func NewLearningArchiveClient(cfg *conf.Archive, serviceToken string) (biz.LearningArchiveClient, error) {
+	conn, err := grpc.Dial(
+		cfg.ServiceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(serviceToken)),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial LearningArchive service at %s: %w", cfg.ServiceAddr, err)
 	}
@@ -33,7 +38,7 @@ func NewLearningArchiveClient(cfg *conf.Archive) (biz.LearningArchiveClient, err
 	}, nil
 }
 
-// Close 关闭 gRPC 连接
+// Close 关闭 gRPC 连接。
 func (c *learningArchiveClient) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()

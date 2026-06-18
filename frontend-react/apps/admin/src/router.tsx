@@ -28,6 +28,7 @@ import {
   SoundOutlined,
   AppstoreOutlined,
   QuestionCircleOutlined,
+  OrderedListOutlined,
   LoginOutlined,
   LogoutOutlined,
   SafetyOutlined,
@@ -44,6 +45,7 @@ import { RAGConfigPage } from './features/rag-config/RAGConfigPage'
 import { RAGKnowledgePage } from './features/rag-knowledge/RAGKnowledgePage'
 import { QuestionPipelinePage } from './features/question-pipeline/QuestionPipelinePage'
 import { QuestionPage } from './features/question/QuestionPage'
+import { QuestionSetPage } from './features/question-set/QuestionSetPage'
 import { RuntimeOverviewPage } from './features/runtime/RuntimeOverviewPage'
 import { RuntimeTasksPage } from './features/runtime/RuntimeTasksPage'
 import { TaxonomyPage } from './features/taxonomy/TaxonomyPage'
@@ -100,6 +102,7 @@ function AdminLayout() {
     { to: '/taxonomy', label: '行业/分类', icon: <AppstoreOutlined /> },
     { to: '/question-pipeline', label: '题目流水线', icon: <ThunderboltOutlined /> },
     { to: '/questions', label: '题库管理', icon: <QuestionCircleOutlined /> },
+    { to: '/question-sets', label: '题单管理', icon: <OrderedListOutlined /> },
   ]
 
   const sidebarWidth = 248
@@ -723,6 +726,13 @@ const questionsRoute = createRoute({
   component: QuestionPage,
 })
 
+const questionSetsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'question-sets',
+  beforeLoad: ensureAdminRouteAccess,
+  component: QuestionSetPage,
+})
+
 const questionPipelineRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'question-pipeline',
@@ -744,6 +754,7 @@ const routeTree = rootRoute.addChildren([
   taxonomyRoute,
   questionPipelineRoute,
   questionsRoute,
+  questionSetsRoute,
 ])
 
 export const router = createRouter({

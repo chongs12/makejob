@@ -226,9 +226,12 @@ type ResumeParserRequest struct {
 }
 
 type ResumeParserResponse struct {
-	Skills     []string
-	Experience []string
-	Education  []string
+	Skills      []string
+	Experience  []string
+	Education   []string
+	Projects    []string
+	Summary     string
+	WeakSignals []string
 }
 
 // --- 会话式面试 DTO（对齐单体 InterviewAgent 接口）---
@@ -256,6 +259,7 @@ type EvaluateAnswerRequest struct {
 	SessionId     string
 	QuestionIndex int32
 	Answer        string
+	RAGContext    string // RAG 检索到的参考知识，注入到评分 prompt
 }
 
 type EvaluateAnswerResponse struct {
@@ -268,7 +272,8 @@ type EvaluateAnswerResponse struct {
 }
 
 type GetNextQuestionSessionRequest struct {
-	SessionId string
+	SessionId  string
+	RAGContext string // RAG 检索到的参考知识，注入到出题 prompt
 }
 
 type GetNextQuestionSessionResponse struct {

@@ -395,15 +395,11 @@ func (uc *RealtimeUseCase) HandleSession(ctx context.Context, interviewID uint64
 
 	// 10. 启动客户端音频转发和 RAG 注入 goroutine
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
 		uc.clientToVolc(sessionCtx, rtSession)
-	}()
-	go func() {
-		defer wg.Done()
-		uc.ragInjector(sessionCtx, rtSession)
 	}()
 
 	wg.Wait()
@@ -447,87 +443,12 @@ func (uc *RealtimeUseCase) clientToVolc(ctx context.Context, session *RealtimeSe
 	}
 }
 
-// volcToClient 读取火山引擎事件，处理后转发给客户端
-func (uc *RealtimeUseCase) volcToClient(ctx context.Context, session *RealtimeSession) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		event, err := session.VolcConn.ReadEvent()
-		if err != nil {
-			uc.log.Errorf("读取火山引擎事件失败: %v", err)
-			session.Cancel()
-			return
-		}
-
-		session.LastActivity = time.Now()
-
-		// 对齐单体事件常量（realtime/volcengine/client.go）
-		const (
-			EventSessionFinished        = 152
-			EventTTSSentenceStart       = 350
-			EventTTSSentenceEnd         = 351
-			EventTTSResponse            = 352
-			EventTTSEnded               = 359
-			EventASRInfo                = 450
-			EventASRResponse            = 451
-			EventASREnded               = 459
-			EventChatResponse           = 550
-			EventChatTextQueryConfirmed = 553
-			EventChatEnded              = 559
-		)
-
-		switch event.Type {
-		case EventASRInfo:
-			// 检测到用户开始说话（可用于打断播报）
-			_ = session.sender.sendBargeIn()
-			_ = session.sender.sendState("listening", "检测到你开始说话，已切到收听状态。")
-		case EventASRResponse:
-			uc.handleASRResponseEvent(ctx, session, event.Payload)
-		case EventASREnded:
-			uc.handleASREndedEvent(ctx, session)
-		case EventTTSSentenceStart:
-			uc.handleTTSSentenceStartEvent(session, event.Payload)
-		case EventTTSSentenceEnd:
-			uc.handleTTSSentenceEndEvent(session, event.Payload)
-		case EventTTSResponse:
-			uc.handleTTSAudioEvent(session, event.Payload)
-		case EventTTSEnded:
-			uc.handleTTSEndedEvent(ctx, session)
-		case EventChatTextQueryConfirmed:
-			uc.handleChatQueryConfirmedEvent(session, event.Payload)
-		case EventChatResponse:
-			uc.handleChatResponseEvent(session, event.Payload)
-		case EventChatEnded:
-			uc.handleChatEndedEvent(ctx, session)
-		case EventSessionFinished:
-			_ = session.sender.sendState("ready", "实时会话已结束。")
-			session.Cancel()
-		}
-	}
-}
-
-// ragInjector 定时调用 RAG 检索注入上下文，每 30 秒执行一次
-func (uc *RealtimeUseCase) ragInjector(ctx context.Context, session *RealtimeSession) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			uc.injectRAGForSession(ctx, session)
-		}
-	}
-}
-
 // injectRAGForSession 为单次 RAG 注入执行检索和上下文写入（对齐单体 injectRAGContext）
-func (uc *RealtimeUseCase) injectRAGForSession(ctx context.Context, session *RealtimeSession) {
-	query := fmt.Sprintf("%s %s 面试", session.RTCtx.IndustryCode, session.RTCtx.Difficulty)
+func (uc *RealtimeUseCase) injectRAGForSession(ctx context.Context, session *RealtimeSession, userAnswer string) {
+	query := strings.TrimSpace(userAnswer + " " + session.RTCtx.IndustryCode)
+	if query == "" {
+		query = fmt.Sprintf("%s %s 面试", session.RTCtx.IndustryCode, session.RTCtx.Difficulty)
+	}
 	docs, err := uc.rag.Retrieve(ctx, query, 3)
 	if err != nil {
 		uc.log.Errorf("RAG 检索失败: session_id=%s, err=%v", session.SessionID, err)
@@ -615,7 +536,7 @@ func (uc *RealtimeUseCase) handleASRResponseEvent(_ context.Context, session *Re
 	}
 }
 
-// handleASREndedEvent 处理 ASR 识别结束（事件459），保存用户回答
+// handleASREndedEvent 处理 ASR 识别结束（事件459），保存用户回答并触发 RAG 注入
 func (uc *RealtimeUseCase) handleASREndedEvent(ctx context.Context, session *RealtimeSession) {
 	session.mu.Lock()
 	text := strings.TrimSpace(session.turnState.userFinalText)
@@ -631,6 +552,15 @@ func (uc *RealtimeUseCase) handleASREndedEvent(ctx context.Context, session *Rea
 		uc.log.Errorf("保存用户回答失败: %v", err)
 	}
 	_ = session.sender.sendUserAnswer(text)
+
+	// 事件驱动 RAG 注入（对齐单体 injectRAGContext：ASR 结束后、AI 回复前注入参考知识）
+	// 异步执行，不阻塞事件循环；设置 3 秒超时避免 RAG 慢响应影响语音流畅度
+	go func() {
+		ragCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		uc.injectRAGForSession(ragCtx, session, text)
+	}()
+
 	_ = session.sender.sendState("thinking", "AI 面试官正在整理你的回答。")
 }
 
@@ -787,6 +717,8 @@ func (uc *RealtimeUseCase) finalizeRealtimeAssistantTurn(session *RealtimeSessio
 	if finalText == "" {
 		finalText = strings.TrimSpace(session.turnState.liveText)
 	}
+	questionID := session.turnState.questionID
+	replyID := session.turnState.replyID
 	session.turnState = realtimeTurnState{}
 	session.mu.Unlock()
 
@@ -800,12 +732,6 @@ func (uc *RealtimeUseCase) finalizeRealtimeAssistantTurn(session *RealtimeSessio
 		uc.log.Errorf("保存 AI 回复失败: %v", err)
 		return
 	}
-
-	// 获取 questionID 和 replyID
-	session.mu.Lock()
-	questionID := session.turnState.questionID
-	replyID := session.turnState.replyID
-	session.mu.Unlock()
 
 	// 推送最终字幕（对齐单体）
 	_ = session.sender.sendAssistantTranscriptFinal(finalText, questionID, replyID)

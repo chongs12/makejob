@@ -118,8 +118,8 @@ function formatRelativeTime(value?: string): string {
   return formatDateTime(value)
 }
 
-function truncateText(value: string, maxLength: number): string {
-  const normalized = value.trim()
+function truncateText(value: string | undefined, maxLength: number): string {
+  const normalized = (value || '').trim()
   if (normalized.length <= maxLength) return normalized
   return `${normalized.slice(0, maxLength)}...`
 }
@@ -381,7 +381,7 @@ export default function HomePage() {
                       lineHeight: 1.6,
                     }}
                   >
-                    {truncateText(dailyQuestion.content, 120)}
+                    {truncateText(dailyQuestion.title, 120)}
                   </p>
 
                   <Link

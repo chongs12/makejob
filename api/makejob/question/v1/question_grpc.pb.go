@@ -20,34 +20,41 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	QuestionService_ListQuestions_FullMethodName              = "/makejob.question.v1.QuestionService/ListQuestions"
-	QuestionService_GetQuestion_FullMethodName                = "/makejob.question.v1.QuestionService/GetQuestion"
-	QuestionService_ListCategories_FullMethodName             = "/makejob.question.v1.QuestionService/ListCategories"
-	QuestionService_ListIndustries_FullMethodName             = "/makejob.question.v1.QuestionService/ListIndustries"
-	QuestionService_SubmitAnswer_FullMethodName               = "/makejob.question.v1.QuestionService/SubmitAnswer"
-	QuestionService_RunCode_FullMethodName                    = "/makejob.question.v1.QuestionService/RunCode"
-	QuestionService_CreateFavorite_FullMethodName             = "/makejob.question.v1.QuestionService/CreateFavorite"
-	QuestionService_DeleteFavorite_FullMethodName             = "/makejob.question.v1.QuestionService/DeleteFavorite"
-	QuestionService_ListFavorites_FullMethodName              = "/makejob.question.v1.QuestionService/ListFavorites"
-	QuestionService_CreateNote_FullMethodName                 = "/makejob.question.v1.QuestionService/CreateNote"
-	QuestionService_UpdateNote_FullMethodName                 = "/makejob.question.v1.QuestionService/UpdateNote"
-	QuestionService_ListNotes_FullMethodName                  = "/makejob.question.v1.QuestionService/ListNotes"
-	QuestionService_GetPracticeRecommendations_FullMethodName = "/makejob.question.v1.QuestionService/GetPracticeRecommendations"
-	QuestionService_GetWrongQuestions_FullMethodName          = "/makejob.question.v1.QuestionService/GetWrongQuestions"
-	QuestionService_GetUserPracticeStats_FullMethodName       = "/makejob.question.v1.QuestionService/GetUserPracticeStats"
-	QuestionService_GetRandomExam_FullMethodName              = "/makejob.question.v1.QuestionService/GetRandomExam"
-	QuestionService_GenerateTimedExam_FullMethodName          = "/makejob.question.v1.QuestionService/GenerateTimedExam"
-	QuestionService_SubmitExam_FullMethodName                 = "/makejob.question.v1.QuestionService/SubmitExam"
-	QuestionService_DeleteNote_FullMethodName                 = "/makejob.question.v1.QuestionService/DeleteNote"
-	QuestionService_ListQuestionSets_FullMethodName           = "/makejob.question.v1.QuestionService/ListQuestionSets"
-	QuestionService_GetQuestionSetDetail_FullMethodName       = "/makejob.question.v1.QuestionService/GetQuestionSetDetail"
-	QuestionService_ListMistakeTopics_FullMethodName          = "/makejob.question.v1.QuestionService/ListMistakeTopics"
-	QuestionService_GetMistakeTopic_FullMethodName            = "/makejob.question.v1.QuestionService/GetMistakeTopic"
-	QuestionService_AdminListQuestions_FullMethodName         = "/makejob.question.v1.QuestionService/AdminListQuestions"
-	QuestionService_AdminCreateQuestion_FullMethodName        = "/makejob.question.v1.QuestionService/AdminCreateQuestion"
-	QuestionService_AdminUpdateQuestion_FullMethodName        = "/makejob.question.v1.QuestionService/AdminUpdateQuestion"
-	QuestionService_AdminDeleteQuestion_FullMethodName        = "/makejob.question.v1.QuestionService/AdminDeleteQuestion"
-	QuestionService_GetAdminQuestionStats_FullMethodName      = "/makejob.question.v1.QuestionService/GetAdminQuestionStats"
+	QuestionService_ListQuestions_FullMethodName               = "/makejob.question.v1.QuestionService/ListQuestions"
+	QuestionService_GetQuestion_FullMethodName                 = "/makejob.question.v1.QuestionService/GetQuestion"
+	QuestionService_ListCategories_FullMethodName              = "/makejob.question.v1.QuestionService/ListCategories"
+	QuestionService_ListIndustries_FullMethodName              = "/makejob.question.v1.QuestionService/ListIndustries"
+	QuestionService_SubmitAnswer_FullMethodName                = "/makejob.question.v1.QuestionService/SubmitAnswer"
+	QuestionService_RunCode_FullMethodName                     = "/makejob.question.v1.QuestionService/RunCode"
+	QuestionService_CreateFavorite_FullMethodName              = "/makejob.question.v1.QuestionService/CreateFavorite"
+	QuestionService_DeleteFavorite_FullMethodName              = "/makejob.question.v1.QuestionService/DeleteFavorite"
+	QuestionService_ListFavorites_FullMethodName               = "/makejob.question.v1.QuestionService/ListFavorites"
+	QuestionService_CreateNote_FullMethodName                  = "/makejob.question.v1.QuestionService/CreateNote"
+	QuestionService_UpdateNote_FullMethodName                  = "/makejob.question.v1.QuestionService/UpdateNote"
+	QuestionService_ListNotes_FullMethodName                   = "/makejob.question.v1.QuestionService/ListNotes"
+	QuestionService_GetPracticeRecommendations_FullMethodName  = "/makejob.question.v1.QuestionService/GetPracticeRecommendations"
+	QuestionService_GetWrongQuestions_FullMethodName           = "/makejob.question.v1.QuestionService/GetWrongQuestions"
+	QuestionService_GetUserPracticeStats_FullMethodName        = "/makejob.question.v1.QuestionService/GetUserPracticeStats"
+	QuestionService_GetRandomExam_FullMethodName               = "/makejob.question.v1.QuestionService/GetRandomExam"
+	QuestionService_GenerateTimedExam_FullMethodName           = "/makejob.question.v1.QuestionService/GenerateTimedExam"
+	QuestionService_SubmitExam_FullMethodName                  = "/makejob.question.v1.QuestionService/SubmitExam"
+	QuestionService_DeleteNote_FullMethodName                  = "/makejob.question.v1.QuestionService/DeleteNote"
+	QuestionService_ListQuestionSets_FullMethodName            = "/makejob.question.v1.QuestionService/ListQuestionSets"
+	QuestionService_GetQuestionSetDetail_FullMethodName        = "/makejob.question.v1.QuestionService/GetQuestionSetDetail"
+	QuestionService_ListMistakeTopics_FullMethodName           = "/makejob.question.v1.QuestionService/ListMistakeTopics"
+	QuestionService_GetMistakeTopic_FullMethodName             = "/makejob.question.v1.QuestionService/GetMistakeTopic"
+	QuestionService_AdminListQuestions_FullMethodName          = "/makejob.question.v1.QuestionService/AdminListQuestions"
+	QuestionService_AdminCreateQuestion_FullMethodName         = "/makejob.question.v1.QuestionService/AdminCreateQuestion"
+	QuestionService_AdminUpdateQuestion_FullMethodName         = "/makejob.question.v1.QuestionService/AdminUpdateQuestion"
+	QuestionService_AdminDeleteQuestion_FullMethodName         = "/makejob.question.v1.QuestionService/AdminDeleteQuestion"
+	QuestionService_GetAdminQuestionStats_FullMethodName       = "/makejob.question.v1.QuestionService/GetAdminQuestionStats"
+	QuestionService_AdminCreateQuestionSet_FullMethodName      = "/makejob.question.v1.QuestionService/AdminCreateQuestionSet"
+	QuestionService_AdminUpdateQuestionSet_FullMethodName      = "/makejob.question.v1.QuestionService/AdminUpdateQuestionSet"
+	QuestionService_AdminDeleteQuestionSet_FullMethodName      = "/makejob.question.v1.QuestionService/AdminDeleteQuestionSet"
+	QuestionService_AdminListQuestionSets_FullMethodName       = "/makejob.question.v1.QuestionService/AdminListQuestionSets"
+	QuestionService_AdminGetQuestionSet_FullMethodName         = "/makejob.question.v1.QuestionService/AdminGetQuestionSet"
+	QuestionService_AdminAddQuestionsToSet_FullMethodName      = "/makejob.question.v1.QuestionService/AdminAddQuestionsToSet"
+	QuestionService_AdminRemoveQuestionsFromSet_FullMethodName = "/makejob.question.v1.QuestionService/AdminRemoveQuestionsFromSet"
 )
 
 // QuestionServiceClient is the client API for QuestionService service.
@@ -91,6 +98,14 @@ type QuestionServiceClient interface {
 	AdminUpdateQuestion(ctx context.Context, in *AdminUpdateQuestionRequest, opts ...grpc.CallOption) (*AdminUpdateQuestionResponse, error)
 	AdminDeleteQuestion(ctx context.Context, in *AdminDeleteQuestionRequest, opts ...grpc.CallOption) (*AdminDeleteQuestionResponse, error)
 	GetAdminQuestionStats(ctx context.Context, in *GetAdminQuestionStatsRequest, opts ...grpc.CallOption) (*AdminQuestionStatsResponse, error)
+	// --- 管理后台题单 CRUD ---
+	AdminCreateQuestionSet(ctx context.Context, in *AdminCreateQuestionSetRequest, opts ...grpc.CallOption) (*AdminCreateQuestionSetResponse, error)
+	AdminUpdateQuestionSet(ctx context.Context, in *AdminUpdateQuestionSetRequest, opts ...grpc.CallOption) (*AdminUpdateQuestionSetResponse, error)
+	AdminDeleteQuestionSet(ctx context.Context, in *AdminDeleteQuestionSetRequest, opts ...grpc.CallOption) (*AdminDeleteQuestionSetResponse, error)
+	AdminListQuestionSets(ctx context.Context, in *AdminListQuestionSetsRequest, opts ...grpc.CallOption) (*AdminListQuestionSetsResponse, error)
+	AdminGetQuestionSet(ctx context.Context, in *AdminGetQuestionSetRequest, opts ...grpc.CallOption) (*AdminQuestionSetDetail, error)
+	AdminAddQuestionsToSet(ctx context.Context, in *AdminAddQuestionsToSetRequest, opts ...grpc.CallOption) (*AdminAddQuestionsToSetResponse, error)
+	AdminRemoveQuestionsFromSet(ctx context.Context, in *AdminRemoveQuestionsFromSetRequest, opts ...grpc.CallOption) (*AdminRemoveQuestionsFromSetResponse, error)
 }
 
 type questionServiceClient struct {
@@ -381,6 +396,76 @@ func (c *questionServiceClient) GetAdminQuestionStats(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *questionServiceClient) AdminCreateQuestionSet(ctx context.Context, in *AdminCreateQuestionSetRequest, opts ...grpc.CallOption) (*AdminCreateQuestionSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminCreateQuestionSetResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminCreateQuestionSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminUpdateQuestionSet(ctx context.Context, in *AdminUpdateQuestionSetRequest, opts ...grpc.CallOption) (*AdminUpdateQuestionSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminUpdateQuestionSetResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminUpdateQuestionSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminDeleteQuestionSet(ctx context.Context, in *AdminDeleteQuestionSetRequest, opts ...grpc.CallOption) (*AdminDeleteQuestionSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminDeleteQuestionSetResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminDeleteQuestionSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminListQuestionSets(ctx context.Context, in *AdminListQuestionSetsRequest, opts ...grpc.CallOption) (*AdminListQuestionSetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminListQuestionSetsResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminListQuestionSets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminGetQuestionSet(ctx context.Context, in *AdminGetQuestionSetRequest, opts ...grpc.CallOption) (*AdminQuestionSetDetail, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminQuestionSetDetail)
+	err := c.cc.Invoke(ctx, QuestionService_AdminGetQuestionSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminAddQuestionsToSet(ctx context.Context, in *AdminAddQuestionsToSetRequest, opts ...grpc.CallOption) (*AdminAddQuestionsToSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminAddQuestionsToSetResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminAddQuestionsToSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *questionServiceClient) AdminRemoveQuestionsFromSet(ctx context.Context, in *AdminRemoveQuestionsFromSetRequest, opts ...grpc.CallOption) (*AdminRemoveQuestionsFromSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdminRemoveQuestionsFromSetResponse)
+	err := c.cc.Invoke(ctx, QuestionService_AdminRemoveQuestionsFromSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QuestionServiceServer is the server API for QuestionService service.
 // All implementations must embed UnimplementedQuestionServiceServer
 // for forward compatibility.
@@ -422,6 +507,14 @@ type QuestionServiceServer interface {
 	AdminUpdateQuestion(context.Context, *AdminUpdateQuestionRequest) (*AdminUpdateQuestionResponse, error)
 	AdminDeleteQuestion(context.Context, *AdminDeleteQuestionRequest) (*AdminDeleteQuestionResponse, error)
 	GetAdminQuestionStats(context.Context, *GetAdminQuestionStatsRequest) (*AdminQuestionStatsResponse, error)
+	// --- 管理后台题单 CRUD ---
+	AdminCreateQuestionSet(context.Context, *AdminCreateQuestionSetRequest) (*AdminCreateQuestionSetResponse, error)
+	AdminUpdateQuestionSet(context.Context, *AdminUpdateQuestionSetRequest) (*AdminUpdateQuestionSetResponse, error)
+	AdminDeleteQuestionSet(context.Context, *AdminDeleteQuestionSetRequest) (*AdminDeleteQuestionSetResponse, error)
+	AdminListQuestionSets(context.Context, *AdminListQuestionSetsRequest) (*AdminListQuestionSetsResponse, error)
+	AdminGetQuestionSet(context.Context, *AdminGetQuestionSetRequest) (*AdminQuestionSetDetail, error)
+	AdminAddQuestionsToSet(context.Context, *AdminAddQuestionsToSetRequest) (*AdminAddQuestionsToSetResponse, error)
+	AdminRemoveQuestionsFromSet(context.Context, *AdminRemoveQuestionsFromSetRequest) (*AdminRemoveQuestionsFromSetResponse, error)
 	mustEmbedUnimplementedQuestionServiceServer()
 }
 
@@ -515,6 +608,27 @@ func (UnimplementedQuestionServiceServer) AdminDeleteQuestion(context.Context, *
 }
 func (UnimplementedQuestionServiceServer) GetAdminQuestionStats(context.Context, *GetAdminQuestionStatsRequest) (*AdminQuestionStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAdminQuestionStats not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminCreateQuestionSet(context.Context, *AdminCreateQuestionSetRequest) (*AdminCreateQuestionSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminCreateQuestionSet not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminUpdateQuestionSet(context.Context, *AdminUpdateQuestionSetRequest) (*AdminUpdateQuestionSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminUpdateQuestionSet not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminDeleteQuestionSet(context.Context, *AdminDeleteQuestionSetRequest) (*AdminDeleteQuestionSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminDeleteQuestionSet not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminListQuestionSets(context.Context, *AdminListQuestionSetsRequest) (*AdminListQuestionSetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminListQuestionSets not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminGetQuestionSet(context.Context, *AdminGetQuestionSetRequest) (*AdminQuestionSetDetail, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminGetQuestionSet not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminAddQuestionsToSet(context.Context, *AdminAddQuestionsToSetRequest) (*AdminAddQuestionsToSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminAddQuestionsToSet not implemented")
+}
+func (UnimplementedQuestionServiceServer) AdminRemoveQuestionsFromSet(context.Context, *AdminRemoveQuestionsFromSetRequest) (*AdminRemoveQuestionsFromSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdminRemoveQuestionsFromSet not implemented")
 }
 func (UnimplementedQuestionServiceServer) mustEmbedUnimplementedQuestionServiceServer() {}
 func (UnimplementedQuestionServiceServer) testEmbeddedByValue()                         {}
@@ -1041,6 +1155,132 @@ func _QuestionService_GetAdminQuestionStats_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QuestionService_AdminCreateQuestionSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminCreateQuestionSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminCreateQuestionSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminCreateQuestionSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminCreateQuestionSet(ctx, req.(*AdminCreateQuestionSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminUpdateQuestionSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminUpdateQuestionSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminUpdateQuestionSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminUpdateQuestionSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminUpdateQuestionSet(ctx, req.(*AdminUpdateQuestionSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminDeleteQuestionSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminDeleteQuestionSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminDeleteQuestionSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminDeleteQuestionSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminDeleteQuestionSet(ctx, req.(*AdminDeleteQuestionSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminListQuestionSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminListQuestionSetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminListQuestionSets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminListQuestionSets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminListQuestionSets(ctx, req.(*AdminListQuestionSetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminGetQuestionSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminGetQuestionSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminGetQuestionSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminGetQuestionSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminGetQuestionSet(ctx, req.(*AdminGetQuestionSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminAddQuestionsToSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminAddQuestionsToSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminAddQuestionsToSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminAddQuestionsToSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminAddQuestionsToSet(ctx, req.(*AdminAddQuestionsToSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QuestionService_AdminRemoveQuestionsFromSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdminRemoveQuestionsFromSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QuestionServiceServer).AdminRemoveQuestionsFromSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: QuestionService_AdminRemoveQuestionsFromSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QuestionServiceServer).AdminRemoveQuestionsFromSet(ctx, req.(*AdminRemoveQuestionsFromSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QuestionService_ServiceDesc is the grpc.ServiceDesc for QuestionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1159,6 +1399,34 @@ var QuestionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAdminQuestionStats",
 			Handler:    _QuestionService_GetAdminQuestionStats_Handler,
+		},
+		{
+			MethodName: "AdminCreateQuestionSet",
+			Handler:    _QuestionService_AdminCreateQuestionSet_Handler,
+		},
+		{
+			MethodName: "AdminUpdateQuestionSet",
+			Handler:    _QuestionService_AdminUpdateQuestionSet_Handler,
+		},
+		{
+			MethodName: "AdminDeleteQuestionSet",
+			Handler:    _QuestionService_AdminDeleteQuestionSet_Handler,
+		},
+		{
+			MethodName: "AdminListQuestionSets",
+			Handler:    _QuestionService_AdminListQuestionSets_Handler,
+		},
+		{
+			MethodName: "AdminGetQuestionSet",
+			Handler:    _QuestionService_AdminGetQuestionSet_Handler,
+		},
+		{
+			MethodName: "AdminAddQuestionsToSet",
+			Handler:    _QuestionService_AdminAddQuestionsToSet_Handler,
+		},
+		{
+			MethodName: "AdminRemoveQuestionsFromSet",
+			Handler:    _QuestionService_AdminRemoveQuestionsFromSet_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

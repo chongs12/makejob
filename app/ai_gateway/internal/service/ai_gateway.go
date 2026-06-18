@@ -101,12 +101,13 @@ func (s *AIGatewayService) StartInterview(ctx context.Context, req *aiv1.StartIn
 	}, nil
 }
 
-// EvaluateAnswer 评估用户答案（对齐单体 InterviewAgent.EvaluateAnswer）
+// EvaluateAnswer 评估用户答案（对齐单体 InterviewAgent.EvaluateAnswer + EnhanceFeedbackPrompt）
 func (s *AIGatewayService) EvaluateAnswer(ctx context.Context, req *aiv1.EvaluateAnswerRequest) (*aiv1.EvaluateAnswerResponse, error) {
 	result, err := s.interviewSessionUC.EvaluateAnswer(ctx, &biz.EvaluateAnswerRequest{
 		SessionId:     req.SessionId,
 		QuestionIndex: req.QuestionIndex,
 		Answer:        req.Answer,
+		RAGContext:    req.RagContext,
 	})
 	if err != nil {
 		return nil, err
@@ -121,10 +122,11 @@ func (s *AIGatewayService) EvaluateAnswer(ctx context.Context, req *aiv1.Evaluat
 	}, nil
 }
 
-// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion）
+// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion + EnhanceQuestionPrompt）
 func (s *AIGatewayService) GetNextQuestionSession(ctx context.Context, req *aiv1.GetNextQuestionSessionRequest) (*aiv1.GetNextQuestionSessionResponse, error) {
 	result, err := s.interviewSessionUC.GetNextQuestion(ctx, &biz.GetNextQuestionSessionRequest{
-		SessionId: req.SessionId,
+		SessionId:  req.SessionId,
+		RAGContext: req.RagContext,
 	})
 	if err != nil {
 		return nil, err
@@ -312,11 +314,12 @@ func (s *AIGatewayService) ResumeParser(ctx context.Context, req *aiv1.ResumePar
 		return nil, err
 	}
 	return &aiv1.ResumeParserResponse{
-		Skills:     result.Skills,
-		Experience: result.Experience,
-		Education:  result.Education,
-		Projects:   result.Projects,
-		Summary:    result.Summary,
+		Skills:      result.Skills,
+		Experience:  result.Experience,
+		Education:   result.Education,
+		Projects:    result.Projects,
+		Summary:     result.Summary,
+		WeakSignals: result.WeakSignals,
 	}, nil
 }
 

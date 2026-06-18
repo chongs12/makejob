@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -82,8 +83,18 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create diagnosis client: %w", err)
 	}
 
+	// data 层：learning_archive gRPC 客户端
+	archiveServiceToken, err := auth.GenerateToken(0, "plan-service@internal", "service", bc.JWT.Secret, 24*time.Hour)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create archive service token: %w", err)
+	}
+	archiveClient, err := data.NewLearningArchiveClient(bc.DependentServices, archiveServiceToken)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create learning_archive client: %w", err)
+	}
+
 	// biz 层：业务用例
-	planUseCase := biz.NewPlanUseCase(planRepo, taskRepo, feedbackRepo, adjustmentRepo, industryRepo, aiClient, diagClient, publisher, logger)
+	planUseCase := biz.NewPlanUseCase(planRepo, taskRepo, feedbackRepo, adjustmentRepo, industryRepo, aiClient, diagClient, publisher, archiveClient, logger)
 
 	// service 层：gRPC 服务实现
 	planService := service.NewPlanService(planUseCase)
@@ -115,6 +126,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		closers = append(closers, c)
 	}
 	if c, ok := diagClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := archiveClient.(closer); ok {
 		closers = append(closers, c)
 	}
 	if c, ok := publisher.(closer); ok {

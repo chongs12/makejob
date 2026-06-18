@@ -18,6 +18,7 @@ import {
   resolvePreferredFrontendIndustry,
   subscribeFrontendIndustryCodeChange,
 } from '../../shared/industryContext'
+import { useFrontendIndustriesQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { fetchMistakeTopics, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
 import {
@@ -78,11 +79,7 @@ export function InterviewReportPage() {
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-  })
+  const industriesQuery = useFrontendIndustriesQuery()
   const reportIndustryCode = detailQuery.data?.industry_code || selectedIndustryCode || INTERVIEW_DEFAULT_INDUSTRY_CODE
   const reportIndustry = useMemo(
     () => resolvePreferredFrontendIndustry(industriesQuery.data || [], reportIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),

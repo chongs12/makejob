@@ -1,10 +1,56 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
+import {
+  Button,
+  Input,
+  Select,
+  Tag,
+  Avatar,
+  Divider,
+  Empty,
+  Spin,
+  Tabs,
+  Progress,
+  Timeline,
+  Tooltip,
+} from 'antd'
+import type { TabsProps } from 'antd'
+import {
+  BookOutlined,
+  CalendarOutlined,
+  TrophyOutlined,
+  CheckCircleOutlined,
+  FireOutlined,
+  RiseOutlined,
+  StarOutlined,
+  TagOutlined,
+  ArrowRightOutlined,
+  ClockCircleOutlined,
+  UserOutlined,
+  FileTextOutlined,
+  BulbOutlined,
+  HeartOutlined,
+  LikeOutlined,
+  MessageOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  PlayCircleOutlined,
+  BarChartOutlined,
+  LineChartOutlined,
+  PieChartOutlined,
+  AimOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+  FlagOutlined,
+  AreaChartOutlined,
+  ApartmentOutlined,
+} from '@ant-design/icons'
 import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
-import { AsyncEmptyState, AsyncInlineState, AsyncStatusCard } from '../../shared/asyncState'
+import { AsyncEmptyState, AsyncInlineState } from '../../shared/asyncState'
 import { buildGrowthCompanionContextDraft, persistCompanionPlanContext } from '../../shared/companionContext'
 import { DEFAULT_FRONTEND_INDUSTRY_CODE, readSelectedFrontendIndustryCode } from '../../shared/industryContext'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
@@ -22,6 +68,8 @@ import {
   resolvePracticeQuestionSetTitle,
 } from '../../shared/practiceRoute'
 import { fetchWeeklyFocus } from '../../shared/weeklyFocus'
+
+/* ---------- Types ---------- */
 
 interface GrowthCategoryStat {
   category_id: number
@@ -130,34 +178,43 @@ interface GrowthSummaryResponse {
   recent_plans: GrowthPlanSnapshot[]
 }
 
-/**
- * 拉取成长档案页需要的聚合摘要数据。
- */
-async function fetchGrowthSummary(token: string): Promise<GrowthSummaryResponse> {
-  const response = await requestJson<ApiEnvelope<GrowthSummaryResponse>>('/growth/summary', {
-    token,
-  })
+/* ---------- Theme ---------- */
 
+const THEME = {
+  primary: '#3b82f6',
+  primaryLight: '#eff6ff',
+  primaryDark: '#1d4ed8',
+  textPrimary: '#1f2937',
+  textSecondary: '#6b7280',
+  textTertiary: '#9ca3af',
+  border: '#e5e7eb',
+  borderLight: '#f3f4f6',
+  bg: '#f8fafc',
+  white: '#ffffff',
+  radius: 12,
+  radiusSm: 8,
+  shadow: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
+  shadowHover: '0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)',
+  green: '#10b981',
+  orange: '#f59e0b',
+  red: '#ef4444',
+  purple: '#8b5cf6',
+}
+
+/* ---------- Helpers ---------- */
+
+async function fetchGrowthSummary(token: string): Promise<GrowthSummaryResponse> {
+  const response = await requestJson<ApiEnvelope<GrowthSummaryResponse>>('/growth/summary', { token })
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取成长档案失败')
   }
-
   return response.data
 }
 
-/**
- * 将时间值格式化为成长档案页更易读的中文时间文本。
- */
 function formatGrowthDateTime(value?: string): string {
-  if (!value) {
-    return '--'
-  }
-
+  if (!value) return '--'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
+  if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -167,19 +224,10 @@ function formatGrowthDateTime(value?: string): string {
   })
 }
 
-/**
- * 将日期字符串压缩成适合卡片展示的日期文案。
- */
 function formatGrowthDate(value?: string): string {
-  if (!value) {
-    return '--'
-  }
-
+  if (!value) return '--'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
+  if (Number.isNaN(date.getTime())) return value
   return date.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -187,106 +235,488 @@ function formatGrowthDate(value?: string): string {
   })
 }
 
-/**
- * 将学习计划状态转换为成长档案页使用的中文标签。
- */
 function growthPlanStatusLabel(status: string): string {
-  const labelMap: Record<string, string> = {
+  const map: Record<string, string> = {
     active: '进行中',
     paused: '已暂停',
     completed: '已完成',
     draft: '草稿',
   }
-
-  return labelMap[status] || status || '未定义'
+  return map[status] || status || '未定义'
 }
 
-/**
- * 将面试状态转换为成长档案页使用的中文标签。
- */
 function growthInterviewStatusLabel(status: string): string {
-  const labelMap: Record<string, string> = {
+  const map: Record<string, string> = {
     preparing: '准备中',
     ongoing: '进行中',
     report_generating: '报告生成中',
     completed: '已完成',
     cancelled: '已取消',
   }
-
-  return labelMap[status] || status || '未定义'
+  return map[status] || status || '未定义'
 }
 
-/**
- * 格式化数值，避免空值和小数展示不稳定。
- */
 function formatGrowthScore(score: number): string {
-  if (!Number.isFinite(score)) {
-    return '--'
-  }
-
+  if (!Number.isFinite(score)) return '--'
   return Number(score).toFixed(1)
 }
 
-/**
- * 生成最近学习日志的摘要句子，避免列表项视觉上过于松散。
- */
 function buildGrowthLogSummary(log: GrowthStudyLog): string {
-  if (log.summary.trim()) {
-    return log.summary.trim()
-  }
-
+  if (log.summary.trim()) return log.summary.trim()
   const fragments = [`完成 ${log.completed_count} 项`]
-  if (log.skipped_count > 0) {
-    fragments.push(`跳过 ${log.skipped_count} 项`)
-  }
-  if (log.focus_task_title.trim()) {
-    fragments.push(`聚焦「${log.focus_task_title.trim()}」`)
-  }
-
+  if (log.skipped_count > 0) fragments.push(`跳过 ${log.skipped_count} 项`)
+  if (log.focus_task_title.trim()) fragments.push(`聚焦「${log.focus_task_title.trim()}」`)
   return fragments.join('，')
 }
 
-/**
- * 将题单 slug 数组压缩成适合卡片展示的中文标题列表。
- */
 function formatGrowthQuestionSets(questionSets: string[]): string {
-  const labels = questionSets
-    .map((item) => resolvePracticeQuestionSetTitle(item))
-    .filter(Boolean)
-
-  return labels.join('、')
+  return questionSets.map((item) => resolvePracticeQuestionSetTitle(item)).filter(Boolean).join('、')
 }
 
-/**
- * 将学习计划任务来源编码转换为成长档案页可直接展示的中文标签。
- */
 function resolveGrowthTaskSourceLabel(source?: string): string {
-  const normalizedSource = String(source || '').trim()
-	const labelMap: Record<string, string> = {
-		weak_topic: '当前弱项',
-		goal: '阶段目标',
-		default: '默认计划任务',
-		practice_recommendation: '练习推荐',
-		weekly_focus: '本周重点补强',
-		plan_feedback_diagnosis: '训练反馈诊断',
-	}
-
-  return labelMap[normalizedSource] || normalizedSource || '未标注来源'
+  const map: Record<string, string> = {
+    weak_topic: '当前弱项',
+    goal: '阶段目标',
+    default: '默认计划任务',
+    practice_recommendation: '练习推荐',
+    weekly_focus: '本周重点补强',
+    plan_feedback_diagnosis: '训练反馈诊断',
+  }
+  return map[String(source || '').trim()] || source || '未标注来源'
 }
 
-/**
- * 读取当前前台方向偏好，供成长档案把趋势和弱项继续带入学习陪伴页。
- */
 function resolveGrowthCompanionIndustryCode(): string {
   return readSelectedFrontendIndustryCode().trim() || DEFAULT_FRONTEND_INDUSTRY_CODE
 }
 
-/**
- * 输出成长档案主页面，集中展示用户的练习、面试、计划和每日推进轨迹。
- */
+/* ---------- Sub Components ---------- */
+
+function CoreStatCard({ icon, label, value, suffix, color }: {
+  icon: React.ReactNode
+  label: string
+  value: string | number
+  suffix?: string
+  color?: string
+}) {
+  return (
+    <div
+      style={{
+        background: THEME.white,
+        borderRadius: THEME.radius,
+        border: `1px solid ${THEME.border}`,
+        padding: '18px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        transition: 'box-shadow .2s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = THEME.shadowHover }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
+    >
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 10,
+          background: color ? `${color}15` : THEME.primaryLight,
+          color: color || THEME.primary,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 20,
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: 13, color: THEME.textSecondary, marginBottom: 2 }}>{label}</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: THEME.textPrimary, lineHeight: 1.2 }}>
+          {value}
+          {suffix ? <span style={{ fontSize: 13, fontWeight: 400, color: THEME.textTertiary, marginLeft: 4 }}>{suffix}</span> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlanBanner({ plan, onFollowUp }: {
+  plan?: GrowthCurrentPlan | null
+  onFollowUp: (opts: { summary: string; focusTitle: string; weakTopics: string[]; suggestions: string[] }) => void
+}) {
+  const navigate = useNavigate()
+
+  if (!plan) {
+    return (
+      <div style={{ background: THEME.primaryLight, borderRadius: THEME.radius, border: `1px solid ${THEME.primary}20`, padding: '24px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 13, color: THEME.primary, fontWeight: 600, marginBottom: 4 }}>当前主计划</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textPrimary }}>暂时没有进行中的计划</div>
+          <p style={{ color: THEME.textSecondary, fontSize: 13, margin: '4px 0 0' }}>如果你已经有面试报告和练习记录，下一步最值得继续用学习陪伴页把计划执行闭环补齐。</p>
+        </div>
+        <Button type="primary" icon={<RocketOutlined />} onClick={() => onFollowUp({
+          summary: '根据成长档案里的最近练习和面试结果，先整理一份可执行的学习计划。',
+          focusTitle: '当前趋势主线',
+          weakTopics: [],
+          suggestions: ['生成一份围绕当前弱项的学习计划'],
+        })}>
+          生成学习计划
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ background: THEME.primaryLight, borderRadius: THEME.radius, border: `1px solid ${THEME.primary}20`, padding: '24px 28px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: THEME.primary, fontWeight: 600, marginBottom: 4 }}>当前主计划 · {growthPlanStatusLabel(plan.status)}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: THEME.textPrimary, marginBottom: 6 }}>{plan.title}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, maxWidth: 300 }}>
+              <Progress percent={Math.round(plan.progress)} size="small" strokeColor={THEME.primary} />
+            </div>
+            <span style={{ fontSize: 13, color: THEME.textSecondary }}>{plan.completed_tasks}/{plan.total_tasks} 任务</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          {plan.next_task_collection_hint ? (
+            <Button
+              type="primary"
+              icon={<BookOutlined />}
+              onClick={() => navigate({
+                to: '/practice',
+                search: buildPracticeRouteSearch({
+                  questionSetSlug: plan.next_task_collection_hint,
+                  source: 'practice_recommendation',
+                  title: plan.next_task_title,
+                  reason: plan.next_task_reason,
+                }),
+              })}
+            >
+              按建议题单补练
+            </Button>
+          ) : null}
+          <Button
+            icon={<RocketOutlined />}
+            onClick={() => onFollowUp({
+              summary: plan.next_task_reason || '继续围绕当前主计划的下一任务推进，并根据最近趋势收口学习节奏。',
+              focusTitle: plan.next_task_title || plan.title || '当前主计划',
+              weakTopics: [plan.next_task_title || '', plan.next_task_reason || ''],
+              suggestions: [plan.next_task_reason || '优先推进当前计划里的下一项任务。'],
+            })}
+          >
+            去陪伴页
+          </Button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: THEME.textSecondary }}>
+        <BulbOutlined />
+        <span>下一步：</span>
+        <span style={{ fontWeight: 600, color: THEME.textPrimary }}>{plan.next_task_title || '当前没有待推进任务'}</span>
+        {plan.next_task_source ? <Tag size="small" style={{ margin: 0 }}>{resolveGrowthTaskSourceLabel(plan.next_task_source)}</Tag> : null}
+        {plan.next_task_reason ? <span>· {plan.next_task_reason}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function TrendSignalsPanel({ signals, mistakeTopicMap, onFollowUp }: {
+  signals: GrowthFocusSignal[]
+  mistakeTopicMap: Map<string, { code: string; title: string; problem_pattern: string; tag: string }>
+  onFollowUp: (opts: { summary: string; focusTitle: string; weakTopics: string[]; suggestions: string[] }) => void
+}) {
+  const navigate = useNavigate()
+
+  if (!signals.length) {
+    return <Empty description="还没有趋势信号，先做几道题或完成一场面试" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {signals.map((item, index) => (
+        <div
+          key={`${item.focus_tag}-${index}`}
+          style={{
+            background: THEME.white,
+            borderRadius: THEME.radius,
+            border: `1px solid ${THEME.border}`,
+            padding: '16px 20px',
+            transition: 'box-shadow .2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = THEME.shadowHover }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Tag color="red" style={{ margin: 0, fontSize: 12 }}>{item.focus_tag}</Tag>
+              <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textPrimary }}>{item.topic_title || item.focus_tag}</span>
+              {item.dominant_archive_phase_label ? <Tag size="small" style={{ margin: 0 }}>{item.dominant_archive_phase_label}</Tag> : null}
+            </div>
+            <span style={{ fontSize: 12, color: THEME.textTertiary, flexShrink: 0 }}>{item.source_label}</span>
+          </div>
+
+          <div style={{ fontSize: 13, color: THEME.textSecondary, lineHeight: 1.7, marginBottom: 10 }}>
+            {item.reason ? <p style={{ margin: '0 0 4px' }}>{item.reason}</p> : null}
+            <p style={{ margin: 0 }}>
+              最近出现 <strong style={{ color: THEME.textPrimary }}>{item.occurrence_count}</strong> 次
+              {item.archive_occurrence_count > 0 ? `，练习暴露 ${item.archive_occurrence_count} 次` : ''}
+              {item.interview_occurrence_count > 0 ? `，面试暴露 ${item.interview_occurrence_count} 次` : ''}
+            </p>
+          </div>
+
+          {item.recommended_actions.length > 0 ? (
+            <ul style={{ margin: '0 0 12px', paddingLeft: 18, color: THEME.textSecondary, fontSize: 13, lineHeight: 1.8 }}>
+              {item.recommended_actions.map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              type="primary"
+              icon={<BookOutlined />}
+              onClick={() => navigate({
+                to: '/practice',
+                search: buildPracticeRouteSearch({
+                  questionSetSlug: item.primary_question_set || item.related_question_sets?.[0] || '',
+                  topicCode: item.topic_code,
+                  focusTags: [item.focus_tag],
+                  source: 'practice_recommendation',
+                  title: item.topic_title || item.focus_tag,
+                  reason: item.reason,
+                }),
+              })}
+            >
+              去题库补练
+            </Button>
+            <Button
+              size="small"
+              icon={<RocketOutlined />}
+              onClick={() => onFollowUp({
+                summary: item.reason || `围绕「${item.topic_title || item.focus_tag}」继续收束当前学习主线。`,
+                focusTitle: item.topic_title || item.focus_tag,
+                weakTopics: [item.focus_tag, item.topic_title || '', item.topic_problem_pattern || ''],
+                suggestions: item.recommended_actions || [],
+              })}
+            >
+              带入学习计划
+            </Button>
+            {item.topic_code ? (
+              <Button size="small" onClick={() => navigate({ to: resolveMistakeTopicRoute(), params: { topicCode: item.topic_code } })}>
+                看专题
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WeeklyFocusPanel({ themes, weeklyFocusTopicMap, onFollowUp, onOpenPractice }: {
+  themes: Array<{
+    title: string
+    source_label: string
+    dominant_archive_phase_label?: string
+    reason: string
+    occurrence_count: number
+    interview_occurrence_count: number
+    focus_tags: string[]
+    related_question_sets?: string[]
+    suggestions: string[]
+    topic_codes: string[]
+  }>
+  weeklyFocusTopicMap: Map<string, { code: string; title: string; problem_pattern: string; tag: string } | null>
+  onFollowUp: (opts: { summary: string; focusTitle: string; weakTopics: string[]; suggestions: string[] }) => void
+  onOpenPractice: (themeTitle: string) => void
+}) {
+  if (!themes.length) {
+    return <Empty description="本周还没有明确主攻主题" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {themes.map((theme) => {
+        const linkedTopic = weeklyFocusTopicMap.get(theme.title)
+        return (
+          <div
+            key={theme.title}
+            style={{
+              background: THEME.white,
+              borderRadius: THEME.radius,
+              border: `1px solid ${THEME.border}`,
+              padding: '16px 20px',
+              transition: 'box-shadow .2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = THEME.shadowHover }}
+            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <Tag color="orange" style={{ margin: 0, fontSize: 12 }}>本周重点</Tag>
+                <span style={{ fontSize: 15, fontWeight: 600, color: THEME.textPrimary }}>{theme.title}</span>
+                {theme.dominant_archive_phase_label ? <Tag size="small" style={{ margin: 0 }}>{theme.dominant_archive_phase_label}</Tag> : null}
+              </div>
+              <span style={{ fontSize: 12, color: THEME.textTertiary }}>{theme.source_label}</span>
+            </div>
+
+            <p style={{ color: THEME.textSecondary, fontSize: 13, lineHeight: 1.7, margin: '0 0 10px' }}>{theme.reason}</p>
+
+            {theme.focus_tags.length > 0 ? (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                {theme.focus_tags.map((tag) => <Tag key={tag} size="small" style={{ margin: 0 }}>{tag}</Tag>)}
+              </div>
+            ) : null}
+
+            {theme.suggestions.length > 0 ? (
+              <ul style={{ margin: '0 0 12px', paddingLeft: 18, color: THEME.textSecondary, fontSize: 13, lineHeight: 1.8 }}>
+                {theme.suggestions.map((s) => <li key={s}>{s}</li>)}
+              </ul>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button size="small" type="primary" icon={<RocketOutlined />} onClick={() => onFollowUp({
+                summary: theme.reason,
+                focusTitle: theme.title,
+                weakTopics: [theme.title, ...theme.focus_tags],
+                suggestions: theme.suggestions,
+              })}>
+                生成补强计划
+              </Button>
+              <Button size="small" icon={<BookOutlined />} onClick={() => onOpenPractice(theme.title)}>去题库补练</Button>
+              {linkedTopic ? (
+                <Button size="small" onClick={() => { /* navigate handled in parent */ }}>打开专题</Button>
+              ) : null}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function RecommendationsPanel({ items, mistakeTopicMap }: {
+  items: Array<{
+    question: { id: number; title: string; difficulty: string; type: string }
+    focus_tag: string
+    topic_title?: string
+    topic_code?: string
+    dominant_archive_phase_label?: string
+    reason: string
+    priority_explanation?: string
+    recommendation_mode: string
+    source_type: string
+    primary_question_set?: string
+    topic_problem_pattern?: string
+    related_question_sets?: string[]
+    recommended_actions?: string[]
+  }>
+  mistakeTopicMap: Map<string, { code: string; title: string; problem_pattern: string; tag: string }>
+}) {
+  const navigate = useNavigate()
+
+  if (!items.length) {
+    return <Empty description="还没有足够的推荐依据，先在题库里完成几道题" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {items.map((item) => {
+        const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
+        return (
+          <div
+            key={item.question.id}
+            style={{
+              background: THEME.white,
+              borderRadius: THEME.radius,
+              border: `1px solid ${THEME.border}`,
+              padding: '14px 18px',
+              transition: 'box-shadow .2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = THEME.shadowHover }}
+            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Tag color="blue" style={{ margin: 0, fontSize: 12 }}>{item.focus_tag}</Tag>
+                <span style={{ fontSize: 14, fontWeight: 600, color: THEME.textPrimary }}>{item.question.title}</span>
+                <Tag size="small" style={{ margin: 0 }}>{item.question.difficulty || '未标注'}</Tag>
+              </div>
+            </div>
+
+            <p style={{ color: THEME.textSecondary, fontSize: 13, lineHeight: 1.6, margin: '0 0 8px' }}>{item.reason}</p>
+
+            {item.recommended_actions && item.recommended_actions.length > 0 ? (
+              <ul style={{ margin: '0 0 10px', paddingLeft: 18, color: THEME.textSecondary, fontSize: 13, lineHeight: 1.7 }}>
+                {item.recommended_actions.map((a) => <li key={a}>{a}</li>)}
+              </ul>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button size="small" type="primary" icon={<PlayCircleOutlined />} onClick={() => navigate({
+                to: resolvePracticeRecommendationRoute(item.question.type),
+                params: { questionId: String(item.question.id) },
+              })}>
+                去做这题
+              </Button>
+              <Button size="small" icon={<BookOutlined />} onClick={() => navigate({
+                to: '/practice',
+                search: buildPracticeRecommendationRouteSearch({
+                  focus_tag: item.focus_tag,
+                  topic_code: item.topic_code,
+                  primary_question_set: item.primary_question_set,
+                  reason: item.reason,
+                  question_title: item.question.title,
+                }, linkedTopic),
+              })}>
+                进入这组补练
+              </Button>
+              {item.topic_code ? (
+                <Button size="small" onClick={() => navigate({ to: resolveMistakeTopicRoute(), params: { topicCode: item.topic_code } })}>
+                  看错因专题
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CategoryMiniBar({ name, total, correct, accuracy }: { name: string; total: number; correct: number; accuracy: number }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: 13, color: THEME.textPrimary, fontWeight: 500 }}>{name}</span>
+        <span style={{ fontSize: 12, color: THEME.textTertiary }}>{correct}/{total} · {formatGrowthScore(accuracy)}%</span>
+      </div>
+      <div style={{ height: 6, background: THEME.borderLight, borderRadius: 3, overflow: 'hidden' }}>
+        <div
+          style={{
+            height: '100%',
+            width: `${Math.min(accuracy, 100)}%`,
+            background: accuracy >= 70 ? THEME.green : accuracy >= 40 ? THEME.orange : THEME.red,
+            borderRadius: 3,
+            transition: 'width .4s ease',
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Main Page ---------- */
+
 export default function GrowthPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const accessToken = useAuthStore((state) => state.accessToken)
+  const [activeTab, setActiveTab] = useState('trends')
 
   const growthSummaryQuery = useQuery({
     queryKey: ['growth-summary', accessToken],
@@ -324,10 +754,12 @@ export default function GrowthPage() {
     () => (growthSummaryQuery.data?.practice_stats?.category_stats || []).slice(0, 4),
     [growthSummaryQuery.data?.practice_stats?.category_stats],
   )
+
   const focusTopics = useMemo(
     () => pickMistakeTopicsByTags(practiceRecommendationsQuery.data?.focus_tags || [], mistakeTopicsQuery.data || []),
     [practiceRecommendationsQuery.data?.focus_tags, mistakeTopicsQuery.data],
   )
+
   const weeklyFocusTopicMap = useMemo(
     () =>
       new Map(
@@ -340,16 +772,15 @@ export default function GrowthPage() {
     [mistakeTopicMap, weeklyFocusQuery.data?.themes],
   )
 
-  /**
-   * 根据补强主题构造正式题库路由并跳转到刷题页，减少用户手动重新组织筛选条件。
-   */
+  const data = growthSummaryQuery.data
+  const stats = data?.practice_stats
+
   function handleOpenWeeklyFocusPractice(themeTitle: string): void {
     const theme = weeklyFocusQuery.data?.themes.find((item) => item.title === themeTitle)
     if (!theme) {
       navigate({ to: '/practice' })
       return
     }
-
     const linkedTopic = weeklyFocusTopicMap.get(themeTitle)
     navigate({
       to: '/practice',
@@ -357,9 +788,6 @@ export default function GrowthPage() {
     })
   }
 
-  /**
-   * 将成长档案里的趋势、弱项和建议压缩成陪伴页可直接消费的计划上下文。
-   */
   function handleCompanionFollowUp(options: {
     summary: string
     focusTitle: string
@@ -375,651 +803,332 @@ export default function GrowthPage() {
       weakTopics: options.weakTopics,
       suggestions: options.suggestions,
     }))
-    navigate({
-      to: '/companion',
-    })
+    navigate({ to: '/companion' })
   }
 
+  const tabItems: TabsProps['items'] = [
+    {
+      key: 'trends',
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <LineChartOutlined />趋势信号
+        </span>
+      ),
+      children: data ? (
+        <TrendSignalsPanel
+          signals={data.focus_signals}
+          mistakeTopicMap={mistakeTopicMap}
+          onFollowUp={handleCompanionFollowUp}
+        />
+      ) : null,
+    },
+    {
+      key: 'weekly',
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <FireOutlined />本周补强
+        </span>
+      ),
+      children: weeklyFocusQuery.data ? (
+        <WeeklyFocusPanel
+          themes={weeklyFocusQuery.data.themes}
+          weeklyFocusTopicMap={weeklyFocusTopicMap}
+          onFollowUp={handleCompanionFollowUp}
+          onOpenPractice={handleOpenWeeklyFocusPractice}
+        />
+      ) : weeklyFocusQuery.isLoading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+      ) : null,
+    },
+    {
+      key: 'recommendations',
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <AimOutlined />推荐补练
+        </span>
+      ),
+      children: practiceRecommendationsQuery.data ? (
+        <RecommendationsPanel
+          items={practiceRecommendationsQuery.data.items}
+          mistakeTopicMap={mistakeTopicMap}
+        />
+      ) : practiceRecommendationsQuery.isLoading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+      ) : null,
+    },
+  ]
+
   return (
-    <section className="page-panel">
-      <span className="page-tag">成长档案</span>
-      <h1>把练习、面试、计划和每日推进沉淀成一份可回看的成长记录</h1>
-      <p className="page-copy">
-        这里不再只是登录后的占位工作台，而是你每天刷题、面试、学习陪伴推进结果的聚合页。后续继续做功能时，这里也会成为最稳定的个人闭环首页。
-      </p>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: THEME.textPrimary, margin: '0 0 4px' }}>成长档案</h1>
+        <p style={{ color: THEME.textSecondary, margin: 0, fontSize: 13 }}>把练习、面试、计划和每日推进沉淀成一份可回看的成长记录</p>
+      </div>
 
       {!accessToken ? (
-        <AsyncEmptyState
-          title="登录后查看成长档案"
-          message="成长档案会把练习、面试、学习计划和每日推进统一沉淀到这里，登录后才能看到你的趋势解释和下一步建议。"
-          style={{ marginTop: 24 }}
-          action={(
-            <button className="secondary-button" type="button" onClick={() => requestLoginPrompt('/growth', 'missing')}>
-              去登录
-            </button>
-          )}
-        />
+        <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: 48, textAlign: 'center' }}>
+          <CalendarOutlined style={{ fontSize: 48, color: THEME.border, marginBottom: 16 }}></CalendarOutlined>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: THEME.textPrimary, margin: '0 0 8px' }}>登录后查看成长档案</h2>
+          <p style={{ color: THEME.textSecondary, fontSize: 14, margin: '0 0 20px' }}>成长档案会把练习、面试、学习计划和每日推进统一沉淀到这里。</p>
+          <Button type="primary" onClick={() => requestLoginPrompt('/growth', 'missing')}>去登录</Button>
+        </div>
       ) : null}
 
-      {growthSummaryQuery.isLoading ? <AsyncStatusCard message="成长档案加载中..." style={{ marginTop: 24 }} /> : null}
+      {growthSummaryQuery.isLoading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+      ) : null}
 
       {growthSummaryQuery.isError ? (
-        <AsyncStatusCard
-          message={extractErrorMessage(growthSummaryQuery.error, '成长档案读取失败，请稍后重试')}
-          style={{ marginTop: 24 }}
-          tone="error"
-        />
+        <div style={{ padding: 24, textAlign: 'center', color: THEME.red }}>
+          {extractErrorMessage(growthSummaryQuery.error, '成长档案读取失败，请稍后重试')}
+        </div>
       ) : null}
 
-      {growthSummaryQuery.data ? (
+      {data ? (
         <>
-          <div className="grid-cards" style={{ marginTop: 24 }}>
-            <article className="feature-card">
-              <h2>累计学习天数</h2>
-              <strong>{growthSummaryQuery.data.study_days}</strong>
-              <p>只要学习陪伴页有当日推进记录，这里就会累计沉淀下来。</p>
-            </article>
-
-            <article className="feature-card">
-              <h2>连续答题天数</h2>
-              <strong>{growthSummaryQuery.data.practice_stats?.streak_days || 0}</strong>
-              <p>今日已答 {growthSummaryQuery.data.practice_stats?.today_count || 0} 题。</p>
-            </article>
-
-            <article className="feature-card">
-              <h2>累计面试场次</h2>
-              <strong>{growthSummaryQuery.data.interview_count}</strong>
-              <p>其中已完成 {growthSummaryQuery.data.completed_interview_count} 场。</p>
-            </article>
-
-            <article className="feature-card">
-              <h2>最近完成面试均分</h2>
-              <strong>
-                {growthSummaryQuery.data.completed_interview_count > 0
-                  ? formatGrowthScore(growthSummaryQuery.data.average_interview_score)
-                  : '--'}
-              </strong>
-              <p>只统计已完成面试，便于观察最近输出质量。</p>
-            </article>
+          {/* Core stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
+            <CoreStatCard
+              icon={<CalendarOutlined />}
+              label="累计学习天数"
+              value={data.study_days}
+              suffix="天"
+              color={THEME.primary}
+            />
+            <CoreStatCard
+              icon={<FireOutlined />}
+              label="连续打卡"
+              value={stats?.streak_days || 0}
+              suffix="天"
+              color={THEME.orange}
+            />
+            <CoreStatCard
+              icon={<TrophyOutlined />}
+              label="面试场次"
+              value={data.interview_count}
+              suffix={`已完成 ${data.completed_interview_count}`}
+              color={THEME.purple}
+            />
+            <CoreStatCard
+              icon={<CheckCircleOutlined />}
+              label="总正确率"
+              value={data.completed_interview_count > 0 ? formatGrowthScore(data.average_interview_score) : '--'}
+              suffix="%"
+              color={THEME.green}
+            />
           </div>
 
-          <div className="grid-cards" style={{ marginTop: 24 }}>
-            <article className="status-card">
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">当前主计划</span>
-                  <h2>{growthSummaryQuery.data.current_plan?.title || '暂时没有进行中的计划'}</h2>
-                </div>
-                <span>{growthSummaryQuery.data.current_plan ? `${Math.round(growthSummaryQuery.data.current_plan.progress)}%` : '--'}</span>
+          {/* Plan banner */}
+          <div style={{ marginBottom: 20 }}>
+            <PlanBanner plan={data.current_plan} onFollowUp={handleCompanionFollowUp} />
+          </div>
+
+          {/* Action center tabs */}
+          <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: '20px 24px', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: THEME.textPrimary, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ThunderboltOutlined style={{ color: THEME.orange }} />
+                行动中心
+              </h2>
+              {data.trend_summary?.summary ? (
+                <Tooltip title={data.trend_summary.summary}>
+                  <Tag color="blue" style={{ cursor: 'help' }}>{data.trend_summary.dominant_source_label}</Tag>
+                </Tooltip>
+              ) : null}
+            </div>
+            <Tabs
+              activeKey={activeTab}
+              onChange={setActiveTab}
+              items={tabItems}
+              size="small"
+            />
+          </div>
+
+          {/* Two-column data area */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 20 }}>
+            {/* Practice overview */}
+            <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: '20px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: THEME.textPrimary, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <BarChartOutlined style={{ color: THEME.primary }} />
+                  练习概览
+                </h3>
+                <Link to="/practice" style={{ fontSize: 13, color: THEME.primary, textDecoration: 'none' }}>去题库 →</Link>
               </div>
 
-              {growthSummaryQuery.data.current_plan ? (
+              {stats ? (
                 <>
-                  <p>状态：{growthPlanStatusLabel(growthSummaryQuery.data.current_plan.status)}</p>
-                  <p>
-                    任务进度：{growthSummaryQuery.data.current_plan.completed_tasks}/{growthSummaryQuery.data.current_plan.total_tasks}
-                  </p>
-                  <p>下一步最值得推进：{growthSummaryQuery.data.current_plan.next_task_title || '当前没有待推进任务'}</p>
-                  {growthSummaryQuery.data.current_plan.next_task_source ? (
-                    <p>任务来源：{resolveGrowthTaskSourceLabel(growthSummaryQuery.data.current_plan.next_task_source)}</p>
-                  ) : null}
-                  {growthSummaryQuery.data.current_plan.next_task_reason ? (
-                    <p>安排原因：{growthSummaryQuery.data.current_plan.next_task_reason}</p>
-                  ) : null}
-                  {growthSummaryQuery.data.current_plan.next_task_collection_hint ? (
-                    <p>建议题单：{resolvePracticeQuestionSetTitle(growthSummaryQuery.data.current_plan.next_task_collection_hint)}</p>
-                  ) : null}
-                  {growthSummaryQuery.data.current_plan.next_task_source_ref ? (
-                    <p>来源引用：{growthSummaryQuery.data.current_plan.next_task_source_ref}</p>
-                  ) : null}
-                  <div className="page-actions">
-                    {growthSummaryQuery.data.current_plan.next_task_collection_hint ? (
-                      <Link
-                        className="secondary-link"
-                        to="/practice"
-                        search={buildPracticeRouteSearch({
-                          questionSetSlug: growthSummaryQuery.data.current_plan.next_task_collection_hint,
-                          source: 'practice_recommendation',
-                          title: growthSummaryQuery.data.current_plan.next_task_title,
-                          reason: growthSummaryQuery.data.current_plan.next_task_reason,
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <Progress
+                        type="circle"
+                        percent={Math.round(stats.accuracy_rate)}
+                        size={80}
+                        strokeColor={stats.accuracy_rate >= 70 ? THEME.green : stats.accuracy_rate >= 40 ? THEME.orange : THEME.red}
+                        format={(percent) => <span style={{ fontSize: 16, fontWeight: 700 }}>{percent}%</span>}
+                      />
+                      <div style={{ fontSize: 12, color: THEME.textTertiary, marginTop: 4 }}>正确率</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontSize: 13, color: THEME.textSecondary }}>累计答题</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textPrimary }}>{stats.total_answered}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontSize: 13, color: THEME.textSecondary }}>答对</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: THEME.green }}>{stats.correct_count}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 13, color: THEME.textSecondary }}>答错</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: THEME.red }}>{stats.wrong_count}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Divider style={{ margin: '12px 0' }} />
+
+                  <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textPrimary, marginBottom: 10 }}>分类表现</div>
+                  {topCategoryStats.length > 0 ? (
+                    topCategoryStats.map((item) => (
+                      <CategoryMiniBar
+                        key={item.category_id}
+                        name={item.category_name}
+                        total={item.total}
+                        correct={item.correct}
+                        accuracy={item.accuracy_rate}
+                      />
+                    ))
+                  ) : (
+                    <Empty description="还没有分类统计" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                  )}
+                </>
+              ) : (
+                <Empty description="还没有练习数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </div>
+
+            {/* Recent activity */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Recent interviews */}
+              <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: '20px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: THEME.textPrimary, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <TrophyOutlined style={{ color: THEME.purple }} />
+                    最近面试
+                  </h3>
+                  <Link to="/interview" style={{ fontSize: 13, color: THEME.primary, textDecoration: 'none' }}>更多 →</Link>
+                </div>
+
+                {data.recent_interviews.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {data.recent_interviews.map((interview) => (
+                      <div
+                        key={interview.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                          background: THEME.bg,
+                          borderRadius: THEME.radiusSm,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => navigate({
+                          to: interview.status === 'ongoing' || interview.status === 'preparing'
+                            ? '/interview/$interviewId'
+                            : '/interview/$interviewId/report',
+                          params: { interviewId: String(interview.id) },
                         })}
                       >
-                        按建议题单去补练
-                      </Link>
-                    ) : null}
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => handleCompanionFollowUp({
-                        summary: growthSummaryQuery.data.current_plan?.next_task_reason || '继续围绕当前主计划的下一任务推进，并根据最近趋势收口学习节奏。',
-                        focusTitle: growthSummaryQuery.data.current_plan?.next_task_title || growthSummaryQuery.data.current_plan?.title || '当前主计划',
-                        weakTopics: [
-                          growthSummaryQuery.data.current_plan?.next_task_title || '',
-                          growthSummaryQuery.data.current_plan?.next_task_reason || '',
-                        ],
-                        suggestions: [growthSummaryQuery.data.current_plan?.next_task_reason || '优先推进当前计划里的下一项任务。'],
-                      })}
-                    >
-                      带着当前计划回到陪伴页
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p>如果你已经有面试报告和练习记录，下一步最值得继续用学习陪伴页把计划执行闭环补齐。</p>
-                  <div className="page-actions">
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => handleCompanionFollowUp({
-                        summary: growthSummaryQuery.data.trend_summary?.summary || '根据成长档案里的最近练习和面试结果，先整理一份可执行的学习计划。',
-                        focusTitle: growthSummaryQuery.data.trend_summary?.top_topic_title || growthSummaryQuery.data.trend_summary?.top_focus_tag || '当前趋势主线',
-                        weakTopics: growthSummaryQuery.data.focus_signals.map((item) => item.focus_tag).slice(0, 4),
-                        suggestions: growthSummaryQuery.data.focus_signals.flatMap((item) => item.recommended_actions || []).slice(0, 4),
-                      })}
-                    >
-                      去生成学习计划
-                    </button>
-                  </div>
-                </>
-              )}
-            </article>
-
-            <article className="status-card">
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">练习概览</span>
-                  <h2>题库主线数据</h2>
-                </div>
-                <span>{growthSummaryQuery.data.plan_count} 份计划</span>
-              </div>
-              <p>累计答题：{growthSummaryQuery.data.practice_stats?.total_answered || 0}</p>
-              <p>答对：{growthSummaryQuery.data.practice_stats?.correct_count || 0}</p>
-              <p>答错：{growthSummaryQuery.data.practice_stats?.wrong_count || 0}</p>
-              <p>正确率：{formatGrowthScore(growthSummaryQuery.data.practice_stats?.accuracy_rate || 0)}%</p>
-              <div className="page-actions">
-                <Link className="secondary-link" to="/practice">继续刷题</Link>
-                <Link className="secondary-link" to="/practice/wrong">复盘错题</Link>
-              </div>
-            </article>
-          </div>
-
-          {growthSummaryQuery.data.trend_summary?.summary || growthSummaryQuery.data.focus_signals?.length ? (
-            <article className="status-card" style={{ marginTop: 24 }}>
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">近期趋势</span>
-                  <h2>把最近练习与面试的变化压缩成可执行信号</h2>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => handleCompanionFollowUp({
-                    summary: growthSummaryQuery.data.trend_summary?.summary || '根据最近趋势信号重新收束学习计划。',
-                    focusTitle: growthSummaryQuery.data.trend_summary?.top_topic_title || growthSummaryQuery.data.trend_summary?.top_focus_tag || '当前趋势主线',
-                    weakTopics: growthSummaryQuery.data.focus_signals.map((item) => item.focus_tag).slice(0, 5),
-                    suggestions: growthSummaryQuery.data.focus_signals.flatMap((item) => item.recommended_actions || []).slice(0, 4),
-                  })}
-                >
-                  据此调整计划
-                </button>
-              </div>
-              {growthSummaryQuery.data.trend_summary?.summary ? (
-                <p>{growthSummaryQuery.data.trend_summary.summary}</p>
-              ) : null}
-              {growthSummaryQuery.data.trend_summary?.dominant_source_label ? (
-                <p>当前主导来源：{growthSummaryQuery.data.trend_summary.dominant_source_label}</p>
-              ) : null}
-              {growthSummaryQuery.data.trend_summary?.top_topic_title ? (
-                <p>当前最值得持续追打的专题：{growthSummaryQuery.data.trend_summary.top_topic_title}</p>
-              ) : null}
-              {growthSummaryQuery.data.trend_summary?.top_focus_tag ? (
-                <p>当前最高频问题标签：{growthSummaryQuery.data.trend_summary.top_focus_tag}</p>
-              ) : null}
-              {growthSummaryQuery.data.focus_signals?.length ? (
-                <div className="grid-cards" style={{ marginTop: 18 }}>
-                  {growthSummaryQuery.data.focus_signals.map((item, index) => (
-                    <article className="feature-card" key={`growth-focus-signal-${item.focus_tag}-${index}`}>
-                      <div className="card-inline">
-                        <strong>{item.topic_title || item.focus_tag}</strong>
-                        <span>{item.source_label || '趋势信号'}</span>
-                      </div>
-                      {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
-                      <p>聚焦标签：{item.focus_tag}</p>
-                      <p>最近出现 {item.occurrence_count} 次，其中练习暴露 {item.archive_occurrence_count} 次、面试暴露 {item.interview_occurrence_count} 次</p>
-                      {item.reason ? <p>{item.reason}</p> : null}
-                      {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
-                      {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
-                      {item.related_question_sets?.length ? <p>关联题单：{formatGrowthQuestionSets(item.related_question_sets)}</p> : null}
-                      {item.recommended_actions?.length ? (
-                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                          {item.recommended_actions.map((action) => (
-                            <li key={`${item.focus_tag}-${action}`}>{action}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <div className="page-actions">
-                        <Link
-                          className="secondary-link"
-                          to="/practice"
-                          search={buildPracticeRouteSearch({
-                            questionSetSlug: item.primary_question_set || item.related_question_sets?.[0] || '',
-                            topicCode: item.topic_code,
-                            focusTags: [item.focus_tag],
-                            source: 'practice_recommendation',
-                            title: item.topic_title || item.focus_tag,
-                            reason: item.reason,
-                          })}
-                        >
-                          去题库补练
-                        </Link>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => handleCompanionFollowUp({
-                            summary: item.reason || `围绕「${item.topic_title || item.focus_tag}」继续收束当前学习主线。`,
-                            focusTitle: item.topic_title || item.focus_tag,
-                            weakTopics: [item.focus_tag, item.topic_title || '', item.topic_problem_pattern || ''],
-                            suggestions: item.recommended_actions || [],
-                          })}
-                        >
-                          带入学习计划
-                        </button>
-                        {item.topic_code ? (
-                          <Link
-                            className="secondary-link"
-                            to={resolveMistakeTopicRoute()}
-                            params={{ topicCode: item.topic_code }}
-                          >
-                            打开专题
-                          </Link>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ) : null}
-
-          <article className="status-card" style={{ marginTop: 24 }}>
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">本周重点补强</span>
-                  <h2>把最近反复暴露的问题压缩成 1 到 3 个主攻主题</h2>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => handleCompanionFollowUp({
-                    summary: weeklyFocusQuery.data?.themes[0]?.reason || '把本周重点补强主题整理成一份连续执行的学习计划。',
-                    focusTitle: weeklyFocusQuery.data?.themes[0]?.title || '本周重点补强',
-                    weakTopics: weeklyFocusQuery.data?.themes.flatMap((theme) => [theme.title, ...theme.focus_tags]).slice(0, 6) || [],
-                    suggestions: weeklyFocusQuery.data?.themes.flatMap((theme) => theme.suggestions || []).slice(0, 4) || [],
-                  })}
-                >
-                  带入学习计划
-                </button>
-              </div>
-
-            {weeklyFocusQuery.isLoading ? <AsyncInlineState message="正在整理你这周最该优先补强的主题..." style={{ marginTop: 18 }} /> : null}
-
-            {weeklyFocusQuery.isError ? (
-              <AsyncInlineState
-                message={extractErrorMessage(weeklyFocusQuery.error, '本周补强主题加载失败')}
-                style={{ marginTop: 18 }}
-                tone="error"
-              />
-            ) : null}
-
-            {weeklyFocusQuery.data?.themes.length ? (
-              <div className="grid-cards" style={{ marginTop: 18 }}>
-                {weeklyFocusQuery.data.themes.map((theme) => {
-                  const linkedTopic = weeklyFocusTopicMap.get(theme.title)
-                  return (
-                    <article className="feature-card" key={`growth-weekly-focus-${theme.title}`}>
-                      <div className="card-inline">
-                        <strong>{theme.title}</strong>
-                        <span>{theme.source_label}</span>
-                      </div>
-                      {theme.dominant_archive_phase_label ? <p>主导阶段：{theme.dominant_archive_phase_label}</p> : null}
-                      <p>{theme.reason}</p>
-                      {(theme.occurrence_count > 0 || theme.interview_occurrence_count > 0) ? (
-                        <p>
-                          最近出现 {theme.occurrence_count} 次，其中面试暴露 {theme.interview_occurrence_count} 次
-                        </p>
-                      ) : null}
-                      {theme.focus_tags.length ? (
-                        <div className="community-tag-row">
-                          {theme.focus_tags.map((tag) => (
-                            <span key={`${theme.title}-${tag}`}>{tag}</span>
-                          ))}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Avatar size={28} icon={<TrophyOutlined />} style={{ background: THEME.primaryLight, color: THEME.primary, fontSize: 14 }} />
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textPrimary }}>面试 #{interview.id}</div>
+                            <div style={{ fontSize: 12, color: THEME.textTertiary }}>{formatGrowthDateTime(interview.created_at)}</div>
+                          </div>
                         </div>
-                      ) : null}
-                      {theme.related_question_sets?.length ? (
-                        <p style={{ marginTop: 12 }}>
-                          关联题单：{formatGrowthQuestionSets(theme.related_question_sets)}
-                        </p>
-                      ) : null}
-                      {theme.suggestions.length ? (
-                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                          {theme.suggestions.map((item) => (
-                            <li key={`${theme.title}-${item}`}>{item}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {linkedTopic ? <p style={{ marginTop: 12 }}>专题提示：{linkedTopic.problem_pattern}</p> : null}
-                      <div className="page-actions">
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => handleCompanionFollowUp({
-                            summary: theme.reason,
-                            focusTitle: theme.title,
-                            weakTopics: [theme.title, ...theme.focus_tags],
-                            suggestions: theme.suggestions,
-                          })}
-                        >
-                          去生成补强计划
-                        </button>
-                        <button className="secondary-button" type="button" onClick={() => handleOpenWeeklyFocusPractice(theme.title)}>
-                          去题库补练
-                        </button>
-                        {linkedTopic ? (
-                          <Link
-                            className="secondary-link"
-                            to={resolveMistakeTopicRoute()}
-                            params={{ topicCode: linkedTopic.code }}
-                          >
-                            打开专题
-                          </Link>
-                        ) : null}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Tag size="small" style={{ margin: 0 }}>{growthInterviewStatusLabel(interview.status)}</Tag>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textPrimary }}>{formatGrowthScore(interview.score)}</span>
+                        </div>
                       </div>
-                    </article>
-                  )
-                })}
-              </div>
-            ) : null}
-
-            {!weeklyFocusQuery.isLoading && !weeklyFocusQuery.isError && !weeklyFocusQuery.data?.themes.length ? (
-              <AsyncEmptyState
-                title="本周还没有明确主攻主题"
-                message="先做几道题或完成一场面试，学习档案和面试报告积累起来后，这里会自动帮你收束出本周最值得优先补强的方向。"
-                style={{ marginTop: 18 }}
-              />
-            ) : null}
-          </article>
-
-          <article className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <div>
-                <span className="section-kicker">最近最值得补的题</span>
-                <h2>按最近错因直接安排下一轮练习</h2>
-              </div>
-              <Link className="secondary-link" to="/practice">进入题库</Link>
-            </div>
-
-            {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在生成你的对症练习推荐..." style={{ marginTop: 18 }} /> : null}
-
-            {practiceRecommendationsQuery.isError ? (
-              <AsyncInlineState
-                message={extractErrorMessage(practiceRecommendationsQuery.error, '练习推荐加载失败')}
-                style={{ marginTop: 18 }}
-                tone="error"
-              />
-            ) : null}
-
-            {practiceRecommendationsQuery.data?.focus_tags.length ? (
-              <div className="community-tag-row" style={{ marginTop: 18 }}>
-                {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
-                  <span key={tag}>{tag}</span>
-                ))}
-              </div>
-            ) : null}
-
-            {practiceRecommendationsQuery.data?.items.length ? (
-              <div className="grid-cards" style={{ marginTop: 18 }}>
-                {practiceRecommendationsQuery.data.items.map((item) => {
-                  const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
-                  return (
-                    <article className="feature-card" key={`growth-practice-recommendation-${item.question.id}`}>
-                      <div className="card-inline">
-                        <strong>{item.question.title}</strong>
-                        <span>{item.focus_tag}</span>
-                      </div>
-                      {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
-                      {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
-                      <p>{item.reason}</p>
-                      {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
-                      <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
-                      <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
-                      <p>难度：{item.question.difficulty || '未标注'}</p>
-                      {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
-                      {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
-                      {item.related_question_sets?.length ? <p>关联题单：{formatGrowthQuestionSets(item.related_question_sets)}</p> : null}
-                      {item.recommended_actions?.length ? (
-                        <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                          {item.recommended_actions.map((action) => (
-                            <li key={`${item.question.id}-${action}`}>{action}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <div className="page-actions">
-                        <Link
-                          className="secondary-link"
-                          to="/practice"
-                          search={buildPracticeRecommendationRouteSearch({
-                            focus_tag: item.focus_tag,
-                            topic_code: item.topic_code,
-                            primary_question_set: item.primary_question_set,
-                            reason: item.reason,
-                            question_title: item.question.title,
-                          }, linkedTopic)}
-                      >
-                        进入这组补练
-                      </Link>
-                      <Link
-                        className="secondary-link"
-                        to={resolvePracticeRecommendationRoute(item.question.type)}
-                        params={{ questionId: String(item.question.id) }}
-                      >
-                        去做这题
-                      </Link>
-                      {item.topic_code ? (
-                        <Link
-                          className="secondary-link"
-                          to={resolveMistakeTopicRoute()}
-                          params={{ topicCode: item.topic_code }}
-                        >
-                          看错因专题
-                        </Link>
-                      ) : null}
-                    </div>
-                    </article>
-                  )
-                })}
-              </div>
-            ) : null}
-
-            {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
-              <AsyncEmptyState
-                title="还没有足够的推荐依据"
-                message="先在题库里完成几道编程题或主观题，学习档案积累出错因标签后，这里会更准确地指出下一步补题方向。"
-                style={{ marginTop: 18 }}
-                action={(
-                  <Link className="secondary-link" to="/practice">先去题库补练</Link>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description="还没有面试记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 )}
-              />
-            ) : null}
-
-            {focusTopics.length ? (
-              <div className="grid-cards" style={{ marginTop: 18 }}>
-                {focusTopics.map((topic) => (
-                  <article className="feature-card" key={topic.code}>
-                    <div className="card-inline">
-                      <strong>{topic.title}</strong>
-                      <span>{topic.tag}</span>
-                    </div>
-                    <p>{topic.problem_pattern}</p>
-                    <div className="page-actions">
-                      <Link
-                        className="secondary-link"
-                        to={resolveMistakeTopicRoute()}
-                        params={{ topicCode: topic.code }}
-                      >
-                        打开专题
-                      </Link>
-                    </div>
-                  </article>
-                ))}
               </div>
-            ) : null}
-          </article>
 
-          <article className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <div>
-                <span className="section-kicker">最近学习日志</span>
-                <h2>每天推进了什么，这里会持续沉淀</h2>
+              {/* Recent plans */}
+              <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: '20px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: THEME.textPrimary, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FlagOutlined style={{ color: THEME.primary }} />
+                    最近计划
+                  </h3>
+                  <Link to="/companion" style={{ fontSize: 13, color: THEME.primary, textDecoration: 'none' }}>更多 →</Link>
+                </div>
+
+                {data.recent_plans.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {data.recent_plans.map((plan) => (
+                      <div key={plan.id} style={{ padding: '10px 12px', background: THEME.bg, borderRadius: THEME.radiusSm }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textPrimary }}>{plan.title}</span>
+                          <Tag size="small" style={{ margin: 0 }}>{growthPlanStatusLabel(plan.status)}</Tag>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <Progress percent={Math.round(plan.progress)} size="small" strokeColor={THEME.primary} showInfo={false} />
+                          </div>
+                          <span style={{ fontSize: 12, color: THEME.textTertiary, flexShrink: 0 }}>{plan.completed_tasks}/{plan.total_tasks}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty description="还没有学习计划" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                )}
               </div>
-              <Link className="secondary-link" to="/companion">继续记录今天</Link>
             </div>
-
-            {growthSummaryQuery.data.recent_study_logs.length ? (
-              <div className="stack-list" style={{ marginTop: 18 }}>
-                {growthSummaryQuery.data.recent_study_logs.map((log) => (
-                  <article className="feature-card" key={log.id}>
-                    <div className="card-inline">
-                      <strong>{log.date_key}</strong>
-                      <span>{formatGrowthDateTime(log.updated_at)}</span>
-                    </div>
-                    <p>{buildGrowthLogSummary(log)}</p>
-                    <p>聚焦任务：{log.focus_task_title || '未记录'}</p>
-                    <p>完成 {log.completed_count} 项，跳过 {log.skipped_count} 项</p>
-                    <p>最新动作：{log.latest_action_text || '暂无'}</p>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="timeline-item" style={{ marginTop: 18 }}>
-                <strong>还没有服务端学习日志</strong>
-                <p>现在学习陪伴页会在你更新任务状态后自动同步每日摘要，后续这里会逐天沉淀。</p>
-                <div className="page-actions" style={{ marginTop: 12 }}>
-                  <Link className="secondary-link" to="/companion">去陪伴页记录今天</Link>
-                </div>
-              </div>
-            )}
-          </article>
-
-          <div className="grid-cards" style={{ marginTop: 24 }}>
-            <article className="status-card">
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">最近面试</span>
-                  <h2>最近几场模拟输出</h2>
-                </div>
-                <Link className="secondary-link" to="/interview">进入面试页</Link>
-              </div>
-
-              {growthSummaryQuery.data.recent_interviews.length ? (
-                <div className="stack-list" style={{ marginTop: 18 }}>
-                  {growthSummaryQuery.data.recent_interviews.map((interview) => (
-                    <article className="feature-card" key={interview.id}>
-                      <div className="card-inline">
-                        <strong>面试 #{interview.id}</strong>
-                        <span>{growthInterviewStatusLabel(interview.status)}</span>
-                      </div>
-                      <p>得分：{formatGrowthScore(interview.score)}</p>
-                      <p>题目数：{interview.total_questions}</p>
-                      <p>开始时间：{formatGrowthDateTime(interview.created_at)}</p>
-                      <div className="page-actions">
-                        <Link className="secondary-link" to={interview.status === 'ongoing' || interview.status === 'preparing' ? '/interview/$interviewId' : '/interview/$interviewId/report'} params={{ interviewId: String(interview.id) }}>
-                          查看详情
-                        </Link>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="timeline-item" style={{ marginTop: 18 }}>
-                  <strong>还没有面试记录</strong>
-                  <p>你可以先去 AI 面试页做一场完整模拟，成长档案会自动把记录聚合回来。</p>
-                  <div className="page-actions" style={{ marginTop: 12 }}>
-                    <Link className="secondary-link" to="/interview">去做一场面试</Link>
-                  </div>
-                </div>
-              )}
-            </article>
-
-            <article className="status-card">
-              <div className="card-inline">
-                <div>
-                  <span className="section-kicker">最近学习计划</span>
-                  <h2>计划主线留痕</h2>
-                </div>
-                <Link className="secondary-link" to="/companion">去看计划</Link>
-              </div>
-
-              {growthSummaryQuery.data.recent_plans.length ? (
-                <div className="stack-list" style={{ marginTop: 18 }}>
-                  {growthSummaryQuery.data.recent_plans.map((plan) => (
-                    <article className="feature-card" key={plan.id}>
-                      <div className="card-inline">
-                        <strong>{plan.title}</strong>
-                        <span>{growthPlanStatusLabel(plan.status)}</span>
-                      </div>
-                      <p>
-                        任务进度：{plan.completed_tasks}/{plan.total_tasks}
-                      </p>
-                      <p>完成度：{formatGrowthScore(plan.progress)}%</p>
-                      <p>开始时间：{formatGrowthDate(plan.start_date)}</p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="timeline-item" style={{ marginTop: 18 }}>
-                  <strong>还没有学习计划历史</strong>
-                  <p>建议先在学习陪伴页生成一份主计划，让练习和面试之后的提升动作真正落地。</p>
-                  <div className="page-actions" style={{ marginTop: 12 }}>
-                    <Link className="secondary-link" to="/companion">去生成学习计划</Link>
-                  </div>
-                </div>
-              )}
-            </article>
           </div>
 
-          <article className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <div>
-                <span className="section-kicker">分类表现</span>
-                <h2>最近最值得补的题型方向</h2>
-              </div>
-              <Link className="secondary-link" to="/practice">去题库补强</Link>
+          {/* Study log timeline */}
+          <div style={{ background: THEME.white, borderRadius: THEME.radius, border: `1px solid ${THEME.border}`, padding: '20px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: THEME.textPrimary, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ClockCircleOutlined style={{ color: THEME.primary }} />
+                学习日志
+              </h3>
+              <Link to="/companion" style={{ fontSize: 13, color: THEME.primary, textDecoration: 'none' }}>去记录 →</Link>
             </div>
 
-            {topCategoryStats.length ? (
-              <div className="grid-cards" style={{ marginTop: 18 }}>
-                {topCategoryStats.map((item) => (
-                  <article className="feature-card" key={item.category_id}>
-                    <h2>{item.category_name}</h2>
-                    <p>累计答题：{item.total}</p>
-                    <p>答对：{item.correct}</p>
-                    <p>正确率：{formatGrowthScore(item.accuracy_rate)}%</p>
-                  </article>
+            {data.recent_study_logs.length > 0 ? (
+              <Timeline mode="left">
+                {data.recent_study_logs.map((log) => (
+                  <Timeline.Item
+                    key={log.id}
+                    label={<span style={{ fontSize: 12, color: THEME.textTertiary }}>{log.date_key}</span>}
+                    dot={<div style={{ width: 10, height: 10, borderRadius: '50%', background: log.completed_count > 0 ? THEME.green : THEME.orange, border: `2px solid ${THEME.white}` }} />}
+                  >
+                    <div style={{ padding: '8px 12px', background: THEME.bg, borderRadius: THEME.radiusSm, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textPrimary, marginBottom: 4 }}>
+                        {buildGrowthLogSummary(log)}
+                      </div>
+                      <div style={{ fontSize: 12, color: THEME.textSecondary }}>
+                        聚焦：{log.focus_task_title || '未记录'} · 完成 {log.completed_count} · 跳过 {log.skipped_count}
+                      </div>
+                    </div>
+                  </Timeline.Item>
                 ))}
-              </div>
+              </Timeline>
             ) : (
-                <div className="timeline-item" style={{ marginTop: 18 }}>
-                  <strong>还没有分类统计</strong>
-                  <p>等你在题库里产生更多答题记录后，这里会更准确地指出当前薄弱点。</p>
-                  <div className="page-actions" style={{ marginTop: 12 }}>
-                    <Link className="secondary-link" to="/practice">先去题库做题</Link>
-                  </div>
-                </div>
-              )}
-          </article>
+              <Empty description="还没有学习日志，去陪伴页记录今天" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
+          </div>
         </>
       ) : null}
-    </section>
+    </div>
   )
 }

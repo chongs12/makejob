@@ -557,11 +557,12 @@ func NewResumeParserUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, call
 
 // ResumeResult 简历解析返回结果
 type ResumeResult struct {
-	Skills     []string `json:"skills"`
-	Experience []string `json:"experience"`
-	Education  []string `json:"education"`
-	Projects   []string `json:"projects"`
-	Summary    string   `json:"summary"`
+	Skills      []string `json:"skills"`
+	Experience  []string `json:"experience"`
+	Education   []string `json:"education"`
+	Projects    []string `json:"projects"`
+	Summary     string   `json:"summary"`
+	WeakSignals []string `json:"weak_signals"`
 }
 
 // Parse 解析简历文本并提取结构化信息

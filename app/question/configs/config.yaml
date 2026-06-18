@@ -23,3 +23,6 @@ jwt:
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"
+
+dependent_services:
+  learning_archive_addr: "localhost:9010"

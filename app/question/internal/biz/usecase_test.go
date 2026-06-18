@@ -97,7 +97,7 @@ func (g *generatorStub) GenerateQuestions(context.Context, *GenerateQuestionsReq
 func TestImportQuestionsPublishesRAGSync(t *testing.T) {
 	repo := &questionRepoStub{nextID: 100}
 	pub := &ragSyncPublisherStub{}
-	uc := NewQuestionUseCase(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := NewQuestionUseCase(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	uc.SetRAGSyncPublisher(pub)
 
 	imported, err := uc.ImportQuestions(context.Background(), []*Question{
@@ -144,7 +144,7 @@ func TestPipelineGenerateQuestionsPublishesRAGSync(t *testing.T) {
 			},
 		},
 	}
-	uc := NewQuestionUseCase(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, generator)
+	uc := NewQuestionUseCase(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, generator, nil)
 	uc.SetRAGSyncPublisher(pub)
 
 	created, err := uc.PipelineGenerateQuestions(context.Background(), &GenerateQuestionsRequest{

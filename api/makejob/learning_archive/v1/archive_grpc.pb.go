@@ -19,22 +19,40 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LearningArchiveService_WriteEntry_FullMethodName        = "/makejob.learning_archive.v1.LearningArchiveService/WriteEntry"
-	LearningArchiveService_BatchWriteEntries_FullMethodName = "/makejob.learning_archive.v1.LearningArchiveService/BatchWriteEntries"
-	LearningArchiveService_ListByUser_FullMethodName        = "/makejob.learning_archive.v1.LearningArchiveService/ListByUser"
-	LearningArchiveService_GetWeakTopics_FullMethodName     = "/makejob.learning_archive.v1.LearningArchiveService/GetWeakTopics"
-	LearningArchiveService_GetFocusSignals_FullMethodName   = "/makejob.learning_archive.v1.LearningArchiveService/GetFocusSignals"
+	LearningArchiveService_WriteEntry_FullMethodName                 = "/makejob.learning_archive.v1.LearningArchiveService/WriteEntry"
+	LearningArchiveService_BatchWriteEntries_FullMethodName          = "/makejob.learning_archive.v1.LearningArchiveService/BatchWriteEntries"
+	LearningArchiveService_ListByUser_FullMethodName                 = "/makejob.learning_archive.v1.LearningArchiveService/ListByUser"
+	LearningArchiveService_GetWeakTopics_FullMethodName              = "/makejob.learning_archive.v1.LearningArchiveService/GetWeakTopics"
+	LearningArchiveService_GetFocusSignals_FullMethodName            = "/makejob.learning_archive.v1.LearningArchiveService/GetFocusSignals"
+	LearningArchiveService_GetPracticeRecommendations_FullMethodName = "/makejob.learning_archive.v1.LearningArchiveService/GetPracticeRecommendations"
+	LearningArchiveService_ListMistakeTopics_FullMethodName          = "/makejob.learning_archive.v1.LearningArchiveService/ListMistakeTopics"
+	LearningArchiveService_GetMistakeTopic_FullMethodName            = "/makejob.learning_archive.v1.LearningArchiveService/GetMistakeTopic"
 )
 
 // LearningArchiveServiceClient is the client API for LearningArchiveService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// LearningArchiveService 学习档案域的唯一 owner，聚合练习、面试、计划反馈三路数据源，
+// 提供焦点信号、弱项主题、错因专题卡片等读取能力。
 type LearningArchiveServiceClient interface {
+	// WriteEntry 写入单条档案（幂等：按 user_id + interview_id + source_type + source_ref 去重）
 	WriteEntry(ctx context.Context, in *WriteArchiveEntryRequest, opts ...grpc.CallOption) (*ArchiveEntry, error)
+	// BatchWriteEntries 批量写入档案条目（不做条目级幂等，调用方保证不重复）
 	BatchWriteEntries(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
+	// ListByUser 按用户查询最近档案条目（排除 interview_finished_marker）
 	ListByUser(ctx context.Context, in *ListByUserRequest, opts ...grpc.CallOption) (*ArchiveEntryList, error)
-	GetWeakTopics(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*WeakTopicList, error)
-	GetFocusSignals(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*FocusSignalList, error)
+	// GetWeakTopics 返回用户高频薄弱标签列表（按出现次数降序，上限 10）
+	GetWeakTopics(ctx context.Context, in *GetWeakTopicsRequest, opts ...grpc.CallOption) (*WeakTopicList, error)
+	// GetFocusSignals 返回用户的训练重点信号（合并档案 + 面试报告两路数据源，
+	// 多级排序，水合专题卡片信息，生成可解释的推荐理由）
+	GetFocusSignals(ctx context.Context, in *GetFocusSignalsRequest, opts ...grpc.CallOption) (*FocusSignalList, error)
+	// GetPracticeRecommendations 基于焦点信号为用户推荐练习题目关键词
+	GetPracticeRecommendations(ctx context.Context, in *GetPracticeRecommendationsRequest, opts ...grpc.CallOption) (*PracticeRecommendationList, error)
+	// ListMistakeTopics 返回全部错因专题卡片（静态知识库，7 个内置专题）
+	ListMistakeTopics(ctx context.Context, in *ListMistakeTopicsRequest, opts ...grpc.CallOption) (*ListMistakeTopicsResponse, error)
+	// GetMistakeTopic 按专题编码查询单个错因专题卡片详情
+	GetMistakeTopic(ctx context.Context, in *GetMistakeTopicRequest, opts ...grpc.CallOption) (*MistakeTopicCard, error)
 }
 
 type learningArchiveServiceClient struct {
@@ -75,7 +93,7 @@ func (c *learningArchiveServiceClient) ListByUser(ctx context.Context, in *ListB
 	return out, nil
 }
 
-func (c *learningArchiveServiceClient) GetWeakTopics(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*WeakTopicList, error) {
+func (c *learningArchiveServiceClient) GetWeakTopics(ctx context.Context, in *GetWeakTopicsRequest, opts ...grpc.CallOption) (*WeakTopicList, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WeakTopicList)
 	err := c.cc.Invoke(ctx, LearningArchiveService_GetWeakTopics_FullMethodName, in, out, cOpts...)
@@ -85,7 +103,7 @@ func (c *learningArchiveServiceClient) GetWeakTopics(ctx context.Context, in *Us
 	return out, nil
 }
 
-func (c *learningArchiveServiceClient) GetFocusSignals(ctx context.Context, in *UserIDRequest, opts ...grpc.CallOption) (*FocusSignalList, error) {
+func (c *learningArchiveServiceClient) GetFocusSignals(ctx context.Context, in *GetFocusSignalsRequest, opts ...grpc.CallOption) (*FocusSignalList, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FocusSignalList)
 	err := c.cc.Invoke(ctx, LearningArchiveService_GetFocusSignals_FullMethodName, in, out, cOpts...)
@@ -95,15 +113,60 @@ func (c *learningArchiveServiceClient) GetFocusSignals(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *learningArchiveServiceClient) GetPracticeRecommendations(ctx context.Context, in *GetPracticeRecommendationsRequest, opts ...grpc.CallOption) (*PracticeRecommendationList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PracticeRecommendationList)
+	err := c.cc.Invoke(ctx, LearningArchiveService_GetPracticeRecommendations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *learningArchiveServiceClient) ListMistakeTopics(ctx context.Context, in *ListMistakeTopicsRequest, opts ...grpc.CallOption) (*ListMistakeTopicsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMistakeTopicsResponse)
+	err := c.cc.Invoke(ctx, LearningArchiveService_ListMistakeTopics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *learningArchiveServiceClient) GetMistakeTopic(ctx context.Context, in *GetMistakeTopicRequest, opts ...grpc.CallOption) (*MistakeTopicCard, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MistakeTopicCard)
+	err := c.cc.Invoke(ctx, LearningArchiveService_GetMistakeTopic_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LearningArchiveServiceServer is the server API for LearningArchiveService service.
 // All implementations must embed UnimplementedLearningArchiveServiceServer
 // for forward compatibility.
+//
+// LearningArchiveService 学习档案域的唯一 owner，聚合练习、面试、计划反馈三路数据源，
+// 提供焦点信号、弱项主题、错因专题卡片等读取能力。
 type LearningArchiveServiceServer interface {
+	// WriteEntry 写入单条档案（幂等：按 user_id + interview_id + source_type + source_ref 去重）
 	WriteEntry(context.Context, *WriteArchiveEntryRequest) (*ArchiveEntry, error)
+	// BatchWriteEntries 批量写入档案条目（不做条目级幂等，调用方保证不重复）
 	BatchWriteEntries(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
+	// ListByUser 按用户查询最近档案条目（排除 interview_finished_marker）
 	ListByUser(context.Context, *ListByUserRequest) (*ArchiveEntryList, error)
-	GetWeakTopics(context.Context, *UserIDRequest) (*WeakTopicList, error)
-	GetFocusSignals(context.Context, *UserIDRequest) (*FocusSignalList, error)
+	// GetWeakTopics 返回用户高频薄弱标签列表（按出现次数降序，上限 10）
+	GetWeakTopics(context.Context, *GetWeakTopicsRequest) (*WeakTopicList, error)
+	// GetFocusSignals 返回用户的训练重点信号（合并档案 + 面试报告两路数据源，
+	// 多级排序，水合专题卡片信息，生成可解释的推荐理由）
+	GetFocusSignals(context.Context, *GetFocusSignalsRequest) (*FocusSignalList, error)
+	// GetPracticeRecommendations 基于焦点信号为用户推荐练习题目关键词
+	GetPracticeRecommendations(context.Context, *GetPracticeRecommendationsRequest) (*PracticeRecommendationList, error)
+	// ListMistakeTopics 返回全部错因专题卡片（静态知识库，7 个内置专题）
+	ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error)
+	// GetMistakeTopic 按专题编码查询单个错因专题卡片详情
+	GetMistakeTopic(context.Context, *GetMistakeTopicRequest) (*MistakeTopicCard, error)
 	mustEmbedUnimplementedLearningArchiveServiceServer()
 }
 
@@ -123,11 +186,20 @@ func (UnimplementedLearningArchiveServiceServer) BatchWriteEntries(context.Conte
 func (UnimplementedLearningArchiveServiceServer) ListByUser(context.Context, *ListByUserRequest) (*ArchiveEntryList, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListByUser not implemented")
 }
-func (UnimplementedLearningArchiveServiceServer) GetWeakTopics(context.Context, *UserIDRequest) (*WeakTopicList, error) {
+func (UnimplementedLearningArchiveServiceServer) GetWeakTopics(context.Context, *GetWeakTopicsRequest) (*WeakTopicList, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWeakTopics not implemented")
 }
-func (UnimplementedLearningArchiveServiceServer) GetFocusSignals(context.Context, *UserIDRequest) (*FocusSignalList, error) {
+func (UnimplementedLearningArchiveServiceServer) GetFocusSignals(context.Context, *GetFocusSignalsRequest) (*FocusSignalList, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetFocusSignals not implemented")
+}
+func (UnimplementedLearningArchiveServiceServer) GetPracticeRecommendations(context.Context, *GetPracticeRecommendationsRequest) (*PracticeRecommendationList, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPracticeRecommendations not implemented")
+}
+func (UnimplementedLearningArchiveServiceServer) ListMistakeTopics(context.Context, *ListMistakeTopicsRequest) (*ListMistakeTopicsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMistakeTopics not implemented")
+}
+func (UnimplementedLearningArchiveServiceServer) GetMistakeTopic(context.Context, *GetMistakeTopicRequest) (*MistakeTopicCard, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMistakeTopic not implemented")
 }
 func (UnimplementedLearningArchiveServiceServer) mustEmbedUnimplementedLearningArchiveServiceServer() {
 }
@@ -206,7 +278,7 @@ func _LearningArchiveService_ListByUser_Handler(srv interface{}, ctx context.Con
 }
 
 func _LearningArchiveService_GetWeakTopics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UserIDRequest)
+	in := new(GetWeakTopicsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -218,13 +290,13 @@ func _LearningArchiveService_GetWeakTopics_Handler(srv interface{}, ctx context.
 		FullMethod: LearningArchiveService_GetWeakTopics_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LearningArchiveServiceServer).GetWeakTopics(ctx, req.(*UserIDRequest))
+		return srv.(LearningArchiveServiceServer).GetWeakTopics(ctx, req.(*GetWeakTopicsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _LearningArchiveService_GetFocusSignals_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UserIDRequest)
+	in := new(GetFocusSignalsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -236,7 +308,61 @@ func _LearningArchiveService_GetFocusSignals_Handler(srv interface{}, ctx contex
 		FullMethod: LearningArchiveService_GetFocusSignals_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LearningArchiveServiceServer).GetFocusSignals(ctx, req.(*UserIDRequest))
+		return srv.(LearningArchiveServiceServer).GetFocusSignals(ctx, req.(*GetFocusSignalsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LearningArchiveService_GetPracticeRecommendations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPracticeRecommendationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LearningArchiveServiceServer).GetPracticeRecommendations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LearningArchiveService_GetPracticeRecommendations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LearningArchiveServiceServer).GetPracticeRecommendations(ctx, req.(*GetPracticeRecommendationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LearningArchiveService_ListMistakeTopics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMistakeTopicsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LearningArchiveServiceServer).ListMistakeTopics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LearningArchiveService_ListMistakeTopics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LearningArchiveServiceServer).ListMistakeTopics(ctx, req.(*ListMistakeTopicsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LearningArchiveService_GetMistakeTopic_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMistakeTopicRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LearningArchiveServiceServer).GetMistakeTopic(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LearningArchiveService_GetMistakeTopic_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LearningArchiveServiceServer).GetMistakeTopic(ctx, req.(*GetMistakeTopicRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -267,6 +393,18 @@ var LearningArchiveService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFocusSignals",
 			Handler:    _LearningArchiveService_GetFocusSignals_Handler,
+		},
+		{
+			MethodName: "GetPracticeRecommendations",
+			Handler:    _LearningArchiveService_GetPracticeRecommendations_Handler,
+		},
+		{
+			MethodName: "ListMistakeTopics",
+			Handler:    _LearningArchiveService_ListMistakeTopics_Handler,
+		},
+		{
+			MethodName: "GetMistakeTopic",
+			Handler:    _LearningArchiveService_GetMistakeTopic_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -4,17 +4,51 @@ option go_package = "makejob/api/makejob/learning_archive/v1;archivev1";
 
 import "google/protobuf/timestamp.proto";
 
+// LearningArchiveService 学习档案域的唯一 owner，聚合练习、面试、计划反馈三路数据源，
+// 提供焦点信号、弱项主题、错因专题卡片等读取能力。
 service LearningArchiveService {
+
+  // === 写入 ===
+
+  // WriteEntry 写入单条档案（幂等：按 user_id + interview_id + source_type + source_ref 去重）
   rpc WriteEntry(WriteArchiveEntryRequest) returns (ArchiveEntry);
+
+  // BatchWriteEntries 批量写入档案条目（不做条目级幂等，调用方保证不重复）
   rpc BatchWriteEntries(BatchWriteRequest) returns (BatchWriteResponse);
+
+  // === 读取 ===
+
+  // ListByUser 按用户查询最近档案条目（排除 interview_finished_marker）
   rpc ListByUser(ListByUserRequest) returns (ArchiveEntryList);
-  rpc GetWeakTopics(UserIDRequest) returns (WeakTopicList);
-  rpc GetFocusSignals(UserIDRequest) returns (FocusSignalList);
+
+  // GetWeakTopics 返回用户高频薄弱标签列表（按出现次数降序，上限 10）
+  rpc GetWeakTopics(GetWeakTopicsRequest) returns (WeakTopicList);
+
+  // GetFocusSignals 返回用户的训练重点信号（合并档案 + 面试报告两路数据源，
+  // 多级排序，水合专题卡片信息，生成可解释的推荐理由）
+  rpc GetFocusSignals(GetFocusSignalsRequest) returns (FocusSignalList);
+
+  // GetPracticeRecommendations 基于焦点信号为用户推荐练习题目关键词
+  rpc GetPracticeRecommendations(GetPracticeRecommendationsRequest) returns (PracticeRecommendationList);
+
+  // === 错因专题卡片 ===
+
+  // ListMistakeTopics 返回全部错因专题卡片（静态知识库，7 个内置专题）
+  rpc ListMistakeTopics(ListMistakeTopicsRequest) returns (ListMistakeTopicsResponse);
+
+  // GetMistakeTopic 按专题编码查询单个错因专题卡片详情
+  rpc GetMistakeTopic(GetMistakeTopicRequest) returns (MistakeTopicCard);
 }
+
+// ============================================================
+// 请求 / 响应
+// ============================================================
 
 message UserIDRequest {
   uint64 user_id = 1;
 }
+
+// --- WriteEntry ---
 
 message WriteArchiveEntryRequest {
   uint64 user_id = 1;
@@ -31,7 +65,13 @@ message WriteArchiveEntryRequest {
   repeated string suggestions = 12;
   string evidence_summary = 13;
   google.protobuf.Timestamp occurred_at = 14;
+  // --- 新增：学习阶段字段，对齐单体 LearningArchiveEntry ---
+  string entry_phase = 15;
+  string task_phase = 16;
+  string task_phase_goal = 17;
 }
+
+// --- BatchWriteEntries ---
 
 message BatchWriteRequest {
   repeated WriteArchiveEntryRequest entries = 1;
@@ -40,6 +80,8 @@ message BatchWriteRequest {
 message BatchWriteResponse {
   int32 written = 1;
 }
+
+// --- ArchiveEntry ---
 
 message ArchiveEntry {
   uint64 id = 1;
@@ -55,10 +97,16 @@ message ArchiveEntry {
   repeated string strength_tags = 11;
   repeated string suggestions = 12;
   string evidence_summary = 13;
-  string plan_phase_goal = 16;
   google.protobuf.Timestamp occurred_at = 14;
   google.protobuf.Timestamp created_at = 15;
+  string plan_phase_goal = 16;
+  // --- 新增 ---
+  string entry_phase = 17;
+  string task_phase = 18;
+  string task_phase_goal = 19;
 }
+
+// --- ListByUser ---
 
 message ListByUserRequest {
   uint64 user_id = 1;
@@ -69,16 +117,130 @@ message ArchiveEntryList {
   repeated ArchiveEntry entries = 1;
 }
 
+// --- GetWeakTopics ---
+
+message GetWeakTopicsRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;  // 默认 10
+}
+
 message WeakTopicList {
   repeated string topics = 1;
 }
 
-message FocusSignalList {
-  repeated FocusSignal signals = 1;
+// --- GetFocusSignals ---
+
+message GetFocusSignalsRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;            // 默认 3
+  string industry_code = 3;   // 可选：按行业过滤
 }
 
+message FocusSignalList {
+  repeated FocusSignal signals = 1;
+  GrowthTrendSummary trend_summary = 2;  // 从首个焦点信号派生的趋势摘要
+}
+
+// FocusSignal 对齐单体 trainingFocusSignal 和 growth.proto GrowthFocusSignal 的完整结构。
+// 旧字段 topic(1)/weight(2)/source(3) 保留编号以兼容已生成的 stub，
+// 语义上 topic ≈ tag，weight 废弃（用 occurrence_count 替代）。
 message FocusSignal {
-  string topic = 1;
-  double weight = 2;
-  string source = 3;
+  // --- 旧字段（保留编号兼容） ---
+  string topic = 1;           // 废弃，改用 tag
+  double weight = 2;          // 废弃，改用 occurrence_count
+  string source = 3;          // 保留：learning_archive / interview_report / mixed
+
+  // --- 核心标识 ---
+  string tag = 10;            // 错因标签原文，如 "状态定义不清"
+  string topic_code = 11;     // 专题编码，如 "state-definition"
+  string topic_title = 12;    // 专题标题
+  string topic_problem_pattern = 13;  // 问题模式描述
+
+  // --- 计数 ---
+  int32 occurrence_count = 14;           // 总出现次数
+  int32 archive_occurrence_count = 15;   // 归档来源出现次数
+  int32 interview_occurrence_count = 16; // 面试来源出现次数
+
+  // --- 阶段 ---
+  string dominant_archive_phase = 17;       // 主要归档阶段（drill/foundation/mock/review）
+  string dominant_archive_phase_label = 18; // 阶段中文标签
+
+  // --- 推荐 ---
+  repeated string related_question_sets = 19; // 关联题集编码
+  repeated string recommended_actions = 20;   // 推荐动作
+  string primary_question_set = 21;           // 首选题集编码
+
+  // --- 解释 ---
+  string source_label = 22;  // 来源展示标签："练习归档" / "面试报告" / "练习 + 面试"
+  string reason = 23;        // 可直接展示的推荐理由文案
+  string source_ref = 24;    // 来源引用（用于追溯）
+  string collection_hint = 25; // 首选题集编码提示（= primary_question_set）
+}
+
+// GrowthTrendSummary 从焦点信号中派生的趋势摘要，对齐 growth.proto 的 GrowthTrendSummary。
+message GrowthTrendSummary {
+  string dominant_source = 1;
+  string dominant_source_label = 2;
+  string top_focus_tag = 3;
+  string top_topic_code = 4;
+  string top_topic_title = 5;
+  string summary = 6;
+}
+
+// --- GetPracticeRecommendations ---
+
+message GetPracticeRecommendationsRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;           // 默认 3（信号数），每个信号扩展出若干题目关键词
+  uint64 interview_id = 3;   // 可选：限定某次面试的归档
+}
+
+message PracticeRecommendationList {
+  repeated PracticeRecommendation recommendations = 1;
+}
+
+message PracticeRecommendation {
+  string focus_tag = 1;           // 焦点标签
+  string topic_code = 2;          // 专题编码
+  string topic_title = 3;         // 专题标题
+  repeated string keywords = 4;   // 用于搜索题目的关键词列表
+  int32 occurrence_count = 5;     // 出现次数（排序权重）
+  string reason = 6;              // 推荐理由
+}
+
+// --- ListMistakeTopics ---
+
+message ListMistakeTopicsRequest {
+  // 空请求，返回全部内置专题
+}
+
+message ListMistakeTopicsResponse {
+  repeated MistakeTopicSummary topics = 1;
+}
+
+// MistakeTopicSummary 专题概要（列表页用）
+message MistakeTopicSummary {
+  string code = 1;
+  string tag = 2;
+  string title = 3;
+  string problem_pattern = 4;
+}
+
+// --- GetMistakeTopic ---
+
+message GetMistakeTopicRequest {
+  string code = 1;
+}
+
+// MistakeTopicCard 专题详情卡片，对齐单体 MistakeTopicCard 完整结构。
+message MistakeTopicCard {
+  string code = 1;
+  string tag = 2;
+  string title = 3;
+  string problem_pattern = 4;
+  repeated string root_causes = 5;
+  repeated string self_check_list = 6;
+  repeated string practice_directions = 7;
+  repeated string recommended_actions = 8;
+  repeated string related_question_sets = 9;
 }

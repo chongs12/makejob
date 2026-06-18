@@ -15,8 +15,8 @@ type MistakeTopicCard struct {
 	RelatedQuestionSets []string `json:"related_question_sets"`
 }
 
-// buildMistakeTopicCatalog 返回当前系统内置的第一批错因专题卡片。
-func buildMistakeTopicCatalog() []MistakeTopicCard {
+// BuildMistakeTopicCatalog 返回当前系统内置的第一批错因专题卡片。
+func BuildMistakeTopicCatalog() []MistakeTopicCard {
 	return []MistakeTopicCard{
 		{
 			Code:                "state-definition",
@@ -98,25 +98,18 @@ func buildMistakeTopicCatalog() []MistakeTopicCard {
 	}
 }
 
-// GetMistakeTopicByCode 根据专题编码定位专题卡片。
-func GetMistakeTopicByCode(code string) (*MistakeTopicCard, bool) {
-	return ResolveMistakeTopicByCode(code)
-}
-
 // ResolveMistakeTopicByCode 根据专题编码定位专题卡片。
 func ResolveMistakeTopicByCode(code string) (*MistakeTopicCard, bool) {
 	trimmed := strings.TrimSpace(code)
 	if trimmed == "" {
 		return nil, false
 	}
-
-	for _, topic := range buildMistakeTopicCatalog() {
+	for _, topic := range BuildMistakeTopicCatalog() {
 		if topic.Code == trimmed {
 			copy := topic
 			return &copy, true
 		}
 	}
-
 	return nil, false
 }
 
@@ -126,14 +119,12 @@ func ResolveMistakeTopicByTag(tag string) (*MistakeTopicCard, bool) {
 	if trimmed == "" {
 		return nil, false
 	}
-
-	for _, topic := range buildMistakeTopicCatalog() {
+	for _, topic := range BuildMistakeTopicCatalog() {
 		if topic.Tag == trimmed {
 			copy := topic
 			return &copy, true
 		}
 	}
-
 	return nil, false
 }
 
@@ -143,9 +134,4 @@ func ResolveMistakeTopicCodeByTag(tag string) string {
 		return topic.Code
 	}
 	return ""
-}
-
-// ListAllMistakeTopics 返回所有错因专题卡片。
-func ListAllMistakeTopics() []MistakeTopicCard {
-	return buildMistakeTopicCatalog()
 }

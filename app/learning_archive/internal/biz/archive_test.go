@@ -44,12 +44,12 @@ func (r *archiveRepoStub) ListByUser(context.Context, uint64, int32) ([]*Archive
 }
 
 // GetWeakTopics 返回空结果，当前测试不依赖该查询。
-func (r *archiveRepoStub) GetWeakTopics(context.Context, uint64) ([]string, error) {
+func (r *archiveRepoStub) GetWeakTopics(context.Context, uint64, int32) ([]string, error) {
 	return nil, nil
 }
 
-// GetFocusSignals 返回空结果，当前测试不依赖该查询。
-func (r *archiveRepoStub) GetFocusSignals(context.Context, uint64) ([]*FocusSignal, error) {
+// ListRecentByUser 返回空列表，当前测试不依赖该查询。
+func (r *archiveRepoStub) ListRecentByUser(context.Context, uint64, int32, *uint64) ([]*ArchiveEntry, error) {
 	return nil, nil
 }
 

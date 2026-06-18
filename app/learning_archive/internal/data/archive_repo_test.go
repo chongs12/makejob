@@ -34,11 +34,11 @@ func TestArchiveRepoGetWeakTopicsFiltersSoftDeleted(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT jsonb_array_elements_text(mistake_tags::jsonb) as tag, COUNT(*) as count
 			 FROM learning_archive_entries
 			 WHERE user_id = $1 AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
-			 GROUP BY tag ORDER BY count DESC LIMIT 10`)).
-		WithArgs(uint64(7)).
+			 GROUP BY tag ORDER BY count DESC LIMIT $2`)).
+		WithArgs(uint64(7), int32(10)).
 		WillReturnRows(rows)
 
-	topics, err := repo.GetWeakTopics(context.Background(), 7)
+	topics, err := repo.GetWeakTopics(context.Background(), 7, 10)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

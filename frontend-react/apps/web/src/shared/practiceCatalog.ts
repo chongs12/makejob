@@ -177,33 +177,33 @@ export async function fetchQuestions(params: {
 /**
  * 拉取当前行业下的核心题单摘要，供题库页快速进入高价值主题。
  */
-export async function fetchQuestionSets(industryId: number | null): Promise<PracticeQuestionSetSummary[]> {
+export async function fetchQuestionSets(industryCode: string | null): Promise<PracticeQuestionSetSummary[]> {
   const params = new URLSearchParams()
-  if (industryId) {
-    params.set('industry_id', String(industryId))
+  if (industryCode) {
+    params.set('industry_code', industryCode)
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : ''
-  const response = await requestJson<ApiEnvelope<PracticeQuestionSetSummary[]>>(`/question-sets${suffix}`)
+  const response = await requestJson<ApiEnvelope<{ items: PracticeQuestionSetSummary[]; list?: PracticeQuestionSetSummary[] }>>(`/question-sets${suffix}`)
   if (!isSuccessCode(response.code)) {
     throw new Error(response.message || '获取核心题单失败')
   }
 
-  return response.data || []
+  return response.data?.items || response.data?.list || []
 }
 
 /**
  * 拉取指定核心题单的完整题目集合，供题库页稳定承接专题补练入口。
  */
-export async function fetchQuestionSetDetail(industryId: number | null, slug: string): Promise<PracticeQuestionSetDetail> {
+export async function fetchQuestionSetDetail(industryCode: string | null, slug: string): Promise<PracticeQuestionSetDetail> {
   const normalizedSlug = slug.trim()
   if (!normalizedSlug) {
     throw new Error('题单不能为空')
   }
 
   const params = new URLSearchParams()
-  if (industryId) {
-    params.set('industry_id', String(industryId))
+  if (industryCode) {
+    params.set('industry_code', industryCode)
   }
 
   const suffix = params.toString() ? `?${params.toString()}` : ''

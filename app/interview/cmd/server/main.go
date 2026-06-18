@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -74,7 +75,11 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create AI client: %w", err)
 	}
 
-	archiveClient, err := data.NewLearningArchiveClient(bc.Archive)
+	archiveServiceToken, err := auth.GenerateToken(0, "interview-service@internal", "service", bc.JWT.Secret, 24*time.Hour)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create archive service token: %w", err)
+	}
+	archiveClient, err := data.NewLearningArchiveClient(bc.Archive, archiveServiceToken)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create Archive client: %w", err)
 	}

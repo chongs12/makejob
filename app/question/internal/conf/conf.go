@@ -7,11 +7,12 @@ import (
 )
 
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	AI     *AI     `yaml:"ai"`
-	JWT    *JWT    `yaml:"jwt"`
-	MQ     *MQ     `yaml:"mq"`
+	Server             *Server             `yaml:"server"`
+	Data               *Data               `yaml:"data"`
+	AI                 *AI                 `yaml:"ai"`
+	JWT                *JWT                `yaml:"jwt"`
+	MQ                 *MQ                 `yaml:"mq"`
+	DependentServices  *DependentServices  `yaml:"dependent_services"`
 }
 
 type MQ struct {
@@ -51,6 +52,11 @@ type JWT struct {
 	Secret string `yaml:"secret"`
 }
 
+// DependentServices 下游依赖服务地址配置。
+type DependentServices struct {
+	LearningArchiveAddr string `yaml:"learning_archive_addr"`
+}
+
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -86,6 +92,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.MQ.Exchange == "" {
 		bc.MQ.Exchange = "makejob.async"
+	}
+	if bc.DependentServices == nil {
+		bc.DependentServices = &DependentServices{}
 	}
 	return &bc, nil
 }

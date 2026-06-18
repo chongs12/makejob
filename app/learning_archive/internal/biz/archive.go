@@ -20,8 +20,8 @@ type ArchiveRepo interface {
 	Create(ctx context.Context, entry *ArchiveEntry) error
 	BatchCreate(ctx context.Context, entries []*ArchiveEntry) (int, error)
 	ListByUser(ctx context.Context, userID uint64, limit int32) ([]*ArchiveEntry, error)
-	GetWeakTopics(ctx context.Context, userID uint64) ([]string, error)
-	GetFocusSignals(ctx context.Context, userID uint64) ([]*FocusSignal, error)
+	ListRecentByUser(ctx context.Context, userID uint64, limit int32, interviewID *uint64) ([]*ArchiveEntry, error)
+	GetWeakTopics(ctx context.Context, userID uint64, limit int32) ([]string, error)
 	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 	GetBySource(ctx context.Context, userID, interviewID uint64, sourceType, sourceRef string) (*ArchiveEntry, error)
 	HasInterviewFinishedMarker(ctx context.Context, interviewID, userID uint64) (bool, error)
@@ -38,6 +38,9 @@ type ArchiveEntry struct {
 	IndustryCode    string
 	PlanPhase       string
 	PlanPhaseGoal   string
+	EntryPhase      string
+	TaskPhase       string
+	TaskPhaseGoal   string
 	Language        string
 	MistakeTags     []string
 	StrengthTags    []string
@@ -47,17 +50,11 @@ type ArchiveEntry struct {
 	CreatedAt       time.Time
 }
 
-// FocusSignal 聚焦信号
-type FocusSignal struct {
-	Topic  string
-	Weight float64
-	Source string
-}
-
 // ArchiveUseCase 学习档案业务用例
 type ArchiveUseCase struct {
 	repo      ArchiveRepo
 	publisher MQPublisher
+	logger    *log.Helper
 }
 
 // MQPublisher MQ 消息发布接口
@@ -66,7 +63,11 @@ type MQPublisher interface {
 }
 
 func NewArchiveUseCase(repo ArchiveRepo, publisher MQPublisher) *ArchiveUseCase {
-	return &ArchiveUseCase{repo: repo, publisher: publisher}
+	return &ArchiveUseCase{
+		repo:      repo,
+		publisher: publisher,
+		logger:    log.NewHelper(log.DefaultLogger),
+	}
 }
 
 // WriteEntry 写入学习档案条目
@@ -106,22 +107,110 @@ func (uc *ArchiveUseCase) ListByUser(ctx context.Context, userID uint64, limit i
 	return uc.repo.ListByUser(ctx, userID, limit)
 }
 
-// GetWeakTopics 获取用户薄弱知识点
-func (uc *ArchiveUseCase) GetWeakTopics(ctx context.Context, userID uint64) ([]string, error) {
-	return uc.repo.GetWeakTopics(ctx, userID)
+// GetWeakTopics 获取用户薄弱知识点（支持 limit 参数）
+func (uc *ArchiveUseCase) GetWeakTopics(ctx context.Context, userID uint64, limit int32) ([]string, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	return uc.repo.GetWeakTopics(ctx, userID, limit)
 }
 
-// GetFocusSignals 获取用户聚焦信号
-func (uc *ArchiveUseCase) GetFocusSignals(ctx context.Context, userID uint64) ([]*FocusSignal, error) {
-	return uc.repo.GetFocusSignals(ctx, userID)
+// GetFocusSignals 获取用户聚焦信号（合并档案 + 面试归档两路数据源，多级排序，水合专题卡片）
+func (uc *ArchiveUseCase) GetFocusSignals(ctx context.Context, userID uint64, limit int32, industryCode string) ([]*TrainingFocusSignal, *GrowthTrendSummary, error) {
+	if limit <= 0 {
+		limit = defaultFocusSignalLimit
+	}
+
+	entries, err := uc.repo.ListRecentByUser(ctx, userID, 200, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if industryCode != "" {
+		filtered := make([]*ArchiveEntry, 0, len(entries))
+		for _, e := range entries {
+			if strings.TrimSpace(e.IndustryCode) == industryCode {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	}
+
+	signals := BuildTrainingFocusSignals(entries, int(limit))
+
+	ptrs := make([]*TrainingFocusSignal, len(signals))
+	for i := range signals {
+		ptrs[i] = &signals[i]
+	}
+
+	var trendSummary *GrowthTrendSummary
+	if len(signals) > 0 {
+		top := signals[0]
+		trendSummary = &GrowthTrendSummary{
+			DominantSource:      top.Source,
+			DominantSourceLabel: top.SourceLabel,
+			TopFocusTag:         top.Tag,
+			TopTopicCode:        top.TopicCode,
+			TopTopicTitle:       top.TopicTitle,
+			Summary:             top.Reason,
+		}
+	}
+
+	return ptrs, trendSummary, nil
+}
+
+// GetPracticeRecommendations 基于焦点信号为用户推荐练习题目关键词
+func (uc *ArchiveUseCase) GetPracticeRecommendations(ctx context.Context, userID uint64, limit int32, interviewID *uint64) ([]PracticeRecommendation, error) {
+	if limit <= 0 {
+		limit = defaultFocusSignalLimit
+	}
+
+	entries, err := uc.repo.ListRecentByUser(ctx, userID, 200, interviewID)
+	if err != nil {
+		return nil, err
+	}
+
+	signals := BuildTrainingFocusSignals(entries, int(limit))
+
+	recs := make([]PracticeRecommendation, 0, len(signals))
+	for _, sig := range signals {
+		keywords := buildRecommendationKeywords(sig)
+		recs = append(recs, PracticeRecommendation{
+			FocusTag:        sig.Tag,
+			TopicCode:       sig.TopicCode,
+			TopicTitle:      sig.TopicTitle,
+			Keywords:        keywords,
+			OccurrenceCount: sig.OccurrenceCount,
+			Reason:          sig.Reason,
+		})
+	}
+	return recs, nil
+}
+
+// ListMistakeTopics 返回全部内置错因专题概要
+func (uc *ArchiveUseCase) ListMistakeTopics() []MistakeTopicSummary {
+	catalog := BuildMistakeTopicCatalog()
+	result := make([]MistakeTopicSummary, len(catalog))
+	for i, t := range catalog {
+		result[i] = MistakeTopicSummary{
+			Code:           t.Code,
+			Tag:            t.Tag,
+			Title:          t.Title,
+			ProblemPattern: t.ProblemPattern,
+		}
+	}
+	return result
+}
+
+// GetMistakeTopic 按编码查询单个错因专题详情
+func (uc *ArchiveUseCase) GetMistakeTopic(code string) (*MistakeTopicCard, bool) {
+	return ResolveMistakeTopicByCode(code)
 }
 
 // HandleInterviewFinished 处理面试完成事件：将薄弱/优势知识点写入学习档案，并发布档案写入事件
 func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error {
-	logger := log.NewHelper(log.DefaultLogger)
-
 	if userID == 0 {
-		logger.Warn("interview.finished 事件 user_id 为 0，丢弃消息")
+		uc.logger.Warn("interview.finished 事件 user_id 为 0，丢弃消息")
 		return nil
 	}
 	exists, err := uc.repo.HasInterviewFinishedMarker(ctx, interviewID, userID)
@@ -129,7 +218,7 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		return err
 	}
 	if exists {
-		logger.Infof("面试完成事件已处理，跳过重复消费 interview_id=%d user_id=%d", interviewID, userID)
+		uc.logger.Infof("面试完成事件已处理，跳过重复消费 interview_id=%d user_id=%d", interviewID, userID)
 		return nil
 	}
 
@@ -142,7 +231,6 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		OccurredAt:  now,
 	}}
 
-	// 为每个薄弱知识点创建档案条目
 	for _, topic := range weakTopics {
 		allEntries = append(allEntries, &ArchiveEntry{
 			UserID:      userID,
@@ -150,11 +238,11 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 			SourceRef:   topic,
 			InterviewID: interviewID,
 			MistakeTags: []string{topic},
+			TaskPhase:   "mock",
 			OccurredAt:  now,
 		})
 	}
 
-	// 为每个优势知识点创建档案条目
 	for _, topic := range strengthTopics {
 		allEntries = append(allEntries, &ArchiveEntry{
 			UserID:       userID,
@@ -162,11 +250,11 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 			SourceRef:    topic,
 			InterviewID:  interviewID,
 			StrengthTags: []string{topic},
+			TaskPhase:    "mock",
 			OccurredAt:   now,
 		})
 	}
 
-	// 批量写入数据库，并将事务边界限定在 DB 侧；后续事件发布失败不回滚已提交的档案。
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		_, err := uc.repo.BatchCreate(txCtx, allEntries)
 		return err
@@ -178,10 +266,9 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		return nil
 	}
 
-	// 发布档案写入事件（发布失败仅记录日志，不重试主流程）
 	if uc.publisher != nil {
 		if err := uc.publisher.PublishArchiveWritten(ctx, userID, "interview", interviewID, weakTopics, strengthTopics); err != nil {
-			logger.Errorf("发布 archive.written 事件失败: %v", err)
+			uc.logger.Errorf("发布 archive.written 事件失败: %v", err)
 		}
 	}
 
@@ -212,6 +299,11 @@ func (uc *ArchiveUseCase) findExistingEntry(ctx context.Context, entry *ArchiveE
 			return nil, nil
 		}
 		return uc.repo.GetBySource(ctx, entry.UserID, entry.InterviewID, sourceType, sourceRef)
+	case "practice_question", "plan_task_feedback":
+		if sourceRef == "" {
+			return nil, nil
+		}
+		return uc.repo.GetBySource(ctx, entry.UserID, 0, sourceType, sourceRef)
 	default:
 		return nil, nil
 	}
@@ -220,4 +312,49 @@ func (uc *ArchiveUseCase) findExistingEntry(ctx context.Context, entry *ArchiveE
 // formatUint 将 uint64 转成稳定字符串，用于构造幂等 source_ref。
 func formatUint(value uint64) string {
 	return strconv.FormatUint(value, 10)
+}
+
+// PracticeRecommendation 练习推荐结果
+type PracticeRecommendation struct {
+	FocusTag        string   `json:"focus_tag"`
+	TopicCode       string   `json:"topic_code"`
+	TopicTitle      string   `json:"topic_title"`
+	Keywords        []string `json:"keywords"`
+	OccurrenceCount int      `json:"occurrence_count"`
+	Reason          string   `json:"reason"`
+}
+
+// MistakeTopicSummary 专题概要（列表页用）
+type MistakeTopicSummary struct {
+	Code           string `json:"code"`
+	Tag            string `json:"tag"`
+	Title          string `json:"title"`
+	ProblemPattern string `json:"problem_pattern"`
+}
+
+// GrowthTrendSummary 从焦点信号中派生的趋势摘要
+type GrowthTrendSummary struct {
+	DominantSource      string `json:"dominant_source"`
+	DominantSourceLabel string `json:"dominant_source_label"`
+	TopFocusTag         string `json:"top_focus_tag"`
+	TopTopicCode        string `json:"top_topic_code"`
+	TopTopicTitle       string `json:"top_topic_title"`
+	Summary             string `json:"summary"`
+}
+
+// buildRecommendationKeywords 从焦点信号中构造用于搜索题目的关键词列表。
+func buildRecommendationKeywords(sig TrainingFocusSignal) []string {
+	keywords := []string{}
+	if sig.Tag != "" {
+		keywords = append(keywords, sig.Tag)
+	}
+	if sig.TopicTitle != "" && sig.TopicTitle != sig.Tag {
+		keywords = append(keywords, sig.TopicTitle)
+	}
+	if topic, ok := ResolveMistakeTopicByCode(sig.TopicCode); ok {
+		for _, dir := range topic.PracticeDirections {
+			keywords = appendUniqueStrings(keywords, dir)
+		}
+	}
+	return keywords
 }

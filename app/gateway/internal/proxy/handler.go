@@ -433,7 +433,7 @@ func adaptLegacyResponseByPath(path string, value interface{}) interface{} {
 		return normalizeAdminListPayload(value, "categories")
 	case strings.HasSuffix(path, "/practice-stats"):
 		return normalizePracticeStatsPayload(value)
-	case strings.Contains(path, "/questions/sets"):
+	case strings.Contains(path, "/questions/sets") || strings.Contains(path, "/question-sets"):
 		return normalizeQuestionSetsPayload(value)
 	case strings.HasSuffix(path, "/growth/summary"), strings.HasSuffix(path, "/user/growth-summary"):
 		return normalizeGrowthSummaryPayload(value)
@@ -1537,12 +1537,19 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 			public.POST("/auth/login", gw.handleLogin)
 			public.POST("/auth/refresh", gw.handleRefreshToken)
 		}
-		// 题库公开接口
+		// 题库公开接口（可选认证：已登录时注入用户上下文，未登录时正常访问）
 		if gw.questionClient != nil {
 			public.GET("/questions", gw.handleListQuestions)
-			public.GET("/questions/:id", gw.handleGetQuestion)
 			public.GET("/industries", gw.handleListIndustries)
 			public.GET("/categories", gw.handleListCategories)
+		}
+		// 需要可选认证的公开接口（如题目详情，已登录时可展示用户笔记）
+		optionalAuth := api.Group("")
+		optionalAuth.Use(gw.OptionalJWTMiddleware())
+		{
+			if gw.questionClient != nil {
+				optionalAuth.GET("/questions/:id", gw.handleGetQuestion)
+			}
 		}
 		// 社区公开接口
 		if gw.communityClient != nil {
@@ -1641,6 +1648,15 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 				admin.DELETE("/questions/:id", gw.handleAdminDeleteQuestion)
 				admin.POST("/questions/import", gw.handleAdminBatchImportQuestions)
 				admin.GET("/questions/tag-taxonomy", gw.handleAdminGetQuestionTagTaxonomy)
+
+				// 题单管理
+				admin.GET("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleAdminListQuestionSets))
+				admin.POST("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleAdminCreateQuestionSet))
+				admin.GET("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminGetQuestionSet))
+				admin.PUT("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminUpdateQuestionSet))
+				admin.DELETE("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminDeleteQuestionSet))
+				admin.POST("/question-sets/:id/questions", gw.requireService("question", gw.questionClient != nil, gw.handleAdminAddQuestionsToSet))
+				admin.DELETE("/question-sets/:id/questions", gw.requireService("question", gw.questionClient != nil, gw.handleAdminRemoveQuestionsFromSet))
 
 				// 题目流水线
 				admin.POST("/question-pipeline/generate", gw.handleAdminGenerateQuestionPipeline)
@@ -1859,6 +1875,13 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		admin.DELETE("/questions/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteQuestion))
 		admin.POST("/questions/import", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminBatchImportQuestions))
 		admin.GET("/questions/tag-taxonomy", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetQuestionTagTaxonomy))
+		admin.GET("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleAdminListQuestionSets))
+		admin.POST("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleAdminCreateQuestionSet))
+		admin.GET("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminGetQuestionSet))
+		admin.PUT("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminUpdateQuestionSet))
+		admin.DELETE("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleAdminDeleteQuestionSet))
+		admin.POST("/question-sets/:id/questions", gw.requireService("question", gw.questionClient != nil, gw.handleAdminAddQuestionsToSet))
+		admin.DELETE("/question-sets/:id/questions", gw.requireService("question", gw.questionClient != nil, gw.handleAdminRemoveQuestionsFromSet))
 		admin.POST("/question-pipeline/generate", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipeline))
 		admin.POST("/question-pipeline/generate/async", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineAsync))
 		admin.GET("/question-pipeline/generate/stream", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGenerateQuestionPipelineStream))
@@ -2624,13 +2647,27 @@ func (gw *Gateway) handleGetQuestion(c *gin.Context) {
 		return
 	}
 	// 旧单体在题目详情中包含当前用户的笔记；新微服务不返回，Gateway 补查注入。
-	if userID, ok := getUserID(c); ok && gw.questionClient != nil {
-		if notesResp, err := gw.questionClient.ListNotes(c.Request.Context(), &questionv1.ListNotesRequest{
-			UserId:     userID,
-			QuestionId: id,
-			Page:       &sharedv1.PageParam{Page: 1, PageSize: 1},
-		}); err == nil && len(notesResp.Notes) > 0 {
-			resp.UserNote = notesResp.Notes[0]
+	// 公开路由不经过 JWT 中间件，直接从上下文取 user_id；未登录时跳过笔记查询。
+	if val, exists := c.Get("user_id"); exists && gw.questionClient != nil {
+		var userID uint64
+		switch v := val.(type) {
+		case uint64:
+			userID = v
+		case uint:
+			userID = uint64(v)
+		case int:
+			if v > 0 {
+				userID = uint64(v)
+			}
+		}
+		if userID > 0 {
+			if notesResp, err := gw.questionClient.ListNotes(c.Request.Context(), &questionv1.ListNotesRequest{
+				UserId:     userID,
+				QuestionId: id,
+				Page:       &sharedv1.PageParam{Page: 1, PageSize: 1},
+			}); err == nil && len(notesResp.Notes) > 0 {
+				resp.UserNote = notesResp.Notes[0]
+			}
 		}
 	}
 	c.JSON(http.StatusOK, resp)
@@ -2640,8 +2677,12 @@ func (gw *Gateway) handleGetQuestion(c *gin.Context) {
 func (gw *Gateway) handleListQuestionSets(c *gin.Context) {
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
 	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 32)
+	industryCode := c.Query("industry_code")
+	if industryCode == "" {
+		industryCode = c.Query("industry_id")
+	}
 	resp, err := gw.questionClient.ListQuestionSets(c.Request.Context(), &questionv1.ListQuestionSetsRequest{
-		IndustryCode: c.Query("industry_code"),
+		IndustryCode: industryCode,
 		Page:         &sharedv1.PageParam{Page: int32(page), PageSize: int32(pageSize)},
 	})
 	if err != nil {
@@ -4512,6 +4553,162 @@ func (gw *Gateway) handleAdminBatchImportQuestions(c *gin.Context) {
 
 func (gw *Gateway) handleAdminGetQuestionTagTaxonomy(c *gin.Context) {
 	resp, err := gw.adminClient.GetQuestionTagTaxonomy(c.Request.Context(), &emptypb.Empty{})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ==================== Admin: 题单管理 ====================
+
+func (gw *Gateway) handleAdminListQuestionSets(c *gin.Context) {
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 32)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "20"), 10, 32)
+	resp, err := gw.questionClient.AdminListQuestionSets(c.Request.Context(), &questionv1.AdminListQuestionSetsRequest{
+		IndustryCode: c.Query("industry_code"),
+		Page:         &sharedv1.PageParam{Page: int32(page), PageSize: int32(pageSize)},
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminCreateQuestionSet(c *gin.Context) {
+	var req struct {
+		Name         string `json:"name"`
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		IndustryCode string `json:"industry_code"`
+		CoverImage   string `json:"cover_image"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	name := req.Name
+	if name == "" {
+		name = req.Title
+	}
+	resp, err := gw.questionClient.AdminCreateQuestionSet(c.Request.Context(), &questionv1.AdminCreateQuestionSetRequest{
+		Name:         name,
+		Description:  req.Description,
+		IndustryCode: req.IndustryCode,
+		CoverImage:   req.CoverImage,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminGetQuestionSet(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	resp, err := gw.questionClient.AdminGetQuestionSet(c.Request.Context(), &questionv1.AdminGetQuestionSetRequest{Id: id})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminUpdateQuestionSet(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Name         string `json:"name"`
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		IndustryCode string `json:"industry_code"`
+		CoverImage   string `json:"cover_image"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	name := req.Name
+	if name == "" {
+		name = req.Title
+	}
+	resp, err := gw.questionClient.AdminUpdateQuestionSet(c.Request.Context(), &questionv1.AdminUpdateQuestionSetRequest{
+		Id:           id,
+		Name:         name,
+		Description:  req.Description,
+		IndustryCode: req.IndustryCode,
+		CoverImage:   req.CoverImage,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminDeleteQuestionSet(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	resp, err := gw.questionClient.AdminDeleteQuestionSet(c.Request.Context(), &questionv1.AdminDeleteQuestionSetRequest{Id: id})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminAddQuestionsToSet(c *gin.Context) {
+	setID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		QuestionIDs []uint64 `json:"question_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.questionClient.AdminAddQuestionsToSet(c.Request.Context(), &questionv1.AdminAddQuestionsToSetRequest{
+		SetId:       setID,
+		QuestionIds: req.QuestionIDs,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (gw *Gateway) handleAdminRemoveQuestionsFromSet(c *gin.Context) {
+	setID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		QuestionIDs []uint64 `json:"question_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.questionClient.AdminRemoveQuestionsFromSet(c.Request.Context(), &questionv1.AdminRemoveQuestionsFromSetRequest{
+		SetId:       setID,
+		QuestionIds: req.QuestionIDs,
+	})
 	if err != nil {
 		grpcErr(c, err)
 		return

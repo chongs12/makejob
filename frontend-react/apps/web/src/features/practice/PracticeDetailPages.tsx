@@ -12,6 +12,7 @@ import {
   formatFrontendIndustryLabel,
   persistSelectedFrontendIndustryCode,
 } from '../../shared/industryContext'
+import { useFrontendIndustriesQuery } from '../../shared/frontendQueries'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
 import { fetchMistakeTopic, fetchMistakeTopics, parsePracticeAnalysis, pickMistakeTopicsByTags, resolveMistakeTopicRoute } from '../../shared/mistakeTopics'
 import {
@@ -24,6 +25,13 @@ import {
   type PracticeQuestion,
   questionTypeLabel,
 } from '../../shared/practiceCatalog'
+import { Button, Empty, Pagination, Spin, Tag } from 'antd'
+import {
+  CloseCircleOutlined,
+  RedoOutlined,
+  BookOutlined,
+  ClockCircleOutlined,
+} from '@ant-design/icons'
 
 interface PracticeQuestionSolution {
   summary: string
@@ -486,6 +494,8 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
     queryKey: ['practice-question-note', props.questionId, props.token],
     queryFn: () => fetchQuestionNote(props.token as string, props.questionId),
     enabled: Boolean(props.token),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   useEffect(() => {
@@ -671,12 +681,10 @@ export function PracticeQuestionPage() {
   const detailQuery = useQuery({
     queryKey: ['practice-question-detail', questionId],
     queryFn: () => fetchQuestionDetail(questionId),
-  })
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
+  const industriesQuery = useFrontendIndustriesQuery()
 
   const question = detailQuery.data
   const practiceAnalysis = useMemo(
@@ -1022,11 +1030,7 @@ export function PracticeEditorPage() {
     queryKey: ['practice-code-question-detail', questionId],
     queryFn: () => fetchQuestionDetail(questionId),
   })
-  const industriesQuery = useQuery({
-    queryKey: ['frontend-industries'],
-    queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-  })
+  const industriesQuery = useFrontendIndustriesQuery()
 
   const question = detailQuery.data
   const evaluationMode = question?.judge_config?.evaluation_mode || 'analysis_only'
@@ -1631,6 +1635,7 @@ export function PracticeEditorPage() {
  * 提供错题本页面，帮助用户回看最近仍未纠正的题目。
  */
 export function PracticeWrongPage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const [page, setPage] = useState(1)
 
@@ -1640,57 +1645,237 @@ export function PracticeWrongPage() {
     enabled: Boolean(accessToken),
   })
 
+  const THEME = {
+    bg: '#fafafa',
+    cardBg: '#ffffff',
+    primary: '#f97316',
+    textMain: '#1c1917',
+    textSecondary: '#57534e',
+    textMuted: '#a8a29e',
+    border: '#e7e5e4',
+    success: '#22c55e',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    info: '#3b82f6',
+    shadow: '0 1px 3px rgba(0,0,0,0.04)',
+    radius: 12,
+  }
+
+  const cardBase = {
+    background: THEME.cardBg,
+    borderRadius: THEME.radius,
+    boxShadow: THEME.shadow,
+    border: `1px solid ${THEME.border}`,
+  }
+
+  const difficultyColorMap: Record<string, string> = {
+    easy: '#22c55e',
+    medium: '#f59e0b',
+    hard: '#ef4444',
+  }
+
+  const difficultyBgMap: Record<string, string> = {
+    easy: '#f0fdf4',
+    medium: '#fffbeb',
+    hard: '#fef2f2',
+  }
+
+  if (!accessToken) {
+    return (
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '64px 16px', textAlign: 'center' }}>
+        <Empty description="登录后查看错题本" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Button
+          type="primary"
+          style={{ marginTop: 16 }}
+          onClick={() => requestLoginPrompt('/practice/wrong', 'missing')}
+        >
+          去登录
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <section className="page-panel">
-      <span className="page-tag">错题本</span>
-      <h1>我的错题</h1>
-      <p className="page-copy">这里展示当前最新一次仍答错的题目，方便集中回顾和重做。</p>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: THEME.textMain, margin: '0 0 4px' }}>
+          <BookOutlined style={{ marginRight: 8, color: THEME.danger }} />错题本
+        </h1>
+        <p style={{ color: THEME.textSecondary, margin: 0, fontSize: 13 }}>集中回顾和重做答错的题目，巩固薄弱环节</p>
+      </div>
+
+      {/* Stats */}
+      <div style={{ ...cardBase, padding: '18px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 2 }}>累计错题</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: THEME.danger }}>{wrongQuery.data?.total || 0}</div>
+        </div>
+        <div style={{ width: 1, height: 40, background: THEME.border }} />
+        <div>
+          <div style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 2 }}>当前页</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: THEME.textMain }}>{wrongQuery.data?.list?.length || 0}</div>
+        </div>
+      </div>
 
       {wrongQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>错题列表加载中...</div>
-      ) : null}
-
-      {wrongQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
+        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+      ) : wrongQuery.isError ? (
+        <div style={{ padding: 24, textAlign: 'center', color: THEME.danger }}>
           {wrongQuery.error instanceof Error ? wrongQuery.error.message : '错题列表加载失败'}
         </div>
-      ) : null}
-
-      {wrongQuery.data ? (
+      ) : wrongQuery.data?.list?.length ? (
         <>
-          <div className="grid-cards">
-            {wrongQuery.data.list.map((item) => (
-              <article className="feature-card" key={item.id}>
-                <h2>{item.question?.title || `题目 #${item.question_id}`}</h2>
-                <p>题型：{questionTypeLabel(item.question?.type || '')}</p>
-                <p>我的答案：{item.user_answer || '-'}</p>
-                <p>错题时间：{formatDateTime(item.created_at)}</p>
-                <Link
-                  className="secondary-link"
-                  to={(item.question?.type || '') === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
-                  params={{ questionId: String(item.question_id) }}
-                >
-                  重新练习
-                </Link>
-              </article>
-            ))}
-          </div>
+          {/* Table */}
+          <div style={{ ...cardBase, overflow: 'hidden' }}>
+            {/* Header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '44px 1fr 100px 80px 100px 140px 100px',
+                gap: 12,
+                padding: '12px 20px',
+                background: '#fafaf9',
+                borderBottom: `1px solid ${THEME.border}`,
+                fontSize: 12,
+                fontWeight: 600,
+                color: THEME.textMuted,
+              }}
+            >
+              <span></span>
+              <span>题目</span>
+              <span style={{ textAlign: 'center' }}>题型</span>
+              <span style={{ textAlign: 'center' }}>难度</span>
+              <span style={{ textAlign: 'center' }}>我的答案</span>
+              <span style={{ textAlign: 'center' }}>错题时间</span>
+              <span style={{ textAlign: 'center' }}>操作</span>
+            </div>
 
-          <div className="card-inline" style={{ marginTop: 24 }}>
-            <span>共 {wrongQuery.data.total} 条错题记录</span>
-            <div className="page-actions">
-              <button className="secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
-                上一页
-              </button>
-              <span>第 {page} 页</span>
-              <button className="secondary-button" type="button" disabled={wrongQuery.data.list.length < PRACTICE_PAGE_SIZE} onClick={() => setPage((current) => current + 1)}>
-                下一页
-              </button>
+            {/* Rows */}
+            <div>
+              {wrongQuery.data.list.map((item, index) => {
+                const question = item.question
+                const diffColor = difficultyColorMap[question?.difficulty || ''] || THEME.textMuted
+                const diffBg = difficultyBgMap[question?.difficulty || ''] || '#f5f5f4'
+                const isCode = (question?.type || '') === 'code'
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '44px 1fr 100px 80px 100px 140px 100px',
+                      gap: 12,
+                      alignItems: 'center',
+                      padding: '12px 20px',
+                      borderBottom: index === wrongQuery.data.list.length - 1 ? 'none' : `1px solid ${THEME.border}`,
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#fafaf9' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {/* Status */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CloseCircleOutlined style={{ fontSize: 16, color: THEME.danger }} />
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: THEME.textMain,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          marginBottom: 2,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => navigate({
+                          to: isCode ? '/practice/editor/$questionId' : '/practice/$questionId',
+                          params: { questionId: String(item.question_id) },
+                        })}
+                      >
+                        {question?.title || `题目 #${item.question_id}`}
+                      </div>
+                      <div style={{ fontSize: 11, color: THEME.textMuted }}>
+                        {question?.category_name || '未分类'} · #{item.question_id}
+                      </div>
+                    </div>
+
+                    {/* Type */}
+                    <div style={{ textAlign: 'center' }}>
+                      <Tag size="small" style={{ margin: 0, fontSize: 11 }}>{questionTypeLabel(question?.type || '')}</Tag>
+                    </div>
+
+                    {/* Difficulty */}
+                    <div style={{ textAlign: 'center' }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: diffColor,
+                          background: diffBg,
+                        }}
+                      >
+                        {difficultyLabel(question?.difficulty || '')}
+                      </span>
+                    </div>
+
+                    {/* User answer */}
+                    <div style={{ textAlign: 'center', fontSize: 13, color: THEME.danger, fontWeight: 500 }}>
+                      {item.user_answer || '-'}
+                    </div>
+
+                    {/* Time */}
+                    <div style={{ textAlign: 'center', fontSize: 12, color: THEME.textMuted }}>
+                      <ClockCircleOutlined style={{ marginRight: 4 }} />
+                      {formatDateTime(item.created_at)}
+                    </div>
+
+                    {/* Action */}
+                    <div style={{ textAlign: 'center' }}>
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<RedoOutlined />}
+                        onClick={() => navigate({
+                          to: isCode ? '/practice/editor/$questionId' : '/practice/$questionId',
+                          params: { questionId: String(item.question_id) },
+                        })}
+                      >
+                        重做
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
+
+          {/* Pagination */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, padding: '12px 0' }}>
+            <span style={{ color: THEME.textMuted, fontSize: 13 }}>共 {wrongQuery.data.total} 条错题记录</span>
+            <Pagination
+              current={page}
+              pageSize={PRACTICE_PAGE_SIZE}
+              total={wrongQuery.data.total}
+              onChange={setPage}
+              showSizeChanger={false}
+              showTotal={(total) => `共 ${total} 条`}
+            />
+          </div>
         </>
-      ) : null}
-    </section>
+      ) : (
+        <div style={{ ...cardBase, padding: 48, textAlign: 'center' }}>
+          <Empty description="暂无错题记录，继续保持！" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </div>
+      )}
+    </div>
   )
 }
 

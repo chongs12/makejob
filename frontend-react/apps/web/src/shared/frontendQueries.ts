@@ -10,8 +10,10 @@ export function useFrontendIndustriesQuery() {
   return useQuery({
     queryKey: buildFrontendIndustriesQueryKey(),
     queryFn: fetchFrontendIndustries,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   })
 }
 
@@ -24,6 +26,7 @@ export function usePracticeStatsQuery(accessToken: string | null) {
     queryFn: () => fetchPracticeStats(accessToken as string),
     enabled: Boolean(accessToken),
     retry: false,
-    staleTime: 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 }

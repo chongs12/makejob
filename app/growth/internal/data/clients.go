@@ -202,7 +202,7 @@ func (c *archiveClient) Close() error {
 
 // GetWeakTopics 获取用户薄弱知识点列表
 func (c *archiveClient) GetWeakTopics(ctx context.Context, userID uint64) ([]string, error) {
-	resp, err := c.client.GetWeakTopics(ctx, &archivev1.UserIDRequest{
+	resp, err := c.client.GetWeakTopics(ctx, &archivev1.GetWeakTopicsRequest{
 		UserId: userID,
 	})
 	if err != nil {
@@ -213,7 +213,7 @@ func (c *archiveClient) GetWeakTopics(ctx context.Context, userID uint64) ([]str
 
 // GetFocusSignals 获取用户学习焦点信号
 func (c *archiveClient) GetFocusSignals(ctx context.Context, userID uint64) ([]*biz.FocusSignal, error) {
-	resp, err := c.client.GetFocusSignals(ctx, &archivev1.UserIDRequest{
+	resp, err := c.client.GetFocusSignals(ctx, &archivev1.GetFocusSignalsRequest{
 		UserId: userID,
 	})
 	if err != nil {
@@ -222,9 +222,25 @@ func (c *archiveClient) GetFocusSignals(ctx context.Context, userID uint64) ([]*
 	signals := make([]*biz.FocusSignal, 0, len(resp.GetSignals()))
 	for _, s := range resp.GetSignals() {
 		signals = append(signals, &biz.FocusSignal{
-			Topic:  s.GetTopic(),
-			Weight: s.GetWeight(),
-			Source: s.GetSource(),
+			Topic:                     s.GetTag(),
+			Weight:                    float64(s.GetOccurrenceCount()),
+			Source:                    s.GetSource(),
+			Tag:                       s.GetTag(),
+			TopicCode:                 s.GetTopicCode(),
+			TopicTitle:                s.GetTopicTitle(),
+			TopicProblemPattern:       s.GetTopicProblemPattern(),
+			RelatedQuestionSets:       s.GetRelatedQuestionSets(),
+			RecommendedActions:        s.GetRecommendedActions(),
+			PrimaryQuestionSet:        s.GetPrimaryQuestionSet(),
+			OccurrenceCount:           int(s.GetOccurrenceCount()),
+			ArchiveOccurrenceCount:    int(s.GetArchiveOccurrenceCount()),
+			InterviewOccurrenceCount:  int(s.GetInterviewOccurrenceCount()),
+			DominantArchivePhase:      s.GetDominantArchivePhase(),
+			DominantArchivePhaseLabel: s.GetDominantArchivePhaseLabel(),
+			SourceLabel:               s.GetSourceLabel(),
+			Reason:                    s.GetReason(),
+			SourceRef:                 s.GetSourceRef(),
+			CollectionHint:            s.GetCollectionHint(),
 		})
 	}
 	return signals, nil

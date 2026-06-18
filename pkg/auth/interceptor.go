@@ -38,6 +38,8 @@ func NewInterceptor(secret string, opts ...Option) *Interceptor {
 			"/makejob.question.v1.QuestionService/GetQuestion":      true,
 			"/makejob.question.v1.QuestionService/ListCategories":   true,
 			"/makejob.question.v1.QuestionService/ListIndustries":   true,
+			"/makejob.question.v1.QuestionService/ListQuestionSets":  true,
+			"/makejob.question.v1.QuestionService/GetQuestionSetDetail": true,
 			// Community 服务公开方法
 			"/makejob.community.v1.CommunityService/ListPosts":      true,
 			"/makejob.community.v1.CommunityService/GetPost":        true,
