@@ -208,6 +208,7 @@ type QuestionSummary struct {
 	IndustryId    uint64                 `protobuf:"varint,8,opt,name=industry_id,json=industryId,proto3" json:"industry_id,omitempty"`
 	Tags          []string               `protobuf:"bytes,9,rep,name=tags,proto3" json:"tags,omitempty"`
 	IsAnswered    bool                   `protobuf:"varint,10,opt,name=is_answered,json=isAnswered,proto3" json:"is_answered,omitempty"`
+	IsFavorite    bool                   `protobuf:"varint,11,opt,name=is_favorite,json=isFavorite,proto3" json:"is_favorite,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -308,6 +309,13 @@ func (x *QuestionSummary) GetTags() []string {
 func (x *QuestionSummary) GetIsAnswered() bool {
 	if x != nil {
 		return x.IsAnswered
+	}
+	return false
+}
+
+func (x *QuestionSummary) GetIsFavorite() bool {
+	if x != nil {
+		return x.IsFavorite
 	}
 	return false
 }
@@ -2437,12 +2445,17 @@ func (x *WrongQuestionListResponse) GetPageResult() *v1.PageResult {
 }
 
 type WrongQuestionEntry struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	QuestionId    uint64                 `protobuf:"varint,1,opt,name=question_id,json=questionId,proto3" json:"question_id,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	WrongCount    int32                  `protobuf:"varint,3,opt,name=wrong_count,json=wrongCount,proto3" json:"wrong_count,omitempty"`
-	LastWrongAt   *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_wrong_at,json=lastWrongAt,proto3" json:"last_wrong_at,omitempty"`
-	LastAnswer    string                 `protobuf:"bytes,5,opt,name=last_answer,json=lastAnswer,proto3" json:"last_answer,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	QuestionId  uint64                 `protobuf:"varint,1,opt,name=question_id,json=questionId,proto3" json:"question_id"`
+	Title       string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title"`
+	WrongCount  int32                  `protobuf:"varint,3,opt,name=wrong_count,json=wrongCount,proto3" json:"wrong_count"`
+	LastWrongAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_wrong_at,json=lastWrongAt,proto3" json:"last_wrong_at,omitempty"`
+	LastAnswer  string                 `protobuf:"bytes,5,opt,name=last_answer,json=lastAnswer,proto3" json:"last_answer"`
+	// 题目详情字段
+	Difficulty    string `protobuf:"bytes,6,opt,name=difficulty,proto3" json:"difficulty"`                         // easy / medium / hard
+	Type          string `protobuf:"bytes,7,opt,name=type,proto3" json:"type"`                                     // choice / multi / subjective / code
+	CategoryName  string `protobuf:"bytes,8,opt,name=category_name,json=categoryName,proto3" json:"category_name"` // 分类名称
+	CategoryId    uint64 `protobuf:"varint,9,opt,name=category_id,json=categoryId,proto3" json:"category_id"`      // 分类 ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2510,6 +2523,34 @@ func (x *WrongQuestionEntry) GetLastAnswer() string {
 		return x.LastAnswer
 	}
 	return ""
+}
+
+func (x *WrongQuestionEntry) GetDifficulty() string {
+	if x != nil {
+		return x.Difficulty
+	}
+	return ""
+}
+
+func (x *WrongQuestionEntry) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *WrongQuestionEntry) GetCategoryName() string {
+	if x != nil {
+		return x.CategoryName
+	}
+	return ""
+}
+
+func (x *WrongQuestionEntry) GetCategoryId() uint64 {
+	if x != nil {
+		return x.CategoryId
+	}
+	return 0
 }
 
 type UserPracticeStats struct {
@@ -5769,7 +5810,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x15ListQuestionsResponse\x12B\n" +
 	"\tquestions\x18\x01 \x03(\v2$.makejob.question.v1.QuestionSummaryR\tquestions\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\xac\x02\n" +
+	"pageResult\"\xcd\x02\n" +
 	"\x0fQuestionSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x1e\n" +
@@ -5786,7 +5827,9 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x04tags\x18\t \x03(\tR\x04tags\x12\x1f\n" +
 	"\vis_answered\x18\n" +
 	" \x01(\bR\n" +
-	"isAnswered\"$\n" +
+	"isAnswered\x12\x1f\n" +
+	"\vis_favorite\x18\v \x01(\bR\n" +
+	"isFavorite\"$\n" +
 	"\x12GetQuestionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"\xec\x06\n" +
 	"\x0eQuestionDetail\x12\x0e\n" +
@@ -5982,7 +6025,7 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"\x19WrongQuestionListResponse\x12A\n" +
 	"\aentries\x18\x01 \x03(\v2'.makejob.question.v1.WrongQuestionEntryR\aentries\x12>\n" +
 	"\vpage_result\x18\x02 \x01(\v2\x1d.makejob.shared.v1.PageResultR\n" +
-	"pageResult\"\xcd\x01\n" +
+	"pageResult\"\xc7\x02\n" +
 	"\x12WrongQuestionEntry\x12\x1f\n" +
 	"\vquestion_id\x18\x01 \x01(\x04R\n" +
 	"questionId\x12\x14\n" +
@@ -5991,7 +6034,14 @@ const file_makejob_question_v1_question_proto_rawDesc = "" +
 	"wrongCount\x12>\n" +
 	"\rlast_wrong_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vlastWrongAt\x12\x1f\n" +
 	"\vlast_answer\x18\x05 \x01(\tR\n" +
-	"lastAnswer\"\xf2\x02\n" +
+	"lastAnswer\x12\x1e\n" +
+	"\n" +
+	"difficulty\x18\x06 \x01(\tR\n" +
+	"difficulty\x12\x12\n" +
+	"\x04type\x18\a \x01(\tR\x04type\x12#\n" +
+	"\rcategory_name\x18\b \x01(\tR\fcategoryName\x12\x1f\n" +
+	"\vcategory_id\x18\t \x01(\x04R\n" +
+	"categoryId\"\xf2\x02\n" +
 	"\x11UserPracticeStats\x12%\n" +
 	"\x0etotal_answered\x18\x01 \x01(\x05R\rtotalAnswered\x12#\n" +
 	"\rtotal_correct\x18\x02 \x01(\x05R\ftotalCorrect\x12\x1a\n" +

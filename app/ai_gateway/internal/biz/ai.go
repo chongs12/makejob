@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -198,9 +199,12 @@ func NewPlanAgentUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, callLog
 
 // PlanResult 学习计划返回结果
 type PlanResult struct {
-	PlanTitle string     `json:"plan_title"`
-	Tasks     []PlanTask `json:"tasks"`
-	Summary   string     `json:"summary"`
+	PlanTitle    string     `json:"plan_title"`
+	Tasks        []PlanTask `json:"tasks"`
+	Summary      string     `json:"summary"`
+	Phase        string     `json:"phase"`
+	PhaseGoal    string     `json:"phase_goal"`
+	DurationDays int32      `json:"duration_days"`
 }
 
 // PlanTask 计划任务项
@@ -210,6 +214,11 @@ type PlanTask struct {
 	Phase          string `json:"phase"`
 	OrderIndex     int32  `json:"order_index"`
 	EstimatedHours int32  `json:"estimated_hours"`
+	TaskType       string `json:"task_type"`
+	PhaseGoal      string `json:"phase_goal"`
+	DayNumber      int32  `json:"day_number"`
+	DurationMinutes int32 `json:"duration_minutes"`
+	Priority       string `json:"priority"`
 }
 
 // GeneratePlan 生成个性化学习计划
@@ -249,6 +258,110 @@ func (uc *PlanAgentUseCase) GeneratePlan(ctx context.Context, industryCode, goal
 		return nil, err
 	}
 	return &result, nil
+}
+
+// AdjustPlan 根据执行反馈调整学习计划
+func (uc *PlanAgentUseCase) AdjustPlan(ctx context.Context, planID, industryCode, currentPhase, goalDescription string, dailyHours int32, completedTasks, weakTopics []string, performance map[string]float64) (*PlanResult, error) {
+	const scene = "plan_adjust"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return nil, ErrPromptRenderFailed
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"plan_id":          planID,
+		"industry_code":    industryCode,
+		"current_phase":    currentPhase,
+		"goal_description": goalDescription,
+		"daily_hours":      fmt.Sprintf("%d", dailyHours),
+		"completed_tasks":  joinStrings(completedTasks),
+		"weak_topics":      joinStrings(weakTopics),
+		"performance":      renderPerformance(performance),
+	})
+
+	schema := planResultSchema()
+	messages := []Message{{Role: "user", Content: buildJSONContractPrompt(promptText, schema)}}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, ErrLLMCallFailed
+	}
+
+	result, err := parseStructuredJSON[PlanResult](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetStudySuggestion 获取学习建议
+func (uc *PlanAgentUseCase) GetStudySuggestion(ctx context.Context, industryCode, level, goalDescription string, dailyHours, durationDays int32, weakTopics, strongTopics []string) (string, error) {
+	const scene = "study_suggestion"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return "", ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return "", ErrPromptRenderFailed
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"industry_code":    industryCode,
+		"level":            level,
+		"goal_description": goalDescription,
+		"daily_hours":      fmt.Sprintf("%d", dailyHours),
+		"duration_days":    fmt.Sprintf("%d", durationDays),
+		"weak_topics":      joinStrings(weakTopics),
+		"strong_topics":    joinStrings(strongTopics),
+	})
+
+	messages := []Message{
+		{Role: "system", Content: "你是一名学习教练，请输出 3 到 5 条简短、可执行的学习建议，使用 Markdown 列表返回。"},
+		{Role: "user", Content: promptText},
+	}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return "", ErrLLMCallFailed
+	}
+
+	suggestion := strings.TrimSpace(resp.Content)
+	if suggestion == "" {
+		return "", ErrParseFailed
+	}
+	return suggestion, nil
+}
+
+// renderPerformance 将表现数据渲染为可读文本
+func renderPerformance(performance map[string]float64) string {
+	if len(performance) == 0 {
+		return "无"
+	}
+
+	keys := make([]string, 0, len(performance))
+	for key := range performance {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%.0f", key, performance[key]))
+	}
+	return strings.Join(parts, "、")
 }
 
 // saveLog 记录 LLM 调用日志
@@ -483,6 +596,36 @@ type QuizResult struct {
 	CorrectAnswer string   `json:"correct_answer"`
 }
 
+// CodeAnalysis 代码分析结果
+type CodeAnalysis struct {
+	IsCorrect       bool     `json:"is_correct"`
+	Score           float64  `json:"score"`
+	Feedback        string   `json:"feedback"`
+	Issues          []string `json:"issues"`
+	Improvements    []string `json:"improvements"`
+	MistakeTags     []string `json:"mistake_tags"`
+	StrengthTags    []string `json:"strength_tags"`
+	TimeComplexity  string   `json:"time_complexity"`
+	SpaceComplexity string   `json:"space_complexity"`
+}
+
+// CodingProcessEvent 编程过程事件
+type CodingProcessEvent struct {
+	Type        string `json:"type"`
+	TimestampMS int64  `json:"timestamp_ms"`
+	PayloadJSON string `json:"payload_json"`
+}
+
+// CodingQuestionDiagnosis 编程面试诊断结果
+type CodingQuestionDiagnosis struct {
+	Score          float64  `json:"score"`
+	MistakeTags    []string `json:"mistake_tags"`
+	StrengthTags   []string `json:"strength_tags"`
+	Evidence       []string `json:"evidence"`
+	Suggestions    []string `json:"suggestions"`
+	ProcessSummary string   `json:"process_summary"`
+}
+
 // Analyze 对用户答题进行分析评估
 func (uc *QuizAnalyzerUseCase) Analyze(ctx context.Context, question, answer, topic, difficulty, questionType string) (*QuizResult, error) {
 	const scene = "quiz_analyzer"
@@ -520,6 +663,171 @@ func (uc *QuizAnalyzerUseCase) Analyze(ctx context.Context, question, answer, to
 		return nil, err
 	}
 	return &result, nil
+}
+
+// AnalyzeCode 分析代码题或文本题答案
+func (uc *QuizAnalyzerUseCase) AnalyzeCode(ctx context.Context, code, language, question string) (*CodeAnalysis, error) {
+	const scene = "quiz_analyzer"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return nil, ErrPromptRenderFailed
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"code":     code,
+		"language": language,
+		"question": question,
+	})
+
+	schema := codeAnalysisSchema()
+	messages := []Message{
+		{Role: "system", Content: buildCodeAnalysisSystemPrompt()},
+		{Role: "user", Content: buildJSONContractPrompt(promptText, schema)},
+	}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, ErrLLMCallFailed
+	}
+
+	result, err := parseStructuredJSON[CodeAnalysis](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DiagnoseInterviewCoding 编程面试诊断
+func (uc *QuizAnalyzerUseCase) DiagnoseInterviewCoding(ctx context.Context, question, language, finalCode, finalAnswer string, processEvents []CodingProcessEvent) (*CodingQuestionDiagnosis, error) {
+	const scene = "quiz_analyzer"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return nil, ErrPromptRenderFailed
+	}
+
+	processEventsJSON := "[]"
+	if len(processEvents) > 0 {
+		eventsBytes, _ := json.Marshal(processEvents)
+		processEventsJSON = string(eventsBytes)
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"question":          question,
+		"language":          language,
+		"final_code":        finalCode,
+		"final_answer":      finalAnswer,
+		"process_events":    processEventsJSON,
+	})
+
+	schema := codingDiagnosisSchema()
+	messages := []Message{
+		{Role: "system", Content: buildCodingDiagnosisSystemPrompt()},
+		{Role: "user", Content: buildJSONContractPrompt(promptText, schema)},
+	}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, ErrLLMCallFailed
+	}
+
+	result, err := parseStructuredJSON[CodingQuestionDiagnosis](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ExplainAnswer 生成题目答案解析
+func (uc *QuizAnalyzerUseCase) ExplainAnswer(ctx context.Context, questionTitle, questionContent, correctAnswer string) (string, error) {
+	const scene = "quiz_analyzer"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return "", ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return "", ErrPromptRenderFailed
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"question_title":   questionTitle,
+		"question_content": questionContent,
+		"correct_answer":   correctAnswer,
+	})
+
+	messages := []Message{
+		{Role: "system", Content: "请用简洁、结构化的中文解释标准答案，帮助用户理解关键思路与常见误区。"},
+		{Role: "user", Content: promptText},
+	}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return "", ErrLLMCallFailed
+	}
+
+	explanation := strings.TrimSpace(resp.Content)
+	if explanation == "" {
+		return "", ErrParseFailed
+	}
+	return explanation, nil
+}
+
+// GenerateHint 生成答题提示
+func (uc *QuizAnalyzerUseCase) GenerateHint(ctx context.Context, questionTitle, questionContent string) (string, error) {
+	const scene = "quiz_analyzer"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return "", ErrAIConfigNotFound
+	}
+
+	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+	if err != nil {
+		return "", ErrPromptRenderFailed
+	}
+
+	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
+		"question_title":   questionTitle,
+		"question_content": questionContent,
+	})
+
+	messages := []Message{
+		{Role: "system", Content: "请给出 2 到 4 条循序渐进的提示，不要直接泄露答案。"},
+		{Role: "user", Content: promptText},
+	}
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return "", ErrLLMCallFailed
+	}
+
+	hint := strings.TrimSpace(resp.Content)
+	if hint == "" {
+		return "", ErrParseFailed
+	}
+	return hint, nil
 }
 
 // saveLog 记录 LLM 调用日志
@@ -563,10 +871,11 @@ type ResumeResult struct {
 	Projects    []string `json:"projects"`
 	Summary     string   `json:"summary"`
 	WeakSignals []string `json:"weak_signals"`
+	Strengths   []string `json:"strengths"`
 }
 
 // Parse 解析简历文本并提取结构化信息
-func (uc *ResumeParserUseCase) Parse(ctx context.Context, resumeText string) (*ResumeResult, error) {
+func (uc *ResumeParserUseCase) Parse(ctx context.Context, resumeText, jobDescription string) (*ResumeResult, error) {
 	const scene = "resume_parser"
 	start := time.Now()
 
@@ -581,10 +890,19 @@ func (uc *ResumeParserUseCase) Parse(ctx context.Context, resumeText string) (*R
 	}
 
 	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"resume_text": resumeText,
+		"resume_text":      resumeText,
+		"job_description":  jobDescription,
 	})
 
-	messages := []Message{{Role: "user", Content: promptText}}
+	systemPrompt := "你是一位资深的技术招聘专家。请从候选人简历中提取结构化画像。输出严格 JSON。"
+	if strings.TrimSpace(jobDescription) != "" {
+		systemPrompt += "\n\n请结合岗位要求，重点分析候选人与该岗位的匹配度和潜在薄弱点。"
+	}
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: promptText},
+	}
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())

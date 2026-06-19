@@ -21,6 +21,17 @@ export interface PracticeQuestion {
   tags?: string
 }
 
+/**
+ * 将 API 返回的题目数据标准化，确保布尔字段有默认值。
+ */
+export function normalizePracticeQuestion(question: PracticeQuestion): PracticeQuestion {
+  return {
+    ...question,
+    is_favorite: question.is_favorite ?? false,
+    is_answered: question.is_answered ?? false,
+  }
+}
+
 export interface PracticeQuestionSetPreview {
   id: number
   title: string
@@ -144,6 +155,7 @@ export async function fetchQuestions(params: {
   keyword: string
   industryId: number | null
   categoryId: number | null
+  token?: string | null
 }): Promise<PageResult<PracticeQuestion>> {
   const searchParams = new URLSearchParams({
     page: String(params.page),
@@ -166,12 +178,17 @@ export async function fetchQuestions(params: {
     searchParams.set('category_id', String(params.categoryId))
   }
 
-  const response = await requestJson<ApiEnvelope<PageResult<PracticeQuestion>>>(`/questions?${searchParams.toString()}`)
+  const response = await requestJson<ApiEnvelope<PageResult<PracticeQuestion>>>(`/questions?${searchParams.toString()}`, {
+    token: params.token || undefined,
+  })
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取题目列表失败')
   }
 
-  return response.data
+  return {
+    ...response.data,
+    list: (response.data.list || []).map(normalizePracticeQuestion),
+  }
 }
 
 /**

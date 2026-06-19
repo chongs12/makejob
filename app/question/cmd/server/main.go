@@ -121,7 +121,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	ragSyncPub := data.NewRAGSyncPublisher(mqPublisher)
 	uc.SetRAGSyncPublisher(ragSyncPub)
 
-	svc := service.NewQuestionService(uc)
+	svc := service.NewQuestionService(uc, bc.JWT.Secret)
 	authInterceptor := auth.NewInterceptor(bc.JWT.Secret)
 	gs := server.NewGRPCServer(bc.Server, svc, authInterceptor, logger)
 

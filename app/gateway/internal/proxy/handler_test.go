@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,10 +11,44 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
 
+	questionv1 "makejob/api/makejob/question/v1"
+	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/pkg/auth"
 )
+
+// questionMetadataProbeServer 用于记录题库 RPC 收到的 metadata，验证 Gateway 可选鉴权透传是否生效。
+type questionMetadataProbeServer struct {
+	questionv1.UnimplementedQuestionServiceServer
+	listMetadata   metadata.MD
+	detailMetadata metadata.MD
+}
+
+// ListQuestions 记录题库列表请求收到的 metadata，供路由透传测试断言。
+func (s *questionMetadataProbeServer) ListQuestions(ctx context.Context, _ *questionv1.ListQuestionsRequest) (*questionv1.ListQuestionsResponse, error) {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		s.listMetadata = md.Copy()
+	}
+	return &questionv1.ListQuestionsResponse{
+		PageResult: &sharedv1.PageResult{Total: 0, Page: 1, PageSize: 20},
+	}, nil
+}
+
+// GetQuestion 记录题目详情请求收到的 metadata，供详情路由透传测试断言。
+func (s *questionMetadataProbeServer) GetQuestion(ctx context.Context, req *questionv1.GetQuestionRequest) (*questionv1.QuestionDetail, error) {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		s.detailMetadata = md.Copy()
+	}
+	return &questionv1.QuestionDetail{
+		Id:       req.Id,
+		Title:    "question",
+		Category: &questionv1.CategoryInfo{},
+	}, nil
+}
 
 // TestJWTMiddlewareInjectsLegacyUserID 验证网关鉴权后会把 user_id 以 legacy handler 可识别的 uint 注入上下文。
 func TestJWTMiddlewareInjectsLegacyUserID(t *testing.T) {
@@ -85,6 +121,65 @@ func TestJWTMiddlewareInjectsOutgoingAuthorization(t *testing.T) {
 
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("expected status %d, got %d", http.StatusNoContent, recorder.Code)
+	}
+}
+
+// TestRegisterV1RoutesForwardOptionalAuthorization 验证 `/api/v1/questions` 系列公开读接口在已登录时会把 Bearer Token 透传给题库服务。
+func TestRegisterV1RoutesForwardOptionalAuthorization(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	token, err := auth.GenerateToken(12, "tester@example.com", "user", "secret", time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateToken returned error: %v", err)
+	}
+
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	probe := &questionMetadataProbeServer{}
+	questionv1.RegisterQuestionServiceServer(server, probe)
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Stop()
+
+	conn, err := grpc.DialContext(context.Background(), "bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return listener.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("DialContext returned error: %v", err)
+	}
+	defer conn.Close()
+
+	gateway := &Gateway{
+		jwtSecret:      "secret",
+		questionClient: questionv1.NewQuestionServiceClient(conn),
+	}
+	engine := gin.New()
+	gateway.registerV1Routes(engine)
+
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/questions?page=1&page_size=1", nil)
+	listRequest.Header.Set("Authorization", "Bearer "+token)
+	listRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(listRecorder, listRequest)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list status %d, got %d", http.StatusOK, listRecorder.Code)
+	}
+	if got := probe.listMetadata.Get("authorization"); len(got) != 1 || got[0] != "Bearer "+token {
+		t.Fatalf("expected list authorization metadata to be forwarded, got %#v", probe.listMetadata)
+	}
+
+	detailRequest := httptest.NewRequest(http.MethodGet, "/api/v1/questions/692", nil)
+	detailRequest.Header.Set("Authorization", "Bearer "+token)
+	detailRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(detailRecorder, detailRequest)
+	if detailRecorder.Code != http.StatusOK {
+		t.Fatalf("expected detail status %d, got %d", http.StatusOK, detailRecorder.Code)
+	}
+	if got := probe.detailMetadata.Get("authorization"); len(got) != 1 || got[0] != "Bearer "+token {
+		t.Fatalf("expected detail authorization metadata to be forwarded, got %#v", probe.detailMetadata)
 	}
 }
 

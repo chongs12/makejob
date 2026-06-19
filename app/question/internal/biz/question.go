@@ -38,6 +38,8 @@ type FavoriteRepo interface {
 	Delete(ctx context.Context, userID, questionID uint64) error
 	ListByUser(ctx context.Context, userID uint64, page, pageSize int32) ([]*Question, int64, error)
 	Exists(ctx context.Context, userID, questionID uint64) (bool, error)
+	// GetFavoritedQuestionIDs 批量查询用户已收藏的题目 ID 集合
+	GetFavoritedQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error)
 }
 
 type NoteRepo interface {
@@ -223,11 +225,15 @@ type CategoryStat struct {
 }
 
 type WrongQuestion struct {
-	QuestionID  uint64
-	Title       string
-	WrongCount  int32
-	LastWrongAt time.Time
-	LastAnswer  string
+	QuestionID   uint64
+	Title        string
+	Difficulty   string
+	Type         string
+	CategoryName string
+	CategoryID   uint64
+	WrongCount   int32
+	LastWrongAt  time.Time
+	LastAnswer   string
 }
 
 // QuestionFilter 定义题目查询与随机选题的统一筛选条件。

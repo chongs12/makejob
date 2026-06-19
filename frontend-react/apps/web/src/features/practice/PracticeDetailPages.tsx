@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -31,6 +31,24 @@ import {
   RedoOutlined,
   BookOutlined,
   ClockCircleOutlined,
+  CheckCircleOutlined,
+  CloseOutlined,
+  FireOutlined,
+  TagOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  SaveOutlined,
+  ArrowLeftOutlined,
+  StarOutlined,
+  StarFilled,
+  MessageOutlined,
+  TrophyOutlined,
+  ThunderboltOutlined,
+  RightOutlined,
+  ExclamationCircleOutlined,
+  BulbOutlined,
+  ProfileOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 
 interface PracticeQuestionSolution {
@@ -292,8 +310,10 @@ function persistCodeDraft(questionId: number | string, language: string, content
 /**
  * 拉取题目详情，供普通练习页和代码题编辑器共用。
  */
-async function fetchQuestionDetail(questionId: string): Promise<PracticeQuestionDetail> {
-  const response = await requestJson<ApiEnvelope<PracticeQuestionDetail>>(`/questions/${questionId}`)
+async function fetchQuestionDetail(questionId: string, token?: string | null): Promise<PracticeQuestionDetail> {
+  const response = await requestJson<ApiEnvelope<PracticeQuestionDetail>>(`/questions/${questionId}`, {
+    token: token || undefined,
+  })
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '获取题目详情失败')
   }
@@ -305,7 +325,12 @@ async function fetchQuestionDetail(questionId: string): Promise<PracticeQuestion
  * 拉取当前用户的收藏题目列表。
  */
 async function fetchFavorites(token: string, page: number, pageSize: number): Promise<PageResult<FavoriteRecord>> {
-  const response = await requestJson<ApiEnvelope<PageResult<FavoriteRecord>>>(`/user/favorites?page=${page}&page_size=${pageSize}`, {
+  const response = await requestJson<ApiEnvelope<{ list: Array<{
+    id: number
+    title: string
+    difficulty: string
+    type: string
+  }>; total: number; page: number; page_size: number }>>(`/user/favorites?page=${page}&page_size=${pageSize}`, {
     token,
   })
 
@@ -313,14 +338,42 @@ async function fetchFavorites(token: string, page: number, pageSize: number): Pr
     throw new Error(response.message || '获取收藏列表失败')
   }
 
-  return response.data
+  const items = response.data.list || []
+
+  return {
+    list: items.map((item) => ({
+      id: item.id,
+      question_id: item.id,
+      question: {
+        id: item.id,
+        title: item.title,
+        difficulty: item.difficulty,
+        type: item.type,
+        category_id: 0,
+        industry_id: 0,
+      },
+    })),
+    total: response.data.total || 0,
+    page: response.data.page || page,
+    page_size: response.data.page_size || pageSize,
+  }
 }
 
 /**
  * 拉取当前用户的错题本列表。
  */
 async function fetchWrongQuestions(token: string, page: number, pageSize: number): Promise<PageResult<WrongQuestionRecord>> {
-  const response = await requestJson<ApiEnvelope<PageResult<WrongQuestionRecord>>>(`/user/wrong-questions?page=${page}&page_size=${pageSize}`, {
+  const response = await requestJson<ApiEnvelope<{ list: Array<{
+    question_id: number
+    title: string
+    difficulty: string
+    type: string
+    category_name: string
+    category_id: number
+    wrong_count: number
+    last_wrong_at?: string
+    last_answer: string
+  }>; total: number; page: number; page_size: number }>>(`/user/wrong-questions?page=${page}&page_size=${pageSize}`, {
     token,
   })
 
@@ -328,7 +381,30 @@ async function fetchWrongQuestions(token: string, page: number, pageSize: number
     throw new Error(response.message || '获取错题本失败')
   }
 
-  return response.data
+  const items = response.data.list || []
+
+  return {
+    list: items.map((item) => ({
+      id: item.question_id,
+      question_id: item.question_id,
+      user_answer: item.last_answer || '',
+      is_correct: false,
+      time_spent: 0,
+      created_at: item.last_wrong_at || '',
+      question: {
+        id: item.question_id,
+        title: item.title,
+        difficulty: item.difficulty,
+        type: item.type,
+        category_id: item.category_id,
+        industry_id: 0,
+        category_name: item.category_name,
+      },
+    })),
+    total: response.data.total || 0,
+    page: response.data.page || page,
+    page_size: response.data.page_size || pageSize,
+  }
 }
 
 /**
@@ -480,6 +556,57 @@ async function runCodeRequest(token: string, questionId: number, answer: string,
   return response.data
 }
 
+/* ------------------------------------------------------------------ */
+/*  视觉 token（做题详情页重构）                                        */
+/* ------------------------------------------------------------------ */
+
+const THEME = {
+  bg: '#fafafa',
+  cardBg: '#ffffff',
+  primary: '#f97316',
+  primaryDark: '#ea580c',
+  primaryLight: '#fff7ed',
+  accent: '#3b82f6',
+  textMain: '#1c1917',
+  textSecondary: '#57534e',
+  textMuted: '#a8a29e',
+  border: '#e7e5e4',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  shadow: '0 1px 3px rgba(0,0,0,0.04)',
+  shadowCard: '0 4px 20px rgba(0,0,0,0.06)',
+  radius: 16,
+} as const
+
+const glassCard = {
+  background: 'rgba(255,255,255,0.85)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  borderRadius: THEME.radius,
+  border: '1px solid rgba(255,255,255,0.6)',
+  boxShadow: THEME.shadowCard,
+} as CSSProperties
+
+const solidCard = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  border: `1px solid ${THEME.border}`,
+  boxShadow: THEME.shadow,
+} as CSSProperties
+
+const difficultyColorMap: Record<string, string> = {
+  easy: THEME.success,
+  medium: THEME.warning,
+  hard: THEME.danger,
+}
+
+const difficultyBgMap: Record<string, string> = {
+  easy: '#f0fdf4',
+  medium: '#fffbeb',
+  hard: '#fef2f2',
+}
+
 /**
  * 提供题目页与编辑器页共用的笔记面板，支持创建、更新和删除。
  */
@@ -573,41 +700,162 @@ function QuestionNotePanel(props: { questionId: number; questionTitle: string; t
   }
 
   return (
-    <section className="status-card note-panel">
-      <div className="card-inline">
-        <strong>题目笔记</strong>
-        <span>{noteQuery.data ? '已有笔记' : '新建笔记'}</span>
+    <div style={{ ...solidCard, padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: THEME.primaryLight,
+              color: THEME.primary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+            }}
+          >
+            <EditOutlined />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>题目笔记</div>
+            <div style={{ fontSize: 12, color: THEME.textMuted }}>
+              {noteQuery.data ? '已有笔记，可直接编辑' : '新建笔记，记录思路与总结'}
+            </div>
+          </div>
+        </div>
+        {noteQuery.data ? (
+          <Tag
+            style={{
+              borderRadius: 8,
+              fontSize: 12,
+              color: THEME.success,
+              background: '#f0fdf4',
+              border: 'none',
+              fontWeight: 600,
+            }}
+          >
+            <CheckCircleOutlined style={{ marginRight: 4 }} />
+            已保存
+          </Tag>
+        ) : (
+          <Tag
+            style={{
+              borderRadius: 8,
+              fontSize: 12,
+              color: THEME.textMuted,
+              background: '#fafaf9',
+              border: `1px solid ${THEME.border}`,
+            }}
+          >
+            未保存
+          </Tag>
+        )}
       </div>
 
-      <label className="field">
-        <span>标题</span>
-        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="输入笔记标题" />
-      </label>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain, marginBottom: 6 }}>标题</div>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="输入笔记标题"
+          disabled={!props.token}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: `1px solid ${THEME.border}`,
+            fontSize: 14,
+            color: THEME.textMain,
+            background: props.token ? '#fff' : '#fafaf9',
+            outline: 'none',
+            transition: 'border-color 0.2s',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = THEME.primary }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = THEME.border }}
+        />
+      </div>
 
-      <label className="field">
-        <span>内容</span>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain, marginBottom: 6 }}>内容</div>
         <textarea
           value={content}
           onChange={(event) => setContent(event.target.value)}
           rows={8}
-          placeholder="记录思路、易错点或解题总结"
+          placeholder={props.token ? '记录思路、易错点或解题总结' : '登录后可记录笔记'}
+          disabled={!props.token}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: `1px solid ${THEME.border}`,
+            fontSize: 14,
+            color: THEME.textMain,
+            background: props.token ? '#fff' : '#fafaf9',
+            outline: 'none',
+            resize: 'vertical',
+            lineHeight: 1.6,
+            transition: 'border-color 0.2s',
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = THEME.primary }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = THEME.border }}
         />
-      </label>
+      </div>
 
-      <div className="card-inline">
-        <span>{message}</span>
-        <div className="page-actions">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <span style={{ fontSize: 13, color: THEME.textMuted }}>{message}</span>
+        <div style={{ display: 'flex', gap: 10 }}>
           {noteQuery.data?.id ? (
-            <button className="secondary-button" type="button" disabled={saving} onClick={() => void handleDelete()}>
-              删除笔记
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleDelete()}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 10,
+                border: `1px solid ${THEME.border}`,
+                background: '#fff',
+                color: THEME.danger,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+            >
+              <DeleteOutlined />
+              删除
             </button>
           ) : null}
-          <button className="primary-button" type="button" disabled={saving} onClick={() => void handleSave()}>
+          <button
+            type="button"
+            disabled={saving || !props.token}
+            onClick={() => void handleSave()}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 10,
+              border: 'none',
+              background: THEME.primary,
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
+            }}
+          >
+            <SaveOutlined />
             {saving ? '保存中...' : '保存笔记'}
           </button>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -633,30 +881,148 @@ function MistakeTopicHighlights(props: { tags: string[]; title?: string }) {
   }
 
   return (
-    <div style={{ marginTop: 16 }}>
-      <strong>{props.title || '相关错因专题'}</strong>
-      {topicsQuery.isLoading ? <p style={{ marginTop: 8 }}>正在加载错因专题...</p> : null}
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <BulbOutlined style={{ fontSize: 16, color: THEME.warning }} />
+        <span style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+          {props.title || '相关错因专题'}
+        </span>
+      </div>
+      {topicsQuery.isLoading ? (
+        <div style={{ padding: 16, textAlign: 'center' }}>
+          <Spin size="small" />
+          <p style={{ marginTop: 8, fontSize: 13, color: THEME.textMuted }}>正在加载错因专题...</p>
+        </div>
+      ) : null}
       {topicsQuery.isError ? (
-        <p style={{ marginTop: 8 }}>{extractErrorMessage(topicsQuery.error, '错因专题加载失败')}</p>
+        <div style={{ padding: 16, borderRadius: 12, background: '#fef2f2', color: THEME.danger, fontSize: 13 }}>
+          {extractErrorMessage(topicsQuery.error, '错因专题加载失败')}
+        </div>
       ) : null}
       {matchedTopics.length ? (
-        <div className="grid-cards" style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {matchedTopics.map((topic) => (
-            <article className="feature-card" key={topic.code}>
-              <div className="card-inline">
-                <strong>{topic.title}</strong>
-                <span>{topic.tag}</span>
+            <div
+              key={topic.code}
+              style={{
+                ...solidCard,
+                padding: '16px 18px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = THEME.primary
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(249,115,22,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = THEME.border
+                e.currentTarget.style.boxShadow = THEME.shadow
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14, color: THEME.textMain }}>{topic.title}</strong>
+                <Tag
+                  style={{
+                    borderRadius: 8,
+                    fontSize: 11,
+                    color: THEME.primary,
+                    background: THEME.primaryLight,
+                    border: 'none',
+                    fontWeight: 600,
+                  }}
+                >
+                  {topic.tag}
+                </Tag>
               </div>
-              <p>{topic.problem_pattern}</p>
-              <div className="page-actions">
-                <Link className="secondary-link" to={resolveMistakeTopicRoute()} params={{ topicCode: topic.code }}>
-                  打开专题
-                </Link>
-              </div>
-            </article>
+              <p style={{ margin: '0 0 10px', fontSize: 13, color: THEME.textSecondary, lineHeight: 1.5 }}>
+                {topic.problem_pattern}
+              </p>
+              <Link
+                to={resolveMistakeTopicRoute()}
+                params={{ topicCode: topic.code }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: THEME.primary,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                打开专题 <RightOutlined style={{ fontSize: 10 }} />
+              </Link>
+            </div>
           ))}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  辅助组件                                                            */
+/* ------------------------------------------------------------------ */
+
+function InfoRow(props: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        padding: '12px 16px',
+        borderRadius: 10,
+        background: '#fafaf9',
+        border: `1px solid ${THEME.border}`,
+      }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 600, color: THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {props.label}
+      </span>
+      <span style={{ fontSize: 14, color: THEME.textMain, lineHeight: 1.6 }}>{props.value}</span>
+    </div>
+  )
+}
+
+function ListCard(props: { title: string; items: string[]; icon?: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <span style={{ fontSize: 14, color: THEME.primary }}>{props.icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textMain }}>{props.title}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {props.items.map((item) => (
+          <div
+            key={item}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: '#fff',
+              border: `1px solid ${THEME.border}`,
+              fontSize: 13,
+              color: THEME.textSecondary,
+              lineHeight: 1.5,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: THEME.primary,
+                marginTop: 6,
+                flexShrink: 0,
+              }}
+            />
+            {item}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -676,11 +1042,13 @@ export function PracticeQuestionPage() {
   const [submitMessage, setSubmitMessage] = useState('等待提交')
   const [favoriteMessage, setFavoriteMessage] = useState('未操作')
   const [favoriteState, setFavoriteState] = useState(false)
+  const [isFavPressed, setIsFavPressed] = useState(false)
+  const [showParticles, setShowParticles] = useState(false)
   const [startedAt] = useState(() => Date.now())
 
   const detailQuery = useQuery({
-    queryKey: ['practice-question-detail', questionId],
-    queryFn: () => fetchQuestionDetail(questionId),
+    queryKey: ['practice-question-detail', questionId, accessToken],
+    queryFn: () => fetchQuestionDetail(questionId, accessToken),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
@@ -770,6 +1138,7 @@ export function PracticeQuestionPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice', 'questions'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -794,7 +1163,13 @@ export function PracticeQuestionPage() {
       const nextState = await toggleFavoriteRequest(accessToken, question.id)
       setFavoriteState(nextState)
       setFavoriteMessage(nextState ? '已加入收藏夹' : '已移出收藏夹')
+      if (nextState) {
+        setShowParticles(true)
+        setTimeout(() => setShowParticles(false), 1000)
+      }
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice-question-detail', question.id] })
+      await queryClient.invalidateQueries({ queryKey: ['practice', 'questions'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -805,196 +1180,717 @@ export function PracticeQuestionPage() {
   }
 
   return (
-    <section className="page-panel">
-      <span className="page-tag">刷题详情</span>
-      <h1>题目 #{questionId}</h1>
+    <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+      {/* ===== Back Link ===== */}
+      <div style={{ padding: '24px 24px 0', maxWidth: 1200, margin: '0 auto' }}>
+        <Link
+          to="/practice"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            color: THEME.textSecondary,
+            fontSize: 14,
+            fontWeight: 500,
+            textDecoration: 'none',
+            transition: 'color 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = THEME.primary }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = THEME.textSecondary }}
+        >
+          <ArrowLeftOutlined />
+          返回题库
+        </Link>
+      </div>
 
+      {/* ===== Hero Header ===== */}
+      <div style={{ padding: '16px 24px 24px', maxWidth: 1200, margin: '0 auto' }}>
+        <div
+          style={{
+            ...glassCard,
+            padding: '24px 28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 20,
+                background: THEME.primaryLight,
+                color: THEME.primaryDark,
+                fontSize: 12,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              <FireOutlined />
+              刷题详情
+            </div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 'clamp(24px, 3vw, 32px)',
+                fontWeight: 800,
+                color: THEME.textMain,
+                lineHeight: 1.2,
+                letterSpacing: -0.5,
+              }}
+            >
+              {question?.title || `题目 #${questionId}`}
+            </h1>
+            <p style={{ margin: '8px 0 0', fontSize: 14, color: THEME.textSecondary, lineHeight: 1.6 }}>
+              {question
+                ? `当前为${questionTypeLabel(question.type)}，请仔细阅读题干后作答。`
+                : '题目加载中，请稍候...'}
+            </p>
+          </div>
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 20,
+              background: THEME.primaryLight,
+              color: THEME.primary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 28,
+              fontWeight: 800,
+              flexShrink: 0,
+            }}
+          >
+            #{questionId}
+          </div>
+        </div>
+      </div>
+
+      {/* ===== Loading / Error ===== */}
       {detailQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>题目详情加载中...</div>
-      ) : null}
-
-      {detailQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {detailQuery.error instanceof Error ? detailQuery.error.message : '题目详情加载失败'}
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+          <div style={{ ...solidCard, padding: 40, textAlign: 'center' }}>
+            <Spin size="large" tip="题目详情加载中..." />
+          </div>
         </div>
       ) : null}
 
-      {question ? (
-        <>
-          <div className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <strong>{question.title}</strong>
-              <span>{difficultyLabel(question.difficulty)}</span>
+      {detailQuery.isError ? (
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+          <div
+            style={{
+              ...solidCard,
+              padding: 32,
+              textAlign: 'center',
+              borderColor: 'rgba(239,68,68,0.2)',
+              background: '#fef2f2',
+            }}
+          >
+            <ExclamationCircleOutlined style={{ fontSize: 40, color: THEME.danger, marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+              题目加载失败
             </div>
-            <p>题型：{questionTypeLabel(question.type)}</p>
-            <p>行业：{questionIndustryLabel}</p>
-            <p>分类：{question.category_name || question.category_id}</p>
-            {question.tag_list?.length ? (
-              <div className="community-tag-row" style={{ marginTop: 12 }}>
-                {question.tag_list.map((tag) => (
-                  <span key={`question-tag-${tag}`}>{tag}</span>
-                ))}
+            <div style={{ fontSize: 14, color: THEME.textSecondary }}>
+              {detailQuery.error instanceof Error ? detailQuery.error.message : '题目详情加载失败'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ===== Main Content ===== */}
+      {question ? (
+        <div
+          style={{
+            maxWidth: 1200,
+            margin: '0 auto',
+            padding: '0 24px 64px',
+            display: 'grid',
+            gridTemplateColumns: '1fr 340px',
+            gap: 24,
+          }}
+        >
+          {/* Left Column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* Question Info Card */}
+            <div style={{ ...solidCard, padding: '24px 28px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 16,
+                  flexWrap: 'wrap',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <Tag
+                    style={{
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: difficultyColorMap[question.difficulty] || THEME.textMuted,
+                      background: difficultyBgMap[question.difficulty] || '#fafaf9',
+                      border: 'none',
+                      padding: '2px 10px',
+                    }}
+                  >
+                    {difficultyLabel(question.difficulty)}
+                  </Tag>
+                  <Tag
+                    style={{
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: THEME.accent,
+                      background: '#eff6ff',
+                      border: 'none',
+                      padding: '2px 10px',
+                    }}
+                  >
+                    {questionTypeLabel(question.type)}
+                  </Tag>
+                  <span style={{ fontSize: 13, color: THEME.textMuted }}>
+                    {questionIndustryLabel} · {question.category_name || `分类 #${question.category_id}`}
+                  </span>
+                </div>
               </div>
-            ) : null}
-            <div className="question-content">{question.content}</div>
-            <div className="page-actions" style={{ marginTop: 16 }}>
-              <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
-                {favoriteState ? '取消收藏' : '加入收藏'}
-              </button>
-              {question.type === 'code' ? (
-                <Link className="secondary-link" to="/practice/editor/$questionId" params={{ questionId: String(question.id) }}>
-                  进入代码编辑器
+
+              {question.tag_list?.length ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  {question.tag_list.map((tag) => (
+                    <Tag
+                      key={`question-tag-${tag}`}
+                      style={{
+                        borderRadius: 8,
+                        fontSize: 12,
+                        color: THEME.textSecondary,
+                        background: '#fafaf9',
+                        border: `1px solid ${THEME.border}`,
+                      }}
+                    >
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  fontSize: 15,
+                  color: THEME.textMain,
+                  lineHeight: 1.7,
+                  background: '#fafaf9',
+                  borderRadius: 12,
+                  padding: '20px 24px',
+                  border: `1px solid ${THEME.border}`,
+                }}
+              >
+                {question.content}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleFavorite()}
+                    onMouseDown={() => setIsFavPressed(true)}
+                    onMouseUp={() => setIsFavPressed(false)}
+                    onMouseLeave={() => setIsFavPressed(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: favoriteState ? 'none' : `1px solid ${THEME.border}`,
+                      background: favoriteState ? THEME.primary : '#fff',
+                      color: favoriteState ? '#fff' : THEME.textSecondary,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
+                      boxShadow: favoriteState ? '0 4px 14px rgba(249,115,22,0.4)' : 'none',
+                      transform: isFavPressed ? 'scale(0.92)' : 'scale(1)',
+                    }}
+                  >
+                    {favoriteState ? <StarFilled /> : <StarOutlined />}
+                    {favoriteState ? '已收藏' : '加入收藏'}
+                  </button>
+                  {showParticles && (
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', pointerEvents: 'none' }}>
+                      {Array.from({ length: 8 }).map((_, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            background: THEME.primary,
+                            animation: `particle-${i} 0.6s ease-out forwards`,
+                            opacity: 0,
+                          }}
+                        />
+                      ))}
+                      <style>{`
+                        ${Array.from({ length: 8 }).map((_, i) => {
+                          const angle = (i * 45) * Math.PI / 180
+                          const distance = 30 + Math.random() * 20
+                          return `
+                            @keyframes particle-${i} {
+                              0% { transform: translate(0, 0) scale(1); opacity: 1; }
+                              100% { transform: translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px) scale(0); opacity: 0; }
+                            }
+                          `
+                        }).join('')}
+                      `}</style>
+                    </div>
+                  )}
+                </div>
+                {question.type === 'code' ? (
+                  <Link
+                    to="/practice/editor/$questionId"
+                    params={{ questionId: String(question.id) }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.border}`,
+                      background: '#fff',
+                      color: THEME.textSecondary,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <ThunderboltOutlined />
+                    进入代码编辑器
+                  </Link>
+                ) : null}
+                <span style={{ fontSize: 12, color: THEME.textMuted, marginLeft: 'auto' }}>
+                  {favoriteMessage}
+                </span>
+              </div>
+            </div>
+
+            {/* Answer Area Card */}
+            <form style={{ ...solidCard, padding: '24px 28px' }} onSubmit={handleSubmit}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: THEME.primaryLight,
+                    color: THEME.primary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                  }}
+                >
+                  <EditOutlined />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>作答区</div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted }}>
+                    {question.type === 'choice'
+                      ? '请选择唯一正确选项'
+                      : question.type === 'multi'
+                        ? '请选择所有正确选项'
+                        : '请输入你的分析或答案'}
+                  </div>
+                </div>
+              </div>
+
+              {question.type === 'choice' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {options.map((option) => {
+                    const isSelected = singleAnswer === option.label
+                    return (
+                      <label
+                        key={option.label}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 12,
+                          padding: '14px 18px',
+                          borderRadius: 12,
+                          border: isSelected ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
+                          background: isSelected ? THEME.primaryLight : '#fff',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          position: 'relative',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = THEME.primary
+                            e.currentTarget.style.background = '#fff7ed'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = THEME.border
+                            e.currentTarget.style.background = '#fff'
+                          }
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="choice-answer"
+                          checked={isSelected}
+                          onChange={() => setSingleAnswer(option.label)}
+                          style={{ marginTop: 3, accentColor: THEME.primary, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 14, color: THEME.textMain, lineHeight: 1.5 }}>
+                          <strong style={{ color: THEME.primary, marginRight: 6 }}>{option.label}.</strong>
+                          {option.text}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {question.type === 'multi' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {options.map((option) => {
+                    const isSelected = multiAnswers.includes(option.label)
+                    return (
+                      <label
+                        key={option.label}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 12,
+                          padding: '14px 18px',
+                          borderRadius: 12,
+                          border: isSelected ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
+                          background: isSelected ? THEME.primaryLight : '#fff',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = THEME.primary
+                            e.currentTarget.style.background = '#fff7ed'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = THEME.border
+                            e.currentTarget.style.background = '#fff'
+                          }
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleMultiAnswer(option.label)}
+                          style={{ marginTop: 3, accentColor: THEME.primary, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 14, color: THEME.textMain, lineHeight: 1.5 }}>
+                          <strong style={{ color: THEME.primary, marginRight: 6 }}>{option.label}.</strong>
+                          {option.text}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {question.type === 'subjective' ? (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain, marginBottom: 8 }}>你的答案</div>
+                  <textarea
+                    value={textAnswer}
+                    onChange={(event) => setTextAnswer(event.target.value)}
+                    placeholder="请输入你的分析或答案"
+                    rows={10}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: 12,
+                      border: `1px solid ${THEME.border}`,
+                      fontSize: 14,
+                      color: THEME.textMain,
+                      lineHeight: 1.7,
+                      outline: 'none',
+                      resize: 'vertical',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = THEME.primary }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = THEME.border }}
+                  />
+                </div>
+              ) : null}
+
+              {!accessToken ? (
+                <div
+                  style={{
+                    marginTop: 20,
+                    padding: '16px 20px',
+                    borderRadius: 12,
+                    background: '#fffbeb',
+                    border: '1px solid #fef3c7',
+                    color: THEME.warning,
+                    fontSize: 13,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <ExclamationCircleOutlined />
+                  需要先登录后才能提交答案、收藏和记录笔记。
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 24,
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <Link
+                  to="/practice"
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: THEME.textSecondary,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <ArrowLeftOutlined />
+                  返回题目列表
                 </Link>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    padding: '10px 28px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: THEME.primary,
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 16px rgba(249,115,22,0.3)',
+                    opacity: submitting ? 0.7 : 1,
+                  }}
+                >
+                  {submitting ? '提交中...' : '提交答案'}
+                </button>
+              </div>
+            </form>
+
+            {/* Result Card */}
+            <div style={{ ...solidCard, padding: '24px 28px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: submitResult?.is_correct ? '#f0fdf4' : submitResult ? '#fef2f2' : '#fafaf9',
+                    color: submitResult?.is_correct ? THEME.success : submitResult ? THEME.danger : THEME.textMuted,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                  }}
+                >
+                  {submitResult?.is_correct ? <CheckCircleOutlined /> : submitResult ? <CloseOutlined /> : <ClockCircleOutlined />}
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>提交状态</div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted }}>{submitMessage}</div>
+                </div>
+              </div>
+
+              {submitResult ? (
+                <>
+                  {/* Result Banner */}
+                  <div
+                    style={{
+                      padding: '16px 20px',
+                      borderRadius: 12,
+                      background: submitResult.is_correct ? '#f0fdf4' : '#fef2f2',
+                      border: `1px solid ${submitResult.is_correct ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                      marginBottom: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: submitResult.is_correct ? THEME.success : THEME.danger,
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 16,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {submitResult.is_correct ? <CheckCircleOutlined /> : <CloseOutlined />}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: submitResult.is_correct ? THEME.success : THEME.danger }}>
+                        {submitResult.is_correct ? '回答正确' : '回答错误'}
+                      </div>
+                      <div style={{ fontSize: 13, color: THEME.textSecondary }}>
+                        正确答案：{submitResult.correct_answer || '未返回'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {submitResult.explanation ? (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 8 }}>
+                        <FileTextOutlined style={{ marginRight: 6, color: THEME.accent }} />
+                        解析说明
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          color: THEME.textSecondary,
+                          lineHeight: 1.7,
+                          background: '#fafaf9',
+                          borderRadius: 10,
+                          padding: '14px 18px',
+                          border: `1px solid ${THEME.border}`,
+                        }}
+                      >
+                        {submitResult.explanation}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {submitResult.ai_analysis ? (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 8 }}>
+                        <MessageOutlined style={{ marginRight: 6, color: THEME.primary }} />
+                        AI 分析
+                      </div>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: '14px 18px',
+                          borderRadius: 10,
+                          background: '#fafaf9',
+                          border: `1px solid ${THEME.border}`,
+                          fontSize: 13,
+                          lineHeight: 1.7,
+                          color: THEME.textSecondary,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          overflow: 'auto',
+                          maxHeight: 400,
+                        }}
+                      >
+                        {submitResult.ai_analysis}
+                      </pre>
+                    </div>
+                  ) : null}
+
+                  {/* Structured Solution */}
+                  {question.solution ? (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 12 }}>
+                        <BulbOutlined style={{ marginRight: 6, color: THEME.warning }} />
+                        结构化解析
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {question.solution.summary ? (
+                          <InfoRow label="题意总结" value={question.solution.summary} />
+                        ) : null}
+                        {question.solution.approach ? (
+                          <InfoRow label="解题思路" value={question.solution.approach} />
+                        ) : null}
+                        {question.solution.complexity ? (
+                          <InfoRow label="复杂度分析" value={question.solution.complexity} />
+                        ) : null}
+                      </div>
+                      {question.solution.key_steps.length ? (
+                        <ListCard title="关键步骤" items={question.solution.key_steps} icon=<ProfileOutlined /> />
+                      ) : null}
+                      {question.solution.edge_cases.length ? (
+                        <ListCard title="边界条件" items={question.solution.edge_cases} icon=<ExclamationCircleOutlined /> />
+                      ) : null}
+                      {question.solution.common_mistakes.length ? (
+                        <ListCard title="常见错法" items={question.solution.common_mistakes} icon=<CloseOutlined /> />
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Answer Template */}
+                  {question.answer_template ? (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 12 }}>
+                        <BookOutlined style={{ marginRight: 6, color: THEME.accent }} />
+                        参考回答模板
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {question.answer_template.core_conclusion ? (
+                          <InfoRow label="核心结论" value={question.answer_template.core_conclusion} />
+                        ) : null}
+                        {question.answer_template.sample_answer ? (
+                          <InfoRow label="面试表达示例" value={question.answer_template.sample_answer} />
+                        ) : null}
+                      </div>
+                      {question.answer_template.key_points.length ? (
+                        <ListCard title="关键展开点" items={question.answer_template.key_points} icon=<ProfileOutlined /> />
+                      ) : null}
+                      {question.answer_template.follow_ups.length ? (
+                        <ListCard title="高频追问点" items={question.answer_template.follow_ups} icon=<MessageOutlined /> />
+                      ) : null}
+                      {question.answer_template.pitfalls.length ? (
+                        <ListCard title="易答偏点" items={question.answer_template.pitfalls} icon=<CloseOutlined /> />
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <MistakeTopicHighlights
+                    tags={practiceAnalysis?.mistake_tags || []}
+                    title="继续深挖这些错因"
+                  />
+                </>
               ) : null}
             </div>
-            <div style={{ marginTop: 12 }}>收藏状态：{favoriteMessage}</div>
           </div>
 
-          <form className="stack-form" onSubmit={handleSubmit}>
-            {question.type === 'choice' ? (
-              <div className="option-list">
-                {options.map((option) => (
-                  <label className="option-item" key={option.label}>
-                    <input
-                      type="radio"
-                      name="choice-answer"
-                      checked={singleAnswer === option.label}
-                      onChange={() => setSingleAnswer(option.label)}
-                    />
-                    <span>{option.label}. {option.text}</span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-
-            {question.type === 'multi' ? (
-              <div className="option-list">
-                {options.map((option) => (
-                  <label className="option-item" key={option.label}>
-                    <input
-                      type="checkbox"
-                      checked={multiAnswers.includes(option.label)}
-                      onChange={() => toggleMultiAnswer(option.label)}
-                    />
-                    <span>{option.label}. {option.text}</span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-
-            {question.type === 'subjective' ? (
-              <label className="field">
-                <span>你的答案</span>
-                <textarea
-                  value={textAnswer}
-                  onChange={(event) => setTextAnswer(event.target.value)}
-                  placeholder="请输入你的分析或答案"
-                  rows={10}
-                />
-              </label>
-            ) : null}
-
-            {!accessToken ? (
-              <div className="status-card">需要先登录后才能提交答案、收藏和记录笔记。</div>
-            ) : null}
-
-            <div className="card-inline">
-              <Link className="secondary-link" to="/practice">返回题目列表</Link>
-              <button className="primary-button" type="submit" disabled={submitting}>
-                {submitting ? '提交中...' : '提交答案'}
-              </button>
-            </div>
-          </form>
-
-          <div className="status-card" style={{ marginTop: 24 }}>
-            <div>提交状态：{submitMessage}</div>
-            {submitResult ? (
-              <>
-                <div>判定结果：{submitResult.is_correct ? '正确' : '错误'}</div>
-                <div>正确答案：{submitResult.correct_answer || '未返回'}</div>
-                <div>解析说明：{submitResult.explanation || '暂无解析'}</div>
-                {submitResult.ai_analysis ? (
-                  <pre className="analysis-block">{submitResult.ai_analysis}</pre>
-                ) : null}
-                {question.solution ? (
-                  <div style={{ marginTop: 16 }}>
-                    <strong>结构化解析</strong>
-                    <p>题意总结：{question.solution.summary || '暂无'}</p>
-                    <p>解题思路：{question.solution.approach || '暂无'}</p>
-                    <p>复杂度分析：{question.solution.complexity || '暂无'}</p>
-                    {question.solution.key_steps.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>关键步骤</strong>
-                        <ul>
-                          {question.solution.key_steps.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                    {question.solution.edge_cases.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>边界条件</strong>
-                        <ul>
-                          {question.solution.edge_cases.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                    {question.solution.common_mistakes.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>常见错法</strong>
-                        <ul>
-                          {question.solution.common_mistakes.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {question.answer_template ? (
-                  <div style={{ marginTop: 16 }}>
-                    <strong>参考回答模板</strong>
-                    <p>核心结论：{question.answer_template.core_conclusion || '暂无'}</p>
-                    <p>面试表达示例：{question.answer_template.sample_answer || '暂无'}</p>
-                    {question.answer_template.key_points.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>关键展开点</strong>
-                        <ul>
-                          {question.answer_template.key_points.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                    {question.answer_template.follow_ups.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>高频追问点</strong>
-                        <ul>
-                          {question.answer_template.follow_ups.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                    {question.answer_template.pitfalls.length ? (
-                      <div style={{ marginTop: 8 }}>
-                        <strong>易答偏点</strong>
-                        <ul>
-                          {question.answer_template.pitfalls.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <MistakeTopicHighlights
-                  tags={practiceAnalysis?.mistake_tags || []}
-                  title="继续深挖这些错因"
-                />
-              </>
-            ) : null}
+          {/* Right Column — Sticky Notes */}
+          <div style={{ position: 'sticky', top: 24, alignSelf: 'start' }}>
+            <QuestionNotePanel
+              questionId={question.id}
+              questionTitle={question.title}
+              token={accessToken}
+            />
           </div>
-
-          <QuestionNotePanel
-            questionId={question.id}
-            questionTitle={question.title}
-            token={accessToken}
-          />
-        </>
+        </div>
       ) : null}
-    </section>
+    </div>
   )
 }
 
@@ -1022,13 +1918,16 @@ export function PracticeEditorPage() {
   const [runJudgeSummary, setRunJudgeSummary] = useState<PracticeJudgeSummary | null>(null)
   const [favoriteMessage, setFavoriteMessage] = useState('未操作')
   const [favoriteState, setFavoriteState] = useState(false)
+  const [isFavPressed, setIsFavPressed] = useState(false)
   const [startedAt] = useState(() => Date.now())
   const [leftPanelWidth, setLeftPanelWidth] = useState(40)
   const [editorHeight, setEditorHeight] = useState(60)
 
   const detailQuery = useQuery({
-    queryKey: ['practice-code-question-detail', questionId],
-    queryFn: () => fetchQuestionDetail(questionId),
+    queryKey: ['practice-code-question-detail', questionId, accessToken],
+    queryFn: () => fetchQuestionDetail(questionId, accessToken),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
   const industriesQuery = useFrontendIndustriesQuery()
 
@@ -1085,7 +1984,7 @@ export function PracticeEditorPage() {
      * 初始化 Monaco 编辑器实例，并把输入变化同步回页面状态。
      */
     async function initializeEditor() {
-      if (!editorContainerRef.current || editorInstanceRef.current) {
+      if (!question || !editorContainerRef.current || editorInstanceRef.current) {
         return
       }
 
@@ -1265,6 +2164,7 @@ export function PracticeEditorPage() {
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice', 'questions'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -1290,6 +2190,8 @@ export function PracticeEditorPage() {
       setFavoriteState(nextState)
       setFavoriteMessage(nextState ? '已加入收藏夹' : '已移出收藏夹')
       await queryClient.invalidateQueries({ queryKey: ['practice-favorites'] })
+      await queryClient.invalidateQueries({ queryKey: ['practice-code-question-detail', question.id] })
+      await queryClient.invalidateQueries({ queryKey: ['practice', 'questions'] })
     } catch (error) {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt(readCurrentBrowserPath(), 'expired')
@@ -1437,8 +2339,31 @@ export function PracticeEditorPage() {
             </div>
           ) : null}
           <div className="page-actions">
-            <button className="secondary-button" type="button" onClick={() => void handleToggleFavorite()}>
-              {favoriteState ? '取消收藏' : '加入收藏'}
+            <button
+              type="button"
+              onClick={() => void handleToggleFavorite()}
+              onMouseDown={() => setIsFavPressed(true)}
+              onMouseUp={() => setIsFavPressed(false)}
+              onMouseLeave={() => setIsFavPressed(false)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                borderRadius: 10,
+                border: favoriteState ? 'none' : '1px solid #555',
+                background: favoriteState ? THEME.primary : 'transparent',
+                color: favoriteState ? '#fff' : '#d4d4d4',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s cubic-bezier(0.4,0,0.2,1)',
+                boxShadow: favoriteState ? '0 4px 14px rgba(249,115,22,0.4)' : 'none',
+                transform: isFavPressed ? 'scale(0.92)' : 'scale(1)',
+              }}
+            >
+              {favoriteState ? <StarFilled /> : <StarOutlined />}
+              {favoriteState ? '已收藏' : '加入收藏'}
             </button>
             <Link className="secondary-link" to="/practice/$questionId" params={{ questionId }}>
               查看题目详情
@@ -1705,6 +2630,25 @@ export function PracticeWrongPage() {
         <p style={{ color: THEME.textSecondary, margin: 0, fontSize: 13 }}>集中回顾和重做答错的题目，巩固薄弱环节</p>
       </div>
 
+      {/* Back to Practice */}
+      <div style={{ marginBottom: 20 }}>
+        <Link
+          to="/practice"
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: THEME.textSecondary,
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <ArrowLeftOutlined />
+          返回题库主页面
+        </Link>
+      </div>
+
       {/* Stats */}
       <div style={{ ...cardBase, padding: '18px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
         <div>
@@ -1732,7 +2676,7 @@ export function PracticeWrongPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '44px 1fr 100px 80px 100px 140px 100px',
+                gridTemplateColumns: '44px 1fr 100px 80px 100px',
                 gap: 12,
                 padding: '12px 20px',
                 background: '#fafaf9',
@@ -1746,8 +2690,6 @@ export function PracticeWrongPage() {
               <span>题目</span>
               <span style={{ textAlign: 'center' }}>题型</span>
               <span style={{ textAlign: 'center' }}>难度</span>
-              <span style={{ textAlign: 'center' }}>我的答案</span>
-              <span style={{ textAlign: 'center' }}>错题时间</span>
               <span style={{ textAlign: 'center' }}>操作</span>
             </div>
 
@@ -1764,7 +2706,7 @@ export function PracticeWrongPage() {
                     key={item.id}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '44px 1fr 100px 80px 100px 140px 100px',
+                      gridTemplateColumns: '44px 1fr 100px 80px 100px',
                       gap: 12,
                       alignItems: 'center',
                       padding: '12px 20px',
@@ -1826,17 +2768,6 @@ export function PracticeWrongPage() {
                       </span>
                     </div>
 
-                    {/* User answer */}
-                    <div style={{ textAlign: 'center', fontSize: 13, color: THEME.danger, fontWeight: 500 }}>
-                      {item.user_answer || '-'}
-                    </div>
-
-                    {/* Time */}
-                    <div style={{ textAlign: 'center', fontSize: 12, color: THEME.textMuted }}>
-                      <ClockCircleOutlined style={{ marginRight: 4 }} />
-                      {formatDateTime(item.created_at)}
-                    </div>
-
                     {/* Action */}
                     <div style={{ textAlign: 'center' }}>
                       <Button
@@ -1883,6 +2814,7 @@ export function PracticeWrongPage() {
  * 提供收藏夹页面，集中展示用户保留待复习的题目。
  */
 export function PracticeFavoritesPage() {
+  const navigate = useNavigate()
   const accessToken = useAuthStore((state) => state.accessToken)
   const [page, setPage] = useState(1)
 
@@ -1892,57 +2824,327 @@ export function PracticeFavoritesPage() {
     enabled: Boolean(accessToken),
   })
 
+  if (!accessToken) {
+    return (
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '64px 16px', textAlign: 'center' }}>
+        <Empty description="登录后查看收藏夹" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Button
+          type="primary"
+          style={{ marginTop: 16, background: THEME.primary, borderColor: THEME.primary }}
+          onClick={() => requestLoginPrompt('/practice/favorites', 'missing')}
+        >
+          去登录
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <section className="page-panel">
-      <span className="page-tag">收藏夹</span>
-      <h1>我收藏的题目</h1>
-      <p className="page-copy">这里用于沉淀值得反复练习、回顾或面试前再过一遍的题目。</p>
-
-      {favoritesQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>收藏列表加载中...</div>
-      ) : null}
-
-      {favoritesQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {favoritesQuery.error instanceof Error ? favoritesQuery.error.message : '收藏列表加载失败'}
-        </div>
-      ) : null}
-
-      {favoritesQuery.data ? (
-        <>
-          <div className="grid-cards">
-            {favoritesQuery.data.list.map((item) => (
-              <article className="feature-card" key={item.id}>
-                <h2>{item.question?.title || `题目 #${item.question_id}`}</h2>
-                <p>题型：{questionTypeLabel(item.question?.type || '')}</p>
-                <p>难度：{difficultyLabel(item.question?.difficulty || '')}</p>
-                <p>收藏时间：{formatDateTime(item.created_at)}</p>
-                <Link
-                  className="secondary-link"
-                  to={(item.question?.type || '') === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
-                  params={{ questionId: String(item.question_id) }}
-                >
-                  打开题目
-                </Link>
-              </article>
-            ))}
+    <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 24px 64px' }}>
+        {/* ===== Hero Header ===== */}
+        <div
+          style={{
+            ...glassCard,
+            padding: '24px 28px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 20,
+                background: THEME.primaryLight,
+                color: THEME.primaryDark,
+                fontSize: 12,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              <StarFilled />
+              收藏夹
+            </div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 'clamp(24px, 3vw, 32px)',
+                fontWeight: 800,
+                color: THEME.textMain,
+                lineHeight: 1.2,
+                letterSpacing: -0.5,
+              }}
+            >
+              我收藏的题目
+            </h1>
+            <p style={{ margin: '8px 0 0', fontSize: 14, color: THEME.textSecondary, lineHeight: 1.6 }}>
+              这里用于沉淀值得反复练习、回顾或面试前再过一遍的题目。
+            </p>
           </div>
-
-          <div className="card-inline" style={{ marginTop: 24 }}>
-            <span>共 {favoritesQuery.data.total} 道收藏题目</span>
-            <div className="page-actions">
-              <button className="secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
-                上一页
-              </button>
-              <span>第 {page} 页</span>
-              <button className="secondary-button" type="button" disabled={favoritesQuery.data.list.length < PRACTICE_PAGE_SIZE} onClick={() => setPage((current) => current + 1)}>
-                下一页
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px 20px',
+                borderRadius: 14,
+                background: THEME.primaryLight,
+              }}
+            >
+              <div style={{ fontSize: 28, fontWeight: 800, color: THEME.primary, lineHeight: 1 }}>
+                {favoritesQuery.data?.total || 0}
+              </div>
+              <div style={{ fontSize: 12, color: THEME.textSecondary, marginTop: 4 }}>道收藏</div>
             </div>
           </div>
-        </>
-      ) : null}
-    </section>
+        </div>
+
+        {/* Back to Practice */}
+        <div style={{ marginBottom: 20 }}>
+          <Link
+            to="/practice"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: THEME.textSecondary,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <ArrowLeftOutlined />
+            返回题库主页面
+          </Link>
+        </div>
+
+        {favoritesQuery.isLoading ? (
+          <div style={{ ...solidCard, padding: 48, textAlign: 'center' }}>
+            <Spin size="large" tip="收藏列表加载中..." />
+          </div>
+        ) : null}
+
+        {favoritesQuery.isError ? (
+          <div
+            style={{
+              ...solidCard,
+              padding: 32,
+              textAlign: 'center',
+              borderColor: 'rgba(239,68,68,0.2)',
+              background: '#fef2f2',
+            }}
+          >
+            <ExclamationCircleOutlined style={{ fontSize: 40, color: THEME.danger, marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+              加载失败
+            </div>
+            <div style={{ fontSize: 14, color: THEME.textSecondary }}>
+              {favoritesQuery.error instanceof Error ? favoritesQuery.error.message : '收藏列表加载失败'}
+            </div>
+          </div>
+        ) : null}
+
+        {favoritesQuery.data ? (
+          <>
+            {favoritesQuery.data.list.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {favoritesQuery.data.list.map((item) => {
+                  const isCode = (item.question?.type || '') === 'code'
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        ...solidCard,
+                        padding: '18px 22px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 16,
+                        transition: 'all 0.2s ease',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() =>
+                        navigate({
+                          to: isCode ? '/practice/editor/$questionId' : '/practice/$questionId',
+                          params: { questionId: String(item.question_id) },
+                        })
+                      }
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = THEME.primary
+                        e.currentTarget.style.boxShadow = '0 4px 16px rgba(249,115,22,0.1)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = THEME.border
+                        e.currentTarget.style.boxShadow = THEME.shadow
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          background: THEME.primaryLight,
+                          color: THEME.primary,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 18,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <StarFilled />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 700,
+                            color: THEME.textMain,
+                            marginBottom: 4,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {item.question?.title || `题目 #${item.question_id}`}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          <Tag
+                            style={{
+                              borderRadius: 8,
+                              fontSize: 11,
+                              color: THEME.accent,
+                              background: '#eff6ff',
+                              border: 'none',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {questionTypeLabel(item.question?.type || '')}
+                          </Tag>
+                          <Tag
+                            style={{
+                              borderRadius: 8,
+                              fontSize: 11,
+                              color: difficultyColorMap[item.question?.difficulty || ''] || THEME.textMuted,
+                              background: difficultyBgMap[item.question?.difficulty || ''] || '#fafaf9',
+                              border: 'none',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {difficultyLabel(item.question?.difficulty || '')}
+                          </Tag>
+                          <span style={{ fontSize: 12, color: THEME.textMuted }}>
+                            <ClockCircleOutlined style={{ marginRight: 4 }} />
+                            收藏于 {formatDateTime(item.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          background: '#fafaf9',
+                          color: THEME.textMuted,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <RightOutlined />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={{ ...solidCard, padding: 48, textAlign: 'center' }}>
+                <StarOutlined style={{ fontSize: 48, color: THEME.border, marginBottom: 16 }} />
+                <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+                  暂无收藏题目
+                </div>
+                <p style={{ margin: 0, fontSize: 14, color: THEME.textSecondary }}>
+                  在刷题时遇到值得回顾的题目，点击"加入收藏"即可沉淀到这里。
+                </p>
+                <Button
+                  type="primary"
+                  style={{ marginTop: 20, background: THEME.primary, borderColor: THEME.primary }}
+                  onClick={() => navigate({ to: '/practice' })}
+                >
+                  去题库刷题
+                </Button>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {favoritesQuery.data.list.length > 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 24,
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <span style={{ fontSize: 13, color: THEME.textMuted }}>
+                  共 {favoritesQuery.data.total} 道收藏题目
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((current) => current - 1)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.border}`,
+                      background: '#fff',
+                      color: page <= 1 ? THEME.textMuted : THEME.textMain,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    上一页
+                  </button>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, minWidth: 48, textAlign: 'center' }}>
+                    第 {page} 页
+                  </span>
+                  <button
+                    type="button"
+                    disabled={favoritesQuery.data.list.length < PRACTICE_PAGE_SIZE}
+                    onClick={() => setPage((current) => current + 1)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.border}`,
+                      background: '#fff',
+                      color: favoritesQuery.data.list.length < PRACTICE_PAGE_SIZE ? THEME.textMuted : THEME.textMain,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: favoritesQuery.data.list.length < PRACTICE_PAGE_SIZE ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -1950,6 +3152,7 @@ export function PracticeFavoritesPage() {
  * 提供笔记列表页，集中查看所有题目笔记。
  */
 export function PracticeNotesPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const accessToken = useAuthStore((state) => state.accessToken)
   const [page, setPage] = useState(1)
@@ -1983,66 +3186,337 @@ export function PracticeNotesPage() {
     }
   }
 
+  if (!accessToken) {
+    return (
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '64px 16px', textAlign: 'center' }}>
+        <Empty description="登录后查看笔记" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Button
+          type="primary"
+          style={{ marginTop: 16, background: THEME.primary, borderColor: THEME.primary }}
+          onClick={() => requestLoginPrompt('/practice/notes', 'missing')}
+        >
+          去登录
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <section className="page-panel">
-      <span className="page-tag">我的笔记</span>
-      <h1>练习笔记</h1>
-      <p className="page-copy">这里汇总了你在刷题过程中沉淀下来的题解、易错点和复盘内容。</p>
-      <div className="status-card" style={{ marginTop: 24 }}>{message}</div>
-
-      {notesQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>笔记列表加载中...</div>
-      ) : null}
-
-      {notesQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {notesQuery.error instanceof Error ? notesQuery.error.message : '笔记列表加载失败'}
-        </div>
-      ) : null}
-
-      {notesQuery.data ? (
-        <>
-          <div className="stack-list">
-            {notesQuery.data.list.map((note) => (
-              <article className="feature-card" key={note.id}>
-                <div className="card-inline">
-                  <strong>{note.title}</strong>
-                  <span>{formatDateTime(note.updated_at || note.created_at)}</span>
-                </div>
-                <p>{note.content}</p>
-                <div className="page-actions">
-                  {note.question_id ? (
-                    <Link
-                      className="secondary-link"
-                      to={(note.question?.type || '') === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
-                      params={{ questionId: String(note.question_id) }}
-                    >
-                      打开题目
-                    </Link>
-                  ) : null}
-                  <button className="secondary-button" type="button" onClick={() => void handleDelete(note.id)}>
-                    删除笔记
-                  </button>
-                </div>
-              </article>
-            ))}
+    <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 24px 64px' }}>
+        {/* ===== Hero Header ===== */}
+        <div
+          style={{
+            ...glassCard,
+            padding: '24px 28px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 20,
+                background: THEME.primaryLight,
+                color: THEME.primaryDark,
+                fontSize: 12,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              <EditOutlined />
+              我的笔记
+            </div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 'clamp(24px, 3vw, 32px)',
+                fontWeight: 800,
+                color: THEME.textMain,
+                lineHeight: 1.2,
+                letterSpacing: -0.5,
+              }}
+            >
+              练习笔记
+            </h1>
+            <p style={{ margin: '8px 0 0', fontSize: 14, color: THEME.textSecondary, lineHeight: 1.6 }}>
+              这里汇总了你在刷题过程中沉淀下来的题解、易错点和复盘内容。
+            </p>
           </div>
-
-          <div className="card-inline" style={{ marginTop: 24 }}>
-            <span>共 {notesQuery.data.total} 条笔记</span>
-            <div className="page-actions">
-              <button className="secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
-                上一页
-              </button>
-              <span>第 {page} 页</span>
-              <button className="secondary-button" type="button" disabled={notesQuery.data.list.length < NOTE_PAGE_SIZE} onClick={() => setPage((current) => current + 1)}>
-                下一页
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '12px 20px',
+                borderRadius: 14,
+                background: THEME.primaryLight,
+              }}
+            >
+              <div style={{ fontSize: 28, fontWeight: 800, color: THEME.primary, lineHeight: 1 }}>
+                {notesQuery.data?.total || 0}
+              </div>
+              <div style={{ fontSize: 12, color: THEME.textSecondary, marginTop: 4 }}>条笔记</div>
             </div>
           </div>
-        </>
-      ) : null}
-    </section>
+        </div>
+
+        {/* Back to Practice */}
+        <div style={{ marginBottom: 20 }}>
+          <Link
+            to="/practice"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: THEME.textSecondary,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <ArrowLeftOutlined />
+            返回题库主页面
+          </Link>
+        </div>
+
+        {message !== '等待操作' ? (
+          <div
+            style={{
+              ...solidCard,
+              padding: '12px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              color: message.includes('删除') ? THEME.danger : THEME.success,
+              background: message.includes('删除') ? '#fef2f2' : '#f0fdf4',
+              borderColor: message.includes('删除') ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)',
+            }}
+          >
+            {message.includes('删除') ? <CloseOutlined /> : <CheckCircleOutlined />}
+            {message}
+          </div>
+        ) : null}
+
+        {notesQuery.isLoading ? (
+          <div style={{ ...solidCard, padding: 48, textAlign: 'center' }}>
+            <Spin size="large" tip="笔记列表加载中..." />
+          </div>
+        ) : null}
+
+        {notesQuery.isError ? (
+          <div
+            style={{
+              ...solidCard,
+              padding: 32,
+              textAlign: 'center',
+              borderColor: 'rgba(239,68,68,0.2)',
+              background: '#fef2f2',
+            }}
+          >
+            <ExclamationCircleOutlined style={{ fontSize: 40, color: THEME.danger, marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+              加载失败
+            </div>
+            <div style={{ fontSize: 14, color: THEME.textSecondary }}>
+              {notesQuery.error instanceof Error ? notesQuery.error.message : '笔记列表加载失败'}
+            </div>
+          </div>
+        ) : null}
+
+        {notesQuery.data ? (
+          <>
+            {notesQuery.data.list.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {notesQuery.data.list.map((note) => (
+                  <div key={note.id} style={{ ...solidCard, padding: '18px 22px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: 10,
+                        flexWrap: 'wrap',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            background: THEME.primaryLight,
+                            color: THEME.primary,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 16,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FileTextOutlined />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
+                            {note.title}
+                          </div>
+                          <div style={{ fontSize: 12, color: THEME.textMuted }}>
+                            <ClockCircleOutlined style={{ marginRight: 4 }} />
+                            {formatDateTime(note.updated_at || note.created_at)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(note.id)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          border: `1px solid ${THEME.border}`,
+                          background: '#fff',
+                          color: THEME.danger,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                      >
+                        <DeleteOutlined />
+                        删除
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: THEME.textSecondary,
+                        lineHeight: 1.7,
+                        background: '#fafaf9',
+                        borderRadius: 10,
+                        padding: '12px 16px',
+                        border: `1px solid ${THEME.border}`,
+                        marginBottom: 12,
+                      }}
+                    >
+                      {note.content}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      {note.question_id ? (
+                        <Link
+                          to={(note.question?.type || '') === 'code' ? '/practice/editor/$questionId' : '/practice/$questionId'}
+                          params={{ questionId: String(note.question_id) }}
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: THEME.primary,
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          打开关联题目 <RightOutlined style={{ fontSize: 10 }} />
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ ...solidCard, padding: 48, textAlign: 'center' }}>
+                <EditOutlined style={{ fontSize: 48, color: THEME.border, marginBottom: 16 }} />
+                <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+                  暂无笔记
+                </div>
+                <p style={{ margin: 0, fontSize: 14, color: THEME.textSecondary }}>
+                  在刷题时记录思路与总结，笔记会自动汇总到这里。
+                </p>
+                <Button
+                  type="primary"
+                  style={{ marginTop: 20, background: THEME.primary, borderColor: THEME.primary }}
+                  onClick={() => navigate({ to: '/practice' })}
+                >
+                  去题库刷题
+                </Button>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {notesQuery.data.list.length > 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginTop: 24,
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <span style={{ fontSize: 13, color: THEME.textMuted }}>
+                  共 {notesQuery.data.total} 条笔记
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((current) => current - 1)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.border}`,
+                      background: '#fff',
+                      color: page <= 1 ? THEME.textMuted : THEME.textMain,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    上一页
+                  </button>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, minWidth: 48, textAlign: 'center' }}>
+                    第 {page} 页
+                  </span>
+                  <button
+                    type="button"
+                    disabled={notesQuery.data.list.length < NOTE_PAGE_SIZE}
+                    onClick={() => setPage((current) => current + 1)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.border}`,
+                      background: '#fff',
+                      color: notesQuery.data.list.length < NOTE_PAGE_SIZE ? THEME.textMuted : THEME.textMain,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: notesQuery.data.list.length < NOTE_PAGE_SIZE ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -2072,89 +3546,328 @@ export function MistakeTopicPage() {
   }
 
   return (
-    <section className="page-panel">
-      <span className="page-tag">错因专题</span>
-      <h1>{topicQuery.data?.title || topicCode}</h1>
-      <p className="page-copy">把高频错因从一个标签，展开成可复习、可自查、可继续补题的专题内容。</p>
-
-      {topicQuery.isLoading ? (
-        <div className="status-card" style={{ marginTop: 24 }}>专题内容加载中...</div>
-      ) : null}
-
-      {topicQuery.isError ? (
-        <div className="status-card" style={{ marginTop: 24 }}>
-          {extractErrorMessage(topicQuery.error, '专题内容加载失败')}
+    <div style={{ background: THEME.bg, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 24px 64px' }}>
+        {/* ===== Hero Header ===== */}
+        <div
+          style={{
+            ...glassCard,
+            padding: '24px 28px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 20,
+                background: THEME.primaryLight,
+                color: THEME.primaryDark,
+                fontSize: 12,
+                fontWeight: 700,
+                marginBottom: 12,
+              }}
+            >
+              <BulbOutlined />
+              错因专题
+            </div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 'clamp(24px, 3vw, 32px)',
+                fontWeight: 800,
+                color: THEME.textMain,
+                lineHeight: 1.2,
+                letterSpacing: -0.5,
+              }}
+            >
+              {topicQuery.data?.title || topicCode}
+            </h1>
+            <p style={{ margin: '8px 0 0', fontSize: 14, color: THEME.textSecondary, lineHeight: 1.6 }}>
+              把高频错因从一个标签，展开成可复习、可自查、可继续补题的专题内容。
+            </p>
+          </div>
+          {topicQuery.data ? (
+            <Tag
+              style={{
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                color: THEME.primary,
+                background: THEME.primaryLight,
+                border: 'none',
+                padding: '4px 12px',
+              }}
+            >
+              {topicQuery.data.tag}
+            </Tag>
+          ) : null}
         </div>
-      ) : null}
 
-      {topicQuery.data ? (
-        <>
-          <article className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <strong>{topicQuery.data.title}</strong>
-              <span>{topicQuery.data.tag}</span>
+        {/* Back to Practice */}
+        <div style={{ marginBottom: 20 }}>
+          <Link
+            to="/practice"
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: THEME.textSecondary,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <ArrowLeftOutlined />
+            返回题库主页面
+          </Link>
+        </div>
+
+        {topicQuery.isLoading ? (
+          <div style={{ ...solidCard, padding: 48, textAlign: 'center' }}>
+            <Spin size="large" tip="专题内容加载中..." />
+          </div>
+        ) : null}
+
+        {topicQuery.isError ? (
+          <div
+            style={{
+              ...solidCard,
+              padding: 32,
+              textAlign: 'center',
+              borderColor: 'rgba(239,68,68,0.2)',
+              background: '#fef2f2',
+            }}
+          >
+            <ExclamationCircleOutlined style={{ fontSize: 40, color: THEME.danger, marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, marginBottom: 6 }}>
+              加载失败
             </div>
-            <p style={{ marginTop: 12 }}>{topicQuery.data.problem_pattern}</p>
-          </article>
-
-          <div className="grid-cards" style={{ marginTop: 24 }}>
-            <article className="feature-card">
-              <h2>常见根因</h2>
-              <ul>
-                {topicQuery.data.root_causes.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </article>
-            <article className="feature-card">
-              <h2>自查清单</h2>
-              <ul>
-                {topicQuery.data.self_check_list.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </article>
+            <div style={{ fontSize: 14, color: THEME.textSecondary }}>
+              {extractErrorMessage(topicQuery.error, '专题内容加载失败')}
+            </div>
           </div>
+        ) : null}
 
-          <div className="grid-cards" style={{ marginTop: 24 }}>
-            <article className="feature-card">
-              <h2>练习方向</h2>
-              <ul>
-                {topicQuery.data.practice_directions.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </article>
-            <article className="feature-card">
-              <h2>建议动作</h2>
-              <ul>
-                {topicQuery.data.recommended_actions.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </article>
-          </div>
-
-          <article className="status-card" style={{ marginTop: 24 }}>
-            <div className="card-inline">
-              <div>
-                <span className="section-kicker">继续练习</span>
-                <h2>回到题库继续补强</h2>
+        {topicQuery.data ? (
+          <>
+            {/* Problem Pattern */}
+            <div style={{ ...solidCard, padding: '24px 28px', marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: '#fef2f2',
+                    color: THEME.danger,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                  }}
+                >
+                  <ExclamationCircleOutlined />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>{topicQuery.data.title}</div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted }}>标签：{topicQuery.data.tag}</div>
+                </div>
               </div>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => handleOpenTopicPractice(topicQuery.data.related_question_sets[0] || '')}
+              <div
+                style={{
+                  fontSize: 14,
+                  color: THEME.textSecondary,
+                  lineHeight: 1.7,
+                  background: '#fafaf9',
+                  borderRadius: 10,
+                  padding: '14px 18px',
+                  border: `1px solid ${THEME.border}`,
+                }}
               >
-                去题库补练
-              </button>
-            </div>
-            {topicQuery.data.related_question_sets.length ? (
-              <div className="page-actions" style={{ marginTop: 12, flexWrap: 'wrap' }}>
-                {topicQuery.data.related_question_sets.map((item) => (
-                  <button className="secondary-button" key={item} type="button" onClick={() => handleOpenTopicPractice(item)}>
-                    {resolvePracticeQuestionSetTitle(item)}
-                  </button>
-                ))}
+                {topicQuery.data.problem_pattern}
               </div>
-            ) : (
-              <p style={{ marginTop: 12 }}>当前专题暂未绑定题单，先回到题库按标签继续补练。</p>
-            )}
-          </article>
-        </>
-      ) : null}
-    </section>
+            </div>
+
+            {/* Four Cards Grid */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 16,
+                marginBottom: 24,
+              }}
+            >
+              <TopicCard
+                title="常见根因"
+                items={topicQuery.data.root_causes}
+                icon=<CloseOutlined style={{ color: THEME.danger }} />
+                accentColor={THEME.danger}
+              />
+              <TopicCard
+                title="自查清单"
+                items={topicQuery.data.self_check_list}
+                icon=<CheckCircleOutlined style={{ color: THEME.success }} />
+                accentColor={THEME.success}
+              />
+              <TopicCard
+                title="练习方向"
+                items={topicQuery.data.practice_directions}
+                icon=<BookOutlined style={{ color: THEME.accent }} />
+                accentColor={THEME.accent}
+              />
+              <TopicCard
+                title="建议动作"
+                items={topicQuery.data.recommended_actions}
+                icon=<ThunderboltOutlined style={{ color: THEME.warning }} />
+                accentColor={THEME.warning}
+              />
+            </div>
+
+            {/* Practice CTA */}
+            <div style={{ ...solidCard, padding: '24px 28px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 16,
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>继续练习</div>
+                  <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 2 }}>回到题库继续补强这个薄弱环节</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenTopicPractice(topicQuery.data.related_question_sets[0] || '')}
+                  style={{
+                    padding: '10px 24px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: THEME.primary,
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 16px rgba(249,115,22,0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <ThunderboltOutlined />
+                  去题库补练
+                </button>
+              </div>
+
+              {topicQuery.data.related_question_sets.length ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                  {topicQuery.data.related_question_sets.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => handleOpenTopicPractice(item)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: 10,
+                        border: `1px solid ${THEME.border}`,
+                        background: '#fff',
+                        color: THEME.textSecondary,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = THEME.primary
+                        e.currentTarget.style.color = THEME.primary
+                        e.currentTarget.style.background = THEME.primaryLight
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = THEME.border
+                        e.currentTarget.style.color = THEME.textSecondary
+                        e.currentTarget.style.background = '#fff'
+                      }}
+                    >
+                      {resolvePracticeQuestionSetTitle(item)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ margin: 0, fontSize: 13, color: THEME.textMuted }}>
+                  当前专题暂未绑定题单，先回到题库按标签继续补练。
+                </p>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function TopicCard(props: { title: string; items: string[]; icon: React.ReactNode; accentColor: string }) {
+  return (
+    <div style={{ ...solidCard, padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: `${props.accentColor}15`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 16,
+          }}
+        >
+          {props.icon}
+        </div>
+        <span style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>{props.title}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {props.items.map((item) => (
+          <div
+            key={item}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: '#fafaf9',
+              border: `1px solid ${THEME.border}`,
+              fontSize: 13,
+              color: THEME.textSecondary,
+              lineHeight: 1.5,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: props.accentColor,
+                marginTop: 6,
+                flexShrink: 0,
+              }}
+            />
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

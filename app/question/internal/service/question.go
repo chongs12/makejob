@@ -16,13 +16,15 @@ import (
 
 type QuestionService struct {
 	questionv1.UnimplementedQuestionServiceServer
-	uc *biz.QuestionUseCase
+	uc        *biz.QuestionUseCase
+	jwtSecret string
 }
 
-func NewQuestionService(uc *biz.QuestionUseCase) *QuestionService {
-	return &QuestionService{uc: uc}
+func NewQuestionService(uc *biz.QuestionUseCase, jwtSecret string) *QuestionService {
+	return &QuestionService{uc: uc, jwtSecret: jwtSecret}
 }
 
+// ListQuestions 返回题库分页结果，并在可选登录场景下补齐当前用户的已答题与收藏状态。
 func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.ListQuestionsRequest) (*questionv1.ListQuestionsResponse, error) {
 	filter := &biz.QuestionFilter{
 		IndustryCode: req.IndustryCode,
@@ -41,15 +43,28 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 		return nil, toGRPCError(err)
 	}
 
-	// 批量查询当前用户已答题的题目 ID
+	// 批量查询当前用户已答题和收藏的题目 ID
+	// ListQuestions 是公开方法，需要从 gRPC metadata 中提取 token 获取用户 ID
 	answeredMap := make(map[uint64]bool)
-	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
+	favoritedMap := make(map[uint64]bool)
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		if tokenString := auth.GetAccessTokenFromMetadata(ctx); tokenString != "" {
+			if claims, err := auth.ParseToken(tokenString, s.jwtSecret); err == nil {
+				userID = claims.UserID
+			}
+		}
+	}
+	if userID > 0 {
 		questionIDs := make([]uint64, len(questions))
 		for i, q := range questions {
 			questionIDs[i] = q.ID
 		}
 		if m, err := s.uc.GetAnsweredQuestionIDs(ctx, userID, questionIDs); err == nil {
 			answeredMap = m
+		}
+		if m, err := s.uc.GetFavoritedQuestionIDs(ctx, userID, questionIDs); err == nil {
+			favoritedMap = m
 		}
 	}
 
@@ -66,6 +81,7 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 			IndustryId:   q.IndustryID,
 			Tags:         q.Tags,
 			IsAnswered:   answeredMap[q.ID],
+			IsFavorite:   favoritedMap[q.ID],
 		}
 	}
 
@@ -79,6 +95,7 @@ func (s *QuestionService) ListQuestions(ctx context.Context, req *questionv1.Lis
 	}, nil
 }
 
+// GetQuestion 返回题目详情，并在可选登录场景下补齐收藏、答题和用户笔记状态。
 func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQuestionRequest) (*questionv1.QuestionDetail, error) {
 	q, err := s.uc.GetQuestion(ctx, req.Id)
 	if err != nil {
@@ -86,10 +103,19 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 	}
 
 	// 查询当前用户是否收藏/已答该题目
+	// GetQuestion 是公开方法，需要从 gRPC metadata 中提取 token 获取用户 ID
 	var isFavorited bool
 	var isAnswered bool
 	var userNote *questionv1.NoteResponse
-	if userID := auth.GetUserIDFromContext(ctx); userID > 0 {
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		if tokenString := auth.GetAccessTokenFromMetadata(ctx); tokenString != "" {
+			if claims, err := auth.ParseToken(tokenString, s.jwtSecret); err == nil {
+				userID = claims.UserID
+			}
+		}
+	}
+	if userID > 0 {
 		isFavorited = s.uc.IsFavorited(ctx, userID, req.Id)
 		// 查询是否已答
 		if answeredMap, ansErr := s.uc.GetAnsweredQuestionIDs(ctx, userID, []uint64{req.Id}); ansErr == nil {
@@ -102,11 +128,11 @@ func (s *QuestionService) GetQuestion(ctx context.Context, req *questionv1.GetQu
 				questionID = *note.QuestionID
 			}
 			userNote = &questionv1.NoteResponse{
-				Id:        note.ID,
+				Id:         note.ID,
 				QuestionId: questionID,
-				Content:   note.Content,
-				CreatedAt: timestamppb.New(note.CreatedAt),
-				UpdatedAt: timestamppb.New(note.UpdatedAt),
+				Content:    note.Content,
+				CreatedAt:  timestamppb.New(note.CreatedAt),
+				UpdatedAt:  timestamppb.New(note.UpdatedAt),
 			}
 		}
 	}
@@ -209,7 +235,7 @@ func (s *QuestionService) SubmitAnswer(ctx context.Context, req *questionv1.Subm
 		Score:          resp.Score,
 		Feedback:       resp.Feedback,
 		CorrectAnswer:  resp.CorrectAnswer,
-		Explanation:    resp.Suggestions,
+		Explanation:    firstNonEmpty(resp.Suggestions, resp.Feedback),
 		KeyPoints:      resp.KeyPoints,
 		EvaluationMode: resp.EvaluationMode,
 		JudgeSummary:   toProtoJudgeSummary(resp.JudgeSummary),
@@ -412,10 +438,14 @@ func (s *QuestionService) GetWrongQuestions(ctx context.Context, req *questionv1
 	items := make([]*questionv1.WrongQuestionEntry, len(wrongQuestions))
 	for i, w := range wrongQuestions {
 		entry := &questionv1.WrongQuestionEntry{
-			QuestionId: w.QuestionID,
-			Title:      w.Title,
-			WrongCount: w.WrongCount,
-			LastAnswer: w.LastAnswer,
+			QuestionId:   w.QuestionID,
+			Title:        w.Title,
+			WrongCount:   w.WrongCount,
+			LastAnswer:   w.LastAnswer,
+			Difficulty:   w.Difficulty,
+			Type:         w.Type,
+			CategoryName: w.CategoryName,
+			CategoryId:   w.CategoryID,
 		}
 		if !w.LastWrongAt.IsZero() {
 			entry.LastWrongAt = timestamppb.New(w.LastWrongAt)
@@ -1049,6 +1079,16 @@ func toProtoJudgeSummary(summary *biz.JudgeSummary) *questionv1.JudgeSummary {
 }
 
 // toGRPCError 将业务错误转换为 gRPC 兼容的 Kratos 错误
+// firstNonEmpty 返回第一个非空字符串
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func toGRPCError(err error) error {
 	if err == nil {
 		return nil

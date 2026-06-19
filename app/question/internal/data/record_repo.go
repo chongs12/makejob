@@ -118,11 +118,15 @@ func (r *recordRepo) GetCategoryStats(ctx context.Context, userID uint64) ([]*bi
 }
 
 type wrongQuestionRow struct {
-	QuestionID  uint64
-	Title       string
-	WrongCount  int32
-	LastWrongAt string
-	LastAnswer  string
+	QuestionID   uint64
+	Title        string
+	Difficulty   string
+	Type         string
+	CategoryName string
+	CategoryID   uint64
+	WrongCount   int32
+	LastWrongAt  string
+	LastAnswer   string
 }
 
 func (r *recordRepo) GetWrongQuestions(ctx context.Context, userID uint64, page, pageSize int32) ([]*biz.WrongQuestion, int64, error) {
@@ -136,11 +140,11 @@ func (r *recordRepo) GetWrongQuestions(ctx context.Context, userID uint64, page,
 	var total int64
 	subQuery.Count(&total)
 
-	// 对齐单体：获取最后一次错误答案（列名 user_answer）
+	// 获取题目详情字段
 	var rows []wrongQuestionRow
 	err := r.db.WithContext(ctx).
 		Table("(?) AS wq", subQuery).
-		Select("wq.question_id, q.title, wq.wrong_count, wq.last_wrong_at, "+
+		Select("wq.question_id, q.title, q.difficulty, q.type, q.category_name, q.category_id, wq.wrong_count, wq.last_wrong_at, "+
 			"(SELECT uqr.user_answer FROM user_question_records uqr WHERE uqr.question_id = wq.question_id AND uqr.user_id = ? AND uqr.is_correct = false ORDER BY uqr.id DESC LIMIT 1) AS last_answer", userID).
 		Joins("LEFT JOIN questions q ON q.id = wq.question_id").
 		Order("wq.wrong_count DESC").
@@ -154,10 +158,14 @@ func (r *recordRepo) GetWrongQuestions(ctx context.Context, userID uint64, page,
 	items := make([]*biz.WrongQuestion, len(rows))
 	for i, row := range rows {
 		items[i] = &biz.WrongQuestion{
-			QuestionID: row.QuestionID,
-			Title:      row.Title,
-			WrongCount: row.WrongCount,
-			LastAnswer: row.LastAnswer,
+			QuestionID:   row.QuestionID,
+			Title:        row.Title,
+			Difficulty:   row.Difficulty,
+			Type:         row.Type,
+			CategoryName: row.CategoryName,
+			CategoryID:   row.CategoryID,
+			WrongCount:   row.WrongCount,
+			LastAnswer:   row.LastAnswer,
 		}
 	}
 	return items, total, nil

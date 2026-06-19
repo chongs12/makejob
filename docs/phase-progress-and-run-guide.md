@@ -202,7 +202,7 @@ go run ./app/companion/cmd/server -conf ./app/companion/configs/config.yaml
 go run ./app/admin/cmd/server -conf ./app/admin/configs/config.yaml
 
 # Gateway（HTTP :8080）— 最后启动，依赖所有 gRPC 服务
-
+go run ./app/gateway/cmd/server -conf ./app/gateway/configs/config.yaml    
 ```
 
 ### 2.5 推荐启动顺序

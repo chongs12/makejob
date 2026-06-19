@@ -193,6 +193,52 @@ func (s *AIGatewayService) PlanAgent(ctx context.Context, req *aiv1.PlanAgentReq
 	}, nil
 }
 
+// AdjustPlan 学习计划调整 handler
+func (s *AIGatewayService) AdjustPlan(ctx context.Context, req *aiv1.AdjustPlanRequest) (*aiv1.AdjustPlanResponse, error) {
+	result, err := s.planUC.AdjustPlan(
+		ctx,
+		req.PlanId,
+		req.IndustryCode,
+		req.CurrentPhase,
+		req.GoalDescription,
+		req.DailyHours,
+		req.CompletedTasks,
+		req.WeakTopics,
+		req.Performance,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.AdjustPlanResponse{
+		PlanTitle:    result.PlanTitle,
+		Tasks:        toProtoPlanTasks(result.Tasks),
+		Summary:      result.Summary,
+		Phase:        result.Phase,
+		PhaseGoal:    result.PhaseGoal,
+		DurationDays: result.DurationDays,
+	}, nil
+}
+
+// GetStudySuggestion 学习建议 handler
+func (s *AIGatewayService) GetStudySuggestion(ctx context.Context, req *aiv1.GetStudySuggestionRequest) (*aiv1.GetStudySuggestionResponse, error) {
+	suggestion, err := s.planUC.GetStudySuggestion(
+		ctx,
+		req.IndustryCode,
+		req.Level,
+		req.GoalDescription,
+		req.DailyHours,
+		req.DurationDays,
+		req.WeakTopics,
+		req.StrongTopics,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GetStudySuggestionResponse{
+		Suggestion: suggestion,
+	}, nil
+}
+
 // CompanionAgent AI 陪伴聊天 handler
 func (s *AIGatewayService) CompanionAgent(ctx context.Context, req *aiv1.CompanionAgentRequest) (*aiv1.CompanionAgentResponse, error) {
 	result, err := s.companionUC.Chat(
@@ -307,9 +353,96 @@ func (s *AIGatewayService) QuizAnalyzer(ctx context.Context, req *aiv1.QuizAnaly
 	}, nil
 }
 
+// AnalyzeCode 代码分析 handler
+func (s *AIGatewayService) AnalyzeCode(ctx context.Context, req *aiv1.AnalyzeCodeRequest) (*aiv1.AnalyzeCodeResponse, error) {
+	result, err := s.quizUC.AnalyzeCode(
+		ctx,
+		req.Code,
+		req.Language,
+		req.Question,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.AnalyzeCodeResponse{
+		IsCorrect:       result.IsCorrect,
+		Score:           result.Score,
+		Feedback:        result.Feedback,
+		Issues:          result.Issues,
+		Improvements:    result.Improvements,
+		MistakeTags:     result.MistakeTags,
+		StrengthTags:    result.StrengthTags,
+		TimeComplexity:  result.TimeComplexity,
+		SpaceComplexity: result.SpaceComplexity,
+	}, nil
+}
+
+// DiagnoseInterviewCoding 编程面试诊断 handler
+func (s *AIGatewayService) DiagnoseInterviewCoding(ctx context.Context, req *aiv1.DiagnoseInterviewCodingRequest) (*aiv1.DiagnoseInterviewCodingResponse, error) {
+	processEvents := make([]biz.CodingProcessEvent, 0, len(req.ProcessEvents))
+	for _, event := range req.ProcessEvents {
+		processEvents = append(processEvents, biz.CodingProcessEvent{
+			Type:        event.Type,
+			TimestampMS: event.TimestampMs,
+			PayloadJSON: event.PayloadJson,
+		})
+	}
+
+	result, err := s.quizUC.DiagnoseInterviewCoding(
+		ctx,
+		req.Question,
+		req.Language,
+		req.FinalCode,
+		req.FinalAnswer,
+		processEvents,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.DiagnoseInterviewCodingResponse{
+		Score:          result.Score,
+		MistakeTags:    result.MistakeTags,
+		StrengthTags:   result.StrengthTags,
+		Evidence:       result.Evidence,
+		Suggestions:    result.Suggestions,
+		ProcessSummary: result.ProcessSummary,
+	}, nil
+}
+
+// ExplainAnswer 答案解析 handler
+func (s *AIGatewayService) ExplainAnswer(ctx context.Context, req *aiv1.ExplainAnswerRequest) (*aiv1.ExplainAnswerResponse, error) {
+	explanation, err := s.quizUC.ExplainAnswer(
+		ctx,
+		req.QuestionTitle,
+		req.QuestionContent,
+		req.CorrectAnswer,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.ExplainAnswerResponse{
+		Explanation: explanation,
+	}, nil
+}
+
+// GenerateHint 答题提示 handler
+func (s *AIGatewayService) GenerateHint(ctx context.Context, req *aiv1.GenerateHintRequest) (*aiv1.GenerateHintResponse, error) {
+	hint, err := s.quizUC.GenerateHint(
+		ctx,
+		req.QuestionTitle,
+		req.QuestionContent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GenerateHintResponse{
+		Hint: hint,
+	}, nil
+}
+
 // ResumeParser 简历解析 handler
 func (s *AIGatewayService) ResumeParser(ctx context.Context, req *aiv1.ResumeParserRequest) (*aiv1.ResumeParserResponse, error) {
-	result, err := s.resumeUC.Parse(ctx, req.ResumeText)
+	result, err := s.resumeUC.Parse(ctx, req.ResumeText, req.JobDescription)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +453,7 @@ func (s *AIGatewayService) ResumeParser(ctx context.Context, req *aiv1.ResumePar
 		Projects:    result.Projects,
 		Summary:     result.Summary,
 		WeakSignals: result.WeakSignals,
+		Strengths:   result.Strengths,
 	}, nil
 }
 
@@ -383,11 +517,16 @@ func toProtoPlanTasks(tasks []biz.PlanTask) []*aiv1.PlanTask {
 	result := make([]*aiv1.PlanTask, 0, len(tasks))
 	for _, t := range tasks {
 		result = append(result, &aiv1.PlanTask{
-			Title:          t.Title,
-			Description:    t.Description,
-			Phase:          t.Phase,
-			OrderIndex:     t.OrderIndex,
-			EstimatedHours: t.EstimatedHours,
+			Title:           t.Title,
+			Description:     t.Description,
+			Phase:           t.Phase,
+			OrderIndex:      t.OrderIndex,
+			EstimatedHours:  t.EstimatedHours,
+			TaskType:        t.TaskType,
+			PhaseGoal:       t.PhaseGoal,
+			DayNumber:       t.DayNumber,
+			DurationMinutes: t.DurationMinutes,
+			Priority:        t.Priority,
 		})
 	}
 	return result

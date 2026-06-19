@@ -1,5 +1,5 @@
-import type { ComponentType, FormEvent } from 'react'
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, ComponentType, FormEvent } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import {
   createRootRouteWithContext,
   createRoute,
@@ -11,8 +11,8 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { type QueryClient } from '@tanstack/react-query'
-import { Button, Input, Avatar, Badge } from 'antd'
-import { SearchOutlined, EditOutlined, UserOutlined, DownOutlined } from '@ant-design/icons'
+import { Button, Input, Avatar, Dropdown, Spin } from 'antd'
+import { SearchOutlined, EditOutlined, UserOutlined, DownOutlined, LogoutOutlined, ProfileOutlined } from '@ant-design/icons'
 import { AUTH_EXPIRED_EVENT_NAME } from '@makejob/api-client'
 import { useAuthStore } from './state/auth'
 import { useFrontendIndustryPreference } from './shared/frontendIndustryPreference'
@@ -69,14 +69,35 @@ function AuthBootstrap() {
   return null
 }
 
+const ROUTER_THEME = {
+  bg: '#fafafa',
+  cardBg: '#ffffff',
+  primary: '#f97316',
+  primaryLight: '#fff7ed',
+  textMain: '#1c1917',
+  textSecondary: '#57534e',
+  textMuted: '#a8a29e',
+  border: '#e7e5e4',
+  radius: 12,
+  shadow: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
+}
+
 /**
  * 为路由级异步页面提供统一加载占位，避免切页时出现明显空白。
  */
 function RouteLoadingFallback() {
   return (
-    <div className="page-shell">
-      <div className="page-card">
-        <p>页面加载中...</p>
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ROUTER_THEME.bg }}>
+      <div style={{
+        background: ROUTER_THEME.cardBg,
+        borderRadius: ROUTER_THEME.radius,
+        border: `1px solid ${ROUTER_THEME.border}`,
+        padding: '32px 40px',
+        boxShadow: ROUTER_THEME.shadow,
+        textAlign: 'center',
+      }}>
+        <Spin />
+        <p style={{ margin: '12px 0 0', fontSize: 14, color: ROUTER_THEME.textSecondary }}>页面加载中...</p>
       </div>
     </div>
   )
@@ -141,18 +162,59 @@ function LoginRequiredDialog(props: {
     : '当前功能需要登录后才能完整使用。登录后你可以继续当前操作，并保留回跳位置。'
 
   return (
-    <div className="login-required-overlay" role="presentation">
-      <div className="login-required-dialog" role="dialog" aria-modal="true" aria-labelledby="login-required-title">
-        <span className="page-tag">登录提示</span>
-        <h2 id="login-required-title">{title}</h2>
-        <p>{description}</p>
-        <div className="page-actions login-required-actions">
-          <button className="primary-button" type="button" onClick={props.onConfirm}>
+    <div
+      role="presentation"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={props.onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-required-title"
+        style={{
+          background: ROUTER_THEME.cardBg,
+          borderRadius: ROUTER_THEME.radius,
+          padding: '32px 36px',
+          maxWidth: 400,
+          width: '90%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{
+          display: 'inline-block',
+          padding: '3px 10px',
+          borderRadius: 6,
+          background: ROUTER_THEME.primaryLight,
+          color: ROUTER_THEME.primary,
+          fontSize: 12,
+          fontWeight: 600,
+          marginBottom: 16,
+        }}>
+          登录提示
+        </div>
+        <h2 id="login-required-title" style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, color: ROUTER_THEME.textMain }}>
+          {title}
+        </h2>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: ROUTER_THEME.textSecondary, lineHeight: 1.6 }}>
+          {description}
+        </p>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Button type="primary" onClick={props.onConfirm} style={{ flex: 1, borderRadius: 8, background: ROUTER_THEME.primary, borderColor: ROUTER_THEME.primary, fontWeight: 600 }}>
             立即登录
-          </button>
-          <button className="secondary-button" type="button" onClick={props.onCancel}>
+          </Button>
+          <Button onClick={props.onCancel} style={{ flex: 1, borderRadius: 8, fontWeight: 600 }}>
             稍后登录
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -438,13 +500,32 @@ function RootLayout() {
                 >
                   发布
                 </Button>
-                <Link to="/growth" style={{ textDecoration: 'none' }}>
+                <Dropdown
+                  menu={{
+                    items: [
+                      {
+                        key: 'profile',
+                        icon: <ProfileOutlined />,
+                        label: '成长档案',
+                        onClick: () => navigate({ to: '/growth' }),
+                      },
+                      {
+                        key: 'logout',
+                        icon: <LogoutOutlined />,
+                        label: '退出登录',
+                        danger: true,
+                        onClick: () => logout(),
+                      },
+                    ],
+                  }}
+                  trigger={['click']}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <Avatar size={28} icon={<UserOutlined />} style={{ background: '#e7e5e4', color: '#78716c' }} />
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1c1917' }}>{user?.username || '用户'}</span>
                     <DownOutlined style={{ fontSize: 10, color: '#a8a29e' }} />
                   </div>
-                </Link>
+                </Dropdown>
               </>
             ) : (
               <>
@@ -484,7 +565,7 @@ function RootLayout() {
 }
 
 /**
- * 提供前台登录页面，并在成功后跳转到成长档案页。
+ * 提供前台登录页面，并在成功后跳转到指定地址或成长档案页。
  */
 function LoginPage() {
   const navigate = useNavigate()
@@ -495,14 +576,11 @@ function LoginPage() {
   const loading = useAuthStore((state) => state.loading)
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
-  const [form, setForm] = useState({
-    email: '',
-    password: '',
-  })
-  const [message, setMessage] = useState('等待提交')
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [message, setMessage] = useState('')
 
   /**
-   * 提交登录表单，并在成功后进入已受保护的成长档案页面。
+   * 提交登录表单，成功后跳转到目标页面。
    */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -515,63 +593,112 @@ function LoginPage() {
         return
       }
 
-      navigate({
-        to: '/growth',
-        replace: true,
-      })
+      navigate({ to: '/growth', replace: true })
     }
   }
 
-  /**
-   * 对令牌做短截断展示，便于判断写入状态而不直接暴露完整值。
-   */
-  function maskToken(token: string | null): string {
-    if (!token) {
-      return '未写入'
-    }
-
-    return `${token.slice(0, 12)}...`
+  const fieldLabelStyle: CSSProperties = {
+    display: 'block',
+    fontSize: 13,
+    fontWeight: 600,
+    color: ROUTER_THEME.textMain,
+    marginBottom: 6,
   }
-
-  const tokenPreview = useMemo(() => maskToken(accessToken), [accessToken])
 
   return (
-    <section className="page-panel narrow-panel">
-      <span className="page-tag">登录链路</span>
-      <h1>前台登录</h1>
-      <p className="page-copy">
-        当前表单会直接请求 `/auth/login`，随后自动拉取 `/user/profile`，并把会话写入本地存储。
-      </p>
+    <div style={{ minHeight: 'calc(100vh - 56px)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ROUTER_THEME.bg, padding: '40px 16px' }}>
+      <div style={{
+        background: ROUTER_THEME.cardBg,
+        borderRadius: ROUTER_THEME.radius,
+        border: `1px solid ${ROUTER_THEME.border}`,
+        padding: '40px 36px',
+        maxWidth: 400,
+        width: '100%',
+        boxShadow: ROUTER_THEME.shadow,
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #f97316, #fb923c)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            fontWeight: 800,
+            color: '#fff',
+            marginBottom: 16,
+          }}>
+            M
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>登录 MakeJob</h1>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: ROUTER_THEME.textSecondary }}>
+            登录后解锁完整功能，继续你的学习之旅
+          </p>
+        </div>
 
-      <form className="stack-form" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>邮箱</span>
-          <input
-            value={form.email}
-            onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-            placeholder="请输入邮箱"
-          />
-        </label>
-        <label className="field">
-          <span>密码</span>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            placeholder="请输入密码"
-          />
-        </label>
-        <button className="primary-button" type="submit" disabled={loading}>
-          {loading ? '提交中...' : '登录'}
-        </button>
-      </form>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabelStyle}>邮箱</label>
+            <Input
+              size="large"
+              value={form.email}
+              onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+              placeholder="请输入邮箱"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={fieldLabelStyle}>密码</label>
+            <Input.Password
+              size="large"
+              value={form.password}
+              onChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+              placeholder="请输入密码"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <Button
+            type="primary"
+            htmlType="submit"
+            size="large"
+            block
+            loading={loading}
+            style={{ borderRadius: 8, background: ROUTER_THEME.primary, borderColor: ROUTER_THEME.primary, fontWeight: 600, height: 44 }}
+          >
+            {loading ? '登录中...' : '登录'}
+          </Button>
+        </form>
 
-      <div className="status-card">
-        <div>令牌状态：{tokenPreview}</div>
-        <div>用户资料：{user?.username || '未同步'}</div>
-        <div>接口结果：{message}</div>
+        {message && (
+          <div style={{
+            marginTop: 20,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: ROUTER_THEME.primaryLight,
+            fontSize: 13,
+            color: ROUTER_THEME.textSecondary,
+            textAlign: 'center',
+          }}>
+            {message}
+          </div>
+        )}
+
+        <div style={{
+          marginTop: 24,
+          padding: '12px 16px',
+          borderRadius: 8,
+          background: ROUTER_THEME.bg,
+          fontSize: 12,
+          color: ROUTER_THEME.textMuted,
+          lineHeight: 1.8,
+        }}>
+          <div>令牌状态：{accessToken ? `${accessToken.slice(0, 12)}...` : '未写入'}</div>
+          <div>用户资料：{user?.username || '未同步'}</div>
+        </div>
       </div>
-    </section>
+    </div>
   )
 }
 

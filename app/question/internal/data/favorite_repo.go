@@ -74,3 +74,23 @@ func (r *favoriteRepo) Exists(ctx context.Context, userID, questionID uint64) (b
 		Count(&count).Error
 	return count > 0, err
 }
+
+// GetFavoritedQuestionIDs 批量查询用户已收藏的题目 ID 集合
+func (r *favoriteRepo) GetFavoritedQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error) {
+	if len(questionIDs) == 0 {
+		return nil, nil
+	}
+	var ids []uint64
+	err := r.db.WithContext(ctx).Model(&model.UserFavorite{}).
+		Where("user_id = ? AND question_id IN ?", userID, questionIDs).
+		Distinct("question_id").
+		Pluck("question_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint64]bool, len(ids))
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}

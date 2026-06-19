@@ -78,16 +78,16 @@
 
 ## 二、未重构页面（待办）
 
-### 1. 练习详情模块 (`features/practice/PracticeDetailPages.tsx`)
-该文件为巨型文件（~1900 行），包含 6 个导出页面，全部仍使用 `styles.css` 旧类名：
-- `PracticeQuestionPage` — 单题详情页（选择/多选/主观题作答）
-- `PracticeEditorPage` — 编程题编辑器（含 Monaco Editor）
-- `PracticeWrongPage` — 错题本列表
-- `PracticeFavoritesPage` — 收藏题目列表
-- `PracticeNotesPage` — 题目笔记列表
-- `MistakeTopicPage` — 错题专题详情
+### 1. 练习详情模块 — 编程题编辑器 (`features/practice/PracticeDetailPages.tsx`)
+该文件包含 6 个导出页面，其中 5 个已完成重构，仅剩编程题编辑器待改造：
+- ~~`PracticeQuestionPage` — 单题详情页~~ ✅ 已重构
+- `PracticeEditorPage` — 编程题编辑器（含 Monaco Editor）❌ **未重构**，仍使用 `editor-immersive`、`editor-topbar`、`editor-body` 等旧类名
+- ~~`PracticeWrongPage` — 错题本列表~~ ✅ 已重构
+- ~~`PracticeFavoritesPage` — 收藏题目列表~~ ✅ 已重构
+- ~~`PracticeNotesPage` — 题目笔记列表~~ ✅ 已重构
+- ~~`MistakeTopicPage` — 错题专题详情~~ ✅ 已重构
 
-> **建议**：这是前台未重构中体量最大的文件，优先拆解为多个独立文件后再逐个重写。
+> **说明**：编程题编辑器为沉浸式暗色主题独立页面（无导航栏），重构时需保留其特殊布局逻辑。
 
 ### 2. 面试模块
 - `features/interview/InterviewPage.tsx` (`InterviewHubPage`) — 面试主页
@@ -101,8 +101,10 @@
 - `features/companion/CompanionLive2DStage.tsx` — Live2D 陪伴场景子组件
 - `features/companion/companionShared.tsx` — 共享子组件（GoalList、PhaseTimeline 等）
 
-### 4. 登录页
-- `router.tsx` 内联的 `LoginPage` 组件 — 仍使用 `className="page-panel narrow-panel"` 等旧样式
+### 4. ~~登录页~~ ✅ 已重构
+- `router.tsx` 内联的 `LoginPage` 组件 — 已改用 Ant Design `Input`/`Input.Password`/`Button` + inline styles
+- `LoginRequiredDialog` 组件 — 已改用 inline styles 遮罩弹窗 + Ant Design Button
+- `RouteLoadingFallback` 组件 — 已改用 inline styles + Ant Design Spin
 
 ---
 

@@ -168,6 +168,7 @@ export function PracticePage() {
       keyword,
       industryId: selectedIndustry?.id || null,
       categoryId,
+      token: accessToken,
     }),
     enabled: !activeQuestionSetSlug,
     staleTime: 2 * 60 * 1000,

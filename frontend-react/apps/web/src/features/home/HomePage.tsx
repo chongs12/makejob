@@ -150,6 +150,7 @@ export default function HomePage() {
       page: 1, pageSize: 5, difficulty: '', keyword: '',
       industryId: highlightedIndustries.find((item) => item.code === effectiveIndustryCode)?.id || null,
       categoryId: null,
+      token: accessToken,
     }),
     enabled: Boolean(highlightedIndustries.find((item) => item.code === effectiveIndustryCode)?.id),
   })

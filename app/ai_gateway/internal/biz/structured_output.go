@@ -119,10 +119,18 @@ func planResultSchema() string {
       "description": "任务说明",
       "phase": "阶段名",
       "order_index": 1,
-      "estimated_hours": 2
+      "estimated_hours": 2,
+      "task_type": "study|practice|interview|review",
+      "phase_goal": "阶段目标",
+      "day_number": 1,
+      "duration_minutes": 60,
+      "priority": "high|medium|low"
     }
   ],
-  "summary": "计划总结"
+  "summary": "计划总结",
+  "phase": "foundation|drill|review|mock",
+  "phase_goal": "阶段目标",
+  "duration_days": 30
 }`
 }
 
@@ -136,4 +144,71 @@ func quizResultSchema() string {
   "suggestions": "改进建议",
   "correct_answer": "参考答案"
 }`
+}
+
+// codeAnalysisSchema 代码分析结构化输出合同。
+func codeAnalysisSchema() string {
+	return `{
+  "is_correct": true,
+  "score": 80,
+  "feedback": "总体反馈",
+  "issues": ["问题1", "问题2"],
+  "improvements": ["改进1", "改进2"],
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
+  "time_complexity": "O(n)",
+  "space_complexity": "O(1)"
+}`
+}
+
+// codingDiagnosisSchema 编程面试诊断结构化输出合同。
+func codingDiagnosisSchema() string {
+	return `{
+  "score": 78,
+  "mistake_tags": ["状态定义不清"],
+  "strength_tags": ["愿意主动验证思路"],
+  "evidence": ["多次运行后仍集中修改同一逻辑分支"],
+  "suggestions": ["补练边界条件和状态设计"],
+  "process_summary": "能够持续迭代，但调试路径还不够稳定。"
+}`
+}
+
+// buildCodeAnalysisSystemPrompt 构造代码分析系统提示词。
+func buildCodeAnalysisSystemPrompt() string {
+	return `请分析这道题的答案，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
+{
+  "is_correct": true,
+  "score": 0,
+  "feedback": "整体评价",
+  "issues": ["问题1", "问题2"],
+  "improvements": ["改进建议1", "改进建议2"],
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
+  "time_complexity": "O(n)",
+  "space_complexity": "O(1)"
+}
+要求：
+1. score 必须在 0 到 100 之间。
+2. 只评价答案本身是否正确、完整、高质量。不要评价题目描述中与答案无关的内容。
+3. is_correct 应基于答案是否正确回应了题目的核心要求来判定。
+4. issues 和 improvements 至少各返回 1 条。
+5. mistake_tags 要尽量具体，不要只写"基础不好"这类空泛表述。`
+}
+
+// buildCodingDiagnosisSystemPrompt 构造编程面试诊断系统提示词。
+func buildCodingDiagnosisSystemPrompt() string {
+	return `请根据题目、最终代码和过程事件分析候选人的编程面试表现，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：
+{
+  "score": 0,
+  "mistake_tags": ["错因标签1"],
+  "strength_tags": ["优势标签1"],
+  "evidence": ["证据1", "证据2"],
+  "suggestions": ["建议1", "建议2"],
+  "process_summary": "过程总结"
+}
+要求：
+1. score 必须在 0 到 100 之间。
+2. 错因标签要尽量具体，优先围绕状态定义、边界条件、索引控制、数据结构选择、复杂度意识和调试路径。
+3. evidence 必须引用过程中的现象，不要只写空泛判断。
+4. suggestions 给出可执行的补强动作。`
 }

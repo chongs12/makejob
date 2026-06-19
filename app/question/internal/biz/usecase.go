@@ -185,31 +185,47 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		return nil, ErrQuestionNotFound
 	}
 
-	// 调用 AI 分析答案
-	resp, err := uc.quizAnalyzer.Analyze(ctx, &QuizAnalyzerRequest{
-		Question:   question.Content,
-		Answer:     answer,
-		Topic:      question.CategoryName,
-		Difficulty: question.Difficulty,
-	})
-	if err != nil {
-		return nil, kratosErr.InternalServer("AI_ANALYZE_FAILED", "AI 分析失败").WithCause(err)
-	}
+	var resp *QuizAnalyzerResponse
 
-	// 填充题目自身的 evaluation_mode
-	resp.EvaluationMode = question.EvaluationMode
+	switch question.Type {
+	case "choice", "multi":
+		// 选择题：本地判分，不调 AI，返回题目自带解析
+		isCorrect := judgeChoiceAnswer(question, answer)
+		score := float64(0)
+		if isCorrect {
+			score = 100
+		}
+		resp = &QuizAnalyzerResponse{
+			Score:          score,
+			IsCorrect:      isCorrect,
+			Feedback:       question.Explanation,
+			CorrectAnswer:  question.Answer,
+			EvaluationMode: "local",
+		}
+	default:
+		// 编程题/主观题：调用 AI 分析
+		resp, err = uc.quizAnalyzer.Analyze(ctx, &QuizAnalyzerRequest{
+			Question:   question.Content,
+			Answer:     answer,
+			Topic:      question.CategoryName,
+			Difficulty: question.Difficulty,
+		})
+		if err != nil {
+			return nil, kratosErr.InternalServer("AI_ANALYZE_FAILED", "AI 分析失败").WithCause(err)
+		}
+		resp.EvaluationMode = question.EvaluationMode
 
-	// 编程题：运行代码获取 judge_summary
-	if question.EvaluationMode == "testcase" || question.Type == "code" || question.Type == "coding" {
-		judgeSummary := uc.runCodeForJudgeSummary(ctx, question, answer, language)
-		if judgeSummary != nil {
-			resp.JudgeSummary = judgeSummary
-			// 用代码运行结果覆盖 AI 判分
-			resp.IsCorrect = judgeSummary.AllPassed
-			if judgeSummary.AllPassed {
-				resp.Score = 100
-			} else if judgeSummary.TotalCases > 0 {
-				resp.Score = float64(judgeSummary.PassedCases) / float64(judgeSummary.TotalCases) * 100
+		// 编程题：运行代码获取 judge_summary
+		if question.EvaluationMode == "testcase" || question.Type == "code" || question.Type == "coding" {
+			judgeSummary := uc.runCodeForJudgeSummary(ctx, question, answer, language)
+			if judgeSummary != nil {
+				resp.JudgeSummary = judgeSummary
+				resp.IsCorrect = judgeSummary.AllPassed
+				if judgeSummary.AllPassed {
+					resp.Score = 100
+				} else if judgeSummary.TotalCases > 0 {
+					resp.Score = float64(judgeSummary.PassedCases) / float64(judgeSummary.TotalCases) * 100
+				}
 			}
 		}
 	}
@@ -231,6 +247,35 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 	uc.syncPracticeLearningArchive(ctx, userID, question, record, resp)
 
 	return resp, nil
+}
+
+// judgeChoiceAnswer 本地判分选择题，支持单选和多选
+func judgeChoiceAnswer(question *Question, userAnswer string) bool {
+	userAnswer = strings.TrimSpace(userAnswer)
+	correctAnswer := strings.TrimSpace(question.Answer)
+
+	switch question.Type {
+	case "choice":
+		return strings.EqualFold(userAnswer, correctAnswer)
+	case "multi":
+		return normalizeMultiAnswer(userAnswer) == normalizeMultiAnswer(correctAnswer)
+	default:
+		return false
+	}
+}
+
+// normalizeMultiAnswer 将多选答案排序去重后标准化比较
+func normalizeMultiAnswer(answer string) string {
+	parts := strings.Split(answer, ",")
+	var choices []string
+	for _, p := range parts {
+		p = strings.TrimSpace(strings.ToUpper(p))
+		if p != "" {
+			choices = append(choices, p)
+		}
+	}
+	sort.Strings(choices)
+	return strings.Join(choices, ",")
 }
 
 // runCodeForJudgeSummary 运行代码并构建判题摘要。
@@ -368,6 +413,11 @@ func (uc *QuestionUseCase) GetWrongQuestions(ctx context.Context, userID uint64,
 // GetAnsweredQuestionIDs 批量查询用户已答题的题目 ID 集合
 func (uc *QuestionUseCase) GetAnsweredQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error) {
 	return uc.recordRepo.GetAnsweredQuestionIDs(ctx, userID, questionIDs)
+}
+
+// GetFavoritedQuestionIDs 批量查询用户已收藏的题目 ID 集合
+func (uc *QuestionUseCase) GetFavoritedQuestionIDs(ctx context.Context, userID uint64, questionIDs []uint64) (map[uint64]bool, error) {
+	return uc.favoriteRepo.GetFavoritedQuestionIDs(ctx, userID, questionIDs)
 }
 
 // GetMistakeTopicCard 通过 gRPC 从 learning_archive 服务查询错因专题详情。

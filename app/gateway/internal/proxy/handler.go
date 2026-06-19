@@ -1537,20 +1537,25 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 			public.POST("/auth/login", gw.handleLogin)
 			public.POST("/auth/refresh", gw.handleRefreshToken)
 		}
-		// 题库公开接口（可选认证：已登录时注入用户上下文，未登录时正常访问）
+		// 题库公开接口
 		if gw.questionClient != nil {
-			public.GET("/questions", gw.handleListQuestions)
 			public.GET("/industries", gw.handleListIndustries)
 			public.GET("/categories", gw.handleListCategories)
 		}
-		// 需要可选认证的公开接口（如题目详情，已登录时可展示用户笔记）
-		optionalAuth := api.Group("")
-		optionalAuth.Use(gw.OptionalJWTMiddleware())
-		{
-			if gw.questionClient != nil {
-				optionalAuth.GET("/questions/:id", gw.handleGetQuestion)
-			}
+	// 需要可选认证的公开接口（已登录时可展示用户笔记、答题状态、收藏状态、点赞状态）
+	optionalAuth := api.Group("")
+	optionalAuth.Use(gw.OptionalJWTMiddleware())
+	{
+		if gw.questionClient != nil {
+			optionalAuth.GET("/questions", gw.handleListQuestions)
+			optionalAuth.GET("/questions/:id", gw.handleGetQuestion)
 		}
+		if gw.communityClient != nil {
+			optionalAuth.GET("/community/posts", gw.handleListPosts)
+			optionalAuth.GET("/community/posts/:id", gw.handleGetPost)
+			optionalAuth.GET("/community/posts/:id/comments", gw.handleListComments)
+		}
+	}
 		// 社区公开接口
 		if gw.communityClient != nil {
 			public.GET("/community/posts", gw.handleListPosts)
@@ -1766,18 +1771,23 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		public.POST("/auth/register", gw.requireService("user", gw.userClient != nil, gw.handleRegister))
 		public.POST("/auth/login", gw.requireService("user", gw.userClient != nil, gw.handleLogin))
 		public.POST("/auth/refresh", gw.requireService("user", gw.userClient != nil, gw.handleRefreshToken))
-		public.GET("/questions", gw.requireService("question", gw.questionClient != nil, gw.handleListQuestions))
-		public.GET("/questions/:id", gw.requireService("question", gw.questionClient != nil, gw.handleGetQuestion))
 		public.GET("/question-sets", gw.requireService("question", gw.questionClient != nil, gw.handleListQuestionSets))
 		public.GET("/question-sets/:id", gw.requireService("question", gw.questionClient != nil, gw.handleGetQuestionSetDetail))
 		public.GET("/industries", gw.requireService("question", gw.questionClient != nil, gw.handleListIndustries))
 		public.GET("/categories", gw.requireService("question", gw.questionClient != nil, gw.handleListCategories))
-		public.GET("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListPosts))
-		public.GET("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleGetPost))
-		public.GET("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleListComments))
 		public.POST("/membership/callback", gw.requireService("membership", gw.membershipClient != nil, gw.handlePaymentCallback))
 		public.GET("/live2d/models", gw.requireService("admin", gw.adminClient != nil, gw.handleListPublicLive2DModels))
 		public.GET("/live2d/current", gw.requireService("admin", gw.adminClient != nil, gw.handleGetPublicCurrentLive2DModel))
+	}
+
+	optionalAuth := api.Group("")
+	optionalAuth.Use(gw.OptionalJWTMiddleware())
+	{
+		optionalAuth.GET("/questions", gw.requireService("question", gw.questionClient != nil, gw.handleListQuestions))
+		optionalAuth.GET("/questions/:id", gw.requireService("question", gw.questionClient != nil, gw.handleGetQuestion))
+		optionalAuth.GET("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListPosts))
+		optionalAuth.GET("/community/posts/:id", gw.requireService("community", gw.communityClient != nil, gw.handleGetPost))
+		optionalAuth.GET("/community/posts/:id/comments", gw.requireService("community", gw.communityClient != nil, gw.handleListComments))
 	}
 
 	protected := api.Group("")
@@ -2849,8 +2859,9 @@ func (gw *Gateway) handleToggleFavorite(c *gin.Context) {
 		UserId: userID, QuestionId: questionID,
 	})
 	if err != nil {
-		st, _ := status.FromError(err)
-		if st.Code() == codes.AlreadyExists {
+		// 检查是否是"已收藏"错误（kratos Conflict 或 gRPC AlreadyExists）
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "ALREADY_FAVORITED") || strings.Contains(errMsg, "已收藏") {
 			_, err = gw.questionClient.DeleteFavorite(c.Request.Context(), &questionv1.DeleteFavoriteRequest{
 				UserId: userID, QuestionId: questionID,
 			})
@@ -2858,13 +2869,13 @@ func (gw *Gateway) handleToggleFavorite(c *gin.Context) {
 				grpcErr(c, err)
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"status": "removed"})
+			c.JSON(http.StatusOK, gin.H{"is_favorited": false})
 			return
 		}
 		grpcErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "added"})
+	c.JSON(http.StatusOK, gin.H{"is_favorited": true})
 }
 
 func (gw *Gateway) handleListFavorites(c *gin.Context) {
@@ -3885,7 +3896,7 @@ func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 	}
 
 	var req struct {
-		Messages      []struct {
+		Messages []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
@@ -4769,22 +4780,22 @@ func normalizeQuestionPipelineCardPayload(card *adminv1.PipelineCard) map[string
 		return nil
 	}
 	return map[string]interface{}{
-		"id":            card.GetId(),
-		"title":         card.GetTitle(),
-		"content":       card.GetContent(),
-		"type":          card.GetType(),
-		"difficulty":    card.GetDifficulty(),
-		"category":      card.GetCategory(),
-		"answer":        card.GetAnswer(),
-		"solution":      card.GetSolution(),
-		"explanation":   card.GetExplanation(),
-		"tags":          card.GetTags(),
-		"judge_config":  card.GetJudgeConfig(),
-		"confidence":    card.GetConfidence(),
-		"source_type":   card.GetSourceType(),
-		"source_label":  card.GetSourceLabel(),
-		"source_title":  card.GetSourceTitle(),
-		"source_url":    card.GetSourceUrl(),
+		"id":           card.GetId(),
+		"title":        card.GetTitle(),
+		"content":      card.GetContent(),
+		"type":         card.GetType(),
+		"difficulty":   card.GetDifficulty(),
+		"category":     card.GetCategory(),
+		"answer":       card.GetAnswer(),
+		"solution":     card.GetSolution(),
+		"explanation":  card.GetExplanation(),
+		"tags":         card.GetTags(),
+		"judge_config": card.GetJudgeConfig(),
+		"confidence":   card.GetConfidence(),
+		"source_type":  card.GetSourceType(),
+		"source_label": card.GetSourceLabel(),
+		"source_title": card.GetSourceTitle(),
+		"source_url":   card.GetSourceUrl(),
 	}
 }
 
@@ -5594,9 +5605,9 @@ func (gw *Gateway) handleAdminListTTSConfigs(c *gin.Context) {
 			"params_json":      config.GetParamsJson(),
 			"is_active":        config.GetIsActive(),
 			"sort_order":       config.GetSortOrder(),
-			"support_status":   config.GetSupportStatus(),   // 使用 admin 服务返回的值
-			"support_message":  config.GetSupportMessage(),  // 使用 admin 服务返回的值
-			"scene":            config.GetScene(),           // 使用 admin 服务返回的值
+			"support_status":   config.GetSupportStatus(),  // 使用 admin 服务返回的值
+			"support_message":  config.GetSupportMessage(), // 使用 admin 服务返回的值
+			"scene":            config.GetScene(),          // 使用 admin 服务返回的值
 			"created_at":       config.GetCreatedAt(),
 		})
 	}
@@ -5867,11 +5878,11 @@ func (gw *Gateway) handleAdminGetRAGDocument(c *gin.Context) {
 
 func (gw *Gateway) handleAdminCreateRAGDocument(c *gin.Context) {
 	var req struct {
-		Collection string            `json:"collection"`
-		DocType    string            `json:"doc_type"`
-		Title      string            `json:"title"`
-		Content    string            `json:"content"`
-		Metadata   json.RawMessage   `json:"metadata"`
+		Collection string          `json:"collection"`
+		DocType    string          `json:"doc_type"`
+		Title      string          `json:"title"`
+		Content    string          `json:"content"`
+		Metadata   json.RawMessage `json:"metadata"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -5898,12 +5909,12 @@ func (gw *Gateway) handleAdminUpdateRAGDocument(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Collection string            `json:"collection"`
-		DocType    string            `json:"doc_type"`
-		Title      string            `json:"title"`
-		Content    string            `json:"content"`
-		Metadata   json.RawMessage   `json:"metadata"`
-		IsActive   *bool             `json:"is_active"`
+		Collection string          `json:"collection"`
+		DocType    string          `json:"doc_type"`
+		Title      string          `json:"title"`
+		Content    string          `json:"content"`
+		Metadata   json.RawMessage `json:"metadata"`
+		IsActive   *bool           `json:"is_active"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

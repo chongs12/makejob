@@ -93,6 +93,7 @@ message QuestionSummary {
   uint64 industry_id = 8;
   repeated string tags = 9;
   bool is_answered = 10;
+  bool is_favorite = 11;
 }
 
 message GetQuestionRequest {
@@ -331,6 +332,11 @@ message WrongQuestionEntry {
   int32 wrong_count = 3;
   google.protobuf.Timestamp last_wrong_at = 4;
   string last_answer = 5;
+  // 题目详情字段
+  string difficulty = 6;       // easy / medium / hard
+  string type = 7;             // choice / multi / subjective / code
+  string category_name = 8;    // 分类名称
+  uint64 category_id = 9;      // 分类 ID
 }
 
 message UserPracticeStats {

@@ -23,6 +23,10 @@ const (
 	AIService_PlanAgent_FullMethodName                        = "/makejob.ai.v1.AIService/PlanAgent"
 	AIService_CompanionAgent_FullMethodName                   = "/makejob.ai.v1.AIService/CompanionAgent"
 	AIService_QuizAnalyzer_FullMethodName                     = "/makejob.ai.v1.AIService/QuizAnalyzer"
+	AIService_AnalyzeCode_FullMethodName                      = "/makejob.ai.v1.AIService/AnalyzeCode"
+	AIService_DiagnoseInterviewCoding_FullMethodName          = "/makejob.ai.v1.AIService/DiagnoseInterviewCoding"
+	AIService_ExplainAnswer_FullMethodName                    = "/makejob.ai.v1.AIService/ExplainAnswer"
+	AIService_GenerateHint_FullMethodName                     = "/makejob.ai.v1.AIService/GenerateHint"
 	AIService_ResumeParser_FullMethodName                     = "/makejob.ai.v1.AIService/ResumeParser"
 	AIService_Live2DDirector_FullMethodName                   = "/makejob.ai.v1.AIService/Live2DDirector"
 	AIService_StartInterview_FullMethodName                   = "/makejob.ai.v1.AIService/StartInterview"
@@ -30,6 +34,8 @@ const (
 	AIService_GetNextQuestionSession_FullMethodName           = "/makejob.ai.v1.AIService/GetNextQuestionSession"
 	AIService_GenerateInterviewReport_FullMethodName          = "/makejob.ai.v1.AIService/GenerateInterviewReport"
 	AIService_EndInterviewSession_FullMethodName              = "/makejob.ai.v1.AIService/EndInterviewSession"
+	AIService_AdjustPlan_FullMethodName                       = "/makejob.ai.v1.AIService/AdjustPlan"
+	AIService_GetStudySuggestion_FullMethodName               = "/makejob.ai.v1.AIService/GetStudySuggestion"
 	AIService_GetGreeting_FullMethodName                      = "/makejob.ai.v1.AIService/GetGreeting"
 	AIService_GetEncouragement_FullMethodName                 = "/makejob.ai.v1.AIService/GetEncouragement"
 	AIService_RenderPrompt_FullMethodName                     = "/makejob.ai.v1.AIService/RenderPrompt"
@@ -46,6 +52,10 @@ type AIServiceClient interface {
 	PlanAgent(ctx context.Context, in *PlanAgentRequest, opts ...grpc.CallOption) (*PlanAgentResponse, error)
 	CompanionAgent(ctx context.Context, in *CompanionAgentRequest, opts ...grpc.CallOption) (*CompanionAgentResponse, error)
 	QuizAnalyzer(ctx context.Context, in *QuizAnalyzerRequest, opts ...grpc.CallOption) (*QuizAnalyzerResponse, error)
+	AnalyzeCode(ctx context.Context, in *AnalyzeCodeRequest, opts ...grpc.CallOption) (*AnalyzeCodeResponse, error)
+	DiagnoseInterviewCoding(ctx context.Context, in *DiagnoseInterviewCodingRequest, opts ...grpc.CallOption) (*DiagnoseInterviewCodingResponse, error)
+	ExplainAnswer(ctx context.Context, in *ExplainAnswerRequest, opts ...grpc.CallOption) (*ExplainAnswerResponse, error)
+	GenerateHint(ctx context.Context, in *GenerateHintRequest, opts ...grpc.CallOption) (*GenerateHintResponse, error)
 	ResumeParser(ctx context.Context, in *ResumeParserRequest, opts ...grpc.CallOption) (*ResumeParserResponse, error)
 	Live2DDirector(ctx context.Context, in *Live2DDirectiveRequest, opts ...grpc.CallOption) (*Live2DDirectiveResponse, error)
 	// === Interview 会话式 RPC（对齐单体 InterviewAgent 接口）===
@@ -54,6 +64,9 @@ type AIServiceClient interface {
 	GetNextQuestionSession(ctx context.Context, in *GetNextQuestionSessionRequest, opts ...grpc.CallOption) (*GetNextQuestionSessionResponse, error)
 	GenerateInterviewReport(ctx context.Context, in *GenerateInterviewReportRequest, opts ...grpc.CallOption) (*GenerateInterviewReportResponse, error)
 	EndInterviewSession(ctx context.Context, in *EndInterviewSessionRequest, opts ...grpc.CallOption) (*EndInterviewSessionResponse, error)
+	// === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
+	AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error)
+	GetStudySuggestion(ctx context.Context, in *GetStudySuggestionRequest, opts ...grpc.CallOption) (*GetStudySuggestionResponse, error)
 	// === Companion 扩展 RPC（对齐单体 GetGreeting/GetEncouragement）===
 	GetGreeting(ctx context.Context, in *GetGreetingRequest, opts ...grpc.CallOption) (*GetGreetingResponse, error)
 	GetEncouragement(ctx context.Context, in *GetEncouragementRequest, opts ...grpc.CallOption) (*GetEncouragementResponse, error)
@@ -107,6 +120,46 @@ func (c *aIServiceClient) QuizAnalyzer(ctx context.Context, in *QuizAnalyzerRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QuizAnalyzerResponse)
 	err := c.cc.Invoke(ctx, AIService_QuizAnalyzer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) AnalyzeCode(ctx context.Context, in *AnalyzeCodeRequest, opts ...grpc.CallOption) (*AnalyzeCodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnalyzeCodeResponse)
+	err := c.cc.Invoke(ctx, AIService_AnalyzeCode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) DiagnoseInterviewCoding(ctx context.Context, in *DiagnoseInterviewCodingRequest, opts ...grpc.CallOption) (*DiagnoseInterviewCodingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiagnoseInterviewCodingResponse)
+	err := c.cc.Invoke(ctx, AIService_DiagnoseInterviewCoding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) ExplainAnswer(ctx context.Context, in *ExplainAnswerRequest, opts ...grpc.CallOption) (*ExplainAnswerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExplainAnswerResponse)
+	err := c.cc.Invoke(ctx, AIService_ExplainAnswer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GenerateHint(ctx context.Context, in *GenerateHintRequest, opts ...grpc.CallOption) (*GenerateHintResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateHintResponse)
+	err := c.cc.Invoke(ctx, AIService_GenerateHint_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +230,26 @@ func (c *aIServiceClient) EndInterviewSession(ctx context.Context, in *EndInterv
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EndInterviewSessionResponse)
 	err := c.cc.Invoke(ctx, AIService_EndInterviewSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdjustPlanResponse)
+	err := c.cc.Invoke(ctx, AIService_AdjustPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *aIServiceClient) GetStudySuggestion(ctx context.Context, in *GetStudySuggestionRequest, opts ...grpc.CallOption) (*GetStudySuggestionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStudySuggestionResponse)
+	err := c.cc.Invoke(ctx, AIService_GetStudySuggestion_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +333,10 @@ type AIServiceServer interface {
 	PlanAgent(context.Context, *PlanAgentRequest) (*PlanAgentResponse, error)
 	CompanionAgent(context.Context, *CompanionAgentRequest) (*CompanionAgentResponse, error)
 	QuizAnalyzer(context.Context, *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error)
+	AnalyzeCode(context.Context, *AnalyzeCodeRequest) (*AnalyzeCodeResponse, error)
+	DiagnoseInterviewCoding(context.Context, *DiagnoseInterviewCodingRequest) (*DiagnoseInterviewCodingResponse, error)
+	ExplainAnswer(context.Context, *ExplainAnswerRequest) (*ExplainAnswerResponse, error)
+	GenerateHint(context.Context, *GenerateHintRequest) (*GenerateHintResponse, error)
 	ResumeParser(context.Context, *ResumeParserRequest) (*ResumeParserResponse, error)
 	Live2DDirector(context.Context, *Live2DDirectiveRequest) (*Live2DDirectiveResponse, error)
 	// === Interview 会话式 RPC（对齐单体 InterviewAgent 接口）===
@@ -268,6 +345,9 @@ type AIServiceServer interface {
 	GetNextQuestionSession(context.Context, *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error)
 	GenerateInterviewReport(context.Context, *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error)
 	EndInterviewSession(context.Context, *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error)
+	// === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
+	AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error)
+	GetStudySuggestion(context.Context, *GetStudySuggestionRequest) (*GetStudySuggestionResponse, error)
 	// === Companion 扩展 RPC（对齐单体 GetGreeting/GetEncouragement）===
 	GetGreeting(context.Context, *GetGreetingRequest) (*GetGreetingResponse, error)
 	GetEncouragement(context.Context, *GetEncouragementRequest) (*GetEncouragementResponse, error)
@@ -299,6 +379,18 @@ func (UnimplementedAIServiceServer) CompanionAgent(context.Context, *CompanionAg
 func (UnimplementedAIServiceServer) QuizAnalyzer(context.Context, *QuizAnalyzerRequest) (*QuizAnalyzerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QuizAnalyzer not implemented")
 }
+func (UnimplementedAIServiceServer) AnalyzeCode(context.Context, *AnalyzeCodeRequest) (*AnalyzeCodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AnalyzeCode not implemented")
+}
+func (UnimplementedAIServiceServer) DiagnoseInterviewCoding(context.Context, *DiagnoseInterviewCodingRequest) (*DiagnoseInterviewCodingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiagnoseInterviewCoding not implemented")
+}
+func (UnimplementedAIServiceServer) ExplainAnswer(context.Context, *ExplainAnswerRequest) (*ExplainAnswerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExplainAnswer not implemented")
+}
+func (UnimplementedAIServiceServer) GenerateHint(context.Context, *GenerateHintRequest) (*GenerateHintResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateHint not implemented")
+}
 func (UnimplementedAIServiceServer) ResumeParser(context.Context, *ResumeParserRequest) (*ResumeParserResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResumeParser not implemented")
 }
@@ -319,6 +411,12 @@ func (UnimplementedAIServiceServer) GenerateInterviewReport(context.Context, *Ge
 }
 func (UnimplementedAIServiceServer) EndInterviewSession(context.Context, *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndInterviewSession not implemented")
+}
+func (UnimplementedAIServiceServer) AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdjustPlan not implemented")
+}
+func (UnimplementedAIServiceServer) GetStudySuggestion(context.Context, *GetStudySuggestionRequest) (*GetStudySuggestionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStudySuggestion not implemented")
 }
 func (UnimplementedAIServiceServer) GetGreeting(context.Context, *GetGreetingRequest) (*GetGreetingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetGreeting not implemented")
@@ -427,6 +525,78 @@ func _AIService_QuizAnalyzer_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AIServiceServer).QuizAnalyzer(ctx, req.(*QuizAnalyzerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_AnalyzeCode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnalyzeCodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).AnalyzeCode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_AnalyzeCode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).AnalyzeCode(ctx, req.(*AnalyzeCodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_DiagnoseInterviewCoding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiagnoseInterviewCodingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).DiagnoseInterviewCoding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_DiagnoseInterviewCoding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).DiagnoseInterviewCoding(ctx, req.(*DiagnoseInterviewCodingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_ExplainAnswer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExplainAnswerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).ExplainAnswer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_ExplainAnswer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).ExplainAnswer(ctx, req.(*ExplainAnswerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GenerateHint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateHintRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GenerateHint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GenerateHint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GenerateHint(ctx, req.(*GenerateHintRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -557,6 +727,42 @@ func _AIService_EndInterviewSession_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIService_AdjustPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdjustPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).AdjustPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_AdjustPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).AdjustPlan(ctx, req.(*AdjustPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AIService_GetStudySuggestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStudySuggestionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GetStudySuggestion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GetStudySuggestion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GetStudySuggestion(ctx, req.(*GetStudySuggestionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AIService_GetGreeting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetGreetingRequest)
 	if err := dec(in); err != nil {
@@ -682,6 +888,22 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AIService_QuizAnalyzer_Handler,
 		},
 		{
+			MethodName: "AnalyzeCode",
+			Handler:    _AIService_AnalyzeCode_Handler,
+		},
+		{
+			MethodName: "DiagnoseInterviewCoding",
+			Handler:    _AIService_DiagnoseInterviewCoding_Handler,
+		},
+		{
+			MethodName: "ExplainAnswer",
+			Handler:    _AIService_ExplainAnswer_Handler,
+		},
+		{
+			MethodName: "GenerateHint",
+			Handler:    _AIService_GenerateHint_Handler,
+		},
+		{
 			MethodName: "ResumeParser",
 			Handler:    _AIService_ResumeParser_Handler,
 		},
@@ -708,6 +930,14 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndInterviewSession",
 			Handler:    _AIService_EndInterviewSession_Handler,
+		},
+		{
+			MethodName: "AdjustPlan",
+			Handler:    _AIService_AdjustPlan_Handler,
+		},
+		{
+			MethodName: "GetStudySuggestion",
+			Handler:    _AIService_GetStudySuggestion_Handler,
 		},
 		{
 			MethodName: "GetGreeting",
