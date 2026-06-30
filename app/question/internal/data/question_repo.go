@@ -178,6 +178,7 @@ func toBizQuestion(m *QuestionModel) *biz.Question {
 		ReferenceAnswer:    m.ReferenceAnswer,
 		Explanation:        m.Explanation,
 		TestCasesJSON:      m.TestCasesJSON,
+		JudgeConfig:        biz.ParseJudgeConfig(m.JudgeConfigJSON, m.TestCasesJSON, m.Type),
 		IsActive:           m.IsActive,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,

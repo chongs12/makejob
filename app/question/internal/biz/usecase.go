@@ -213,10 +213,10 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		if err != nil {
 			return nil, kratosErr.InternalServer("AI_ANALYZE_FAILED", "AI 分析失败").WithCause(err)
 		}
-		resp.EvaluationMode = question.EvaluationMode
+		resp.EvaluationMode = ResolveEvaluationMode(question.JudgeConfig)
 
-		// 编程题：运行代码获取 judge_summary
-		if question.EvaluationMode == "testcase" || question.Type == "code" || question.Type == "coding" {
+		// 编程题 testcase 模式：运行代码获取 judge_summary（使用隐藏用例）
+		if question.JudgeConfig != nil && question.JudgeConfig.EvaluationMode == EvaluationModeTestcase {
 			judgeSummary := uc.runCodeForJudgeSummary(ctx, question, answer, language)
 			if judgeSummary != nil {
 				resp.JudgeSummary = judgeSummary
@@ -278,63 +278,71 @@ func normalizeMultiAnswer(answer string) string {
 	return strings.Join(choices, ",")
 }
 
-// runCodeForJudgeSummary 运行代码并构建判题摘要。
+// runCodeForJudgeSummary 运行代码并构建判题摘要（SubmitAnswer 时使用隐藏用例）
 func (uc *QuestionUseCase) runCodeForJudgeSummary(ctx context.Context, question *Question, code, language string) *JudgeSummary {
 	if uc.codeRunner == nil {
 		return nil
 	}
 
-	// 从题目解析测试用例
-	var testCases []CodeTestCase
-	if question.TestCasesJSON != "" {
-		var cases []struct {
-			Input          string `json:"input"`
-			ExpectedOutput string `json:"expected_output"`
-			Description    string `json:"description"`
-		}
-		if err := json.Unmarshal([]byte(question.TestCasesJSON), &cases); err == nil {
-			for _, tc := range cases {
-				testCases = append(testCases, CodeTestCase{
-					Input:          tc.Input,
-					ExpectedOutput: tc.ExpectedOutput,
-				})
-			}
-		}
-	}
-	if len(testCases) == 0 {
+	config := question.JudgeConfig
+	if config == nil || config.EvaluationMode != EvaluationModeTestcase {
 		return nil
 	}
 
-	lang := language
-	if lang == "" {
-		lang = question.Language
+	// SubmitAnswer 使用隐藏用例
+	hiddenCases := SelectTestCases(config, false)
+	if len(hiddenCases) == 0 {
+		return nil
+	}
+
+	lang := ResolveJudgeLanguage(language, config)
+
+	testCases := make([]CodeTestCase, 0, len(hiddenCases))
+	for _, tc := range hiddenCases {
+		testCases = append(testCases, CodeTestCase{
+			Input:          tc.Input,
+			ExpectedOutput: tc.ExpectedOutput,
+		})
 	}
 
 	resp, err := uc.codeRunner.Execute(ctx, &CodeRunnerRequest{
 		Language:  lang,
 		Code:      code,
 		TestCases: testCases,
-		TimeoutMs: 10000,
+		TimeoutMs: int32(config.TimeLimitMS),
 	})
 	if err != nil {
 		log.Warnf("代码运行失败: question_id=%d, err=%v", question.ID, err)
 		return nil
 	}
 
+	// 用规范化逻辑重新判定每条用例
 	results := make([]JudgeCaseResult, 0, len(resp.TestResults))
-	for _, tr := range resp.TestResults {
+	var passedCount int32
+	for i, tr := range resp.TestResults {
+		actualNorm := NormalizeJudgeOutputText(tr.ActualOutput)
+		expectedNorm := NormalizeJudgeOutputText(tr.ExpectedOutput)
+		passed := actualNorm == expectedNorm
+		if passed {
+			passedCount++
+		}
+		var desc string
+		if i < len(hiddenCases) {
+			desc = hiddenCases[i].Description
+		}
 		results = append(results, JudgeCaseResult{
 			Input:          tr.Input,
-			ExpectedOutput: tr.ExpectedOutput,
-			ActualOutput:   tr.ActualOutput,
-			Passed:         tr.Passed,
+			ExpectedOutput: expectedNorm,
+			ActualOutput:   actualNorm,
+			Passed:         passed,
+			Description:    desc,
 		})
 	}
 
 	return &JudgeSummary{
-		AllPassed:   resp.TestCasesPassed == resp.TotalTestCases,
-		TotalCases:  resp.TotalTestCases,
-		PassedCases: resp.TestCasesPassed,
+		AllPassed:   passedCount == int32(len(hiddenCases)),
+		TotalCases:  int32(len(hiddenCases)),
+		PassedCases: passedCount,
 		Results:     results,
 	}
 }
@@ -646,27 +654,56 @@ func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, langu
 		return nil, ErrQuestionNotFound
 	}
 
-	// 从题目的 TestCasesJSON 字段解析测试用例
-	var testCases []CodeTestCase
-	if question.TestCasesJSON != "" {
-		var cases []struct {
-			Input          string `json:"input"`
-			ExpectedOutput string `json:"expected_output"`
-		}
-		if err := json.Unmarshal([]byte(question.TestCasesJSON), &cases); err == nil {
-			for _, tc := range cases {
-				testCases = append(testCases, CodeTestCase{
-					Input:          tc.Input,
-					ExpectedOutput: tc.ExpectedOutput,
-				})
-			}
-		}
+	if uc.codeRunner == nil {
+		return nil, kratosErr.ServiceUnavailable("CODE_RUNNER_UNAVAILABLE", "代码运行服务未配置")
 	}
 
+	config := question.JudgeConfig
+	evalMode := ResolveEvaluationMode(config)
+	lang := ResolveJudgeLanguage(language, config)
+
+	if evalMode == EvaluationModeTestcase && config != nil {
+		// 测试用例判题模式：RunCode 只执行公开用例（最多3条）
+		publicCases := SelectTestCases(config, true)
+		if len(publicCases) == 0 {
+			return &CodeRunnerResponse{
+				Success: true,
+				Output:  "无公开测试用例",
+			}, nil
+		}
+
+		testCases := make([]CodeTestCase, 0, len(publicCases))
+		for _, tc := range publicCases {
+			testCases = append(testCases, CodeTestCase{
+				Input:          tc.Input,
+				ExpectedOutput: tc.ExpectedOutput,
+			})
+		}
+
+		resp, err := uc.codeRunner.Execute(ctx, &CodeRunnerRequest{
+			Language:  lang,
+			Code:      code,
+			TestCases: testCases,
+			TimeoutMs: int32(config.TimeLimitMS),
+		})
+		if err != nil {
+			return nil, kratosErr.InternalServer("CODE_RUNNER_FAILED", "代码运行服务调用失败").WithCause(err)
+		}
+
+		// 用规范化逻辑重新判定结果
+		for i := range resp.TestResults {
+			resp.TestResults[i].ActualOutput = NormalizeJudgeOutputText(resp.TestResults[i].ActualOutput)
+			resp.TestResults[i].ExpectedOutput = NormalizeJudgeOutputText(resp.TestResults[i].ExpectedOutput)
+			resp.TestResults[i].Passed = resp.TestResults[i].ActualOutput == resp.TestResults[i].ExpectedOutput
+		}
+
+		return resp, nil
+	}
+
+	// 非 testcase 模式：直接运行代码
 	resp, err := uc.codeRunner.Execute(ctx, &CodeRunnerRequest{
-		Language:  language,
+		Language:  lang,
 		Code:      code,
-		TestCases: testCases,
 		TimeoutMs: 10000,
 	})
 	if err != nil {

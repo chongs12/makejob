@@ -65,6 +65,11 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 
 	// data 层：ARK LLM 客户端
 	llmClient := data.NewArkLLMClient(bc.ARK)
+	if bc.Fallback != nil && bc.Fallback.Enabled {
+		fallbackClient := data.NewOpenAILLMClient(bc.Fallback)
+		llmClient = biz.NewFallbackLLMClient(llmClient, fallbackClient, logger)
+		log.Infof("已启用备用模型: %s", bc.Fallback.BaseURL)
+	}
 
 	// biz 层：各场景业务用例
 	interviewUC := biz.NewInterviewAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, logger)

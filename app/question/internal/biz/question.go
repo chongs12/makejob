@@ -168,6 +168,7 @@ type Question struct {
 	ReferenceAnswer    string
 	Explanation        string
 	TestCasesJSON      string
+	JudgeConfig        *JudgeConfig `gorm:"-"` // 解析后的判题配置（不持久化）
 	IsActive           bool
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

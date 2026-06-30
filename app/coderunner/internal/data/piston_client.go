@@ -74,15 +74,15 @@ func NewPistonClient(endpoint string, timeoutMs int, logger log.Logger) biz.Pist
 // Execute 调用 Piston API 执行代码
 func (c *pistonClient) Execute(ctx context.Context, input *biz.ExecuteInput) (*biz.ExecuteOutput, error) {
 	// 检查语言支持
-	version, ok := languageVersions[input.Language]
+	_, ok := languageVersions[input.Language]
 	if !ok {
 		return nil, biz.ErrUnsupportedLanguage
 	}
 
-	// 构造请求体
+	// 构造请求体（version 使用 "*" 通配，让 Piston 使用已安装的版本）
 	reqBody := pistonExecuteRequest{
 		Language: input.Language,
-		Version:  version,
+		Version:  "*",
 		Files: []pistonFile{
 			{Content: input.Code},
 		},

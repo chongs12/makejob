@@ -915,10 +915,10 @@ func normalizeAdminAIConfigPayload(value interface{}) interface{} {
 	if _, ok := payload["support"]; !ok {
 		payload["support"] = gin.H{
 			"primary_providers":  []string{"eino"},
-			"fallback_providers": []string{},
+			"fallback_providers": []string{"openai", "azure", "mock"},
 			"notes": []string{
 				"当前网关兼容层按旧后台协议补齐了运行时支持信息。",
-				"当前后端仅支持 ai_provider=eino，fallback provider 暂未启用。",
+				"fallback provider 在主模型失败时自动启用。",
 			},
 		}
 	}

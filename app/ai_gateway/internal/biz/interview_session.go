@@ -101,7 +101,8 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
 	if err != nil {
-		return nil, ErrLLMCallFailed
+		uc.logger.Warnf("LLM 出题失败，使用本地兜底: %v", err)
+		return buildLocalStartResponse(req), nil
 	}
 
 	result, err := parseStructuredJSON[InterviewResult](llmCtx, uc.llm, cfg, resp.Content, schema)
@@ -203,7 +204,8 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
 	if err != nil {
-		return nil, ErrLLMCallFailed
+		uc.logger.Warnf("LLM 评分失败，使用本地兜底: %v", err)
+		return buildLocalEvaluateResponse(req.Answer), nil
 	}
 
 	result, err := parseStructuredJSON[InterviewResult](llmCtx, uc.llm, cfg, resp.Content, schema)
@@ -343,7 +345,8 @@ func (uc *InterviewSessionUseCase) GenerateReport(ctx context.Context, req *Gene
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
 	if err != nil {
-		return nil, ErrLLMCallFailed
+		uc.logger.Warnf("LLM 报告生成失败，使用本地兜底: %v", err)
+		return buildLocalReportResponse(session), nil
 	}
 
 	result, err := parseStructuredJSON[InterviewReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)

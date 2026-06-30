@@ -11,7 +11,8 @@ type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	Data   *Data   `yaml:"data"`
 	JWT    *JWT    `yaml:"jwt"`
-	ARK    *ARK    `yaml:"ark"`
+	ARK      *ARK      `yaml:"ark"`
+	Fallback *Fallback `yaml:"fallback"`
 }
 
 // ARK 火山引擎 ARK 大模型平台配置
@@ -19,6 +20,15 @@ type ARK struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
 	Model   string `yaml:"model"`
+}
+
+// Fallback 备用模型配置，与主模型 ARK 使用不同的 API Key 和端点。
+type Fallback struct {
+	Enabled bool   `yaml:"enabled"`
+	APIKey  string `yaml:"api_key"`
+	BaseURL string `yaml:"base_url"`
+	Model   string `yaml:"model"`
+	Timeout int    `yaml:"timeout"`
 }
 
 type Server struct {
@@ -99,6 +109,15 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.JWT.ExpireHours == 0 {
 		bc.JWT.ExpireHours = 168
+	}
+	if bc.Fallback == nil {
+		bc.Fallback = &Fallback{}
+	}
+	if bc.Fallback.BaseURL == "" {
+		bc.Fallback.BaseURL = "https://api.openai.com/v1"
+	}
+	if bc.Fallback.Timeout <= 0 {
+		bc.Fallback.Timeout = 60
 	}
 	return &bc, nil
 }

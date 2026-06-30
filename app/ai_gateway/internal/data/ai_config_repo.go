@@ -117,6 +117,9 @@ func (r *aiConfigRepo) buildConfigFromAdminConfigs(ctx context.Context, scene st
 		"ai_api_key":           strings.TrimSpace(configs["ai_api_key"]),
 		"ai_base_url":          strings.TrimSpace(configs["ai_base_url"]),
 		"ai_fallback_provider": strings.TrimSpace(configs["ai_fallback_provider"]),
+		"ai_fallback_api_key":  strings.TrimSpace(configs["ai_fallback_api_key"]),
+		"ai_fallback_base_url": strings.TrimSpace(configs["ai_fallback_base_url"]),
+		"ai_fallback_model":    strings.TrimSpace(configs["ai_fallback_model"]),
 		"scene_model_key":      sceneModelKey,
 	})
 

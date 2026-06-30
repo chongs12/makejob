@@ -25,10 +25,19 @@ var aiDefaultConfigValues = map[string]string{
 	"ai_scene_plan_model":      "",
 	"ai_scene_companion_model": "",
 	"ai_scene_quiz_model":      "",
+	"ai_fallback_api_key":      "",
+	"ai_fallback_base_url":     "",
+	"ai_fallback_model":        "",
 }
 
 var aiSupportedPrimaryProviders = map[string]struct{}{
 	"eino": {},
+}
+
+var aiSupportedFallbackProviders = map[string]struct{}{
+	"openai": {},
+	"azure":  {},
+	"mock":   {},
 }
 
 // defaultAIConfigValues 返回 AI 默认配置副本，避免调用方误修改共享常量。
@@ -73,7 +82,10 @@ func normalizeAIConfigInput(input map[string]string) (map[string]string, error) 
 		return nil, kratoserr.BadRequest("INVALID_AI_PROVIDER", "当前仅支持 ai_provider=eino")
 	}
 	if normalized["ai_fallback_provider"] != "" {
-		return nil, kratoserr.BadRequest("INVALID_AI_FALLBACK_PROVIDER", "当前不支持 ai_fallback_provider")
+		if _, ok := aiSupportedFallbackProviders[normalized["ai_fallback_provider"]]; !ok {
+			return nil, kratoserr.BadRequest("INVALID_AI_FALLBACK_PROVIDER",
+				fmt.Sprintf("不支持的 fallback provider: %s，可选: openai, azure, mock", normalized["ai_fallback_provider"]))
+		}
 	}
 	if strings.TrimSpace(normalized["ai_model"]) == "" {
 		return nil, kratoserr.BadRequest("INVALID_AI_MODEL", "ai_model 不能为空")
