@@ -89,6 +89,7 @@ interface AIConfigFieldMeta {
   secret?: boolean
   placeholder?: string
   options?: AIConfigFieldOption[]
+  visible?: (configs: Record<string, string>) => boolean
 }
 
 const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
@@ -117,6 +118,34 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
       { value: 'openai', label: 'OpenAI' },
       { value: 'azure', label: 'Azure OpenAI' },
     ],
+  },
+  {
+    key: 'ai_fallback_api_key',
+    label: '兜底 API Key',
+    description: '备用模型的访问密钥，与主模型的 API Key 独立。',
+    type: 'string',
+    group: 'provider',
+    secret: true,
+    placeholder: '输入备用模型 API Key',
+    visible: (configs: Record<string, string>) => !!configs.ai_fallback_provider,
+  },
+  {
+    key: 'ai_fallback_base_url',
+    label: '兜底 Base URL',
+    description: '备用模型的服务地址，例如 https://api.openai.com/v1。',
+    type: 'string',
+    group: 'provider',
+    placeholder: 'https://api.openai.com/v1',
+    visible: (configs: Record<string, string>) => !!configs.ai_fallback_provider,
+  },
+  {
+    key: 'ai_fallback_model',
+    label: '兜底模型',
+    description: '备用模型名称，例如 gpt-4o 或 deepseek-chat。',
+    type: 'string',
+    group: 'provider',
+    placeholder: 'gpt-4o',
+    visible: (configs: Record<string, string>) => !!configs.ai_fallback_provider,
   },
   {
     key: 'ai_model',
@@ -401,14 +430,16 @@ function collectChangedConfigKeys(
     .map((meta) => meta.key)
 }
 
-function groupAIConfigFields(metas: AIConfigFieldMeta[]): Record<AIConfigGroup, AIConfigFieldMeta[]> {
-  return metas.reduce<Record<AIConfigGroup, AIConfigFieldMeta[]>>(
-    (result, field) => {
-      result[field.group].push(field)
-      return result
-    },
-    { provider: [], runtime: [], scene: [] },
-  )
+function groupAIConfigFields(metas: AIConfigFieldMeta[], configs: Record<string, string>): Record<AIConfigGroup, AIConfigFieldMeta[]> {
+  return metas
+    .filter((field) => (typeof field.visible === 'function' ? field.visible(configs) : true))
+    .reduce<Record<AIConfigGroup, AIConfigFieldMeta[]>>(
+      (result, field) => {
+        result[field.group].push(field)
+        return result
+      },
+      { provider: [], runtime: [], scene: [] },
+    )
 }
 
 function formatPresetUpdatedAt(value?: string): string {
@@ -488,7 +519,7 @@ export function AIConfigPage() {
     () => buildAIConfigFieldMetas(configQuery.data?.items || [], configQuery.data?.configs || {}, configQuery.data?.support),
     [configQuery.data?.configs, configQuery.data?.items, configQuery.data?.support],
   )
-  const groupedFields = useMemo(() => groupAIConfigFields(fieldMetas), [fieldMetas])
+  const groupedFields = useMemo(() => groupAIConfigFields(fieldMetas, draft), [fieldMetas, draft])
   const runtimeSummary = useMemo(() => buildRuntimeSummary(configQuery.data?.configs || {}), [configQuery.data?.configs])
   const activePreset = useMemo(
     () => configQuery.data?.presets.find((preset) => preset.id === configQuery.data?.active_preset_id) || null,

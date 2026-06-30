@@ -137,6 +137,7 @@ const PracticeFavoritesPageRoute = createLazyRouteComponent(async () => ({ defau
 const PracticeNotesPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/practice/PracticeDetailPages')).PracticeNotesPage }))
 const MistakeTopicPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/practice/PracticeDetailPages')).MistakeTopicPage }))
 const InterviewHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewPage')).InterviewHubPage }))
+const InterviewHistoryPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewHistoryPage')).InterviewHistoryPage }))
 const InterviewSessionPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewSessionPage')).InterviewSessionPage }))
 const InterviewReportPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewReportPage')).InterviewReportPage }))
 const CompanionHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionHubPage')).CompanionHubPage }))
@@ -847,6 +848,20 @@ const interviewRoute = createRoute({
   component: InterviewHubPageRoute,
 })
 
+const interviewHistoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'interview/history',
+  beforeLoad: async ({ location }) => {
+    if (!await getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: InterviewHistoryPageRoute,
+})
+
 const interviewSessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId',
@@ -971,6 +986,7 @@ const routeTree = rootRoute.addChildren([
   practiceNotesRoute,
   practiceTopicRoute,
   interviewRoute,
+  interviewHistoryRoute,
   interviewSessionRoute,
   interviewReportRoute,
   companionRoute,

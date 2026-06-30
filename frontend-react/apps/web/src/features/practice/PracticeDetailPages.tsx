@@ -543,17 +543,20 @@ async function submitAnswerRequest(
 }
 
 async function runCodeRequest(token: string, questionId: number, answer: string, language?: string): Promise<RunCodeResult> {
-  const response = await requestJson<ApiEnvelope<RunCodeResult>>(`/questions/${questionId}/run`, {
+  const response = await requestJson<ApiEnvelope<{ output: string; success: boolean; execution_time_ms: number }>>(`/questions/${questionId}/run`, {
     method: 'POST',
     token,
-    body: { answer, language },
+    body: { code: answer, language },
   })
 
   if (!isSuccessCode(response.code) || !response.data) {
     throw new Error(response.message || '运行代码失败')
   }
 
-  return response.data
+  return {
+    output: response.data.output || '',
+    passed: response.data.success || false,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1922,6 +1925,7 @@ export function PracticeEditorPage() {
   const [startedAt] = useState(() => Date.now())
   const [leftPanelWidth, setLeftPanelWidth] = useState(40)
   const [editorHeight, setEditorHeight] = useState(60)
+  const [showResultPanel, setShowResultPanel] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['practice-code-question-detail', questionId, accessToken],
@@ -2161,6 +2165,7 @@ export function PracticeEditorPage() {
       setRunPassed(null)
       setRunJudgeSummary(null)
       setSubmitMessage(result.is_correct ? '提交通过' : '提交完成')
+      setShowResultPanel(true)
       await queryClient.invalidateQueries({ queryKey: ['practice-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-wrong'] })
       await queryClient.invalidateQueries({ queryKey: ['practice-recommendations'] })
@@ -2326,7 +2331,7 @@ export function PracticeEditorPage() {
         </div>
       </header>
 
-      <div className="editor-body">
+      <div className="editor-body" style={{ position: 'relative' }}>
         <div className="editor-problem" style={{ width: `${leftPanelWidth}%` }}>
           <h1>{question?.title || `题目 #${questionId}`}</h1>
           <p className="page-copy">{question?.content || '题目详情加载中...'}</p>
@@ -2470,87 +2475,183 @@ export function PracticeEditorPage() {
             ) : null}
 
             {submitResult ? (
-              <>
+              <div className="output-section">
                 <div className={`output-line ${submitResult.is_correct ? 'success' : 'error'}`}>
-                  {submitResult.is_correct ? '解答正确' : '解答错误'}
+                  {submitResult.is_correct ? '✅ 解答正确' : '❌ 解答错误'}
                 </div>
-                {submitResult.correct_answer ? (
-                  <div className="output-line">参考答案：{submitResult.correct_answer}</div>
-                ) : null}
-                {submitResult.explanation ? (
-                  <div className="output-line">解析：{submitResult.explanation}</div>
-                ) : null}
-                {submitResult.judge_summary ? (
-                  <div className="output-section">
-                    <div className="output-section-title">判题汇总</div>
-                    <div className="output-line">
-                      通过 {submitResult.judge_summary.passed_count}/{submitResult.judge_summary.total_count} 条测试用例
-                    </div>
-                    {submitResult.judge_summary.case_results?.length ? (
-                      <ul className="interview-bullet-list" style={{ marginTop: 12 }}>
-                        {submitResult.judge_summary.case_results.map((item) => (
-                          <li key={`judge-case-${item.index}`}>
-                            用例 #{item.index}：{item.passed ? '通过' : '失败'}
-                            {item.description ? `，${item.description}` : ''}
-                            {item.expected_output ? `，期望 ${item.expected_output}` : ''}
-                            {item.actual_output ? `，实际 ${item.actual_output}` : ''}
-                            {item.error_output ? `，错误 ${item.error_output}` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                ) : null}
-                {submitResult.ai_analysis ? (
-                  <div className="output-section">
-                    <div className="output-section-title">AI 分析</div>
-                    <pre className="output-json">{submitResult.ai_analysis}</pre>
-                  </div>
-                ) : null}
-                {question?.solution ? (
-                  <div className="output-section output-solution">
-                    <div className="output-section-title">结构化解析</div>
-                    <p>题意总结：{question.solution.summary || '暂无'}</p>
-                    <p>解题思路：{question.solution.approach || '暂无'}</p>
-                    <p>复杂度分析：{question.solution.complexity || '暂无'}</p>
-                    {question.solution.key_steps.length ? (
-                      <>
-                        <strong>关键步骤</strong>
-                        <ul>
-                          {question.solution.key_steps.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </>
-                    ) : null}
-                    {question.solution.edge_cases.length ? (
-                      <>
-                        <strong>边界条件</strong>
-                        <ul>
-                          {question.solution.edge_cases.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </>
-                    ) : null}
-                    {question.solution.common_mistakes.length ? (
-                      <>
-                        <strong>常见错法</strong>
-                        <ul>
-                          {question.solution.common_mistakes.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-                {practiceAnalysis?.mistake_tags?.length ? (
-                  <div className="output-section">
-                    <MistakeTopicHighlights
-                      tags={practiceAnalysis.mistake_tags}
-                      title="建议继续补的错因专题"
-                    />
-                  </div>
-                ) : null}
-              </>
+                <button
+                  type="button"
+                  onClick={() => setShowResultPanel(true)}
+                  style={{
+                    marginTop: 8,
+                    padding: '6px 12px',
+                    background: '#0078d4',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >
+                  查看详细结果 →
+                </button>
+              </div>
             ) : null}
           </div>
         </div>
+
+        {/* 结果侧边栏 */}
+        {showResultPanel && submitResult ? (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 420,
+              height: '100%',
+              background: '#252526',
+              borderLeft: '1px solid #3c3c3c',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 10,
+              animation: 'slideInRight 0.3s ease',
+            }}
+          >
+            {/* 侧边栏头部 */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                borderBottom: '1px solid #3c3c3c',
+                background: '#2d2d2d',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, color: submitResult.is_correct ? '#4ec9b0' : '#f44747' }}>
+                  {submitResult.is_correct ? '✅' : '❌'}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#d4d4d4' }}>
+                  {submitResult.is_correct ? '解答正确' : '解答错误'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowResultPanel(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#969696',
+                  cursor: 'pointer',
+                  fontSize: 18,
+                  padding: '0 4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 侧边栏内容 */}
+            <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+              {/* 测试用例结果 */}
+              {submitResult.judge_summary?.case_results?.length ? (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#d4d4d4', marginBottom: 8 }}>
+                    测试用例 {submitResult.judge_summary.passed_count}/{submitResult.judge_summary.total_count} 通过
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {submitResult.judge_summary.case_results.map((item) => (
+                      <div
+                        key={`judge-case-${item.index}`}
+                        style={{
+                          padding: '6px 10px',
+                          background: item.passed ? '#1e3a2f' : '#3a1e1e',
+                          borderRadius: 4,
+                          fontSize: 12,
+                          color: item.passed ? '#4ec9b0' : '#f44747',
+                        }}
+                      >
+                        用例 #{item.index}：{item.passed ? '通过' : '失败'}
+                        {item.description ? ` - ${item.description}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* 参考答案 */}
+              {submitResult.correct_answer ? (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#d4d4d4', marginBottom: 8 }}>
+                    参考答案
+                  </div>
+                  <pre
+                    style={{
+                      padding: 12,
+                      background: '#1e1e1e',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      color: '#d4d4d4',
+                      overflow: 'auto',
+                      maxHeight: 200,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {submitResult.correct_answer}
+                  </pre>
+                </div>
+              ) : null}
+
+              {/* 解析 */}
+              {submitResult.explanation ? (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#d4d4d4', marginBottom: 8 }}>
+                    解析
+                  </div>
+                  <div
+                    style={{
+                      padding: 12,
+                      background: '#1e1e1e',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      color: '#d4d4d4',
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {submitResult.explanation}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* AI 分析 */}
+              {submitResult.ai_analysis ? (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#d4d4d4', marginBottom: 8 }}>
+                    AI 分析
+                  </div>
+                  <pre
+                    style={{
+                      padding: 12,
+                      background: '#1e1e1e',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      color: '#d4d4d4',
+                      overflow: 'auto',
+                      maxHeight: 300,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {submitResult.ai_analysis}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

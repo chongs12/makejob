@@ -1,7 +1,8 @@
 # MakeJob 前台前端重构交接文档
 
-> 交接时间：2026-06-16  
-> 重构范围：`apps/web` 前台页面视觉与交互升级  
+> 交接时间：2026-06-16
+> 最后更新：2026-06-19
+> 重构范围：`apps/web` 前台页面视觉与交互升级
 > 设计风格：LeetCode 式专业简洁风 + 统一 inline styles
 
 ---
@@ -74,97 +75,130 @@
 - **API 对接**：管理端 7 个题单 RPC 全覆盖
 - **封面图字段**：表单中保留但标记为「预留字段」，disabled 状态，提示暂无上传服务和前台展示
 
+### 7. 登录页及全局组件 (`router.tsx`)
+- `LoginPage` 组件 — 改用 Ant Design `Input`/`Input.Password`/`Button` + inline styles
+- `LoginRequiredDialog` 组件 — 改用 inline styles 遮罩弹窗 + Ant Design Button
+- `RouteLoadingFallback` 组件 — 改用 inline styles + Ant Design Spin
+
+### 8. 面试模块（部分）
+- `features/interview/InterviewPage.tsx` (`InterviewHubPage`) — 简洁双栏布局，inline styles
+- `features/interview/InterviewReportPage.tsx` — 全面重构，inline styles + Ant Design
+- `features/interview/InterviewHistoryPage.tsx` — **新增页面**，面试历史记录列表，inline styles
+
+### 9. 学习陪伴模块（部分）
+- `features/companion/CompanionHubPage.tsx` — 沉浸学习型布局，inline styles
+
 ---
 
 ## 二、未重构页面（待办）
 
-### 1. 练习详情模块 — 编程题编辑器 (`features/practice/PracticeDetailPages.tsx`)
-该文件包含 6 个导出页面，其中 5 个已完成重构，仅剩编程题编辑器待改造：
-- ~~`PracticeQuestionPage` — 单题详情页~~ ✅ 已重构
-- `PracticeEditorPage` — 编程题编辑器（含 Monaco Editor）❌ **未重构**，仍使用 `editor-immersive`、`editor-topbar`、`editor-body` 等旧类名
-- ~~`PracticeWrongPage` — 错题本列表~~ ✅ 已重构
-- ~~`PracticeFavoritesPage` — 收藏题目列表~~ ✅ 已重构
-- ~~`PracticeNotesPage` — 题目笔记列表~~ ✅ 已重构
-- ~~`MistakeTopicPage` — 错题专题详情~~ ✅ 已重构
+### 1. 编程题编辑器 (`features/practice/PracticeDetailPages.tsx` 中的 `PracticeEditorPage`)
 
-> **说明**：编程题编辑器为沉浸式暗色主题独立页面（无导航栏），重构时需保留其特殊布局逻辑。
+- **className 数量**：47 处
+- **状态**：❌ **未重构**，仍使用 `editor-immersive`、`editor-topbar`、`editor-body`、`editor-workspace`、`editor-toolbar` 等旧类名
+- **说明**：沉浸式暗色主题独立页面（无导航栏），含 Monaco Editor，重构时需保留特殊布局逻辑
+- **同文件其他页面**：`PracticeQuestionPage`、`PracticeWrongPage`、`PracticeFavoritesPage`、`PracticeNotesPage`、`MistakeTopicPage` 均已重构
 
-### 2. 面试模块
-- `features/interview/InterviewPage.tsx` (`InterviewHubPage`) — 面试主页
-- `features/interview/InterviewSessionPage.tsx` — 面试进行中会话页
-- `features/interview/InterviewReportPage.tsx` — 面试报告页
-- `features/interview/InterviewLive2DStage.tsx` — Live2D 面试场景子组件
+### 2. 面试会话页 (`features/interview/InterviewSessionPage.tsx`)
 
-### 3. 学习陪伴模块
-- `features/companion/CompanionHubPage.tsx` — 学习陪伴主页
-- `features/companion/CompanionWorkspacePage.tsx` — 学习陪伴工作区（独立房间）
-- `features/companion/CompanionLive2DStage.tsx` — Live2D 陪伴场景子组件
-- `features/companion/companionShared.tsx` — 共享子组件（GoalList、PhaseTimeline 等）
+- **className 数量**：45 处
+- **状态**：❌ **未重构**
+- **旧类名**：`page-panel`、`interview-page-panel`、`interview-session-layout`、`interview-stage-shell`、`status-card`、`companion-card-head`、`section-kicker`、`primary-button`、`secondary-button`、`ghost-button` 等
+- **说明**：沉浸式独立页面（Live2D 舞台 + 答题面板），重构时需保留 Live2D 集成逻辑
 
-### 4. ~~登录页~~ ✅ 已重构
-- `router.tsx` 内联的 `LoginPage` 组件 — 已改用 Ant Design `Input`/`Input.Password`/`Button` + inline styles
-- `LoginRequiredDialog` 组件 — 已改用 inline styles 遮罩弹窗 + Ant Design Button
-- `RouteLoadingFallback` 组件 — 已改用 inline styles + Ant Design Spin
+### 3. 学习陪伴工作区 (`features/companion/CompanionWorkspacePage.tsx`)
+
+- **className 数量**：102 处（最重）
+- **状态**：❌ **未重构**
+- **旧类名**：`page-panel`、`companion-page-panel`、`companion-layout`、`companion-sidebar`、`companion-stage-shell`、`companion-input-panel`、`companion-composer`、`status-card`、`companion-card-head`、`section-kicker`、`companion-progress-bar` 等
+- **说明**：沉浸式独立页面（Live2D 舞台 + 对话面板 + 侧边栏），重构工作量最大
+
+### 4. 陪伴共享子组件 (`features/companion/companionShared.tsx`)
+
+- **className 数量**：11 处
+- **状态**：❌ **部分未重构**
+- **旧类名**：`companion-phase-timeline-compact`、`companion-phase-timeline-segment`、`companion-topic-pills`、`companion-empty-text` 等
+- **说明**：`GoalList`、`CompanionTaskFeedbackPanel` 等组件已在 CompanionHubPage 重构时更新，但 `PhaseTimeline`、`TopicPills` 等组件仍使用旧类名
+
+### 5. Live2D 子组件（无需重构）
+
+- `features/interview/InterviewLive2DStage.tsx` — 纯 canvas 渲染，无 className，无需重构
+- `features/companion/CompanionLive2DStage.tsx` — 纯 canvas 渲染，无 className，无需重构
 
 ---
 
-## 三、统一设计规范（已确立）
+## 三、待重构汇总
+
+| 文件 | className 数 | 优先级 | 说明 |
+|------|-------------|--------|------|
+| `CompanionWorkspacePage.tsx` | 102 | 中 | 最重，沉浸式独立页面 |
+| `PracticeDetailPages.tsx`（编辑器） | 47 | 高 | 用户高频路径 |
+| `InterviewSessionPage.tsx` | 45 | 中 | 沉浸式独立页面 |
+| `companionShared.tsx`（部分） | 11 | 低 | 共享子组件 |
+| **合计** | **205** | | |
+
+---
+
+## 四、统一设计规范（已确立）
 
 所有已重构页面遵循以下规范，未重构页面后续应参照执行。
 
-### 3.1 样式体系
+### 4.1 样式体系
 - **全部使用 inline styles**，不再新增 `styles.css` 类名
 - 每个页面顶部定义 `THEME` 常量对象：
   ```ts
   const THEME = {
-    primary: '#3b82f6',
-    primaryLight: '#eff6ff',
-    textPrimary: '#1f2937',
+    bg: '#f8f9fa',
+    cardBg: '#ffffff',
+    primary: '#f97316',
+    primaryLight: '#fff7ed',
+    primaryDark: '#ea580c',
+    textMain: '#1f2937',
     textSecondary: '#6b7280',
-    textTertiary: '#9ca3af',
-    border: '#e5e7eb',
-    borderLight: '#f3f4f6',
-    bg: '#f8fafc',
-    white: '#ffffff',
+    textMuted: '#9ca3af',
+    border: '#f3f4f6',
+    borderHover: '#e5e7eb',
+    shadow: '0 1px 2px rgba(0,0,0,0.05)',
+    shadowCard: '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)',
+    shadowHover: '0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05)',
     radius: 12,
     radiusSm: 8,
-    shadow: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
-    shadowHover: '0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)',
-    green: '#10b981',
-    orange: '#f59e0b',
-    red: '#ef4444',
+    success: '#22c55e',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    accent: '#3b82f6',
     purple: '#8b5cf6',
   }
   ```
 
-### 3.2 卡片规范
-- 背景：`THEME.white`
+### 4.2 卡片规范
+- 背景：`THEME.cardBg`
 - 边框：`1px solid ${THEME.border}`
 - 圆角：`THEME.radius`（12px）
 - 内边距：视内容密度用 `16px 20px` 或 `20px 24px`
-- hover 效果：`boxShadow: THEME.shadowHover` + `borderColor: '#d1d5db'`
+- hover 效果：`boxShadow: THEME.shadowHover` + `borderColor: THEME.borderHover`
 
-### 3.3 布局规范
-- 页面容器：`maxWidth: 1200`, `margin: '0 auto'`, `padding: '24px 16px'`
-- 双栏布局：`gridTemplateColumns: '1fr 300px'`, `gap: 24`
+### 4.3 布局规范
+- 页面容器：`maxWidth: 1200`, `margin: '0 auto'`, `padding: '24px'`
+- 双栏布局：`gridTemplateColumns: '1fr 360px'`, `gap: 24`
 - 响应式：使用 `repeat(auto-fit, minmax(220px, 1fr))` 等 CSS Grid 弹性列
 
-### 3.4 组件规范
+### 4.4 组件规范
 - **全部使用 Ant Design v6** 组件，不再使用原生 `select` / `input` / `button`
 - 按钮层级：主行动 `type="primary"`，次要行动默认 `type="default"`，危险操作 `danger`
 - 图标：统一从 `@ant-design/icons` 导入，不用第三方图标库
 - 空状态：统一使用 `<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />`
 - 加载：统一使用 `<Spin />` + 必要时 `Skeleton`
 
-### 3.5 排版规范
-- 页面标题：`fontSize: 22`, `fontWeight: 700`, `color: THEME.textPrimary`
+### 4.5 排版规范
+- 页面标题：`fontSize: 22`, `fontWeight: 700`, `color: THEME.textMain`
 - 卡片标题：`fontSize: 15~16`, `fontWeight: 700`
 - 正文：`fontSize: 13~14`, `color: THEME.textSecondary`
-- 辅助文字：`fontSize: 12~13`, `color: THEME.textTertiary`
+- 辅助文字：`fontSize: 12~13`, `color: THEME.textMuted`
 
 ---
 
-## 四、技术栈现状
+## 五、技术栈现状
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
@@ -177,19 +211,23 @@
 
 ---
 
-## 五、已知遗留问题
+## 六、已知遗留问题
 
-1. **`styles.css` 仍有 ~3000 行代码**，但所有已重构页面已完全脱离它。未重构页面仍依赖它，建议等全部重构完成后删除/清理。
+1. **`styles.css` 仍有大量代码**，但所有已重构页面已完全脱离它。未重构页面仍依赖它，建议等全部重构完成后删除/清理。
 2. **Chunk 体积警告**：`vite build` 提示 `index.js > 500KB`，这是 Monaco / PixiJS / PDF.js 等第三方库导致，非业务代码问题。后续可考虑 `manualChunks` 优化。
 3. **Admin 面板**：`apps/admin` 下 TaxonomyPage、QuestionPage、Login 等已按玻璃拟态风格重构，与前台是独立的设计语言（后台保留 glassmorphism，前台走 LeetCode 简洁风）。
-4. **题单封面图 `cover_image` 是预留字段**：数据库有字段、管理端表单可填写，但无实际上传服务（缺少 UploadImage RPC 和 OSS/MinIO 对接）。当前管理端表单已将该字段标记为「预留字段」并 disabled，前台也不展示封面图。未来若接入图片存储，需同时恢复表单启用和前台展示。
+4. **题单封面图 `cover_image` 是预留字段**：数据库有字段、管理端表单可填写，但无实际上传服务（缺少 UploadImage RPC 和 OSS/MinIO 对接）。当前管理端表单已将该字段标记为「预留字段」并 disabled，前台也不展示封面图。
+5. **面试数据问题**（后端）：
+   - `mock_interviews` 表 ID 80-90 的 `created_at` 为零值 `0001-01-01`，导致排序异常
+   - `report_json` 与 `interview_reports` 表数据不一致，部分已完成面试的报告返回 404
+   - `report_failed` 状态未返回有意义的错误信息
 
 ---
 
-## 六、下一步建议（优先级排序）
+## 七、下一步建议（优先级排序）
 
-1. **高优**：`PracticeDetailPages.tsx` 拆解重构 — 这是用户高频路径（做题、看题、编辑器）
-2. **中优**：`InterviewPage.tsx` + `InterviewReportPage.tsx` — 面试报告页视觉冲击力强，值得重点设计
-3. **中优**：`CompanionHubPage.tsx` — 学习陪伴是产品核心闭环
-4. **低优**：`router.tsx` 内联 `LoginPage` 重写 + 彻底清理 `styles.css`
-5. **低优**：`InterviewSessionPage.tsx` / `CompanionWorkspacePage.tsx` — 这两个是沉浸式独立页面（无导航栏），重构优先级相对较低
+1. **高优**：`PracticeEditorPage` 编程题编辑器重构 — 用户高频路径
+2. **中优**：`InterviewSessionPage.tsx` 面试会话页重构 — 核心功能页
+3. **中优**：`CompanionWorkspacePage.tsx` 学习陪伴工作区重构 — 工作量最大
+4. **低优**：`companionShared.tsx` 剩余子组件样式统一
+5. **低优**：`styles.css` 彻底清理

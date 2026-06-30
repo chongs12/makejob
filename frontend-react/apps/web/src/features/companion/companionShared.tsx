@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { buildTaskStatusActions, taskStatusLabel } from './companionHelpers'
 import { buildPracticeRouteSearch, resolvePracticeQuestionSetTitle } from '../../shared/practiceRoute'
@@ -11,6 +12,27 @@ import type {
   CompanionTaskFeedbackDraft,
   CompanionTaskStatus,
 } from './companionTypes'
+
+const THEME = {
+  bg: '#f8f9fa',
+  cardBg: '#ffffff',
+  primary: '#f97316',
+  primaryLight: '#fff7ed',
+  primaryDark: '#ea580c',
+  textMain: '#1f2937',
+  textSecondary: '#6b7280',
+  textMuted: '#9ca3af',
+  border: '#f3f4f6',
+  borderHover: '#e5e7eb',
+  shadow: '0 1px 2px rgba(0,0,0,0.05)',
+  shadowCard: '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)',
+  shadowHover: '0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05)',
+  radius: 12,
+  radiusSm: 8,
+  success: '#22c55e',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+}
 
 /**
  * 根据当前计划和历史消息提炼出入口页需要展示的最近会话摘要。
@@ -128,22 +150,43 @@ export function CompanionTaskFeedbackPanel(props: {
     return null
   }
 
+  const labelStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    fontSize: 13,
+    color: THEME.textSecondary,
+  }
+
+  const inputStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    borderRadius: THEME.radiusSm,
+    border: `1px solid ${THEME.border}`,
+    fontSize: 14,
+    color: THEME.textMain,
+    outline: 'none',
+    background: '#fff',
+  }
+
   return (
-    <article className="status-card companion-feedback-panel">
-      <div className="companion-card-head">
+    <article style={{
+      background: THEME.cardBg,
+      borderRadius: THEME.radius,
+      border: `1px solid ${THEME.border}`,
+      boxShadow: THEME.shadowCard,
+      padding: '24px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <span className="section-kicker">任务完成反馈</span>
-          <h2>先记录这次训练质量，再把任务记为完成</h2>
+          <span style={{ fontSize: 12, fontWeight: 600, color: THEME.primary, textTransform: 'uppercase' }}>任务完成反馈</span>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: THEME.textMain, margin: '4px 0 0' }}>{props.task.title}</h2>
         </div>
-        <span className="companion-card-note">{props.task.title}</span>
       </div>
-      <p className="companion-empty-text">
-        这一步会把真实训练信号写回学习计划，供后续诊断和调整计划直接使用。
-      </p>
-      <div className="companion-feedback-grid">
-        <label className="field">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <label style={labelStyle}>
           <span>训练类型</span>
           <select
+            style={inputStyle}
             value={props.draft.trainingType}
             onChange={(event) => props.onChange({
               ...props.draft,
@@ -155,9 +198,10 @@ export function CompanionTaskFeedbackPanel(props: {
             ))}
           </select>
         </label>
-        <label className="field">
+        <label style={labelStyle}>
           <span>尝试次数</span>
           <input
+            style={inputStyle}
             min={0}
             type="number"
             value={props.draft.attemptCount}
@@ -167,9 +211,10 @@ export function CompanionTaskFeedbackPanel(props: {
             })}
           />
         </label>
-        <label className="field">
+        <label style={labelStyle}>
           <span>耗时（分钟）</span>
           <input
+            style={inputStyle}
             min={0}
             type="number"
             value={props.draft.timeSpentMinutes}
@@ -179,9 +224,10 @@ export function CompanionTaskFeedbackPanel(props: {
             })}
           />
         </label>
-        <label className="field">
+        <label style={labelStyle}>
           <span>难度感受</span>
           <select
+            style={inputStyle}
             value={props.draft.difficultySelfAssessment}
             onChange={(event) => props.onChange({
               ...props.draft,
@@ -194,40 +240,71 @@ export function CompanionTaskFeedbackPanel(props: {
           </select>
         </label>
       </div>
-      <label className="field">
-        <span>错因标签</span>
-        <input
-          type="text"
-          value={props.draft.mistakeTagsText}
-          onChange={(event) => props.onChange({
-            ...props.draft,
-            mistakeTagsText: event.target.value,
-          })}
-          placeholder="例如：边界处理、状态定义、并发顺序"
-        />
-      </label>
-      <label className="field">
-        <span>补充说明</span>
-        <textarea
-          value={props.draft.summary}
-          onChange={(event) => props.onChange({
-            ...props.draft,
-            summary: event.target.value,
-          })}
-          placeholder="可以写下卡住点、错法、是否已经总结出下一步改法。"
-        />
-      </label>
-      <p className="companion-empty-text">{props.message || '提交后会先记录反馈，再把任务状态更新为已完成。'}</p>
-      <div className="page-actions">
-        <button className="primary-button" type="button" disabled={props.pending} onClick={props.onSubmit}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+        <label style={labelStyle}>
+          <span>错因标签</span>
+          <input
+            style={inputStyle}
+            type="text"
+            value={props.draft.mistakeTagsText}
+            onChange={(event) => props.onChange({
+              ...props.draft,
+              mistakeTagsText: event.target.value,
+            })}
+            placeholder="例如：边界处理、状态定义、并发顺序"
+          />
+        </label>
+        <label style={labelStyle}>
+          <span>补充说明</span>
+          <textarea
+            style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
+            value={props.draft.summary}
+            onChange={(event) => props.onChange({
+              ...props.draft,
+              summary: event.target.value,
+            })}
+            placeholder="可以写下卡住点、错法、是否已经总结出下一步改法。"
+          />
+        </label>
+      </div>
+      {props.message ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 16px' }}>{props.message}</p> : null}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          style={{
+            padding: '10px 24px',
+            borderRadius: THEME.radiusSm,
+            border: 'none',
+            background: props.pending ? THEME.textMuted : THEME.primary,
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: props.pending ? 'not-allowed' : 'pointer',
+          }}
+          type="button"
+          disabled={props.pending}
+          onClick={props.onSubmit}
+        >
           {props.pending ? '记录中...' : '记录反馈并完成任务'}
         </button>
-        <button className="ghost-button" type="button" disabled={props.pending} onClick={props.onCancel}>
+        <button
+          style={{
+            padding: '10px 24px',
+            borderRadius: THEME.radiusSm,
+            border: `1px solid ${THEME.border}`,
+            background: 'transparent',
+            color: THEME.textSecondary,
+            fontSize: 14,
+            cursor: props.pending ? 'not-allowed' : 'pointer',
+          }}
+          type="button"
+          disabled={props.pending}
+          onClick={props.onCancel}
+        >
           暂不填写
         </button>
         {props.task.collection_hint ? (
           <Link
-            className="secondary-link"
+            style={{ fontSize: 14, color: THEME.primary, textDecoration: 'none' }}
             to="/practice"
             search={buildPracticeRouteSearch({
               questionSetSlug: props.task.collection_hint,
@@ -246,6 +323,7 @@ export function CompanionTaskFeedbackPanel(props: {
 
 /**
  * 渲染目标任务列表，统一展示状态、说明和可执行动作。
+ * 默认只显示任务名称和状态，点击展开查看详情。
  */
 export function GoalList(props: {
   items: CompanionPlanTask[]
@@ -255,76 +333,128 @@ export function GoalList(props: {
   onContinueTask?: (task: CompanionPlanTask) => void
   onPrepareContinueTask?: () => void
 }) {
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
   if (props.items.length === 0) {
-    return <p className="companion-empty-text">{props.emptyText}</p>
+    return <p style={{ fontSize: 14, color: THEME.textMuted, textAlign: 'center', padding: '24px 0' }}>{props.emptyText}</p>
   }
 
   return (
-    <div className="companion-goal-list">
-      {props.items.map((item) => (
-        <article className="companion-goal-item" key={item.id}>
-          <div className="companion-goal-head">
-            <strong>{item.title}</strong>
-            <span>{taskStatusLabel(item.status)}</span>
-          </div>
-          <p>{item.description || '当前任务暂无详细说明。'}</p>
-          {item.phase ? <p>阶段：{formatCompanionPhaseLabel(item.phase)}</p> : null}
-          {item.phase_goal ? <p>阶段目标：{item.phase_goal}</p> : null}
-          {item.source_label ? <p>来源：{item.source_label}</p> : null}
-          {item.reason ? <p>原因：{item.reason}</p> : null}
-          {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
-          {item.collection_hint ? <p>建议题单：{formatCompanionCollectionHint(item.collection_hint)}</p> : null}
-          {item.source_ref ? <p>来源引用：{item.source_ref}</p> : null}
-          <div className="companion-goal-meta">
-            <span>类型：{item.task_type || 'study'}</span>
-            <span>Day {item.day_number || 1}</span>
-          </div>
-          {item.collection_hint ? (
-            <div className="card-inline">
-              <Link
-                className="secondary-link"
-                to="/practice"
-                search={buildPracticeRouteSearch({
-                  questionSetSlug: item.collection_hint,
-                  source: 'practice_recommendation',
-                  title: item.title,
-                  reason: item.reason,
-                })}
-              >
-                按建议题单去补练
-              </Link>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {props.items.map((item) => {
+        const isExpanded = expandedId === item.id
+
+        return (
+          <article
+            key={item.id}
+            style={{
+              background: THEME.cardBg,
+              borderRadius: THEME.radius,
+              border: `1px solid ${isExpanded ? THEME.borderHover : THEME.border}`,
+              boxShadow: isExpanded ? THEME.shadowCard : THEME.shadow,
+              padding: '16px 20px',
+              transition: 'border-color 0.2s, box-shadow 0.2s',
+            }}
+          >
+            <div
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              onClick={() => setExpandedId(isExpanded ? null : item.id)}
+            >
+              <strong style={{ fontSize: 15, color: THEME.textMain }}>{item.title}</strong>
+              <span style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: item.status === 'completed' ? THEME.success : item.status === 'in_progress' ? THEME.primary : THEME.textMuted,
+                background: item.status === 'completed' ? '#f0fdf4' : item.status === 'in_progress' ? THEME.primaryLight : THEME.bg,
+                padding: '2px 10px',
+                borderRadius: 999,
+              }}>
+                {taskStatusLabel(item.status)}
+              </span>
             </div>
-          ) : null}
-          {props.onContinueTask ? (
-            <div className="card-inline">
-              <button
-                className="ghost-button"
-                type="button"
-                onMouseEnter={props.onPrepareContinueTask}
-                onFocus={props.onPrepareContinueTask}
-                onClick={() => props.onContinueTask?.(item)}
-              >
-                围绕这项继续
-              </button>
-            </div>
-          ) : null}
-          {props.onStatusChange ? (
-            <div className="companion-task-actions">
-              {buildTaskStatusActions(item.status).map((action) => (
-                <button
-                  className="secondary-button companion-task-button"
-                  key={`${item.id}-${action.status}`}
-                  type="button"
-                  disabled={props.pendingTaskId === item.id}
-                  onClick={() => props.onStatusChange?.(item, action.status)}
-                >
-                  {props.pendingTaskId === item.id ? '提交中...' : action.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </article>
-      ))}
+
+            {isExpanded && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${THEME.border}` }}>
+                <p style={{ fontSize: 14, color: THEME.textSecondary, margin: '0 0 8px' }}>
+                  {item.description || '当前任务暂无详细说明。'}
+                </p>
+                {item.phase ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>阶段：{formatCompanionPhaseLabel(item.phase)}</p> : null}
+                {item.phase_goal ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>阶段目标：{item.phase_goal}</p> : null}
+                {item.source_label ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>来源：{item.source_label}</p> : null}
+                {item.reason ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>原因：{item.reason}</p> : null}
+                {item.priority_explanation ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>优先级说明：{item.priority_explanation}</p> : null}
+                {item.collection_hint ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>建议题单：{formatCompanionCollectionHint(item.collection_hint)}</p> : null}
+                {item.source_ref ? <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 4px' }}>来源引用：{item.source_ref}</p> : null}
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: THEME.textMuted, margin: '8px 0' }}>
+                  <span>类型：{item.task_type || 'study'}</span>
+                  <span>Day {item.day_number || 1}</span>
+                </div>
+                {item.collection_hint ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Link
+                      style={{ fontSize: 14, color: THEME.primary, textDecoration: 'none' }}
+                      to="/practice"
+                      search={buildPracticeRouteSearch({
+                        questionSetSlug: item.collection_hint,
+                        source: 'practice_recommendation',
+                        title: item.title,
+                        reason: item.reason,
+                      })}
+                    >
+                      按建议题单去补练
+                    </Link>
+                  </div>
+                ) : null}
+                {props.onContinueTask ? (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: THEME.radiusSm,
+                        border: `1px solid ${THEME.border}`,
+                        background: 'transparent',
+                        color: THEME.textSecondary,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                      }}
+                      type="button"
+                      onMouseEnter={props.onPrepareContinueTask}
+                      onFocus={props.onPrepareContinueTask}
+                      onClick={() => props.onContinueTask?.(item)}
+                    >
+                      围绕这项继续
+                    </button>
+                  </div>
+                ) : null}
+                {props.onStatusChange ? (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    {buildTaskStatusActions(item.status).map((action) => (
+                      <button
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: THEME.radiusSm,
+                          border: `1px solid ${THEME.border}`,
+                          background: 'transparent',
+                          color: THEME.textSecondary,
+                          fontSize: 13,
+                          cursor: props.pendingTaskId === item.id ? 'not-allowed' : 'pointer',
+                          opacity: props.pendingTaskId === item.id ? 0.6 : 1,
+                        }}
+                        key={`${item.id}-${action.status}`}
+                        type="button"
+                        disabled={props.pendingTaskId === item.id}
+                        onClick={() => props.onStatusChange?.(item, action.status)}
+                      >
+                        {props.pendingTaskId === item.id ? '提交中...' : action.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </article>
+        )
+      })}
     </div>
   )
 }

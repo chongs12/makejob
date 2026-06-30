@@ -2902,3 +2902,15 @@ button {
     height: 150px;
   }
 }
+
+/* 结果侧边栏滑入动画 */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

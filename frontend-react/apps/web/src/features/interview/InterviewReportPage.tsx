@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Button, Spin, Tag, Empty } from 'antd'
+import {
+  ArrowLeftOutlined,
+  TrophyOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  FileTextOutlined,
+  BulbOutlined,
+  RocketOutlined,
+  CopyOutlined,
+  EditOutlined,
+  RightOutlined,
+  AimOutlined,
+  FireOutlined,
+} from '@ant-design/icons'
 import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
-import { AsyncEmptyState, AsyncInlineState } from '../../shared/asyncState'
 import {
   buildInterviewCompanionContextDraft,
   persistCompanionPlanContext,
@@ -11,7 +25,6 @@ import {
 import { persistCommunityDraft } from '../../shared/communityDraft'
 import {
   DEFAULT_FRONTEND_INDUSTRY_CODE as INTERVIEW_DEFAULT_INDUSTRY_CODE,
-  fetchFrontendIndustries,
   formatFrontendIndustryLabel,
   persistSelectedFrontendIndustryCode,
   readSelectedFrontendIndustryCode,
@@ -42,14 +55,41 @@ import {
   normalizeInterviewDimensions,
 } from './interviewHelpers'
 
-/**
- * 优先使用浏览器剪贴板能力复制文本，失败时让上层统一兜底提示。
- */
+const THEME = {
+  bg: '#f8f9fa',
+  cardBg: '#ffffff',
+  primary: '#f97316',
+  primaryLight: '#fff7ed',
+  primaryDark: '#ea580c',
+  textMain: '#1f2937',
+  textSecondary: '#6b7280',
+  textMuted: '#9ca3af',
+  border: '#f3f4f6',
+  borderHover: '#e5e7eb',
+  shadow: '0 1px 2px rgba(0,0,0,0.05)',
+  shadowCard: '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)',
+  shadowHover: '0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05)',
+  radius: 12,
+  radiusSm: 8,
+  success: '#22c55e',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  accent: '#3b82f6',
+  purple: '#8b5cf6',
+}
+
+const cardStyle = {
+  background: THEME.cardBg,
+  borderRadius: THEME.radius,
+  border: `1px solid ${THEME.border}`,
+  boxShadow: THEME.shadow,
+  padding: '24px',
+}
+
 async function copyInterviewText(text: string): Promise<void> {
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
     throw new Error('当前浏览器不支持剪贴板写入')
   }
-
   await navigator.clipboard.writeText(text)
 }
 
@@ -62,7 +102,7 @@ export function InterviewReportPage() {
   const params = useParams({ strict: false })
   const interviewId = String(params.interviewId || '')
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
-  const [reportMessage, setReportMessage] = useState('这份报告已经升级为可执行版本，你可以直接继续补弱项或生成复盘。')
+  const [reportMessage, setReportMessage] = useState('')
 
   const reportQuery = useQuery({
     queryKey: ['interview-report', accessToken, interviewId],
@@ -126,85 +166,42 @@ export function InterviewReportPage() {
   const primaryWeakKeyword = codingMistakeTags[0] || weakestDimensions[0]?.label || report?.weaknesses?.[0] || ''
   const primaryFollowUpTopic = codingMistakeTopics[0] || null
 
-  /**
-   * 订阅前台行业偏好变化，让报告页在同页切换方向后也能同步显示最新名称。
-   */
   useEffect(() => {
     const unsubscribe = subscribeFrontendIndustryCodeChange((industryCode) => {
       setSelectedIndustryCode(industryCode || INTERVIEW_DEFAULT_INDUSTRY_CODE)
     })
-
     return unsubscribe
   }, [])
 
-  /**
-   * 当报告页补拿到会话详情后，优先以真实会话行业覆盖本地偏好。
-   */
   useEffect(() => {
-    if (!detailQuery.data?.industry_code) {
-      return
-    }
-
+    if (!detailQuery.data?.industry_code) return
     persistSelectedFrontendIndustryCode(detailQuery.data.industry_code)
     setSelectedIndustryCode(detailQuery.data.industry_code)
   }, [detailQuery.data?.industry_code])
 
-  /**
-   * 将当前最弱项带到题库页，便于直接进入针对性补题。
-   */
   function handlePracticeFollowUp(keyword: string): void {
-    navigate({
-      to: '/practice',
-      search: buildInterviewFollowUpPracticeRouteSearch(keyword, primaryFollowUpTopic),
-    })
+    navigate({ to: '/practice', search: buildInterviewFollowUpPracticeRouteSearch(keyword, primaryFollowUpTopic) })
   }
 
-  /**
-   * 把当前报告生成的复盘模板写入社区草稿，并直接跳到发帖页。
-   */
   function handleCreateCommunityReview(): void {
-    if (!reviewDraft) {
-      setReportMessage('当前报告还未准备好复盘草稿。')
-      return
-    }
-
-    if (!useAuthStore.getState().accessToken) {
-      requestLoginPrompt('/community/create', 'missing')
-      return
-    }
-
+    if (!reviewDraft) { setReportMessage('当前报告还未准备好复盘草稿。'); return }
+    if (!useAuthStore.getState().accessToken) { requestLoginPrompt('/community/create', 'missing'); return }
     persistCommunityDraft(reviewDraft)
-    navigate({
-      to: '/community/create',
-    })
+    navigate({ to: '/community/create' })
   }
 
-  /**
-   * 复制当前复盘草稿正文，方便用户在站外或其他位置继续编辑。
-   */
   async function handleCopyReviewDraft(): Promise<void> {
-    if (!reviewDraft) {
-      setReportMessage('当前报告还未准备好复盘草稿。')
-      return
-    }
-
+    if (!reviewDraft) { setReportMessage('当前报告还未准备好复盘草稿。'); return }
     try {
       await copyInterviewText(reviewDraft.content)
-      setReportMessage('复盘草稿正文已复制，可以直接粘贴到社区或外部文档。')
+      setReportMessage('复盘草稿正文已复制。')
     } catch (error) {
-      setReportMessage(extractErrorMessage(error, '复制复盘草稿失败'))
+      setReportMessage(extractErrorMessage(error, '复制失败'))
     }
   }
 
-  /**
-   * 将当前面试报告提炼为学习陪伴计划上下文，并跳转到陪伴入口页继续补强。
-   */
   function handleCompanionFollowUp(): void {
-    if (!report) {
-      setReportMessage('当前报告还未加载完成，暂时无法生成强化计划上下文。')
-      return
-    }
-
+    if (!report) { setReportMessage('报告还未加载完成。'); return }
     persistCompanionPlanContext(
       buildInterviewCompanionContextDraft({
         interviewId,
@@ -213,28 +210,14 @@ export function InterviewReportPage() {
         overallScore: report.overall_score || 0,
         summary: report.summary || '',
         readinessLabel: readiness.label,
-        weakTopics: [
-          ...codingMistakeTags,
-          ...weakestDimensions.map((item) => item.label),
-          ...(report.weaknesses || []),
-        ],
+        weakTopics: [...codingMistakeTags, ...weakestDimensions.map((item) => item.label), ...(report.weaknesses || [])],
         suggestions: report.suggestions || [],
       }),
     )
-    navigate({
-      to: '/companion',
-    })
+    navigate({ to: '/companion' })
   }
 
-  /**
-   * 将单条补题建议直接转成学习陪伴上下文，便于用户围绕某个弱项单独生成计划。
-   */
-  function handleCompanionRecommendationFollowUp(input: {
-    focusTag: string
-    topicTitle?: string
-    reason: string
-    suggestions: string[]
-  }): void {
+  function handleCompanionRecommendationFollowUp(input: { focusTag: string; topicTitle?: string; reason: string; suggestions: string[] }): void {
     persistCompanionPlanContext(
       buildInterviewCompanionContextDraft({
         interviewId,
@@ -247,401 +230,360 @@ export function InterviewReportPage() {
         suggestions: input.suggestions,
       }),
     )
-    navigate({
-      to: '/companion',
-    })
+    navigate({ to: '/companion' })
   }
 
+  const bulletListStyle: React.CSSProperties = { margin: 0, paddingLeft: 20, listStyle: 'disc' }
+  const bulletItemStyle: React.CSSProperties = { fontSize: 14, color: THEME.textSecondary, lineHeight: 1.8, marginBottom: 4 }
+  const sectionTitleStyle: React.CSSProperties = { fontSize: 16, fontWeight: 700, color: THEME.textMain, margin: '0 0 12px' }
+  const sectionCardInnerStyle = { ...cardStyle, marginBottom: 16 }
+
   return (
-    <section className="page-panel interview-page-panel">
-      <div className="companion-room-toolbar">
-        <Link className="ghost-button companion-room-back" to="/interview">
-          返回面试入口
-        </Link>
-        <span className="companion-room-note">当前为面试报告页 · {reportIndustryLabel}</span>
+    <div style={{ minHeight: '100vh', background: THEME.bg }}>
+      {/* 顶部工具栏 */}
+      <div style={{ background: THEME.cardBg, borderBottom: `1px solid ${THEME.border}`, boxShadow: THEME.shadow }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Link to="/interview" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: THEME.textSecondary, textDecoration: 'none' }}>
+            <ArrowLeftOutlined /> 返回面试入口
+          </Link>
+          <span style={{ fontSize: 13, color: THEME.textMuted }}>面试报告 · {reportIndustryLabel}</span>
+        </div>
       </div>
 
-      <div className="interview-report-layout">
-        <section className="status-card interview-report-main">
-          <div className="companion-card-head">
-            <div>
-              <span className="section-kicker">面试报告</span>
-              <h1>面试 #{interviewId} 结果总结</h1>
-              <p className="companion-empty-text">所属方向：{reportIndustryLabel}</p>
+      {/* 主内容区 */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24 }}>
+        {/* 左侧主内容 */}
+        <div>
+          {/* 标题 */}
+          <div style={{ ...cardStyle, marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 6, background: THEME.primaryLight, color: THEME.primary, fontSize: 12, fontWeight: 600, marginBottom: 12 }}>面试报告</span>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: THEME.textMain, margin: '0 0 4px' }}>面试 #{interviewId} 结果总结</h1>
+                <p style={{ fontSize: 14, color: THEME.textMuted, margin: 0 }}>所属方向：{reportIndustryLabel}</p>
+              </div>
+              <span style={{ fontSize: 13, color: THEME.textMuted, flexShrink: 0 }}>
+                {reportCompletedAt ? `完成于 ${formatInterviewDateTime(reportCompletedAt)}` : ''}
+              </span>
             </div>
-            <span className="companion-card-note">
-              {reportCompletedAt ? `完成于 ${formatInterviewDateTime(reportCompletedAt)}` : '等待报告加载'}
-            </span>
+
+            {/* 加载/错误状态 */}
+            {!accessToken && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <p style={{ fontSize: 14, color: THEME.textSecondary, marginBottom: 16 }}>登录后查看面试报告</p>
+                <Button type="primary" onClick={() => requestLoginPrompt(`/interview/${interviewId}/report`, 'missing')} style={{ background: THEME.primary, borderColor: THEME.primary, borderRadius: 8 }}>去登录</Button>
+              </div>
+            )}
+            {accessToken && reportQuery.isLoading && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}><Spin /><p style={{ fontSize: 14, color: THEME.textMuted, marginTop: 12 }}>报告加载中...</p></div>
+            )}
+            {reportQuery.isError && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <p style={{ fontSize: 14, color: THEME.danger, marginBottom: 16 }}>{reportQuery.error instanceof Error ? reportQuery.error.message : '面试报告加载失败'}</p>
+                <Link to="/interview/$interviewId" params={{ interviewId }}><Button style={{ borderRadius: 8 }}>返回面试页</Button></Link>
+              </div>
+            )}
+            {reportQuery.data?.status === 'report_generating' && !report && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <Spin />
+                <p style={{ fontSize: 14, color: THEME.textSecondary, marginTop: 12 }}>{reportQuery.data.task_error || '系统正在生成报告，页面会自动刷新。'}</p>
+              </div>
+            )}
+            {accessToken && !reportQuery.isLoading && !reportQuery.isError && reportQuery.data && !report && reportQuery.data.status !== 'report_generating' && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <p style={{ fontSize: 14, color: THEME.textSecondary, marginBottom: 8 }}>
+                  当前面试状态：{reportQuery.data.status || '未知'}
+                </p>
+                <p style={{ fontSize: 13, color: THEME.textMuted }}>
+                  报告数据暂未返回，可能需要先完成面试或等待报告生成。
+                </p>
+                <Link to="/interview/$interviewId" params={{ interviewId }}>
+                  <Button style={{ borderRadius: 8, marginTop: 12 }}>返回面试页</Button>
+                </Link>
+              </div>
+            )}
           </div>
 
-          {!accessToken ? (
-            <AsyncEmptyState
-              title="登录后查看面试报告"
-              message="面试报告里的弱项解释、补题建议和后续计划上下文都依赖当前登录态，登录后才能继续串联后续动作。"
-              action={(
-                <button className="secondary-button" type="button" onClick={() => requestLoginPrompt(`/interview/${interviewId}/report`, 'missing')}>
-                  去登录
-                </button>
-              )}
-            />
-          ) : null}
-
-          {reportQuery.isLoading ? <AsyncInlineState className="companion-empty-text" message="报告加载中..." /> : null}
-          {reportQuery.isError ? (
-            <AsyncEmptyState
-              title="报告暂不可用"
-              message={reportQuery.error instanceof Error ? reportQuery.error.message : '面试报告加载失败'}
-              action={<Link className="secondary-link" to="/interview/$interviewId" params={{ interviewId }}>返回面试页</Link>}
-            />
-          ) : null}
-          {reportQuery.data?.status === 'report_generating' && !report ? (
-            <AsyncEmptyState
-              title="报告生成中"
-              message={reportQuery.data.task_error || '面试已结束，系统正在补评答案、生成报告并沉淀学习档案，页面会自动刷新。'}
-              action={<Link className="secondary-link" to="/interview/$interviewId" params={{ interviewId }}>返回面试页查看状态</Link>}
-            />
-          ) : null}
-
-          {report ? (
+          {report && (
             <>
-              <div className="interview-report-metrics">
-                <article className="metric-card">
-                  <strong>{Math.round(report.overall_score || 0)}</strong>
-                  <span>总分</span>
-                </article>
-                <article className="metric-card">
-                  <strong>{report.correct_count}</strong>
-                  <span>命中题数</span>
-                </article>
-                <article className="metric-card">
-                  <strong>{report.total_questions}</strong>
-                  <span>总题量</span>
-                </article>
-                <article className="metric-card">
-                  <strong>{formatInterviewDuration(reportDuration)}</strong>
-                  <span>面试时长</span>
-                </article>
+              {/* 核心指标 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                {[
+                  { icon: <TrophyOutlined />, value: Math.round(report.overall_score || 0), label: '总分', color: THEME.primary, bg: THEME.primaryLight },
+                  { icon: <CheckCircleOutlined />, value: report.correct_count, label: '命中题数', color: THEME.success, bg: '#f0fdf4' },
+                  { icon: <FileTextOutlined />, value: report.total_questions, label: '总题量', color: THEME.accent, bg: '#eff6ff' },
+                  { icon: <ClockCircleOutlined />, value: formatInterviewDuration(reportDuration), label: '面试时长', color: THEME.purple, bg: '#f5f3ff' },
+                ].map((item) => (
+                  <div key={item.label} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.color, fontSize: 18 }}>
+                      {item.icon}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: THEME.textMain, lineHeight: 1 }}>{item.value}</div>
+                      <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 4 }}>{item.label}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div className="interview-report-action-grid">
-                <article className="timeline-item">
-                  <strong>当前准备度</strong>
-                  <p>{readiness.label}</p>
-                  <p>{readiness.description}</p>
-                </article>
-                <article className="timeline-item">
-                  <strong>优先补强项</strong>
+              {/* 准备度 + 补强项 + 下一步 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+                <div style={cardStyle}>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, marginBottom: 4 }}>当前准备度</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: THEME.textMain, marginBottom: 8 }}>{readiness.label}</div>
+                  <p style={{ fontSize: 13, color: THEME.textSecondary, margin: 0 }}>{readiness.description}</p>
+                </div>
+                <div style={cardStyle}>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, marginBottom: 4 }}>优先补强项</div>
                   {weakestDimensions.length ? (
-                    <div className="community-tag-row">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {weakestDimensions.map((item) => (
-                        <span key={item.key}>{item.label} {item.score} 分</span>
+                        <Tag key={item.key} color="warning">{item.label} {item.score}分</Tag>
                       ))}
                     </div>
-                  ) : (
-                    <p>当前没有维度评分数据，建议优先复盘总结和建议区内容。</p>
-                  )}
-                </article>
-                <article className="timeline-item">
-                  <strong>下一步动作</strong>
-                  <div className="page-actions">
-                    <button className="secondary-button" type="button" onClick={() => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel)}>
-                      去题库补弱项
-                    </button>
-                    <button className="secondary-button" type="button" onClick={handleCompanionFollowUp}>
-                      去生成强化计划
-                    </button>
+                  ) : <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>暂无维度数据</p>}
+                </div>
+                <div style={cardStyle}>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, marginBottom: 12 }}>下一步动作</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Button size="small" icon={<AimOutlined />} onClick={() => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel)} style={{ borderRadius: 6, justifyContent: 'flex-start' }}>去题库补弱项</Button>
+                    <Button size="small" icon={<RocketOutlined />} onClick={handleCompanionFollowUp} style={{ borderRadius: 6, justifyContent: 'flex-start' }}>去生成强化计划</Button>
                   </div>
-                </article>
+                </div>
               </div>
 
-              <div className="status-card">{reportMessage}</div>
+              {/* 消息提示 */}
+              {reportMessage && (
+                <div style={{ ...cardStyle, marginBottom: 24, padding: '12px 20px', background: THEME.primaryLight, border: 'none', fontSize: 14, color: THEME.primary }}>{reportMessage}</div>
+              )}
 
-              <div className="timeline-item">
-                <strong>总结</strong>
-                <p>{report.summary || '当前报告未生成总结。'}</p>
+              {/* 总结 */}
+              <div style={sectionCardInnerStyle}>
+                <h3 style={sectionTitleStyle}>总结</h3>
+                <p style={{ fontSize: 14, color: THEME.textSecondary, lineHeight: 1.8, margin: 0 }}>{report.summary || '当前报告未生成总结。'}</p>
               </div>
 
-              {codingDiagnostics.length ? (
-                <article className="timeline-item">
-                  <strong>编程题过程诊断</strong>
-                  <div className="interview-report-sections">
+              {/* 编程题诊断 */}
+              {codingDiagnostics.length > 0 && (
+                <div style={sectionCardInnerStyle}>
+                  <h3 style={sectionTitleStyle}>编程题过程诊断</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {codingDiagnostics.map((item) => (
-                      <article className="timeline-item" key={`coding-diagnosis-${item.question_index}`}>
-                        <strong>第 {item.question_index + 1} 题 · {item.language || '未标注语言'} · {Math.round(item.score || 0)} 分</strong>
-                        <p>{item.process_summary || '当前没有返回过程总结。'}</p>
-                        <p>错因标签：{item.mistake_tags?.length ? item.mistake_tags.join('、') : '暂无'}</p>
-                        <p>优势标签：{item.strength_tags?.length ? item.strength_tags.join('、') : '暂无'}</p>
-                        <p>证据摘要：{item.evidence?.length ? item.evidence.join('；') : '暂无'}</p>
-                        <p>建议动作：{item.suggestions?.length ? item.suggestions.join('；') : '暂无'}</p>
-                      </article>
-                    ))}
-                  </div>
-                </article>
-              ) : null}
-
-              {codingMistakeTopics.length ? (
-                <article className="timeline-item">
-                  <strong>错因专题卡</strong>
-                  <div className="interview-report-sections" style={{ marginTop: 16 }}>
-                    {codingMistakeTopics.map((topic) => (
-                      <article className="timeline-item" key={topic.code}>
-                        <strong>{topic.title}</strong>
-                        <p>{topic.problem_pattern}</p>
-                        <div className="page-actions">
-                          <Link
-                            className="secondary-link"
-                            to={resolveMistakeTopicRoute()}
-                            params={{ topicCode: topic.code }}
-                          >
-                            打开专题
-                          </Link>
+                      <div key={`coding-diagnosis-${item.question_index}`} style={{ padding: '16px', borderRadius: THEME.radiusSm, background: '#fafaf9', border: `1px solid ${THEME.border}` }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 8 }}>
+                          第 {item.question_index + 1} 题 · {item.language || '未标注语言'} · {Math.round(item.score || 0)} 分
                         </div>
-                      </article>
+                        <p style={{ fontSize: 13, color: THEME.textSecondary, margin: '0 0 8px' }}>{item.process_summary || '当前没有返回过程总结。'}</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 13 }}>
+                          <div><span style={{ color: THEME.textMuted }}>错因：</span><span style={{ color: THEME.textSecondary }}>{item.mistake_tags?.length ? item.mistake_tags.join('、') : '暂无'}</span></div>
+                          <div><span style={{ color: THEME.textMuted }}>优势：</span><span style={{ color: THEME.textSecondary }}>{item.strength_tags?.length ? item.strength_tags.join('、') : '暂无'}</span></div>
+                        </div>
+                        {item.evidence?.length > 0 && <p style={{ fontSize: 13, color: THEME.textSecondary, margin: '8px 0 0' }}>证据：{item.evidence.join('；')}</p>}
+                        {item.suggestions?.length > 0 && <p style={{ fontSize: 13, color: THEME.textSecondary, margin: '4px 0 0' }}>建议：{item.suggestions.join('；')}</p>}
+                      </div>
                     ))}
                   </div>
-                </article>
-              ) : null}
+                </div>
+              )}
 
-              <article className="timeline-item">
-                <strong>针对这场面试的补题建议</strong>
-                {practiceRecommendationsQuery.isLoading ? <AsyncInlineState message="正在生成面向本场面试的补题建议..." /> : null}
-                {practiceRecommendationsQuery.isError ? (
-                  <AsyncInlineState message={extractErrorMessage(practiceRecommendationsQuery.error, '补题建议加载失败')} tone="error" />
-                ) : null}
-                {practiceRecommendationsQuery.data?.focus_tags.length ? (
-                  <div className="community-tag-row" style={{ marginTop: 12 }}>
-                    {practiceRecommendationsQuery.data.focus_tags.map((tag) => (
-                      <span key={tag}>{tag}</span>
+              {/* 错因专题卡 */}
+              {codingMistakeTopics.length > 0 && (
+                <div style={sectionCardInnerStyle}>
+                  <h3 style={sectionTitleStyle}>错因专题卡</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {codingMistakeTopics.map((topic) => (
+                      <div key={topic.code} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: THEME.radiusSm, background: '#fafaf9', border: `1px solid ${THEME.border}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: THEME.textMain }}>{topic.title}</div>
+                          <p style={{ fontSize: 13, color: THEME.textSecondary, margin: '4px 0 0' }}>{topic.problem_pattern}</p>
+                        </div>
+                        <Link to={resolveMistakeTopicRoute()} params={{ topicCode: topic.code }}>
+                          <Button size="small" style={{ borderRadius: 6 }}>打开专题</Button>
+                        </Link>
+                      </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 针对这场面试的补题建议 */}
+              <div style={sectionCardInnerStyle}>
+                <h3 style={sectionTitleStyle}>针对这场面试的补题建议</h3>
+                {practiceRecommendationsQuery.isLoading && <div style={{ textAlign: 'center', padding: '16px 0' }}><Spin /><p style={{ fontSize: 13, color: THEME.textMuted, marginTop: 8 }}>正在生成补题建议...</p></div>}
+                {practiceRecommendationsQuery.isError && <p style={{ fontSize: 13, color: THEME.danger }}>{extractErrorMessage(practiceRecommendationsQuery.error, '补题建议加载失败')}</p>}
+                {practiceRecommendationsQuery.data?.focus_tags.length ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                    {practiceRecommendationsQuery.data.focus_tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
                   </div>
                 ) : null}
                 {practiceRecommendationsQuery.data?.items.length ? (
-                  <div className="interview-report-sections" style={{ marginTop: 16 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {practiceRecommendationsQuery.data.items.map((item) => {
                       const linkedTopic = item.topic_code ? mistakeTopicMap.get(item.topic_code) || null : null
                       return (
-                        <article className="timeline-item" key={`interview-practice-recommendation-${item.question.id}`}>
-                          <strong>{item.question.title}</strong>
-                          {item.topic_title ? <p>专题：{item.topic_title}</p> : null}
-                          {item.dominant_archive_phase_label ? <p>主导阶段：{item.dominant_archive_phase_label}</p> : null}
-                          <p>聚焦标签：{item.focus_tag}</p>
-                          <p>{item.reason}</p>
-                          <p>推荐优先级：第 {item.priority} 位</p>
-                          <p>最近重复暴露：{item.occurrence_count} 次</p>
-                          <p>推荐模式：{resolvePracticeRecommendationModeLabel(item.recommendation_mode)}</p>
-                          <p>推荐来源：{resolvePracticeRecommendationSourceLabel(item.source_type)}</p>
-                          {item.priority_explanation ? <p>优先级说明：{item.priority_explanation}</p> : null}
-                          {item.primary_question_set ? <p>优先题单：{resolvePracticeQuestionSetTitle(item.primary_question_set)}</p> : null}
-                          {item.topic_problem_pattern ? <p>问题模式：{item.topic_problem_pattern}</p> : null}
-                          <p>难度：{item.question.difficulty || '未标注'}</p>
-                          {item.related_question_sets?.length ? (
-                            <p>关联题单：{item.related_question_sets.map((set) => resolvePracticeQuestionSetTitle(set)).filter(Boolean).join('、')}</p>
-                          ) : null}
+                        <div key={`rec-${item.question.id}`} style={{ padding: '16px', borderRadius: THEME.radiusSm, border: `1px solid ${THEME.border}`, background: THEME.cardBg }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain, marginBottom: 8 }}>{item.question.title}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, color: THEME.textSecondary, marginBottom: 12 }}>
+                            {item.topic_title && <div><span style={{ color: THEME.textMuted }}>专题：</span>{item.topic_title}</div>}
+                            <div><span style={{ color: THEME.textMuted }}>聚焦标签：</span>{item.focus_tag}</div>
+                            <div><span style={{ color: THEME.textMuted }}>难度：</span>{item.question.difficulty || '未标注'}</div>
+                            <div><span style={{ color: THEME.textMuted }}>优先级：</span>第 {item.priority} 位</div>
+                          </div>
+                          <p style={{ fontSize: 13, color: THEME.textSecondary, margin: '0 0 12px' }}>{item.reason}</p>
                           {item.recommended_actions?.length ? (
-                            <ul className="interview-bullet-list">
-                              {item.recommended_actions.map((action) => <li key={`${item.question.id}-${action}`}>{action}</li>)}
+                            <ul style={{ ...bulletListStyle, marginBottom: 12 }}>
+                              {item.recommended_actions.map((action) => <li key={`${item.question.id}-${action}`} style={bulletItemStyle}>{action}</li>)}
                             </ul>
                           ) : null}
-                          <div className="page-actions">
-                            <Link
-                              className="secondary-link"
-                              to="/practice"
-                              search={buildPracticeRecommendationRouteSearch({
-                                focus_tag: item.focus_tag,
-                                topic_code: item.topic_code,
-                                primary_question_set: item.primary_question_set,
-                                reason: item.reason,
-                                question_title: item.question.title,
-                              }, linkedTopic)}
-                          >
-                            进入这组补练
-                          </Link>
-                          <Link
-                            className="secondary-link"
-                            to={resolvePracticeRecommendationRoute(item.question.type)}
-                            params={{ questionId: String(item.question.id) }}
-                            >
-                              直接去补这题
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <Link to="/practice" search={buildPracticeRecommendationRouteSearch({ focus_tag: item.focus_tag, topic_code: item.topic_code, primary_question_set: item.primary_question_set, reason: item.reason, question_title: item.question.title }, linkedTopic)}>
+                              <Button size="small" type="primary" style={{ borderRadius: 6, background: THEME.primary, borderColor: THEME.primary }}>进入这组补练</Button>
                             </Link>
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={() => handleCompanionRecommendationFollowUp({
-                                focusTag: item.focus_tag,
-                                topicTitle: item.topic_title,
-                                reason: item.reason,
-                                suggestions: item.recommended_actions || [],
-                              })}
-                            >
-                              带入学习计划
-                            </button>
-                            {item.topic_code ? (
-                              <Link
-                                className="secondary-link"
-                              to={resolveMistakeTopicRoute()}
-                              params={{ topicCode: item.topic_code }}
-                            >
-                              查看错因专题
+                            <Link to={resolvePracticeRecommendationRoute(item.question.type)} params={{ questionId: String(item.question.id) }}>
+                              <Button size="small" style={{ borderRadius: 6 }}>直接去补这题</Button>
                             </Link>
-                          ) : null}
+                            <Button size="small" onClick={() => handleCompanionRecommendationFollowUp({ focusTag: item.focus_tag, topicTitle: item.topic_title, reason: item.reason, suggestions: item.recommended_actions || [] })} style={{ borderRadius: 6 }}>带入学习计划</Button>
+                            {item.topic_code && (
+                              <Link to={resolveMistakeTopicRoute()} params={{ topicCode: item.topic_code }}>
+                                <Button size="small" style={{ borderRadius: 6 }}>查看错因专题</Button>
+                              </Link>
+                            )}
+                          </div>
                         </div>
-                        </article>
                       )
                     })}
                   </div>
                 ) : null}
-                {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length ? (
-                  <AsyncInlineState message="当前这场面试还没有形成足够明确的补题推荐，可以先按弱项关键词去题库继续搜索练习。" />
-                ) : null}
-              </article>
-
-              <div className="interview-report-sections">
-                <article className="timeline-item">
-                  <strong>优势</strong>
-                  {report.strengths?.length ? (
-                    <ul className="interview-bullet-list">
-                      {report.strengths.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  ) : (
-                    <p>当前没有返回优势项。</p>
-                  )}
-                </article>
-
-                <article className="timeline-item">
-                  <strong>待加强点</strong>
-                  {report.weaknesses?.length ? (
-                    <ul className="interview-bullet-list">
-                      {report.weaknesses.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  ) : (
-                    <p>当前没有返回待加强项。</p>
-                  )}
-                </article>
-
-                <article className="timeline-item">
-                  <strong>后续建议</strong>
-                  {report.suggestions?.length ? (
-                    <ul className="interview-bullet-list">
-                      {report.suggestions.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  ) : (
-                    <p>当前没有返回建议项。</p>
-                  )}
-                </article>
-              </div>
-
-              <article className="timeline-item">
-                <strong>维度评分</strong>
-                {dimensionItems.length ? (
-                  <div className="interview-dimension-grid">
-                    {dimensionItems.map((item) => (
-                      <div className="companion-stat-chip" key={item.key}>
-                        <strong>{item.score}</strong>
-                        <span>{item.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p>当前报告没有返回维度评分。</p>
+                {!practiceRecommendationsQuery.isLoading && !practiceRecommendationsQuery.isError && !practiceRecommendationsQuery.data?.items.length && (
+                  <p style={{ fontSize: 13, color: THEME.textMuted }}>当前这场面试还没有形成足够明确的补题推荐。</p>
                 )}
-              </article>
-
-              <div className="interview-report-sections">
-                <article className="timeline-item">
-                  <strong>最强维度</strong>
-                  {strongestDimensions.length ? (
-                    <ul className="interview-bullet-list">
-                      {strongestDimensions.map((item) => <li key={item.key}>{item.label} {item.score} 分</li>)}
-                    </ul>
-                  ) : (
-                    <p>当前没有维度评分数据。</p>
-                  )}
-                </article>
-
-                <article className="timeline-item">
-                  <strong>优先补强维度</strong>
-                  {weakestDimensions.length ? (
-                    <ul className="interview-bullet-list">
-                      {weakestDimensions.map((item) => <li key={item.key}>{item.label} {item.score} 分</li>)}
-                    </ul>
-                  ) : (
-                    <p>当前没有维度评分数据。</p>
-                  )}
-                </article>
               </div>
 
-              <article className="timeline-item">
-                <div className="section-head">
-                  <div>
-                    <strong>社区复盘模板</strong>
-                    <p className="companion-empty-text">把这场面试的结果整理成帖子，后续可以继续在社区里补充复盘和讨论。</p>
+              {/* 优势 / 待加强 / 建议 */}
+              <div style={sectionCardInnerStyle}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
+                  {[
+                    { title: '优势', items: report.strengths, color: THEME.success },
+                    { title: '待加强点', items: report.weaknesses, color: THEME.warning },
+                    { title: '后续建议', items: report.suggestions, color: THEME.accent },
+                  ].map((section) => (
+                    <div key={section.title}>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, color: section.color, margin: '0 0 12px' }}>{section.title}</h4>
+                      {section.items?.length ? (
+                        <ul style={bulletListStyle}>
+                          {section.items.map((item) => <li key={item} style={bulletItemStyle}>{item}</li>)}
+                        </ul>
+                      ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>暂无数据</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 维度评分 */}
+              <div style={sectionCardInnerStyle}>
+                <h3 style={sectionTitleStyle}>维度评分</h3>
+                {dimensionItems.length ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                    {dimensionItems.map((item) => {
+                      const scoreColor = item.score >= 80 ? THEME.success : item.score >= 60 ? THEME.warning : THEME.danger
+                      return (
+                        <div key={item.key} style={{ textAlign: 'center', padding: '16px 12px', borderRadius: THEME.radiusSm, background: '#fafaf9', border: `1px solid ${THEME.border}` }}>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{item.score}</div>
+                          <div style={{ fontSize: 12, color: THEME.textSecondary, marginTop: 6 }}>{item.label}</div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <div className="page-actions">
-                    <button className="secondary-button" type="button" onClick={() => void handleCopyReviewDraft()}>
-                      复制草稿
-                    </button>
-                    <button className="primary-button" type="button" onClick={handleCreateCommunityReview}>
-                      去社区发复盘
-                    </button>
+                ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>当前报告没有返回维度评分。</p>}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+                  <div>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: THEME.success, margin: '0 0 8px' }}>最强维度</h4>
+                    {strongestDimensions.length ? (
+                      <ul style={bulletListStyle}>{strongestDimensions.map((item) => <li key={item.key} style={bulletItemStyle}>{item.label} {item.score} 分</li>)}</ul>
+                    ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>暂无数据</p>}
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: THEME.warning, margin: '0 0 8px' }}>优先补强维度</h4>
+                    {weakestDimensions.length ? (
+                      <ul style={bulletListStyle}>{weakestDimensions.map((item) => <li key={item.key} style={bulletItemStyle}>{item.label} {item.score} 分</li>)}</ul>
+                    ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>暂无数据</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* 社区复盘模板 */}
+              <div style={sectionCardInnerStyle}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ ...sectionTitleStyle, margin: 0 }}>社区复盘模板</h3>
+                    <p style={{ fontSize: 13, color: THEME.textMuted, margin: '4px 0 0' }}>把这场面试的结果整理成帖子，后续可以在社区里补充复盘和讨论。</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void handleCopyReviewDraft()} style={{ borderRadius: 6 }}>复制草稿</Button>
+                    <Button size="small" type="primary" icon={<EditOutlined />} onClick={handleCreateCommunityReview} style={{ borderRadius: 6, background: THEME.primary, borderColor: THEME.primary }}>去社区发复盘</Button>
                   </div>
                 </div>
                 {reviewDraft ? (
-                  <div className="analysis-block">{reviewDraft.content}</div>
-                ) : (
-                  <p>当前没有可生成的复盘模板。</p>
-                )}
-              </article>
+                  <div style={{ padding: '16px', borderRadius: THEME.radiusSm, background: '#fafaf9', border: `1px solid ${THEME.border}`, fontSize: 13, color: THEME.textSecondary, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{reviewDraft.content}</div>
+                ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>当前没有可生成的复盘模板。</p>}
+              </div>
 
-              <article className="timeline-item">
-                <strong>答题轨迹</strong>
+              {/* 答题轨迹 */}
+              <div style={sectionCardInnerStyle}>
+                <h3 style={sectionTitleStyle}>答题轨迹</h3>
                 {replayItems.length ? (
-                  <div className="interview-replay-list">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {replayItems.map((item, index) => (
-                      <article className="interview-message-item" key={`${item.askedAt}-${index}`}>
-                        <div className="interview-message-head">
-                          <strong>第 {index + 1} 题</strong>
-                          <span>{formatInterviewDateTime(item.answeredAt || item.askedAt)}</span>
+                      <div key={`${item.askedAt}-${index}`} style={{ padding: '16px', borderRadius: THEME.radiusSm, border: `1px solid ${THEME.border}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain }}>第 {index + 1} 题</span>
+                          <span style={{ fontSize: 12, color: THEME.textMuted }}>{formatInterviewDateTime(item.answeredAt || item.askedAt)}</span>
                         </div>
-                        <p><strong>问题：</strong>{item.question}</p>
-                        <p><strong>回答：</strong>{item.answer || '本题未记录到用户回答。'}</p>
-                      </article>
+                        <p style={{ fontSize: 13, color: THEME.textMain, margin: '0 0 8px' }}><strong>问题：</strong>{item.question}</p>
+                        <p style={{ fontSize: 13, color: THEME.textSecondary, margin: 0 }}><strong>回答：</strong>{item.answer || '本题未记录到用户回答。'}</p>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  <p>当前没有可回放的答题轨迹。</p>
-                )}
-              </article>
+                ) : <p style={{ fontSize: 13, color: THEME.textMuted }}>当前没有可回放的答题轨迹。</p>}
+              </div>
             </>
-          ) : null}
-        </section>
+          )}
+        </div>
 
-        <aside className="home-side-column">
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">下一步建议</span>
-            <div className="sidebar-links">
-              <button className="sidebar-link sidebar-link-button" type="button" onClick={() => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel)}>
-                先去补题库弱项
-              </button>
-              <button className="sidebar-link sidebar-link-button" type="button" onClick={handleCompanionFollowUp}>
-                去学习陪伴继续推进计划
-              </button>
-              <button className="sidebar-link sidebar-link-button" type="button" onClick={() => navigate({ to: '/interview' })}>
-                再开一场新的面试
-              </button>
-              <button className="sidebar-link sidebar-link-button" type="button" onClick={handleCreateCommunityReview}>
-                去社区发复盘
-              </button>
+        {/* 右侧边栏 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={cardStyle}>
+            <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 6, background: THEME.primaryLight, color: THEME.primary, fontSize: 12, fontWeight: 600, marginBottom: 16 }}>下一步建议</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { icon: <AimOutlined />, label: '先去补题库弱项', onClick: () => handlePracticeFollowUp(primaryWeakKeyword || reportIndustryLabel) },
+                { icon: <RocketOutlined />, label: '去学习陪伴继续推进计划', onClick: handleCompanionFollowUp },
+                { icon: <FireOutlined />, label: '再开一场新的面试', onClick: () => navigate({ to: '/interview' }) },
+                { icon: <EditOutlined />, label: '去社区发复盘', onClick: handleCreateCommunityReview },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.onClick}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${THEME.border}`, background: THEME.cardBg, cursor: 'pointer', fontSize: 14, color: THEME.textMain, textAlign: 'left', transition: 'all 0.15s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = THEME.primary; e.currentTarget.style.color = THEME.primary }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = THEME.border; e.currentTarget.style.color = THEME.textMain }}
+                >
+                  <span style={{ color: THEME.textMuted }}>{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
             </div>
-          </article>
+          </div>
 
-          <article className="section-card sidebar-card">
-            <span className="section-kicker">报告提示</span>
-            <p>
+          <div style={{ ...cardStyle, background: THEME.primaryLight, border: 'none' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.primaryDark, marginBottom: 8 }}>报告提示</div>
+            <p style={{ fontSize: 13, color: THEME.textSecondary, margin: 0, lineHeight: 1.6 }}>
               这版报告会把强弱项、后续建议、题库补练和社区复盘串成一条动作链，建议优先处理最低分维度。
             </p>
-          </article>
-        </aside>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   )
 }

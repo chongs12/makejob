@@ -24,10 +24,10 @@ function unwrapInterviewResponseData<T>(response: ApiEnvelope<T>, fallbackMessag
 }
 
 /**
- * 拉取用户面试历史，为入口页提供最近记录和继续入口。
+ * 拉取用户面试历史，支持自定义分页参数。
  */
-export async function fetchInterviewHistory(token: string): Promise<PageResult<InterviewHistoryItem>> {
-  const response = await requestJson<ApiEnvelope<PageResult<InterviewHistoryItem>>>('/interviews?page=1&page_size=6', {
+export async function fetchInterviewHistory(token: string, page = 1, pageSize = 6): Promise<PageResult<InterviewHistoryItem>> {
+  const response = await requestJson<ApiEnvelope<PageResult<InterviewHistoryItem>>>(`/interviews?page=${page}&page_size=${pageSize}`, {
     token,
   })
 
