@@ -22,6 +22,7 @@ service AIService {
   rpc GetNextQuestionSession(GetNextQuestionSessionRequest) returns (GetNextQuestionSessionResponse);
   rpc GenerateInterviewReport(GenerateInterviewReportRequest) returns (GenerateInterviewReportResponse);
   rpc EndInterviewSession(EndInterviewSessionRequest) returns (EndInterviewSessionResponse);
+  rpc GenerateReportFromHistory(GenerateReportFromHistoryRequest) returns (GenerateInterviewReportResponse);
 
   // === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
@@ -144,6 +145,18 @@ message EndInterviewSessionRequest {
 
 message EndInterviewSessionResponse {
   bool success = 1;
+}
+
+message HistoryMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message GenerateReportFromHistoryRequest {
+  repeated HistoryMessage history = 1;
+  string industry_code = 2;
+  string difficulty = 3;
+  int32 total_questions = 4;
 }
 
 message PlanAgentRequest {

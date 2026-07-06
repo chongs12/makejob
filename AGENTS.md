@@ -28,3 +28,17 @@
 - 当某项开发工作明确以某个 `.md` 文档作为执行指引时，在该指引完成前，默认持续以该文档作为当前主指引，除非用户明确要求切换。
 - 只要修改了与该指引直接相关的代码、接口、测试或页面，就必须在同一轮工作内同步更新对应指引文档的完成状态、进度说明或执行记录。
 - 若本轮仅做分析、核查、验证或提出建议，但未修改与指引相关的代码，可不强制更新进度；一旦开始落代码，当步进度记录不得省略。
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles use their default strings (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

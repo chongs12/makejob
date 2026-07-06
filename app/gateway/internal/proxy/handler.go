@@ -1542,20 +1542,20 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 			public.GET("/industries", gw.handleListIndustries)
 			public.GET("/categories", gw.handleListCategories)
 		}
-	// 需要可选认证的公开接口（已登录时可展示用户笔记、答题状态、收藏状态、点赞状态）
-	optionalAuth := api.Group("")
-	optionalAuth.Use(gw.OptionalJWTMiddleware())
-	{
-		if gw.questionClient != nil {
-			optionalAuth.GET("/questions", gw.handleListQuestions)
-			optionalAuth.GET("/questions/:id", gw.handleGetQuestion)
+		// 需要可选认证的公开接口（已登录时可展示用户笔记、答题状态、收藏状态、点赞状态）
+		optionalAuth := api.Group("")
+		optionalAuth.Use(gw.OptionalJWTMiddleware())
+		{
+			if gw.questionClient != nil {
+				optionalAuth.GET("/questions", gw.handleListQuestions)
+				optionalAuth.GET("/questions/:id", gw.handleGetQuestion)
+			}
+			if gw.communityClient != nil {
+				optionalAuth.GET("/community/posts", gw.handleListPosts)
+				optionalAuth.GET("/community/posts/:id", gw.handleGetPost)
+				optionalAuth.GET("/community/posts/:id/comments", gw.handleListComments)
+			}
 		}
-		if gw.communityClient != nil {
-			optionalAuth.GET("/community/posts", gw.handleListPosts)
-			optionalAuth.GET("/community/posts/:id", gw.handleGetPost)
-			optionalAuth.GET("/community/posts/:id/comments", gw.handleListComments)
-		}
-	}
 		// 社区公开接口
 		if gw.communityClient != nil {
 			public.GET("/community/posts", gw.handleListPosts)
@@ -1591,17 +1591,7 @@ func (gw *Gateway) RegisterRoutes(r *gin.Engine) {
 			protected.POST("/exams/random", gw.handleGetRandomExam)
 		}
 
-		// --- 面试 ---
-		if gw.interviewClient != nil {
-			protected.POST("/interviews", gw.handleCreateInterview)
-			protected.GET("/interviews", gw.handleListInterviews)
-			protected.GET("/interviews/:id", gw.handleGetInterview)
-			protected.POST("/interviews/:id/answer", gw.handleSubmitInterviewAnswer)
-			protected.GET("/interviews/:id/next", gw.handleGetNextQuestion)
-			protected.POST("/interviews/:id/finish", gw.handleFinishInterview)
-			protected.GET("/interviews/:id/report", gw.handleGetReport)
-			protected.POST("/interviews/:id/coding", gw.handleSubmitCodingAnswer)
-		}
+		// --- 面试路由已合并到 V1 组（含 requireService 守卫） ---
 
 		// --- 学习计划 ---
 		if gw.planClient != nil {
@@ -1813,6 +1803,7 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.POST("/interviews", gw.requireService("interview", gw.interviewClient != nil, gw.handleCreateInterview))
 		protected.GET("/interviews", gw.requireService("interview", gw.interviewClient != nil, gw.handleListInterviews))
 		protected.GET("/interviews/:id", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetInterview))
+		protected.POST("/interviews/:id/answer", gw.requireService("interview", gw.interviewClient != nil, gw.handleSubmitInterviewAnswer))
 		protected.POST("/interviews/:id/next-question", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetNextQuestionV1))
 		protected.POST("/interviews/:id/finish", gw.requireService("interview", gw.interviewClient != nil, gw.handleFinishInterview))
 		protected.GET("/interviews/:id/report", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetReport))
@@ -1835,6 +1826,7 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.POST("/companion/chat", gw.requireService("companion", gw.companionClient != nil, gw.handleCompanionChat))
 		protected.GET("/companion/state", gw.requireService("companion", gw.companionClient != nil, gw.handleGetCompanionState))
 		protected.POST("/companion/tts", gw.requireService("companion", gw.companionClient != nil, gw.handleSynthesizeSpeech))
+		protected.POST("/companion/asr", gw.requireService("companion", gw.companionClient != nil, gw.handleRecognizeSpeech))
 
 		protected.GET("/community/my/posts", gw.requireService("community", gw.communityClient != nil, gw.handleListMyPosts))
 		protected.POST("/community/posts", gw.requireService("community", gw.communityClient != nil, gw.handleCreatePost))
@@ -1861,8 +1853,6 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.GET("/user/practice-stats", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeStats))
 		protected.GET("/user/practice-recommendations", gw.requireService("question", gw.questionClient != nil, gw.handleGetPracticeRecommendations))
 		protected.POST("/exams/random", gw.requireService("question", gw.questionClient != nil, gw.handleGetRandomExam))
-		protected.POST("/interviews/:id/answer", gw.requireService("interview", gw.interviewClient != nil, gw.handleSubmitInterviewAnswer))
-		protected.GET("/interviews/:id/next", gw.requireService("interview", gw.interviewClient != nil, gw.handleGetNextQuestion))
 		protected.PUT("/user/study-logs/daily", gw.requireService("growth", gw.growthClient != nil, gw.handleSyncStudyLog))
 		protected.GET("/user/growth-summary", gw.requireService("growth", gw.growthClient != nil, gw.handleGetGrowthSummary))
 		protected.GET("/user/weekly-focus", gw.requireService("growth", gw.growthClient != nil, gw.handleGetWeeklyFocus))
@@ -1932,6 +1922,11 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		admin.PUT("/tts-configs/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateTTSConfig))
 		admin.DELETE("/tts-configs/:id", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminDeleteTTSConfig))
 		admin.PUT("/tts-configs/defaults", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateTTSSceneDefaults))
+		admin.GET("/asr-configs", gw.requireService("companion", gw.companionClient != nil, gw.handleAdminListASRConfigs))
+		admin.POST("/asr-configs", gw.requireService("companion", gw.companionClient != nil, gw.handleAdminCreateASRConfig))
+		admin.PUT("/asr-configs/default", gw.requireService("companion", gw.companionClient != nil, gw.handleAdminUpdateASRDefault))
+		admin.PUT("/asr-configs/:id", gw.requireService("companion", gw.companionClient != nil, gw.handleAdminUpdateASRConfig))
+		admin.DELETE("/asr-configs/:id", gw.requireService("companion", gw.companionClient != nil, gw.handleAdminDeleteASRConfig))
 		admin.GET("/rag-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminGetRAGConfigs))
 		admin.PUT("/rag-configs", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminUpdateRAGConfigs))
 		admin.POST("/rag-configs/test", gw.requireService("admin", gw.adminClient != nil, gw.handleAdminTestRAGConnection))
@@ -2043,6 +2038,11 @@ func (gw *Gateway) registerLegacyAdminRoutes(r *gin.Engine) {
 		admin.PUT("/tts-configs/:id", gw.handleAdminUpdateTTSConfig)
 		admin.DELETE("/tts-configs/:id", gw.handleAdminDeleteTTSConfig)
 		admin.PUT("/tts-configs/defaults", gw.handleAdminUpdateTTSSceneDefaults)
+		admin.GET("/asr-configs", gw.handleAdminListASRConfigs)
+		admin.POST("/asr-configs", gw.handleAdminCreateASRConfig)
+		admin.PUT("/asr-configs/default", gw.handleAdminUpdateASRDefault)
+		admin.PUT("/asr-configs/:id", gw.handleAdminUpdateASRConfig)
+		admin.DELETE("/asr-configs/:id", gw.handleAdminDeleteASRConfig)
 		admin.GET("/rag-configs", gw.handleAdminGetRAGConfigs)
 		admin.PUT("/rag-configs", gw.handleAdminUpdateRAGConfigs)
 		admin.POST("/rag-configs/test", gw.handleAdminTestRAGConnection)
@@ -4015,6 +4015,177 @@ func (gw *Gateway) handleSynthesizeSpeech(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// handleRecognizeSpeech 透传陪伴 ASR 语音识别请求，补齐 `/api/v1/companion/asr`。
+func (gw *Gateway) handleRecognizeSpeech(c *gin.Context) {
+	audioData, err := io.ReadAll(c.Request.Body)
+	if err != nil || len(audioData) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "音频数据不能为空"})
+		return
+	}
+
+	format := c.Query("format")
+	if format == "" {
+		format = "pcm"
+	}
+	sampleRate, _ := strconv.ParseInt(c.DefaultQuery("sample_rate", "16000"), 10, 32)
+	language := c.DefaultQuery("language", "zh-CN")
+
+	resp, err := gw.companionClient.RecognizeSpeech(c.Request.Context(), &companionv1.RecognizeSpeechRequest{
+		AudioData:  audioData,
+		Format:     format,
+		SampleRate: int32(sampleRate),
+		Language:   language,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleAdminListASRConfigs 获取所有 ASR 配置。
+func (gw *Gateway) handleAdminListASRConfigs(c *gin.Context) {
+	resp, err := gw.companionClient.ListASRConfigs(c.Request.Context(), &companionv1.ListASRConfigsRequest{})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+
+	items := make([]gin.H, 0, len(resp.GetConfigs()))
+	for _, config := range resp.GetConfigs() {
+		items = append(items, gin.H{
+			"id":               config.GetId(),
+			"name":             config.GetName(),
+			"engine":           config.GetEngine(),
+			"auth_config_json": config.GetAuthConfigJson(),
+			"params_json":      config.GetParamsJson(),
+			"is_active":        config.GetIsActive(),
+			"sort_order":       config.GetSortOrder(),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"configs":            items,
+		"total":              len(items),
+		"default_config_id":  resp.GetDefaultConfigId(),
+		"providers": []gin.H{
+			{"key": "volcengine", "label": "火山引擎 (Volcengine)", "description": "字节跳动旗下语音识别服务"},
+			{"key": "xiaomi_mimo", "label": "小米 MiMo ASR", "description": "小米 MiMo-V2.5-ASR，支持中英双语及方言"},
+			{"key": "openai_whisper", "label": "OpenAI Whisper", "description": "OpenAI Whisper API"},
+			{"key": "azure_speech", "label": "Azure Speech", "description": "微软 Azure 语音识别服务"},
+		},
+	})
+}
+
+// handleAdminCreateASRConfig 创建 ASR 配置。
+func (gw *Gateway) handleAdminCreateASRConfig(c *gin.Context) {
+	var body struct {
+		Name           string `json:"name"`
+		Engine         string `json:"engine"`
+		AuthConfigJSON string `json:"auth_config_json"`
+		ParamsJSON     string `json:"params_json"`
+		IsActive       bool   `json:"is_active"`
+		SortOrder      int32  `json:"sort_order"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.companionClient.CreateASRConfig(c.Request.Context(), &companionv1.CreateASRConfigRequest{
+		Name:           body.Name,
+		Engine:         body.Engine,
+		AuthConfigJson: body.AuthConfigJSON,
+		ParamsJson:     body.ParamsJSON,
+		IsActive:       body.IsActive,
+		SortOrder:      body.SortOrder,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":               resp.GetId(),
+		"name":             resp.GetName(),
+		"engine":           resp.GetEngine(),
+		"auth_config_json": resp.GetAuthConfigJson(),
+		"params_json":      resp.GetParamsJson(),
+		"is_active":        resp.GetIsActive(),
+		"sort_order":       resp.GetSortOrder(),
+	})
+}
+
+// handleAdminUpdateASRConfig 更新 ASR 配置。
+func (gw *Gateway) handleAdminUpdateASRConfig(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Name           string `json:"name"`
+		Engine         string `json:"engine"`
+		AuthConfigJSON string `json:"auth_config_json"`
+		ParamsJSON     string `json:"params_json"`
+		IsActive       bool   `json:"is_active"`
+		SortOrder      int32  `json:"sort_order"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := gw.companionClient.UpdateASRConfig(c.Request.Context(), &companionv1.UpdateASRConfigRequest{
+		Id:             id,
+		Name:           body.Name,
+		Engine:         body.Engine,
+		AuthConfigJson: body.AuthConfigJSON,
+		ParamsJson:     body.ParamsJSON,
+		IsActive:       body.IsActive,
+		SortOrder:      body.SortOrder,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":               resp.GetId(),
+		"name":             resp.GetName(),
+		"engine":           resp.GetEngine(),
+		"auth_config_json": resp.GetAuthConfigJson(),
+		"params_json":      resp.GetParamsJson(),
+		"is_active":        resp.GetIsActive(),
+		"sort_order":       resp.GetSortOrder(),
+	})
+}
+
+// handleAdminDeleteASRConfig 删除 ASR 配置。
+func (gw *Gateway) handleAdminDeleteASRConfig(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	_, err := gw.companionClient.DeleteASRConfig(c.Request.Context(), &companionv1.DeleteASRConfigRequest{Id: id})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// handleAdminUpdateASRDefault 更新全局默认 ASR 配置。
+func (gw *Gateway) handleAdminUpdateASRDefault(c *gin.Context) {
+	var body struct {
+		ConfigID uint64 `json:"config_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_, err := gw.companionClient.UpdateASRDefault(c.Request.Context(), &companionv1.UpdateASRDefaultRequest{ConfigId: body.ConfigID})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func (gw *Gateway) handleListPosts(c *gin.Context) {

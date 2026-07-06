@@ -29,3 +29,14 @@ func (r *adminConfigRepo) GetByKey(ctx context.Context, key string) (*biz.AdminC
 	}
 	return &config, nil
 }
+
+// Upsert 创建或更新管理后台配置。
+func (r *adminConfigRepo) Upsert(ctx context.Context, config *biz.AdminConfig) error {
+	if config == nil || config.ConfigKey == "" {
+		return fmt.Errorf("invalid admin config")
+	}
+	return r.db.WithContext(ctx).
+		Where("config_key = ?", config.ConfigKey).
+		Assign(map[string]interface{}{"config_value": config.ConfigValue}).
+		FirstOrCreate(config).Error
+}

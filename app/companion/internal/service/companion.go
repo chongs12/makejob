@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	companionv1 "makejob/api/makejob/companion/v1"
@@ -141,6 +142,110 @@ func (s *CompanionService) SynthesizeSpeech(ctx context.Context, req *companionv
 		AudioData: audioResult.AudioData,
 		AudioUrl:  audioResult.AudioURL,
 	}, nil
+}
+
+// RecognizeSpeech 语音识别
+func (s *CompanionService) RecognizeSpeech(ctx context.Context, req *companionv1.RecognizeSpeechRequest) (*companionv1.RecognizeSpeechResponse, error) {
+	result, err := s.uc.RecognizeSpeech(ctx, &biz.ASRRequest{
+		AudioData:  req.GetAudioData(),
+		Format:     req.GetFormat(),
+		SampleRate: int(req.GetSampleRate()),
+		Language:   req.GetLanguage(),
+	})
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &companionv1.RecognizeSpeechResponse{
+		Text:       result.Text,
+		Confidence: result.Confidence,
+		Duration:   result.Duration,
+	}, nil
+}
+
+// ListASRConfigs 获取所有 ASR 配置
+func (s *CompanionService) ListASRConfigs(ctx context.Context, _ *companionv1.ListASRConfigsRequest) (*companionv1.ListASRConfigsResponse, error) {
+	configs, err := s.uc.ListASRConfigs(ctx)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	protos := make([]*companionv1.ASRConfigProto, 0, len(configs))
+	for _, c := range configs {
+		protos = append(protos, toProtoASRConfig(&c))
+	}
+
+	defaultID := s.uc.GetDefaultASRConfigID(ctx)
+
+	return &companionv1.ListASRConfigsResponse{
+		Configs:          protos,
+		DefaultConfigId:  uint64(defaultID),
+	}, nil
+}
+
+// CreateASRConfig 创建 ASR 配置
+func (s *CompanionService) CreateASRConfig(ctx context.Context, req *companionv1.CreateASRConfigRequest) (*companionv1.ASRConfigProto, error) {
+	config := &biz.ASRConfig{
+		Name:           req.GetName(),
+		Engine:         req.GetEngine(),
+		AuthConfigJSON: req.GetAuthConfigJson(),
+		ParamsJSON:     req.GetParamsJson(),
+		IsActive:       req.GetIsActive(),
+		SortOrder:      int(req.GetSortOrder()),
+	}
+	if err := s.uc.CreateASRConfig(ctx, config); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return toProtoASRConfig(config), nil
+}
+
+// UpdateASRConfig 更新 ASR 配置
+func (s *CompanionService) UpdateASRConfig(ctx context.Context, req *companionv1.UpdateASRConfigRequest) (*companionv1.ASRConfigProto, error) {
+	config := &biz.ASRConfig{
+		ID:             uint(req.GetId()),
+		Name:           req.GetName(),
+		Engine:         req.GetEngine(),
+		AuthConfigJSON: req.GetAuthConfigJson(),
+		ParamsJSON:     req.GetParamsJson(),
+		IsActive:       req.GetIsActive(),
+		SortOrder:      int(req.GetSortOrder()),
+	}
+	if err := s.uc.UpdateASRConfig(ctx, config); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return toProtoASRConfig(config), nil
+}
+
+// DeleteASRConfig 删除 ASR 配置
+func (s *CompanionService) DeleteASRConfig(ctx context.Context, req *companionv1.DeleteASRConfigRequest) (*emptypb.Empty, error) {
+	if err := s.uc.DeleteASRConfig(ctx, uint(req.GetId())); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// UpdateASRDefault 更新全局默认 ASR 配置
+func (s *CompanionService) UpdateASRDefault(ctx context.Context, req *companionv1.UpdateASRDefaultRequest) (*emptypb.Empty, error) {
+	if err := s.uc.SetDefaultASRConfigID(ctx, uint(req.GetConfigId())); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// toProtoASRConfig 将 biz ASRConfig 转换为 proto ASRConfigProto
+func toProtoASRConfig(config *biz.ASRConfig) *companionv1.ASRConfigProto {
+	if config == nil {
+		return nil
+	}
+	return &companionv1.ASRConfigProto{
+		Id:             uint64(config.ID),
+		Name:           config.Name,
+		Engine:         config.Engine,
+		AuthConfigJson: config.AuthConfigJSON,
+		ParamsJson:     config.ParamsJSON,
+		IsActive:       config.IsActive,
+		SortOrder:      int32(config.SortOrder),
+	}
 }
 
 // resolveUserID 优先使用认证上下文中的用户 ID，避免信任请求体透传字段

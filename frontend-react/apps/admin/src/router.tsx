@@ -26,6 +26,7 @@ import {
   FileTextOutlined,
   SmileOutlined,
   SoundOutlined,
+  AudioOutlined,
   AppstoreOutlined,
   QuestionCircleOutlined,
   OrderedListOutlined,
@@ -50,6 +51,7 @@ import { RuntimeOverviewPage } from './features/runtime/RuntimeOverviewPage'
 import { RuntimeTasksPage } from './features/runtime/RuntimeTasksPage'
 import { TaxonomyPage } from './features/taxonomy/TaxonomyPage'
 import { TTSPage } from './features/tts/TTSPage'
+import { ASRConfigPage } from './features/asr/ASRConfigPage'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -99,6 +101,7 @@ function AdminLayout() {
     { to: '/prompts', label: 'Prompt 管理', icon: <FileTextOutlined /> },
     { to: '/live2d', label: 'Live2D 管理', icon: <SmileOutlined /> },
     { to: '/tts', label: 'TTS 配置', icon: <SoundOutlined /> },
+    { to: '/asr', label: 'ASR 配置', icon: <AudioOutlined /> },
     { to: '/taxonomy', label: '行业/分类', icon: <AppstoreOutlined /> },
     { to: '/question-pipeline', label: '题目流水线', icon: <ThunderboltOutlined /> },
     { to: '/questions', label: '题库管理', icon: <QuestionCircleOutlined /> },
@@ -712,6 +715,13 @@ const ttsRoute = createRoute({
   component: TTSPage,
 })
 
+const asrRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'asr',
+  beforeLoad: ensureAdminRouteAccess,
+  component: ASRConfigPage,
+})
+
 const taxonomyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'taxonomy',
@@ -751,6 +761,7 @@ const routeTree = rootRoute.addChildren([
   promptsRoute,
   live2DRoute,
   ttsRoute,
+  asrRoute,
   taxonomyRoute,
   questionPipelineRoute,
   questionsRoute,

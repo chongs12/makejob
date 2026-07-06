@@ -135,11 +135,19 @@ func (r *archiveRepo) GetWeakTopics(ctx context.Context, userID uint64, limit in
 		Count int
 	}
 
+	// 兼容 mistake_tags 为 JSON 数组 ["tag1","tag2"] 或标量 "tag1" 两种格式
 	rows, err := r.db.WithContext(ctx).
-		Raw(`SELECT jsonb_array_elements_text(mistake_tags::jsonb) as tag, COUNT(*) as count
-			 FROM learning_archive_entries
-			 WHERE user_id = ? AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
-			 GROUP BY tag ORDER BY count DESC LIMIT ?`, userID, limit).
+		Raw(`SELECT tag, COUNT(*) as count FROM (
+				SELECT jsonb_array_elements_text(
+					CASE WHEN jsonb_typeof(mistake_tags::jsonb) = 'array'
+						THEN mistake_tags::jsonb
+						ELSE jsonb_build_array(mistake_tags::jsonb)
+					END
+				) as tag
+				FROM learning_archive_entries
+				WHERE user_id = ? AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
+			) t
+			GROUP BY tag ORDER BY count DESC LIMIT ?`, userID, limit).
 		Rows()
 	if err != nil {
 		return nil, err

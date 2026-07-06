@@ -117,6 +117,16 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 			}
 		}
 	}
+	// data 层：ASR 供应商工厂（每次调用动态读取数据库配置）
+	asrConfigRepo := data.NewASRConfigRepo(db)
+	companionOpts = append(companionOpts,
+		biz.WithASRConfigRepo(asrConfigRepo),
+		biz.WithAdminConfigRepo(adminConfigRepo),
+		biz.WithASRProviderFactory(func(cfg *biz.ASRConfig) (biz.ASRProvider, error) {
+			return data.NewASRProviderFromConfigRecord(cfg)
+		}),
+	)
+
 	companionUseCase := biz.NewCompanionUseCase(companionRepo, aiClient, ttsClient, ttsVoice, companionOpts...)
 
 	// service 层：gRPC 服务实现

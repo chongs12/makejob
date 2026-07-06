@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kratos/kratos/v2/log"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -183,8 +184,11 @@ func (c *Consumer) processMessages(ctx context.Context, queueName string, msgs <
 
 		var lastErr error
 		for attempt := 0; attempt <= msg.RetryCount; attempt++ {
+			log.Infof("MQ handler start: queue=%s task=%s entity_id=%d attempt=%d/%d", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1)
+			handleStart := time.Now()
 			if err := handler.Handle(ctx, msg); err != nil {
 				lastErr = err
+				log.Errorf("MQ handler failed: queue=%s task=%s entity_id=%d attempt=%d/%d duration=%dms err=%v", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1, time.Since(handleStart).Milliseconds(), err)
 				select {
 				case <-c.done:
 					delivery.Nack(false, true)
@@ -194,10 +198,12 @@ func (c *Consumer) processMessages(ctx context.Context, queueName string, msgs <
 				continue
 			}
 			lastErr = nil
+			log.Infof("MQ handler done: queue=%s task=%s entity_id=%d duration=%dms", queueName, msg.TaskType, msg.EntityID, time.Since(handleStart).Milliseconds())
 			break
 		}
 
 		if lastErr != nil {
+			log.Errorf("MQ handler final failure: queue=%s err=%v", queueName, lastErr)
 			if failureHandler, ok := handler.(TaskFailureHandler); ok {
 				_ = failureHandler.HandleFinalFailure(ctx, msg, lastErr)
 			}

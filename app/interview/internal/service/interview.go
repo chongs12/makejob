@@ -147,25 +147,19 @@ func (s *InterviewService) ListInterviews(ctx context.Context, req *interviewv1.
 }
 
 func (s *InterviewService) SubmitAnswer(ctx context.Context, req *interviewv1.SubmitAnswerRequest) (*interviewv1.AnswerFeedback, error) {
-	feedback, nextQ, err := s.uc.SubmitAnswer(ctx, req.InterviewId, resolveUserID(ctx, req.UserId), req.QuestionIndex, req.Answer)
+	feedback, err := s.uc.SubmitAnswer(ctx, req.InterviewId, resolveUserID(ctx, req.UserId), req.QuestionIndex, req.Answer)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
-	resp := &interviewv1.AnswerFeedback{
+	return &interviewv1.AnswerFeedback{
 		Score:       feedback.Score,
 		IsCorrect:   feedback.IsCorrect,
 		Feedback:    feedback.Feedback,
 		KeyPoints:   feedback.KeyPoints,
 		Suggestions: feedback.Suggestions,
 		FollowUp:    feedback.FollowUp,
-	}
-
-	if nextQ != nil {
-		resp.NextQuestion = toProtoQuestion(nextQ)
-	}
-
-	return resp, nil
+	}, nil
 }
 
 func (s *InterviewService) GetInterviewStats(ctx context.Context, req *interviewv1.UserIDRequest) (*interviewv1.InterviewStats, error) {

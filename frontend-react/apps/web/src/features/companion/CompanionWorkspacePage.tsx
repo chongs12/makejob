@@ -33,6 +33,7 @@ import {
   fetchCompanionPlanProgress,
   fetchCurrentPlan,
   fetchSelectableCompanionLive2DModels,
+  recognizeSpeech,
   sendCompanionChatRequest,
   submitCompanionTaskFeedback,
   updateCompanionTaskStatus,
@@ -158,6 +159,13 @@ export function CompanionWorkspacePage() {
   const [focusTaskDraft, setFocusTaskDraft] = useState<CompanionFocusTaskDraft | null>(() => readCompanionFocusTask())
   const [stageEnabled, setStageEnabled] = useState(false)
   const [selectedLive2DModelKey, setSelectedLive2DModelKey] = useState(() => readSelectedLive2DModelKey('companion', readSelectedCompanionIndustryCode() || DEFAULT_COMPANION_INDUSTRY_CODE))
+  const [isRecording, setIsRecording] = useState(false)
+  const [isRecognizing, setIsRecognizing] = useState(false)
+  const recordStreamRef = useRef<MediaStream | null>(null)
+  const recordAudioContextRef = useRef<AudioContext | null>(null)
+  const recordSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const recordProcessorRef = useRef<ScriptProcessorNode | null>(null)
+  const recordPCMRef = useRef<number[]>([])
   const {
     liveDialogue: stageDialogue,
     isDialogueTyping: isStageDialogueTyping,
@@ -504,6 +512,99 @@ export function CompanionWorkspacePage() {
       if (!useAuthStore.getState().accessToken) {
         requestLoginPrompt('/companion/room', 'expired')
       }
+    }
+  }
+
+  /**
+   * 启动麦克风录音，采集完成后调用 ASR 接口识别语音。
+   */
+  async function handleToggleRecording() {
+    if (!accessToken) {
+      requestLoginPrompt('/companion/room', 'missing')
+      return
+    }
+
+    if (isRecording) {
+      // 停止录音
+      if (recordProcessorRef.current) {
+        recordProcessorRef.current.disconnect()
+        recordProcessorRef.current.onaudioprocess = null
+        recordProcessorRef.current = null
+      }
+      if (recordSourceRef.current) {
+        recordSourceRef.current.disconnect()
+        recordSourceRef.current = null
+      }
+      if (recordStreamRef.current) {
+        recordStreamRef.current.getTracks().forEach((track) => track.stop())
+        recordStreamRef.current = null
+      }
+      if (recordAudioContextRef.current) {
+        void recordAudioContextRef.current.close()
+        recordAudioContextRef.current = null
+      }
+      setIsRecording(false)
+
+      // 发送录音数据到 ASR
+      if (recordPCMRef.current.length === 0) {
+        setComposerMessage('未采集到有效音频，请重试。')
+        return
+      }
+
+      const pcmInt16 = new Int16Array(recordPCMRef.current)
+      const audioBlob = new Blob([pcmInt16], { type: 'audio/pcm' })
+      recordPCMRef.current = []
+
+      setIsRecognizing(true)
+      setComposerMessage('正在识别语音...')
+
+      try {
+        const result = await recognizeSpeech(accessToken, audioBlob, 'pcm', 16000, 'zh-CN')
+        if (result.text) {
+          setComposer(result.text)
+          setComposerMessage(`识别完成（置信度 ${(result.confidence * 100).toFixed(0)}%），可编辑后发送。`)
+        } else {
+          setComposerMessage('未识别到有效内容，请重试。')
+        }
+      } catch (error) {
+        setComposerMessage(extractErrorMessage(error, '语音识别失败，请稍后重试'))
+      } finally {
+        setIsRecognizing(false)
+      }
+      return
+    }
+
+    // 开始录音
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const audioContext = new AudioContext({ sampleRate: 16000 })
+      await audioContext.resume()
+
+      const source = audioContext.createMediaStreamSource(stream)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+
+      recordPCMRef.current = []
+      processor.onaudioprocess = (event) => {
+        const channelData = event.inputBuffer.getChannelData(0)
+        // Float32 → Int16
+        for (let i = 0; i < channelData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, channelData[i]))
+          recordPCMRef.current.push(sample < 0 ? sample * 0x8000 : sample * 0x7FFF)
+        }
+      }
+
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+
+      recordStreamRef.current = stream
+      recordAudioContextRef.current = audioContext
+      recordSourceRef.current = source
+      recordProcessorRef.current = processor
+
+      setIsRecording(true)
+      setComposerMessage('正在录音，再次点击麦克风停止...')
+    } catch (error) {
+      setComposerMessage(extractErrorMessage(error, '麦克风权限获取失败，请检查浏览器设置'))
     }
   }
 
@@ -908,9 +1009,20 @@ export function CompanionWorkspacePage() {
                       ? (currentPlanQuery.data?.task_error || '系统正在异步生成学习计划，生成完成后会自动开放陪伴输入。')
                       : (accessToken ? '已登录，可直接使用 AI 陪伴接口。' : '未登录时会显示本地提示，不会请求后端陪伴接口。'))}
                   </p>
-                  <button className="primary-button" type="submit" disabled={sending || isPlanGenerating}>
-                    {isPlanGenerating ? '等待计划完成...' : (sending ? '发送中...' : '发送给陪伴助手')}
-                  </button>
+                  <div className="companion-composer-buttons">
+                    <button
+                      className={`secondary-button companion-mic-button ${isRecording ? 'is-recording' : ''}`}
+                      type="button"
+                      disabled={sending || isPlanGenerating || isRecognizing}
+                      onClick={handleToggleRecording}
+                      title={isRecording ? '点击停止录音' : '点击开始语音输入'}
+                    >
+                      {isRecognizing ? '识别中...' : (isRecording ? '⏹ 停止' : '🎤 语音')}
+                    </button>
+                    <button className="primary-button" type="submit" disabled={sending || isPlanGenerating || isRecording}>
+                      {isPlanGenerating ? '等待计划完成...' : (sending ? '发送中...' : '发送给陪伴助手')}
+                    </button>
+                  </div>
                 </div>
               </form>
             </section>

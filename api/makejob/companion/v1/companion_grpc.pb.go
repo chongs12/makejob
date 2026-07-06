@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -22,6 +23,12 @@ const (
 	CompanionService_Chat_FullMethodName              = "/makejob.companion.v1.CompanionService/Chat"
 	CompanionService_GetCompanionState_FullMethodName = "/makejob.companion.v1.CompanionService/GetCompanionState"
 	CompanionService_SynthesizeSpeech_FullMethodName  = "/makejob.companion.v1.CompanionService/SynthesizeSpeech"
+	CompanionService_RecognizeSpeech_FullMethodName   = "/makejob.companion.v1.CompanionService/RecognizeSpeech"
+	CompanionService_ListASRConfigs_FullMethodName    = "/makejob.companion.v1.CompanionService/ListASRConfigs"
+	CompanionService_CreateASRConfig_FullMethodName   = "/makejob.companion.v1.CompanionService/CreateASRConfig"
+	CompanionService_UpdateASRConfig_FullMethodName   = "/makejob.companion.v1.CompanionService/UpdateASRConfig"
+	CompanionService_DeleteASRConfig_FullMethodName   = "/makejob.companion.v1.CompanionService/DeleteASRConfig"
+	CompanionService_UpdateASRDefault_FullMethodName  = "/makejob.companion.v1.CompanionService/UpdateASRDefault"
 )
 
 // CompanionServiceClient is the client API for CompanionService service.
@@ -31,6 +38,12 @@ type CompanionServiceClient interface {
 	Chat(ctx context.Context, in *CompanionChatRequest, opts ...grpc.CallOption) (*CompanionChatResponse, error)
 	GetCompanionState(ctx context.Context, in *GetCompanionStateRequest, opts ...grpc.CallOption) (*CompanionState, error)
 	SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error)
+	RecognizeSpeech(ctx context.Context, in *RecognizeSpeechRequest, opts ...grpc.CallOption) (*RecognizeSpeechResponse, error)
+	ListASRConfigs(ctx context.Context, in *ListASRConfigsRequest, opts ...grpc.CallOption) (*ListASRConfigsResponse, error)
+	CreateASRConfig(ctx context.Context, in *CreateASRConfigRequest, opts ...grpc.CallOption) (*ASRConfigProto, error)
+	UpdateASRConfig(ctx context.Context, in *UpdateASRConfigRequest, opts ...grpc.CallOption) (*ASRConfigProto, error)
+	DeleteASRConfig(ctx context.Context, in *DeleteASRConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateASRDefault(ctx context.Context, in *UpdateASRDefaultRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type companionServiceClient struct {
@@ -71,6 +84,66 @@ func (c *companionServiceClient) SynthesizeSpeech(ctx context.Context, in *Synth
 	return out, nil
 }
 
+func (c *companionServiceClient) RecognizeSpeech(ctx context.Context, in *RecognizeSpeechRequest, opts ...grpc.CallOption) (*RecognizeSpeechResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecognizeSpeechResponse)
+	err := c.cc.Invoke(ctx, CompanionService_RecognizeSpeech_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) ListASRConfigs(ctx context.Context, in *ListASRConfigsRequest, opts ...grpc.CallOption) (*ListASRConfigsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListASRConfigsResponse)
+	err := c.cc.Invoke(ctx, CompanionService_ListASRConfigs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) CreateASRConfig(ctx context.Context, in *CreateASRConfigRequest, opts ...grpc.CallOption) (*ASRConfigProto, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ASRConfigProto)
+	err := c.cc.Invoke(ctx, CompanionService_CreateASRConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) UpdateASRConfig(ctx context.Context, in *UpdateASRConfigRequest, opts ...grpc.CallOption) (*ASRConfigProto, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ASRConfigProto)
+	err := c.cc.Invoke(ctx, CompanionService_UpdateASRConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) DeleteASRConfig(ctx context.Context, in *DeleteASRConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, CompanionService_DeleteASRConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) UpdateASRDefault(ctx context.Context, in *UpdateASRDefaultRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, CompanionService_UpdateASRDefault_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CompanionServiceServer is the server API for CompanionService service.
 // All implementations must embed UnimplementedCompanionServiceServer
 // for forward compatibility.
@@ -78,6 +151,12 @@ type CompanionServiceServer interface {
 	Chat(context.Context, *CompanionChatRequest) (*CompanionChatResponse, error)
 	GetCompanionState(context.Context, *GetCompanionStateRequest) (*CompanionState, error)
 	SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error)
+	RecognizeSpeech(context.Context, *RecognizeSpeechRequest) (*RecognizeSpeechResponse, error)
+	ListASRConfigs(context.Context, *ListASRConfigsRequest) (*ListASRConfigsResponse, error)
+	CreateASRConfig(context.Context, *CreateASRConfigRequest) (*ASRConfigProto, error)
+	UpdateASRConfig(context.Context, *UpdateASRConfigRequest) (*ASRConfigProto, error)
+	DeleteASRConfig(context.Context, *DeleteASRConfigRequest) (*emptypb.Empty, error)
+	UpdateASRDefault(context.Context, *UpdateASRDefaultRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedCompanionServiceServer()
 }
 
@@ -96,6 +175,24 @@ func (UnimplementedCompanionServiceServer) GetCompanionState(context.Context, *G
 }
 func (UnimplementedCompanionServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SynthesizeSpeech not implemented")
+}
+func (UnimplementedCompanionServiceServer) RecognizeSpeech(context.Context, *RecognizeSpeechRequest) (*RecognizeSpeechResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecognizeSpeech not implemented")
+}
+func (UnimplementedCompanionServiceServer) ListASRConfigs(context.Context, *ListASRConfigsRequest) (*ListASRConfigsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListASRConfigs not implemented")
+}
+func (UnimplementedCompanionServiceServer) CreateASRConfig(context.Context, *CreateASRConfigRequest) (*ASRConfigProto, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateASRConfig not implemented")
+}
+func (UnimplementedCompanionServiceServer) UpdateASRConfig(context.Context, *UpdateASRConfigRequest) (*ASRConfigProto, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateASRConfig not implemented")
+}
+func (UnimplementedCompanionServiceServer) DeleteASRConfig(context.Context, *DeleteASRConfigRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteASRConfig not implemented")
+}
+func (UnimplementedCompanionServiceServer) UpdateASRDefault(context.Context, *UpdateASRDefaultRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateASRDefault not implemented")
 }
 func (UnimplementedCompanionServiceServer) mustEmbedUnimplementedCompanionServiceServer() {}
 func (UnimplementedCompanionServiceServer) testEmbeddedByValue()                          {}
@@ -172,6 +269,114 @@ func _CompanionService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CompanionService_RecognizeSpeech_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecognizeSpeechRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).RecognizeSpeech(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_RecognizeSpeech_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).RecognizeSpeech(ctx, req.(*RecognizeSpeechRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_ListASRConfigs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListASRConfigsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).ListASRConfigs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_ListASRConfigs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).ListASRConfigs(ctx, req.(*ListASRConfigsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_CreateASRConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateASRConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).CreateASRConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_CreateASRConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).CreateASRConfig(ctx, req.(*CreateASRConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_UpdateASRConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateASRConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).UpdateASRConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_UpdateASRConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).UpdateASRConfig(ctx, req.(*UpdateASRConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_DeleteASRConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteASRConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).DeleteASRConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_DeleteASRConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).DeleteASRConfig(ctx, req.(*DeleteASRConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_UpdateASRDefault_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateASRDefaultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).UpdateASRDefault(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_UpdateASRDefault_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).UpdateASRDefault(ctx, req.(*UpdateASRDefaultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CompanionService_ServiceDesc is the grpc.ServiceDesc for CompanionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +395,30 @@ var CompanionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SynthesizeSpeech",
 			Handler:    _CompanionService_SynthesizeSpeech_Handler,
+		},
+		{
+			MethodName: "RecognizeSpeech",
+			Handler:    _CompanionService_RecognizeSpeech_Handler,
+		},
+		{
+			MethodName: "ListASRConfigs",
+			Handler:    _CompanionService_ListASRConfigs_Handler,
+		},
+		{
+			MethodName: "CreateASRConfig",
+			Handler:    _CompanionService_CreateASRConfig_Handler,
+		},
+		{
+			MethodName: "UpdateASRConfig",
+			Handler:    _CompanionService_UpdateASRConfig_Handler,
+		},
+		{
+			MethodName: "DeleteASRConfig",
+			Handler:    _CompanionService_DeleteASRConfig_Handler,
+		},
+		{
+			MethodName: "UpdateASRDefault",
+			Handler:    _CompanionService_UpdateASRDefault_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

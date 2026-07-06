@@ -26,3 +26,8 @@ ai:
 tts:
   api_key: ""
   voice: "zh_female_shuangkuaisisi_moon_bigtts"
+
+asr:
+  app_id: ""
+  access_token: ""
+  language: "zh-CN"

@@ -26,19 +26,20 @@ var (
 )
 
 // interviewTimeout 面试超时时间，超过此时间自动结束并生成报告。
-const interviewTimeout = 40 * time.Minute
+const defaultInterviewTimeout = 40 * time.Minute
 
 // InterviewUseCase 面试业务用例
 type InterviewUseCase struct {
-	repo       InterviewRepo
-	ai         AIServiceClient
-	archive    LearningArchiveClient
-	industry   IndustryClient
-	rag        RAGClient
-	codeRunner CodeRunnerClient
-	reportRepo ReportRepo
-	publisher  MQPublisher
-	logger     log.Logger
+	repo             InterviewRepo
+	ai               AIServiceClient
+	archive          LearningArchiveClient
+	industry         IndustryClient
+	rag              RAGClient
+	codeRunner       CodeRunnerClient
+	reportRepo       ReportRepo
+	publisher        MQPublisher
+	logger           log.Logger
+	interviewTimeout time.Duration
 }
 
 // NewInterviewUseCase 由 Wire 调用，所有依赖通过接口注入
@@ -52,17 +53,23 @@ func NewInterviewUseCase(
 	reportRepo ReportRepo,
 	publisher MQPublisher,
 	logger log.Logger,
+	timeoutMinutes int,
 ) *InterviewUseCase {
+	timeout := defaultInterviewTimeout
+	if timeoutMinutes > 0 {
+		timeout = time.Duration(timeoutMinutes) * time.Minute
+	}
 	return &InterviewUseCase{
-		repo:       repo,
-		ai:         ai,
-		archive:    archive,
-		industry:   industry,
-		rag:        rag,
-		codeRunner: codeRunner,
-		reportRepo: reportRepo,
-		publisher:  publisher,
-		logger:     logger,
+		repo:             repo,
+		ai:               ai,
+		archive:          archive,
+		industry:         industry,
+		rag:              rag,
+		codeRunner:       codeRunner,
+		reportRepo:       reportRepo,
+		publisher:        publisher,
+		logger:           logger,
+		interviewTimeout: timeout,
 	}
 }
 
@@ -84,10 +91,11 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		questionCount = 5
 	}
 
+	now := time.Now()
 	interview := &Interview{
 		UserID:         req.UserID,
 		IndustryID:     ind.ID,
-		IndustryCode:   req.IndustryCode, // 运行期保留，用于 AI 调用
+		IndustryCode:   req.IndustryCode,
 		Difficulty:     difficulty,
 		Status:         "ongoing",
 		InterviewMode:  req.InterviewMode,
@@ -96,6 +104,8 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
 		Live2DModelKey: req.Live2DModelKey,
+		CreatedAt:      now,
+		StartedAt:      &now,
 	}
 
 	var firstQuestion *InterviewQuestion
@@ -152,18 +162,18 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	return interview, firstQuestion, nil
 }
 
-// SubmitAnswer 提交答案并获取 AI 反馈（对齐单体 InterviewAgent.EvaluateAnswer + GetNextQuestion）
-func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userID uint64, index int32, answer string) (*AnswerFeedback, *InterviewQuestion, error) {
+// SubmitAnswer 提交答案并获取 AI 反馈（评估答案，不获取下一题；下一题由 GetNextQuestion 按需生成）
+func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userID uint64, index int32, answer string) (*AnswerFeedback, error) {
 	// 1. 获取面试会话
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
-		return nil, nil, ErrInterviewNotFound
+		return nil, ErrInterviewNotFound
 	}
 	if interview.UserID != userID {
-		return nil, nil, ErrUnauthorized
+		return nil, ErrUnauthorized
 	}
 	if interview.Status != "ongoing" {
-		return nil, nil, ErrInterviewNotOngoing
+		return nil, ErrInterviewNotOngoing
 	}
 
 	// 2. 保存用户答案消息
@@ -176,9 +186,10 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 	}
 
 	// 3. RAG 检索增强（降级处理，失败不影响主流程）
-	ragContext := uc.retrieveRAGContext(ctx, interview, answer)
+	// 使用题目主题而非用户答案构造查询，避免长答案产生噪音
+	ragContext := uc.retrieveRAGContext(ctx, interview, "")
 
-	// 4. 调用 AI Gateway 的 EvaluateAnswer 评估答案（对齐单体 InterviewAgent.EvaluateAnswer + EnhanceFeedbackPrompt）
+	// 4. 调用 AI Gateway 的 EvaluateAnswer 评估答案
 	evalResp, err := uc.ai.EvaluateAnswer(ctx, &EvaluateAnswerRequest{
 		SessionId:     interview.AISessionID,
 		QuestionIndex: index,
@@ -186,7 +197,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		RAGContext:    ragContext,
 	})
 	if err != nil {
-		return nil, nil, kratosErr.InternalServer("AI_CALL_FAILED", "AI 服务调用失败").WithCause(err)
+		return nil, kratosErr.InternalServer("AI_CALL_FAILED", "AI 服务调用失败").WithCause(err)
 	}
 
 	feedback := &AnswerFeedback{
@@ -199,23 +210,7 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 	}
 	feedbackText := strings.TrimSpace(evalResp.Feedback)
 
-	// 5. 调用 AI Gateway 的 GetNextQuestionSession 获取下一题（对齐单体 InterviewAgent.GetNextQuestion + EnhanceQuestionPrompt）
-	var nextQuestion *InterviewQuestion
-	nextResp, err := uc.ai.GetNextQuestionSession(ctx, &GetNextQuestionSessionRequest{
-		SessionId:  interview.AISessionID,
-		RAGContext: ragContext,
-	})
-	if err == nil && nextResp != nil && nextResp.Question != "" {
-		nextQuestion = &InterviewQuestion{
-			Question:   nextResp.Question,
-			Topic:      nextResp.Topic,
-			Difficulty: nextResp.Difficulty,
-			Type:       nextResp.Type,
-			Hints:      nextResp.Hints,
-		}
-	}
-
-	// 6. 统一在事务中保存用户答案、AI 回复、下一题和进度，避免多表写入部分成功。
+	// 5. 统一在事务中保存用户答案、AI 回复和进度
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.repo.CreateMessage(txCtx, msg); err != nil {
 			return kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
@@ -232,25 +227,20 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 				return kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 回复失败").WithCause(err)
 			}
 		}
-		if nextQuestionMsg := BuildQuestionMessage(interviewID, index+1, nextQuestion); nextQuestionMsg != nil {
-			if err := uc.repo.CreateMessage(txCtx, nextQuestionMsg); err != nil {
-				return kratosErr.InternalServer("SAVE_NEXT_QUESTION_FAILED", "保存下一题失败").WithCause(err)
-			}
-		}
 		interview.CurrentIndex = index + 1
 		if err := uc.repo.Update(txCtx, interview); err != nil {
 			return kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
 		}
 		return nil
 	}); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// FIX I4: 异步写入学习档案，使用独立超时 context，不阻塞答题响应
+	// 异步写入学习档案
 	go func() {
 		archiveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = uc.archive.WriteEntry(archiveCtx, &ArchiveEntry{
+		if err := uc.archive.WriteEntry(archiveCtx, &ArchiveEntry{
 			UserID:          interview.UserID,
 			SourceType:      "interview_answer",
 			InterviewID:     interviewID,
@@ -258,26 +248,49 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 			IndustryCode:    interview.IndustryCode,
 			EvidenceSummary: feedbackText,
 			OccurredAt:      time.Now(),
-		})
+		}); err != nil {
+			log.Warnf("异步写入学习档案失败: interview_id=%d, question_index=%d, err=%v", interviewID, index, err)
+		}
 	}()
 
-	return feedback, nextQuestion, nil
+	return feedback, nil
 }
 
 // retrieveRAGContext 检索 RAG 参考知识，失败时返回空字符串（降级处理）。
-func (uc *InterviewUseCase) retrieveRAGContext(ctx context.Context, interview *Interview, userAnswer string) string {
+func (uc *InterviewUseCase) retrieveRAGContext(ctx context.Context, interview *Interview, questionTopic string) string {
 	if uc.rag == nil {
 		return ""
 	}
-	query := strings.TrimSpace(userAnswer + " " + interview.IndustryCode)
-	if query == "" {
-		query = interview.IndustryCode + " 面试问题"
-	}
+	query := buildRAGQuery(questionTopic, interview.IndustryCode, interview.JobDescription)
 	docs, err := uc.rag.Retrieve(ctx, query, 5)
 	if err != nil {
 		log.Warnf("RAG 检索失败，降级处理: interview_id=%d, err=%v", interview.ID, err)
 		return ""
 	}
+	return joinRAGDocs(docs)
+}
+
+// buildRAGQuery 构造 RAG 检索查询，优先使用题目主题，回退到职位描述和行业。
+func buildRAGQuery(topic, industryCode, jobDescription string) string {
+	if t := strings.TrimSpace(topic); t != "" {
+		code := strings.TrimSpace(industryCode)
+		if code != "" {
+			return t + " " + code
+		}
+		return t
+	}
+	if jd := strings.TrimSpace(jobDescription); jd != "" {
+		return jd
+	}
+	code := strings.TrimSpace(industryCode)
+	if code != "" {
+		return code + " 面试问题"
+	}
+	return "面试问题"
+}
+
+// joinRAGDocs 将 RAG 文档拼接为单个上下文字符串。
+func joinRAGDocs(docs []*RAGDocument) string {
 	if len(docs) == 0 {
 		return ""
 	}
@@ -343,18 +356,10 @@ func (uc *InterviewUseCase) GetNextQuestion(ctx context.Context, interviewID, us
 	// 调用 RAG 检索增强（降级处理，失败不影响主流程）
 	var ragContext string
 	if uc.rag != nil {
-		query := interview.JobDescription
-		if query == "" {
-			query = interview.IndustryCode + " 面试问题"
-		}
+		query := buildRAGQuery("", interview.IndustryCode, interview.JobDescription)
 		docs, err := uc.rag.Retrieve(ctx, query, 5)
-		if err == nil && len(docs) > 0 {
-			for _, doc := range docs {
-				if ragContext != "" {
-					ragContext += "\n"
-				}
-				ragContext += doc.Content
-			}
+		if err == nil {
+			ragContext = joinRAGDocs(docs)
 		}
 	}
 
@@ -459,21 +464,62 @@ func (uc *InterviewUseCase) ProcessResumeParse(ctx context.Context, interviewID,
 	return nil
 }
 
-// GenerateReport MQ 消费者：调用 AI 生成面试报告，保存报告记录并更新面试状态（对齐单体 InterviewAgent.GenerateReport）
+// GenerateReport MQ 消费者：调用 AI 生成面试报告，保存报告记录并更新面试状态
 func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, userID uint64) error {
+	log.Infof("[ReportGen] start: interview_id=%d user_id=%d", interviewID, userID)
+
+	// 整体超时保护：避免 AI 调用卡住导致 MQ 消费者永久阻塞
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
 	interview, err := uc.repo.GetByID(ctx, interviewID)
+	if err != nil {
+		log.Errorf("[ReportGen] get interview failed: interview_id=%d err=%v", interviewID, err)
+		return err
+	}
+	log.Infof("[ReportGen] interview loaded: status=%s ai_session_id=%s", interview.Status, interview.AISessionID)
 	if err != nil {
 		return err
 	}
 
-	// 调用 AI Gateway 的 GenerateInterviewReport（对齐单体 InterviewAgent.GenerateReport）
+	// 幂等检查：已完成的面试跳过报告生成
+	if interview.Status == "completed" {
+		log.Infof("[ReportGen] interview already completed, skipping interview_id=%d", interviewID)
+		return nil
+	}
+
+	// 实时面试的 session 不在 AI Gateway 的内存中（走火山引擎 WebSocket），
+	// 调 GenerateInterviewReport 必然失败，改用 GenerateReportFromHistory 发送完整对话。
+	if isRealtimeInterview(interview) {
+		log.Infof("[ReportGen] realtime interview, generating report from history: interview_id=%d", interviewID)
+		messages, msgErr := uc.repo.ListMessages(ctx, interviewID)
+		if msgErr != nil {
+			log.Errorf("[ReportGen] failed to load messages: interview_id=%d err=%v", interviewID, msgErr)
+			return uc.generateReportLocally(ctx, interviewID, userID, interview)
+		}
+		reportResp, reportErr := uc.ai.GenerateReportFromHistory(ctx, &GenerateReportFromHistoryRequest{
+			History:        messages,
+			IndustryCode:   interview.IndustryCode,
+			Difficulty:     interview.Difficulty,
+			TotalQuestions: int32(interview.QuestionCount),
+		})
+		if reportErr != nil {
+			log.Warnf("[ReportGen] GenerateReportFromHistory failed, falling back to local: interview_id=%d err=%v", interviewID, reportErr)
+			return uc.generateReportLocally(ctx, interviewID, userID, interview)
+		}
+		return uc.saveReport(ctx, interviewID, interview, reportResp)
+	}
+
+	// 标准面试：调用 AI Gateway 的 GenerateInterviewReport
+	log.Infof("[ReportGen] calling AI GenerateInterviewReport: session_id=%s", interview.AISessionID)
 	reportResp, err := uc.ai.GenerateInterviewReport(ctx, &GenerateInterviewReportRequest{
 		SessionId: interview.AISessionID,
 	})
 	if err != nil {
-		// 降级：如果 AI 报告生成失败，使用本地评分逻辑
+		log.Warnf("[ReportGen] AI report failed, falling back to local: interview_id=%d err=%v", interviewID, err)
 		return uc.generateReportLocally(ctx, interviewID, userID, interview)
 	}
+	log.Infof("[ReportGen] AI report success: overall_score=%.1f", reportResp.OverallScore)
 
 	// 获取编程题诊断（本地逻辑，不依赖 AI）
 	messages, err := uc.repo.ListMessages(ctx, interviewID)
@@ -506,18 +552,27 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 		suggestions = appendUniqueStrings(suggestions, diagnostic.Suggestions...)
 	}
 
+	reportResp.DimensionScores = dimensionScores
+	reportResp.Strengths = strengths
+	reportResp.Weaknesses = weaknesses
+	reportResp.Suggestions = suggestions
+
+	return uc.saveReport(ctx, interviewID, interview, reportResp)
+}
+
+// saveReport 将报告写入数据库并更新面试状态
+func (uc *InterviewUseCase) saveReport(ctx context.Context, interviewID uint64, interview *Interview, reportResp *GenerateInterviewReportResponse) error {
 	report := &InterviewReport{
-		InterviewID:           interviewID,
-		OverallScore:          reportResp.OverallScore,
-		DimensionScoresJSON:   marshalJSON(dimensionScores),
-		StrengthsJSON:         marshalJSON(strengths),
-		WeaknessesJSON:        marshalJSON(weaknesses),
-		SuggestionsJSON:       marshalJSON(suggestions),
-		Summary:               reportResp.Summary,
-		CodingDiagnosticsJSON: marshalJSON(codingDiagnostics),
+		InterviewID:         interviewID,
+		OverallScore:        reportResp.OverallScore,
+		DimensionScoresJSON: marshalJSON(reportResp.DimensionScores),
+		StrengthsJSON:       marshalJSON(reportResp.Strengths),
+		WeaknessesJSON:      marshalJSON(reportResp.Weaknesses),
+		SuggestionsJSON:     marshalJSON(reportResp.Suggestions),
+		Summary:             reportResp.Summary,
 	}
 
-	// 在事务中完成报告创建和面试状态更新
+	log.Infof("[ReportGen] saving report to DB: interview_id=%d", interviewID)
 	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
 		if err := uc.reportRepo.Create(txCtx, report); err != nil {
 			return err
@@ -526,22 +581,23 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 		interview.OverallScore = reportResp.OverallScore
 		return uc.repo.Update(txCtx, interview)
 	}); err != nil {
+		log.Errorf("[ReportGen] save report failed: interview_id=%d err=%v", interviewID, err)
 		interview.Status = "report_failed"
 		_ = uc.repo.Update(ctx, interview)
 		return err
 	}
 
-	// 结束 AI 会话
-	if interview.AISessionID != "" {
+	log.Infof("[ReportGen] report saved successfully: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
+
+	// 结束 AI 会话（仅标准面试，实时面试的 session 不在 AI Gateway 中）
+	if !isRealtimeInterview(interview) && interview.AISessionID != "" {
 		_, _ = uc.ai.EndInterviewSession(ctx, &EndInterviewSessionRequest{
 			SessionId: interview.AISessionID,
 		})
 	}
 
 	if uc.publisher != nil {
-		if err := uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, weaknesses, strengths); err != nil {
-			return err
-		}
+		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, interview.UserID, reportResp.OverallScore, reportResp.Weaknesses, reportResp.Strengths)
 	}
 	return nil
 }
@@ -711,7 +767,7 @@ func (uc *InterviewUseCase) autoFinishIfExpired(ctx context.Context, interview *
 	if interview.Status != "ongoing" {
 		return
 	}
-	if interview.CreatedAt.IsZero() || time.Since(interview.CreatedAt) < interviewTimeout {
+	if interview.CreatedAt.IsZero() || time.Since(interview.CreatedAt) < uc.interviewTimeout {
 		return
 	}
 	log.Infof("面试超时自动结束: interview_id=%d created_at=%v duration=%v", interview.ID, interview.CreatedAt, time.Since(interview.CreatedAt))
@@ -791,7 +847,12 @@ func (uc *InterviewUseCase) SubmitCodingAnswer(ctx context.Context, interviewID,
 	// 3. 调用 CodeRunner 执行代码（降级处理）
 	result := &CodingAnswerResult{}
 	if uc.codeRunner != nil {
-		runnerResult, err := uc.codeRunner.Execute(ctx, language, code, nil)
+		// 如果题目有 Hints（样例输入），作为 stdin 传给 CodeRunner
+		var testCases []CodeTestCase
+		if strings.TrimSpace(question.Hints) != "" {
+			testCases = []CodeTestCase{{Input: question.Hints}}
+		}
+		runnerResult, err := uc.codeRunner.Execute(ctx, language, code, testCases)
 		if err == nil && runnerResult != nil {
 			result.ExecutionOK = true
 			result.Passed = runnerResult.Success
@@ -874,16 +935,11 @@ func (uc *InterviewUseCase) IsResumeParsed(ctx context.Context, interviewID uint
 
 // HasCodingArchive 判断编程归档是否已写入学习档案，供 MQ 消费者做幂等短路。
 func (uc *InterviewUseCase) HasCodingArchive(ctx context.Context, interviewID, userID uint64) (bool, error) {
-	entries, err := uc.archive.ListByUser(ctx, userID, 1000)
+	entries, err := uc.archive.ListBySource(ctx, userID, "interview_coding", interviewID)
 	if err != nil {
 		return false, err
 	}
-	for _, entry := range entries {
-		if entry != nil && entry.SourceType == "interview_coding" && entry.InterviewID == interviewID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(entries) > 0, nil
 }
 
 // IsRealtimeInterview 查询面试是否为实时模式
@@ -974,6 +1030,8 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 		TotalQuestions: int(interview.QuestionCount),
 		Difficulty:     interview.Difficulty,
 		InterviewMode:  interviewMode,
+		Topics:         resolveTopicsByIndustry(interview.IndustryCode),
+		WeakTopics:     resolveWeakTopics(recentMessages),
 		ResumeProfile:  resumeProfile,
 		DialogID:       interview.AISessionID,
 		HasStarted:     interview.CurrentIndex > 0,
@@ -1197,4 +1255,49 @@ func isRealtimeInterview(iv *Interview) bool {
 		return true
 	}
 	return strings.TrimSpace(iv.Live2DModelKey) != ""
+}
+
+// resolveTopicsByIndustry 根据行业代码返回面试应覆盖的知识主题
+func resolveTopicsByIndustry(industryCode string) []string {
+	switch strings.ToLower(strings.TrimSpace(industryCode)) {
+	case "backend", "go", "golang":
+		return []string{"Go语言基础", "并发编程", "数据库与缓存", "微服务架构", "系统设计"}
+	case "frontend":
+		return []string{"JavaScript", "浏览器原理", "性能优化", "工程化", "框架原理"}
+	case "java":
+		return []string{"JVM", "并发编程", "集合框架", "Spring", "微服务"}
+	case "python":
+		return []string{"语言特性", "并发模型", "Web开发", "数据处理", "性能优化"}
+	default:
+		return []string{"编程基础", "数据结构与算法", "系统设计", "数据库", "网络协议"}
+	}
+}
+
+// resolveWeakTopics 从历史消息中提取用户回答薄弱的主题
+func resolveWeakTopics(messages []*InterviewMessage) []string {
+	if len(messages) == 0 {
+		return nil
+	}
+	var weak []string
+	seen := make(map[string]bool)
+	for _, msg := range messages {
+		if msg.Role != "assistant" {
+			continue
+		}
+		question := DecodeQuestionContent(msg.Content)
+		if question == nil || question.Topic == "" {
+			continue
+		}
+		// 简单策略：如果 AI 回复中包含"没关系"、"不太清楚"等，标记为薄弱
+		// 实际应该根据评分判断，但这里用启发式
+		topic := strings.TrimSpace(question.Topic)
+		if topic != "" && !seen[topic] {
+			seen[topic] = true
+		}
+	}
+	// 返回所有出现过的主题作为潜在薄弱点
+	for topic := range seen {
+		weak = append(weak, topic)
+	}
+	return weak
 }

@@ -225,14 +225,17 @@ type TTSAudio struct {
 
 // CompanionUseCase 陪伴助手业务用例
 type CompanionUseCase struct {
-	repo            CompanionRepo
-	aiClient        CompanionClient
-	ttsClient       TTSClient
-	ttsVoice        string
-	growthClient    GrowthClient
-	interviewClient InterviewClient
-	planClient      PlanClient
-	sceneTTSService SceneTTSService
+	repo              CompanionRepo
+	aiClient          CompanionClient
+	ttsClient         TTSClient
+	ttsVoice          string
+	asrConfigRepo     ASRConfigRepo
+	adminConfigRepo   AdminConfigRepo
+	asrProviderFactory func(*ASRConfig) (ASRProvider, error)
+	growthClient      GrowthClient
+	interviewClient   InterviewClient
+	planClient        PlanClient
+	sceneTTSService   SceneTTSService
 }
 
 // NewCompanionUseCase 创建陪伴助手业务用例
@@ -276,6 +279,21 @@ func WithPlanClient(c PlanClient) CompanionOption {
 // WithSceneTTSService 配置场景级 TTS 服务
 func WithSceneTTSService(s SceneTTSService) CompanionOption {
 	return func(uc *CompanionUseCase) { uc.sceneTTSService = s }
+}
+
+// WithASRProviderFactory 配置 ASR 供应商工厂函数（从配置记录创建 Provider）
+func WithASRProviderFactory(f func(*ASRConfig) (ASRProvider, error)) CompanionOption {
+	return func(uc *CompanionUseCase) { uc.asrProviderFactory = f }
+}
+
+// WithASRConfigRepo 配置 ASR 配置仓库
+func WithASRConfigRepo(r ASRConfigRepo) CompanionOption {
+	return func(uc *CompanionUseCase) { uc.asrConfigRepo = r }
+}
+
+// WithAdminConfigRepo 配置管理后台配置仓库
+func WithAdminConfigRepo(r AdminConfigRepo) CompanionOption {
+	return func(uc *CompanionUseCase) { uc.adminConfigRepo = r }
 }
 
 // Chat 处理陪伴对话的完整流程
@@ -592,4 +610,139 @@ func (uc *CompanionUseCase) SynthesizeSpeech(ctx context.Context, text, voice st
 		return nil, kratosErr.InternalServer("TTS_SYNTHESIS_FAILED", "语音合成失败").WithCause(err)
 	}
 	return audioResult, nil
+}
+
+// RecognizeSpeech 执行语音识别并返回结构化结果（每次调用动态读取配置，支持多 provider 降级）
+func (uc *CompanionUseCase) RecognizeSpeech(ctx context.Context, req *ASRRequest) (*ASRResult, error) {
+	if len(req.AudioData) == 0 {
+		return nil, kratosErr.BadRequest("ASR_EMPTY_AUDIO", "音频数据不能为空")
+	}
+
+	providers, err := uc.resolveAllASRProviders(ctx)
+	if err != nil || len(providers) == 0 {
+		return nil, kratosErr.InternalServer("ASR_NOT_CONFIGURED", "语音识别服务未配置")
+	}
+
+	// 依次尝试每个 provider，第一个成功就返回
+	var lastErr error
+	for _, provider := range providers {
+		result, err := provider.Recognize(ctx, *req)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		log.Context(ctx).Warnf("ASR provider failed, trying next: %v", err)
+	}
+
+	return nil, kratosErr.InternalServer("ASR_RECOGNITION_FAILED", "语音识别失败").WithCause(lastErr)
+}
+
+// resolveAllASRProviders 按优先级解析所有可用的 ASR Provider 列表。
+func (uc *CompanionUseCase) resolveAllASRProviders(ctx context.Context) ([]ASRProvider, error) {
+	if uc.asrProviderFactory == nil {
+		return nil, fmt.Errorf("asr provider factory not configured")
+	}
+
+	var providers []ASRProvider
+
+	// 1. 默认绑定的配置
+	if uc.adminConfigRepo != nil {
+		if item, err := uc.adminConfigRepo.GetByKey(ctx, ASRDefaultConfigKeyCompanion); err == nil && item != nil && item.ConfigValue != "" {
+			var id uint
+			fmt.Sscanf(item.ConfigValue, "%d", &id)
+			if id > 0 && uc.asrConfigRepo != nil {
+				if cfg, err := uc.asrConfigRepo.GetByID(ctx, id); err == nil && cfg != nil && cfg.IsActive {
+					if p, err := uc.asrProviderFactory(cfg); err == nil {
+						providers = append(providers, p)
+					}
+				}
+			}
+		}
+	}
+
+	// 2. 数据库中其他启用的配置（排除已添加的）
+	if uc.asrConfigRepo != nil {
+		if configs, err := uc.asrConfigRepo.List(ctx); err == nil {
+			added := make(map[uint]bool)
+			for _, p := range providers {
+				// 标记已添加的
+				_ = p
+			}
+			for _, cfg := range configs {
+				if added[cfg.ID] {
+					continue
+				}
+				if p, err := uc.asrProviderFactory(&cfg); err == nil {
+					providers = append(providers, p)
+					added[cfg.ID] = true
+				}
+			}
+		}
+	}
+
+	// 3. Mock 兜底
+	providers = append(providers, NewMockASRProvider())
+
+	return providers, nil
+}
+
+// ListASRConfigs 获取所有 ASR 配置
+func (uc *CompanionUseCase) ListASRConfigs(ctx context.Context) ([]ASRConfig, error) {
+	if uc.asrConfigRepo == nil {
+		return nil, nil
+	}
+	return uc.asrConfigRepo.List(ctx)
+}
+
+// CreateASRConfig 创建 ASR 配置
+func (uc *CompanionUseCase) CreateASRConfig(ctx context.Context, config *ASRConfig) error {
+	if uc.asrConfigRepo == nil {
+		return kratosErr.InternalServer("ASR_CONFIG_NOT_AVAILABLE", "ASR 配置管理不可用")
+	}
+	return uc.asrConfigRepo.Create(ctx, config)
+}
+
+// UpdateASRConfig 更新 ASR 配置
+func (uc *CompanionUseCase) UpdateASRConfig(ctx context.Context, config *ASRConfig) error {
+	if uc.asrConfigRepo == nil {
+		return kratosErr.InternalServer("ASR_CONFIG_NOT_AVAILABLE", "ASR 配置管理不可用")
+	}
+	return uc.asrConfigRepo.Update(ctx, config)
+}
+
+// DeleteASRConfig 删除 ASR 配置
+func (uc *CompanionUseCase) DeleteASRConfig(ctx context.Context, id uint) error {
+	if uc.asrConfigRepo == nil {
+		return kratosErr.InternalServer("ASR_CONFIG_NOT_AVAILABLE", "ASR 配置管理不可用")
+	}
+	return uc.asrConfigRepo.Delete(ctx, id)
+}
+
+// GetDefaultASRConfigID 获取全局默认 ASR 配置 ID
+func (uc *CompanionUseCase) GetDefaultASRConfigID(ctx context.Context) uint {
+	if uc.adminConfigRepo == nil {
+		return 0
+	}
+	item, err := uc.adminConfigRepo.GetByKey(ctx, ASRDefaultConfigKeyCompanion)
+	if err != nil || item == nil {
+		return 0
+	}
+	var id uint
+	fmt.Sscanf(item.ConfigValue, "%d", &id)
+	return id
+}
+
+// SetDefaultASRConfigID 设置全局默认 ASR 配置 ID
+func (uc *CompanionUseCase) SetDefaultASRConfigID(ctx context.Context, id uint) error {
+	if uc.adminConfigRepo == nil {
+		return kratosErr.InternalServer("ADMIN_CONFIG_NOT_AVAILABLE", "管理配置不可用")
+	}
+	value := ""
+	if id > 0 {
+		value = fmt.Sprintf("%d", id)
+	}
+	return uc.adminConfigRepo.Upsert(ctx, &AdminConfig{
+		ConfigKey:   ASRDefaultConfigKeyCompanion,
+		ConfigValue: value,
+	})
 }

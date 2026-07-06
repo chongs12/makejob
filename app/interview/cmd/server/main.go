@@ -98,6 +98,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	// biz 层：业务用例
+	timeoutMinutes := 40
+	if bc.Interview != nil && bc.Interview.TimeoutMinutes > 0 {
+		timeoutMinutes = bc.Interview.TimeoutMinutes
+	}
 	interviewUseCase := biz.NewInterviewUseCase(
 		interviewRepo,
 		aiClient,
@@ -108,6 +112,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		reportRepo,
 		publisher,
 		logger,
+		timeoutMinutes,
 	)
 
 	// service 层：gRPC 服务实现

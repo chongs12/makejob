@@ -433,6 +433,72 @@ func interviewReportSchema() string {
 }`
 }
 
+// GenerateReportFromHistory 从对话历史生成面试报告（不依赖 session，供实时面试使用）
+func (uc *InterviewSessionUseCase) GenerateReportFromHistory(ctx context.Context, req *GenerateReportFromHistoryRequest) (*GenerateInterviewReportResponse, error) {
+	if len(req.History) == 0 {
+		return nil, kratosErr.BadRequest("EMPTY_HISTORY", "对话历史不能为空")
+	}
+
+	const scene = "interview_agent"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	// 构造报告 prompt
+	prompt := uc.buildReportPromptFromHistory(req)
+	schema := interviewReportSchema()
+	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
+	messages = append(messages, req.History...)
+
+	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := parseStructuredJSON[InterviewReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GenerateInterviewReportResponse{
+		OverallScore: result.OverallScore,
+		Summary:      result.Summary,
+		Strengths:    result.Strengths,
+		Weaknesses:   result.Weaknesses,
+		Suggestions:  result.Suggestions,
+	}, nil
+}
+
+// buildReportPromptFromHistory 从对话历史构造报告生成 prompt
+func (uc *InterviewSessionUseCase) buildReportPromptFromHistory(req *GenerateReportFromHistoryRequest) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位专业的技术面试评估专家。请根据以下完整面试对话记录生成一份详细的面试评估报告。\n\n")
+	sb.WriteString(fmt.Sprintf("面试信息：\n- 行业方向：%s\n- 目标难度：%s\n- 题目数量：%d\n\n",
+		req.IndustryCode, req.Difficulty, req.TotalQuestions))
+	sb.WriteString("完整面试对话记录：\n")
+	for _, msg := range req.History {
+		role := "候选人"
+		if msg.Role == "assistant" {
+			role = "面试官"
+		}
+		sb.WriteString(fmt.Sprintf("[%s] %s\n", role, msg.Content))
+	}
+	sb.WriteString("\n请综合分析候选人的整场面试表现，生成评估报告，包括：\n")
+	sb.WriteString("1. overall_score: 总体评分 (0-100)\n")
+	sb.WriteString("2. summary: 总体评价摘要（200字以内）\n")
+	sb.WriteString("3. strengths: 优势列表\n")
+	sb.WriteString("4. weaknesses: 不足列表\n")
+	sb.WriteString("5. suggestions: 改进建议列表\n")
+	return sb.String()
+}
+
 // StartInterviewRequest 开始面试请求
 type StartInterviewRequest struct {
 	InterviewID   uint64
@@ -502,6 +568,14 @@ type GenerateInterviewReportResponse struct {
 	Weaknesses      []string
 	Suggestions     []string
 	AiFeedback      string
+}
+
+// GenerateReportFromHistoryRequest 从对话历史生成报告请求（不依赖 session）
+type GenerateReportFromHistoryRequest struct {
+	History        []Message
+	IndustryCode   string
+	Difficulty     string
+	TotalQuestions int32
 }
 
 // EndInterviewSessionRequest 结束会话请求

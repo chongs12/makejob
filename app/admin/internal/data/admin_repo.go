@@ -619,8 +619,6 @@ func (r *adminRepo) ListPromptTemplates(ctx context.Context, industryCode string
 			ID:              uint64(m.ID),
 			IndustryID:      industryID,
 			Name:            m.Name,
-			IndustryCode:    m.IndustryCode,
-			TemplateType:    m.TemplateType,
 			Scene:           m.Scene,
 			TemplateContent: m.TemplateContent,
 			Variables:       m.Variables,
@@ -634,9 +632,14 @@ func (r *adminRepo) ListPromptTemplates(ctx context.Context, industryCode string
 func (r *adminRepo) SavePromptTemplate(ctx context.Context, tpl *biz.PromptTemplate) error {
 	m := &model.PromptTemplate{
 		Name:            tpl.Name,
-		IndustryCode:    tpl.IndustryCode,
-		TemplateType:    tpl.TemplateType,
+		Scene:           tpl.Scene,
 		TemplateContent: tpl.TemplateContent,
+		Variables:       tpl.Variables,
+		IsActive:        tpl.IsActive,
+	}
+	if tpl.IndustryID > 0 {
+		industryID := uint(tpl.IndustryID)
+		m.IndustryID = &industryID
 	}
 	if tpl.ID > 0 {
 		m.ID = uint(tpl.ID)

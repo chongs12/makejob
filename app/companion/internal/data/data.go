@@ -27,7 +27,7 @@ func NewData(cfg *conf.Data) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 
-	if err := db.AutoMigrate(&biz.CompanionSession{}); err != nil {
+	if err := db.AutoMigrate(&biz.CompanionSession{}, &biz.ASRConfig{}); err != nil {
 		return nil, fmt.Errorf("failed to migrate companion_sessions: %w", err)
 	}
 

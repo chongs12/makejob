@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"regexp"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -31,10 +30,7 @@ func TestArchiveRepoGetWeakTopicsFiltersSoftDeleted(t *testing.T) {
 		AddRow("grpc", 3).
 		AddRow("sql", 2)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT jsonb_array_elements_text(mistake_tags::jsonb) as tag, COUNT(*) as count
-			 FROM learning_archive_entries
-			 WHERE user_id = $1 AND deleted_at IS NULL AND mistake_tags IS NOT NULL AND mistake_tags != ''
-			 GROUP BY tag ORDER BY count DESC LIMIT $2`)).
+	mock.ExpectQuery(`SELECT tag, COUNT\(\*\) as count FROM \(.*jsonb_array_elements_text.*jsonb_typeof.*mistake_tags.*learning_archive_entries.*user_id = \$1.*deleted_at IS NULL.*mistake_tags IS NOT NULL.*GROUP BY tag ORDER BY count DESC LIMIT \$2`).
 		WithArgs(uint64(7), int32(10)).
 		WillReturnRows(rows)
 

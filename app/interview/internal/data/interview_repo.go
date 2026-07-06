@@ -89,10 +89,11 @@ func (r *interviewRepo) Update(ctx context.Context, interview *biz.Interview) er
 // CreateMessage 创建面试消息，并在事务内复用同一个 DB 连接。
 func (r *interviewRepo) CreateMessage(ctx context.Context, msg *biz.InterviewMessage) error {
 	m := &model.InterviewMessage{
-		InterviewID: msg.InterviewID,
-		Role:        msg.Role,
-		Content:     msg.Content,
-		MessageType: msg.MessageType,
+		InterviewID:   msg.InterviewID,
+		Role:          msg.Role,
+		Content:       msg.Content,
+		MessageType:   msg.MessageType,
+		QuestionIndex: msg.QuestionIndex,
 	}
 	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
@@ -107,12 +108,13 @@ func (r *interviewRepo) ListMessages(ctx context.Context, interviewID uint64) ([
 	msgs := make([]*biz.InterviewMessage, len(models))
 	for i, m := range models {
 		msgs[i] = &biz.InterviewMessage{
-			ID:          m.ID,
-			InterviewID: m.InterviewID,
-			Role:        m.Role,
-			Content:     m.Content,
-			MessageType: m.MessageType,
-			CreatedAt:   time.UnixMilli(m.CreatedAt),
+			ID:            m.ID,
+			InterviewID:   m.InterviewID,
+			Role:          m.Role,
+			Content:       m.Content,
+			MessageType:   m.MessageType,
+			QuestionIndex: m.QuestionIndex,
+			CreatedAt:     time.UnixMilli(m.CreatedAt),
 		}
 	}
 	return msgs, nil
@@ -195,12 +197,13 @@ func (r *interviewRepo) ListMessagesLimited(ctx context.Context, interviewID uin
 	msgs := make([]*biz.InterviewMessage, len(models))
 	for i, m := range models {
 		msgs[i] = &biz.InterviewMessage{
-			ID:          m.ID,
-			InterviewID: m.InterviewID,
-			Role:        m.Role,
-			Content:     m.Content,
-			MessageType: m.MessageType,
-			CreatedAt:   time.UnixMilli(m.CreatedAt),
+			ID:            m.ID,
+			InterviewID:   m.InterviewID,
+			Role:          m.Role,
+			Content:       m.Content,
+			MessageType:   m.MessageType,
+			QuestionIndex: m.QuestionIndex,
+			CreatedAt:     time.UnixMilli(m.CreatedAt),
 		}
 	}
 	return msgs, nil
@@ -216,10 +219,11 @@ func (r *interviewRepo) BindRealtimeDialog(ctx context.Context, interviewID uint
 // AppendMessageAndBumpIndex 追加消息（表无 current_index 列，不再递增）
 func (r *interviewRepo) AppendMessageAndBumpIndex(ctx context.Context, msg *biz.InterviewMessage) error {
 	m := &model.InterviewMessage{
-		InterviewID: msg.InterviewID,
-		Role:        msg.Role,
-		Content:     msg.Content,
-		MessageType: msg.MessageType,
+		InterviewID:   msg.InterviewID,
+		Role:          msg.Role,
+		Content:       msg.Content,
+		MessageType:   msg.MessageType,
+		QuestionIndex: msg.QuestionIndex,
 	}
 	return r.getDB(ctx).WithContext(ctx).Create(m).Error
 }
@@ -227,8 +231,7 @@ func (r *interviewRepo) AppendMessageAndBumpIndex(ctx context.Context, msg *biz.
 // --- Model ↔ Biz 转换 ---
 
 func toModel(iv *biz.Interview) *model.MockInterview {
-	return &model.MockInterview{
-		Model:          gorm.Model{ID: uint(iv.ID)},
+	m := &model.MockInterview{
 		UserID:         iv.UserID,
 		IndustryID:     iv.IndustryID,
 		Status:         iv.Status,
@@ -241,6 +244,13 @@ func toModel(iv *biz.Interview) *model.MockInterview {
 		EndedAt:        iv.FinishedAt,
 		Live2DModelKey: iv.Live2DModelKey,
 	}
+	if iv.ID > 0 {
+		m.Model.ID = uint(iv.ID)
+	}
+	if !iv.CreatedAt.IsZero() {
+		m.CreatedAt = iv.CreatedAt
+	}
+	return m
 }
 
 func toBiz(m *model.MockInterview) *biz.Interview {

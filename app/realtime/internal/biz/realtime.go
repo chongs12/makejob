@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -764,16 +765,46 @@ func appendRealtimeTextChunk(current string, next string) string {
 	return current + next
 }
 
-// handleClientControl 处理客户端控制指令（如结束面试）
+// handleClientControl 处理客户端控制指令（音频转发、结束面试等）
 func (uc *RealtimeUseCase) handleClientControl(_ context.Context, session *RealtimeSession, payload []byte) {
 	var msg struct {
 		Type string `json:"type"`
+		Data *struct {
+			AudioBase64 string `json:"audio_base64"`
+		} `json:"data,omitempty"`
 	}
 	if err := json.Unmarshal(payload, &msg); err != nil {
 		uc.log.Warnf("解析客户端控制消息失败: %v", err)
 		return
 	}
-	if msg.Type == "end_interview" {
+
+	switch msg.Type {
+	case "audio_start":
+		uc.log.Infof("客户端开始录音: session_id=%s", session.SessionID)
+
+	case "audio_chunk":
+		// 解码 base64 音频并转发给火山引擎
+		if msg.Data == nil || msg.Data.AudioBase64 == "" {
+			return
+		}
+		audioBytes, err := base64.StdEncoding.DecodeString(msg.Data.AudioBase64)
+		if err != nil {
+			uc.log.Warnf("解码音频数据失败: session_id=%s, err=%v", session.SessionID, err)
+			return
+		}
+		if err := session.VolcConn.SendAudio(audioBytes); err != nil {
+			uc.log.Errorf("转发音频到火山引擎失败: session_id=%s, err=%v", session.SessionID, err)
+		}
+
+	case "audio_end":
+		// 通知火山引擎用户语音输入结束（push_to_talk 模式需要显式 EndASR）
+		if extConn, ok := session.VolcConn.(VolcEngineSessionConn); ok {
+			if err := extConn.SendEndASR(); err != nil {
+				uc.log.Warnf("发送 EndASR 失败: session_id=%s, err=%v", session.SessionID, err)
+			}
+		}
+
+	case "end_interview":
 		uc.log.Infof("客户端请求结束面试: session_id=%s", session.SessionID)
 		session.Cancel()
 	}

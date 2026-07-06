@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -166,5 +167,104 @@ func TestRenderPrompt(t *testing.T) {
 	expected := "你好，张三！欢迎来到Go世界。"
 	if result != expected {
 		t.Errorf("expected '%s', got '%s'", expected, result)
+	}
+}
+
+// TestGenerateReportFromHistory_Success 验证从对话历史生成报告的完整流程
+func TestGenerateReportFromHistory_Success(t *testing.T) {
+	llmResp := &LLMResponse{
+		Content: `{
+			"overall_score": 72.5,
+			"summary": "候选人基础扎实，回答有条理。",
+			"strengths": ["Go并发理解清晰", "TCP/UDP区别准确"],
+			"weaknesses": ["数据库索引理解较浅"],
+			"suggestions": ["补充B+树原理", "多做系统设计练习"]
+		}`,
+	}
+	configRepo := &mockAIConfigRepo{
+		config: &AIConfig{Model: "deepseek-v4-flash"},
+	}
+	promptRepo := &mockPromptRepo{
+		template: &PromptTemplate{TemplateContent: "你是面试评估专家。"},
+	}
+	llm := &mockLLMClient{response: llmResp}
+
+	uc := NewInterviewSessionUseCase(configRepo, promptRepo, &mockCallLogRepo{}, llm, log.DefaultLogger)
+
+	history := []Message{
+		{Role: "assistant", Content: "请说说Go的GMP模型"},
+		{Role: "user", Content: "G是goroutine，M是OS线程，P是处理器..."},
+		{Role: "assistant", Content: "很好，下一题：TCP和UDP的区别？"},
+		{Role: "user", Content: "TCP可靠，UDP不可靠但更快。"},
+	}
+
+	resp, err := uc.GenerateReportFromHistory(context.Background(), &GenerateReportFromHistoryRequest{
+		History:       history,
+		IndustryCode:  "go",
+		Difficulty:    "medium",
+		TotalQuestions: 2,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.OverallScore != 72.5 {
+		t.Fatalf("expected overall_score=72.5, got %f", resp.OverallScore)
+	}
+	if resp.Summary == "" {
+		t.Fatal("expected non-empty summary")
+	}
+	if len(resp.Strengths) == 0 {
+		t.Fatal("expected non-empty strengths")
+	}
+}
+
+// TestGenerateReportFromHistory_LLMFails 验证 LLM 失败时返回错误
+func TestGenerateReportFromHistory_LLMFails(t *testing.T) {
+	configRepo := &mockAIConfigRepo{
+		config: &AIConfig{Model: "deepseek-v4-flash"},
+	}
+	promptRepo := &mockPromptRepo{
+		template: &PromptTemplate{TemplateContent: "你是面试评估专家。"},
+	}
+	llm := &mockLLMClient{err: fmt.Errorf("LLM timeout")}
+
+	uc := NewInterviewSessionUseCase(configRepo, promptRepo, &mockCallLogRepo{}, llm, log.DefaultLogger)
+
+	history := []Message{
+		{Role: "assistant", Content: "问题1"},
+		{Role: "user", Content: "回答1"},
+	}
+
+	_, err := uc.GenerateReportFromHistory(context.Background(), &GenerateReportFromHistoryRequest{
+		History:       history,
+		IndustryCode:  "go",
+		Difficulty:    "medium",
+		TotalQuestions: 1,
+	})
+	if err == nil {
+		t.Fatal("expected error when LLM fails")
+	}
+}
+
+// TestGenerateReportFromHistory_EmptyHistory 验证空历史时返回错误
+func TestGenerateReportFromHistory_EmptyHistory(t *testing.T) {
+	configRepo := &mockAIConfigRepo{
+		config: &AIConfig{Model: "deepseek-v4-flash"},
+	}
+	promptRepo := &mockPromptRepo{
+		template: &PromptTemplate{TemplateContent: "你是面试评估专家。"},
+	}
+	llm := &mockLLMClient{}
+
+	uc := NewInterviewSessionUseCase(configRepo, promptRepo, &mockCallLogRepo{}, llm, log.DefaultLogger)
+
+	_, err := uc.GenerateReportFromHistory(context.Background(), &GenerateReportFromHistoryRequest{
+		History:        []Message{},
+		IndustryCode:   "go",
+		Difficulty:     "medium",
+		TotalQuestions:  0,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty history")
 	}
 }

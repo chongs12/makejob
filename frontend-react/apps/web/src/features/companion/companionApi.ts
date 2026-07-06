@@ -192,6 +192,41 @@ function buildChatPayload(history: CompanionHistoryItem[]) {
 }
 
 /**
+ * 调用 ASR 语音识别接口，将音频数据转换为文本。
+ */
+export async function recognizeSpeech(
+  token: string,
+  audioData: Blob,
+  format = 'pcm',
+  sampleRate = 16000,
+  language = 'zh-CN',
+): Promise<{ text: string; confidence: number; duration: number }> {
+  const params = new URLSearchParams({
+    format,
+    sample_rate: String(sampleRate),
+    language,
+  })
+
+  const response = await requestJson<ApiEnvelope<{ text: string; confidence: number; duration: number }>>(
+    `/companion/asr?${params.toString()}`,
+    {
+      method: 'POST',
+      token,
+      body: audioData,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+    },
+  )
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '语音识别失败')
+  }
+
+  return response.data
+}
+
+/**
  * 向后端陪伴接口发送消息，并返回陪伴助手的最新回复内容。
  */
 export async function sendCompanionChatRequest(

@@ -160,6 +160,30 @@ func (s *AIGatewayService) GenerateInterviewReport(ctx context.Context, req *aiv
 	}, nil
 }
 
+// GenerateReportFromHistory 从对话历史生成报告（不依赖 session，供实时面试使用）
+func (s *AIGatewayService) GenerateReportFromHistory(ctx context.Context, req *aiv1.GenerateReportFromHistoryRequest) (*aiv1.GenerateInterviewReportResponse, error) {
+	history := make([]biz.Message, len(req.History))
+	for i, m := range req.History {
+		history[i] = biz.Message{Role: m.Role, Content: m.Content}
+	}
+	result, err := s.interviewSessionUC.GenerateReportFromHistory(ctx, &biz.GenerateReportFromHistoryRequest{
+		History:        history,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		TotalQuestions: req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GenerateInterviewReportResponse{
+		OverallScore: result.OverallScore,
+		Summary:      result.Summary,
+		Strengths:    result.Strengths,
+		Weaknesses:   result.Weaknesses,
+		Suggestions:  result.Suggestions,
+	}, nil
+}
+
 // EndInterviewSession 结束面试会话（对齐单体 InterviewAgent.EndInterview）
 func (s *AIGatewayService) EndInterviewSession(ctx context.Context, req *aiv1.EndInterviewSessionRequest) (*aiv1.EndInterviewSessionResponse, error) {
 	result, err := s.interviewSessionUC.EndInterviewSession(ctx, &biz.EndInterviewSessionRequest{

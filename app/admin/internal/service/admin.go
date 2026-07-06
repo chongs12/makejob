@@ -666,26 +666,23 @@ func (s *AdminService) ListPromptTemplates(ctx context.Context, req *adminv1.Lis
 	items := make([]*adminv1.PromptTemplate, len(templates))
 	for i, t := range templates {
 		items[i] = &adminv1.PromptTemplate{
-			Id:           t.ID,
-			Name:         t.Name,
-			IndustryCode: t.IndustryCode,
-			TemplateType: t.TemplateType,
-			Content:      t.TemplateContent,
-			Scene:        t.Scene,
-			Variables:    t.Variables,
-			IsActive:     t.IsActive,
-			UpdatedAt:    timestamppb.New(t.UpdatedAt),
+			Id:              t.ID,
+			Name:            t.Name,
+			Content:         t.TemplateContent,
+			Scene:           t.Scene,
+			Variables:       t.Variables,
+			IsActive:        t.IsActive,
+			UpdatedAt:       timestamppb.New(t.UpdatedAt),
 		}
 	}
 	return &adminv1.ListPromptTemplatesResponse{Templates: items}, nil
 }
 
 func (s *AdminService) SavePromptTemplate(ctx context.Context, req *adminv1.SavePromptTemplateRequest) (*adminv1.PromptTemplate, error) {
+	// 旧版 API，保留向后兼容
 	tpl := &biz.PromptTemplate{
 		ID:              req.Id,
 		Name:            req.Name,
-		IndustryCode:    req.IndustryCode,
-		TemplateType:    req.TemplateType,
 		TemplateContent: req.Content,
 	}
 	if err := s.uc.SavePromptTemplate(ctx, tpl); err != nil {

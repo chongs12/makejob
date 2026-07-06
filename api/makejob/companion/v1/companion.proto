@@ -2,12 +2,19 @@ syntax = "proto3";
 package makejob.companion.v1;
 option go_package = "makejob/api/makejob/companion/v1;companionv1";
 
+import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 service CompanionService {
   rpc Chat(CompanionChatRequest) returns (CompanionChatResponse);
   rpc GetCompanionState(GetCompanionStateRequest) returns (CompanionState);
   rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
+  rpc RecognizeSpeech(RecognizeSpeechRequest) returns (RecognizeSpeechResponse);
+  rpc ListASRConfigs(ListASRConfigsRequest) returns (ListASRConfigsResponse);
+  rpc CreateASRConfig(CreateASRConfigRequest) returns (ASRConfigProto);
+  rpc UpdateASRConfig(UpdateASRConfigRequest) returns (ASRConfigProto);
+  rpc DeleteASRConfig(DeleteASRConfigRequest) returns (google.protobuf.Empty);
+  rpc UpdateASRDefault(UpdateASRDefaultRequest) returns (google.protobuf.Empty);
 }
 
 message CompanionChatRequest {
@@ -94,4 +101,67 @@ message SynthesizeSpeechRequest {
 message SynthesizeSpeechResponse {
   bytes audio_data = 1;
   string audio_url = 2;
+}
+
+// ---------- ASR 语音识别 ----------
+
+message RecognizeSpeechRequest {
+  bytes audio_data = 1;
+  string format = 2;
+  int32 sample_rate = 3;
+  string language = 4;
+}
+
+message RecognizeSpeechResponse {
+  string text = 1;
+  double confidence = 2;
+  double duration = 3;
+}
+
+// ---------- ASR 配置管理 ----------
+
+message ASRConfigProto {
+  uint64 id = 1;
+  string name = 2;
+  string engine = 3;
+  string auth_config_json = 4;
+  string params_json = 5;
+  bool is_active = 6;
+  int32 sort_order = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message ListASRConfigsRequest {}
+
+message ListASRConfigsResponse {
+  repeated ASRConfigProto configs = 1;
+  uint64 default_config_id = 2;
+}
+
+message UpdateASRDefaultRequest {
+  uint64 config_id = 1;
+}
+
+message CreateASRConfigRequest {
+  string name = 1;
+  string engine = 2;
+  string auth_config_json = 3;
+  string params_json = 4;
+  bool is_active = 5;
+  int32 sort_order = 6;
+}
+
+message UpdateASRConfigRequest {
+  uint64 id = 1;
+  string name = 2;
+  string engine = 3;
+  string auth_config_json = 4;
+  string params_json = 5;
+  bool is_active = 6;
+  int32 sort_order = 7;
+}
+
+message DeleteASRConfigRequest {
+  uint64 id = 1;
 }

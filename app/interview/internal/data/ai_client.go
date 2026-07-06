@@ -3,9 +3,11 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/interview/internal/biz"
@@ -17,19 +19,35 @@ const correctThreshold = 0.6
 // aiServiceClient 实现 biz.AIServiceClient 接口
 // 通过 gRPC 调用 AI 服务
 type aiServiceClient struct {
-	client aiv1.AIServiceClient
-	conn   *grpc.ClientConn
+	client   aiv1.AIServiceClient
+	conn     *grpc.ClientConn
+	timeout  time.Duration
 }
 
 // NewAIServiceClient 创建 AI 服务客户端（由 Wire 调用）
 func NewAIServiceClient(cfg *conf.AI) (biz.AIServiceClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	conn, err := grpc.NewClient(cfg.ServiceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                10 * time.Second,
+			Timeout:             3 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(16*1024*1024),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service at %s: %w", cfg.ServiceAddr, err)
 	}
 	return &aiServiceClient{
-		client: aiv1.NewAIServiceClient(conn),
-		conn:   conn,
+		client:  aiv1.NewAIServiceClient(conn),
+		conn:    conn,
+		timeout: timeout,
 	}, nil
 }
 
@@ -41,9 +59,19 @@ func (c *aiServiceClient) Close() error {
 	return nil
 }
 
+// withTimeout 为 gRPC 调用添加超时 context
+func (c *aiServiceClient) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if c.timeout > 0 {
+		return context.WithTimeout(ctx, c.timeout)
+	}
+	return ctx, func() {}
+}
+
 // InterviewAgent 调用 AI Gateway 生成下一题或评估当前回答。
 func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.InterviewAgentRequest) (*biz.InterviewAgentResponse, error) {
-	// 转换 biz 历史消息为 proto 消息
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	history := make([]*aiv1.Message, 0, len(req.History))
 	for _, msg := range req.History {
 		history = append(history, &aiv1.Message{
@@ -97,6 +125,9 @@ func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.Interview
 
 // QuizAnalyzer 调用 AI Gateway 评估问答或代码答案。
 func (c *aiServiceClient) QuizAnalyzer(ctx context.Context, req *biz.QuizAnalyzerRequest) (*biz.QuizAnalyzerResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.QuizAnalyzer(ctx, &aiv1.QuizAnalyzerRequest{
 		Question:   req.Question,
 		Answer:     req.Answer,
@@ -119,6 +150,9 @@ func (c *aiServiceClient) QuizAnalyzer(ctx context.Context, req *biz.QuizAnalyze
 
 // ResumeParser 调用 AI Gateway 解析简历文本。
 func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParserRequest) (*biz.ResumeParserResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.ResumeParser(ctx, &aiv1.ResumeParserRequest{
 		ResumeText: req.ResumeText,
 	})
@@ -136,8 +170,11 @@ func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParse
 	}, nil
 }
 
-// StartInterview 开始面试会话（对齐单体 InterviewAgent.StartInterview）
+// StartInterview 开始面试会话
 func (c *aiServiceClient) StartInterview(ctx context.Context, req *biz.StartInterviewRequest) (*biz.StartInterviewResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.StartInterview(ctx, &aiv1.StartInterviewRequest{
 		InterviewId:   req.InterviewID,
 		IndustryCode:  req.IndustryCode,
@@ -161,8 +198,11 @@ func (c *aiServiceClient) StartInterview(ctx context.Context, req *biz.StartInte
 	}, nil
 }
 
-// EvaluateAnswer 评估用户答案（对齐单体 InterviewAgent.EvaluateAnswer）
+// EvaluateAnswer 评估用户答案
 func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateAnswerRequest) (*biz.EvaluateAnswerResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.EvaluateAnswer(ctx, &aiv1.EvaluateAnswerRequest{
 		SessionId:     req.SessionId,
 		QuestionIndex: req.QuestionIndex,
@@ -183,8 +223,11 @@ func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateA
 	}, nil
 }
 
-// GetNextQuestionSession 获取下一道题（对齐单体 InterviewAgent.GetNextQuestion + EnhanceQuestionPrompt）
+// GetNextQuestionSession 获取下一道题
 func (c *aiServiceClient) GetNextQuestionSession(ctx context.Context, req *biz.GetNextQuestionSessionRequest) (*biz.GetNextQuestionSessionResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.GetNextQuestionSession(ctx, &aiv1.GetNextQuestionSessionRequest{
 		SessionId:  req.SessionId,
 		RagContext: req.RAGContext,
@@ -203,8 +246,11 @@ func (c *aiServiceClient) GetNextQuestionSession(ctx context.Context, req *biz.G
 	}, nil
 }
 
-// GenerateInterviewReport 生成面试报告（对齐单体 InterviewAgent.GenerateReport）
+// GenerateInterviewReport 生成面试报告
 func (c *aiServiceClient) GenerateInterviewReport(ctx context.Context, req *biz.GenerateInterviewReportRequest) (*biz.GenerateInterviewReportResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.GenerateInterviewReport(ctx, &aiv1.GenerateInterviewReportRequest{
 		SessionId: req.SessionId,
 	})
@@ -223,8 +269,11 @@ func (c *aiServiceClient) GenerateInterviewReport(ctx context.Context, req *biz.
 	}, nil
 }
 
-// EndInterviewSession 结束面试会话（对齐单体 InterviewAgent.EndInterview）
+// EndInterviewSession 结束面试会话
 func (c *aiServiceClient) EndInterviewSession(ctx context.Context, req *biz.EndInterviewSessionRequest) (*biz.EndInterviewSessionResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.client.EndInterviewSession(ctx, &aiv1.EndInterviewSessionRequest{
 		SessionId: req.SessionId,
 	})
@@ -234,5 +283,34 @@ func (c *aiServiceClient) EndInterviewSession(ctx context.Context, req *biz.EndI
 
 	return &biz.EndInterviewSessionResponse{
 		Success: resp.Success,
+	}, nil
+}
+
+// GenerateReportFromHistory 从对话历史生成报告（不依赖 session）
+func (c *aiServiceClient) GenerateReportFromHistory(ctx context.Context, req *biz.GenerateReportFromHistoryRequest) (*biz.GenerateInterviewReportResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	history := make([]*aiv1.HistoryMessage, len(req.History))
+	for i, m := range req.History {
+		history[i] = &aiv1.HistoryMessage{Role: m.Role, Content: m.Content}
+	}
+
+	resp, err := c.client.GenerateReportFromHistory(ctx, &aiv1.GenerateReportFromHistoryRequest{
+		History:        history,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		TotalQuestions: req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GenerateReportFromHistory gRPC call failed: %w", err)
+	}
+
+	return &biz.GenerateInterviewReportResponse{
+		OverallScore: resp.OverallScore,
+		Summary:      resp.Summary,
+		Strengths:    resp.Strengths,
+		Weaknesses:   resp.Weaknesses,
+		Suggestions:  resp.Suggestions,
 	}, nil
 }

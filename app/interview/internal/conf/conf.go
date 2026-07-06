@@ -16,6 +16,7 @@ type Bootstrap struct {
 	JWT        *JWT        `yaml:"jwt"`
 	RAG        *RAG        `yaml:"rag"`
 	CodeRunner *CodeRunner `yaml:"code_runner"`
+	Interview  *Interview  `yaml:"interview"`
 }
 
 type Server struct {
@@ -51,6 +52,7 @@ type Data_Redis struct {
 
 type AI struct {
 	ServiceAddr string `yaml:"service_addr"`
+	TimeoutMs   int    `yaml:"timeout_ms"`
 }
 
 type Archive struct {
@@ -75,6 +77,12 @@ type RAG struct {
 // CodeRunner 代码执行服务配置
 type CodeRunner struct {
 	ServiceAddr string `yaml:"service_addr"`
+	TimeoutMs   int    `yaml:"timeout_ms"`
+}
+
+// Interview 面试业务配置
+type Interview struct {
+	TimeoutMinutes int `yaml:"timeout_minutes"`
 }
 
 // Load 从 YAML 文件加载配置
@@ -117,6 +125,9 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.AI == nil {
 		bc.AI = &AI{}
 	}
+	if bc.AI.TimeoutMs == 0 {
+		bc.AI.TimeoutMs = 30000
+	}
 	if bc.Archive == nil {
 		bc.Archive = &Archive{}
 	}
@@ -137,6 +148,15 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.CodeRunner == nil {
 		bc.CodeRunner = &CodeRunner{}
+	}
+	if bc.CodeRunner.TimeoutMs == 0 {
+		bc.CodeRunner.TimeoutMs = 10000
+	}
+	if bc.Interview == nil {
+		bc.Interview = &Interview{}
+	}
+	if bc.Interview.TimeoutMinutes == 0 {
+		bc.Interview.TimeoutMinutes = 40
 	}
 
 	return &bc, nil

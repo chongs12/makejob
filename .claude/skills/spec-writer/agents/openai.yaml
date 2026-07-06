@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec Writer"
+  short_description: "Drive /spec discovery and draft implementation-ready Markdown specs."
+  default_prompt: "Use $spec-writer to analyze my requirements and draft a Markdown spec with technical stack, API definitions, and acceptance criteria."

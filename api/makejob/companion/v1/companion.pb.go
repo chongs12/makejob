@@ -9,6 +9,7 @@ package companionv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -842,11 +843,599 @@ func (x *SynthesizeSpeechResponse) GetAudioUrl() string {
 	return ""
 }
 
+type RecognizeSpeechRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AudioData     []byte                 `protobuf:"bytes,1,opt,name=audio_data,json=audioData,proto3" json:"audio_data,omitempty"`
+	Format        string                 `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
+	SampleRate    int32                  `protobuf:"varint,3,opt,name=sample_rate,json=sampleRate,proto3" json:"sample_rate,omitempty"`
+	Language      string                 `protobuf:"bytes,4,opt,name=language,proto3" json:"language,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecognizeSpeechRequest) Reset() {
+	*x = RecognizeSpeechRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecognizeSpeechRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecognizeSpeechRequest) ProtoMessage() {}
+
+func (x *RecognizeSpeechRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecognizeSpeechRequest.ProtoReflect.Descriptor instead.
+func (*RecognizeSpeechRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RecognizeSpeechRequest) GetAudioData() []byte {
+	if x != nil {
+		return x.AudioData
+	}
+	return nil
+}
+
+func (x *RecognizeSpeechRequest) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *RecognizeSpeechRequest) GetSampleRate() int32 {
+	if x != nil {
+		return x.SampleRate
+	}
+	return 0
+}
+
+func (x *RecognizeSpeechRequest) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+type RecognizeSpeechResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	Confidence    float64                `protobuf:"fixed64,2,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Duration      float64                `protobuf:"fixed64,3,opt,name=duration,proto3" json:"duration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecognizeSpeechResponse) Reset() {
+	*x = RecognizeSpeechResponse{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecognizeSpeechResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecognizeSpeechResponse) ProtoMessage() {}
+
+func (x *RecognizeSpeechResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecognizeSpeechResponse.ProtoReflect.Descriptor instead.
+func (*RecognizeSpeechResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RecognizeSpeechResponse) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *RecognizeSpeechResponse) GetConfidence() float64 {
+	if x != nil {
+		return x.Confidence
+	}
+	return 0
+}
+
+func (x *RecognizeSpeechResponse) GetDuration() float64 {
+	if x != nil {
+		return x.Duration
+	}
+	return 0
+}
+
+type ASRConfigProto struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Engine         string                 `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
+	AuthConfigJson string                 `protobuf:"bytes,4,opt,name=auth_config_json,json=authConfigJson,proto3" json:"auth_config_json,omitempty"`
+	ParamsJson     string                 `protobuf:"bytes,5,opt,name=params_json,json=paramsJson,proto3" json:"params_json,omitempty"`
+	IsActive       bool                   `protobuf:"varint,6,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	SortOrder      int32                  `protobuf:"varint,7,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ASRConfigProto) Reset() {
+	*x = ASRConfigProto{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ASRConfigProto) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ASRConfigProto) ProtoMessage() {}
+
+func (x *ASRConfigProto) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ASRConfigProto.ProtoReflect.Descriptor instead.
+func (*ASRConfigProto) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ASRConfigProto) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *ASRConfigProto) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ASRConfigProto) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *ASRConfigProto) GetAuthConfigJson() string {
+	if x != nil {
+		return x.AuthConfigJson
+	}
+	return ""
+}
+
+func (x *ASRConfigProto) GetParamsJson() string {
+	if x != nil {
+		return x.ParamsJson
+	}
+	return ""
+}
+
+func (x *ASRConfigProto) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *ASRConfigProto) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+func (x *ASRConfigProto) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ASRConfigProto) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ListASRConfigsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListASRConfigsRequest) Reset() {
+	*x = ListASRConfigsRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListASRConfigsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListASRConfigsRequest) ProtoMessage() {}
+
+func (x *ListASRConfigsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListASRConfigsRequest.ProtoReflect.Descriptor instead.
+func (*ListASRConfigsRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{14}
+}
+
+type ListASRConfigsResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Configs         []*ASRConfigProto      `protobuf:"bytes,1,rep,name=configs,proto3" json:"configs,omitempty"`
+	DefaultConfigId uint64                 `protobuf:"varint,2,opt,name=default_config_id,json=defaultConfigId,proto3" json:"default_config_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ListASRConfigsResponse) Reset() {
+	*x = ListASRConfigsResponse{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListASRConfigsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListASRConfigsResponse) ProtoMessage() {}
+
+func (x *ListASRConfigsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListASRConfigsResponse.ProtoReflect.Descriptor instead.
+func (*ListASRConfigsResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListASRConfigsResponse) GetConfigs() []*ASRConfigProto {
+	if x != nil {
+		return x.Configs
+	}
+	return nil
+}
+
+func (x *ListASRConfigsResponse) GetDefaultConfigId() uint64 {
+	if x != nil {
+		return x.DefaultConfigId
+	}
+	return 0
+}
+
+type UpdateASRDefaultRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ConfigId      uint64                 `protobuf:"varint,1,opt,name=config_id,json=configId,proto3" json:"config_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateASRDefaultRequest) Reset() {
+	*x = UpdateASRDefaultRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateASRDefaultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateASRDefaultRequest) ProtoMessage() {}
+
+func (x *UpdateASRDefaultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateASRDefaultRequest.ProtoReflect.Descriptor instead.
+func (*UpdateASRDefaultRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpdateASRDefaultRequest) GetConfigId() uint64 {
+	if x != nil {
+		return x.ConfigId
+	}
+	return 0
+}
+
+type CreateASRConfigRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Engine         string                 `protobuf:"bytes,2,opt,name=engine,proto3" json:"engine,omitempty"`
+	AuthConfigJson string                 `protobuf:"bytes,3,opt,name=auth_config_json,json=authConfigJson,proto3" json:"auth_config_json,omitempty"`
+	ParamsJson     string                 `protobuf:"bytes,4,opt,name=params_json,json=paramsJson,proto3" json:"params_json,omitempty"`
+	IsActive       bool                   `protobuf:"varint,5,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	SortOrder      int32                  `protobuf:"varint,6,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CreateASRConfigRequest) Reset() {
+	*x = CreateASRConfigRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateASRConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateASRConfigRequest) ProtoMessage() {}
+
+func (x *CreateASRConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateASRConfigRequest.ProtoReflect.Descriptor instead.
+func (*CreateASRConfigRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CreateASRConfigRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateASRConfigRequest) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *CreateASRConfigRequest) GetAuthConfigJson() string {
+	if x != nil {
+		return x.AuthConfigJson
+	}
+	return ""
+}
+
+func (x *CreateASRConfigRequest) GetParamsJson() string {
+	if x != nil {
+		return x.ParamsJson
+	}
+	return ""
+}
+
+func (x *CreateASRConfigRequest) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *CreateASRConfigRequest) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+type UpdateASRConfigRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Engine         string                 `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
+	AuthConfigJson string                 `protobuf:"bytes,4,opt,name=auth_config_json,json=authConfigJson,proto3" json:"auth_config_json,omitempty"`
+	ParamsJson     string                 `protobuf:"bytes,5,opt,name=params_json,json=paramsJson,proto3" json:"params_json,omitempty"`
+	IsActive       bool                   `protobuf:"varint,6,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	SortOrder      int32                  `protobuf:"varint,7,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpdateASRConfigRequest) Reset() {
+	*x = UpdateASRConfigRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateASRConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateASRConfigRequest) ProtoMessage() {}
+
+func (x *UpdateASRConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateASRConfigRequest.ProtoReflect.Descriptor instead.
+func (*UpdateASRConfigRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UpdateASRConfigRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateASRConfigRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateASRConfigRequest) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *UpdateASRConfigRequest) GetAuthConfigJson() string {
+	if x != nil {
+		return x.AuthConfigJson
+	}
+	return ""
+}
+
+func (x *UpdateASRConfigRequest) GetParamsJson() string {
+	if x != nil {
+		return x.ParamsJson
+	}
+	return ""
+}
+
+func (x *UpdateASRConfigRequest) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *UpdateASRConfigRequest) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+type DeleteASRConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteASRConfigRequest) Reset() {
+	*x = DeleteASRConfigRequest{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteASRConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteASRConfigRequest) ProtoMessage() {}
+
+func (x *DeleteASRConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteASRConfigRequest.ProtoReflect.Descriptor instead.
+func (*DeleteASRConfigRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *DeleteASRConfigRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
 var File_makejob_companion_v1_companion_proto protoreflect.FileDescriptor
 
 const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\n" +
-	"$makejob/companion/v1/companion.proto\x12\x14makejob.companion.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa4\x02\n" +
+	"$makejob/companion/v1/companion.proto\x12\x14makejob.companion.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa4\x02\n" +
 	"\x14CompanionChatRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12!\n" +
@@ -918,11 +1507,71 @@ const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\x18SynthesizeSpeechResponse\x12\x1d\n" +
 	"\n" +
 	"audio_data\x18\x01 \x01(\fR\taudioData\x12\x1b\n" +
-	"\taudio_url\x18\x02 \x01(\tR\baudioUrl2\xd1\x02\n" +
+	"\taudio_url\x18\x02 \x01(\tR\baudioUrl\"\x8c\x01\n" +
+	"\x16RecognizeSpeechRequest\x12\x1d\n" +
+	"\n" +
+	"audio_data\x18\x01 \x01(\fR\taudioData\x12\x16\n" +
+	"\x06format\x18\x02 \x01(\tR\x06format\x12\x1f\n" +
+	"\vsample_rate\x18\x03 \x01(\x05R\n" +
+	"sampleRate\x12\x1a\n" +
+	"\blanguage\x18\x04 \x01(\tR\blanguage\"i\n" +
+	"\x17RecognizeSpeechResponse\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1e\n" +
+	"\n" +
+	"confidence\x18\x02 \x01(\x01R\n" +
+	"confidence\x12\x1a\n" +
+	"\bduration\x18\x03 \x01(\x01R\bduration\"\xc9\x02\n" +
+	"\x0eASRConfigProto\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06engine\x18\x03 \x01(\tR\x06engine\x12(\n" +
+	"\x10auth_config_json\x18\x04 \x01(\tR\x0eauthConfigJson\x12\x1f\n" +
+	"\vparams_json\x18\x05 \x01(\tR\n" +
+	"paramsJson\x12\x1b\n" +
+	"\tis_active\x18\x06 \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\a \x01(\x05R\tsortOrder\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x17\n" +
+	"\x15ListASRConfigsRequest\"\x84\x01\n" +
+	"\x16ListASRConfigsResponse\x12>\n" +
+	"\aconfigs\x18\x01 \x03(\v2$.makejob.companion.v1.ASRConfigProtoR\aconfigs\x12*\n" +
+	"\x11default_config_id\x18\x02 \x01(\x04R\x0fdefaultConfigId\"6\n" +
+	"\x17UpdateASRDefaultRequest\x12\x1b\n" +
+	"\tconfig_id\x18\x01 \x01(\x04R\bconfigId\"\xcb\x01\n" +
+	"\x16CreateASRConfigRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06engine\x18\x02 \x01(\tR\x06engine\x12(\n" +
+	"\x10auth_config_json\x18\x03 \x01(\tR\x0eauthConfigJson\x12\x1f\n" +
+	"\vparams_json\x18\x04 \x01(\tR\n" +
+	"paramsJson\x12\x1b\n" +
+	"\tis_active\x18\x05 \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\x06 \x01(\x05R\tsortOrder\"\xdb\x01\n" +
+	"\x16UpdateASRConfigRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06engine\x18\x03 \x01(\tR\x06engine\x12(\n" +
+	"\x10auth_config_json\x18\x04 \x01(\tR\x0eauthConfigJson\x12\x1f\n" +
+	"\vparams_json\x18\x05 \x01(\tR\n" +
+	"paramsJson\x12\x1b\n" +
+	"\tis_active\x18\x06 \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\a \x01(\x05R\tsortOrder\"(\n" +
+	"\x16DeleteASRConfigRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id2\xb0\a\n" +
 	"\x10CompanionService\x12_\n" +
 	"\x04Chat\x12*.makejob.companion.v1.CompanionChatRequest\x1a+.makejob.companion.v1.CompanionChatResponse\x12i\n" +
 	"\x11GetCompanionState\x12..makejob.companion.v1.GetCompanionStateRequest\x1a$.makejob.companion.v1.CompanionState\x12q\n" +
-	"\x10SynthesizeSpeech\x12-.makejob.companion.v1.SynthesizeSpeechRequest\x1a..makejob.companion.v1.SynthesizeSpeechResponseB.Z,makejob/api/makejob/companion/v1;companionv1b\x06proto3"
+	"\x10SynthesizeSpeech\x12-.makejob.companion.v1.SynthesizeSpeechRequest\x1a..makejob.companion.v1.SynthesizeSpeechResponse\x12n\n" +
+	"\x0fRecognizeSpeech\x12,.makejob.companion.v1.RecognizeSpeechRequest\x1a-.makejob.companion.v1.RecognizeSpeechResponse\x12k\n" +
+	"\x0eListASRConfigs\x12+.makejob.companion.v1.ListASRConfigsRequest\x1a,.makejob.companion.v1.ListASRConfigsResponse\x12e\n" +
+	"\x0fCreateASRConfig\x12,.makejob.companion.v1.CreateASRConfigRequest\x1a$.makejob.companion.v1.ASRConfigProto\x12e\n" +
+	"\x0fUpdateASRConfig\x12,.makejob.companion.v1.UpdateASRConfigRequest\x1a$.makejob.companion.v1.ASRConfigProto\x12W\n" +
+	"\x0fDeleteASRConfig\x12,.makejob.companion.v1.DeleteASRConfigRequest\x1a\x16.google.protobuf.Empty\x12Y\n" +
+	"\x10UpdateASRDefault\x12-.makejob.companion.v1.UpdateASRDefaultRequest\x1a\x16.google.protobuf.EmptyB.Z,makejob/api/makejob/companion/v1;companionv1b\x06proto3"
 
 var (
 	file_makejob_companion_v1_companion_proto_rawDescOnce sync.Once
@@ -936,7 +1585,7 @@ func file_makejob_companion_v1_companion_proto_rawDescGZIP() []byte {
 	return file_makejob_companion_v1_companion_proto_rawDescData
 }
 
-var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_makejob_companion_v1_companion_proto_goTypes = []any{
 	(*CompanionChatRequest)(nil),             // 0: makejob.companion.v1.CompanionChatRequest
 	(*CompanionChatMessage)(nil),             // 1: makejob.companion.v1.CompanionChatMessage
@@ -949,7 +1598,17 @@ var file_makejob_companion_v1_companion_proto_goTypes = []any{
 	(*CompanionState)(nil),                   // 8: makejob.companion.v1.CompanionState
 	(*SynthesizeSpeechRequest)(nil),          // 9: makejob.companion.v1.SynthesizeSpeechRequest
 	(*SynthesizeSpeechResponse)(nil),         // 10: makejob.companion.v1.SynthesizeSpeechResponse
-	(*timestamppb.Timestamp)(nil),            // 11: google.protobuf.Timestamp
+	(*RecognizeSpeechRequest)(nil),           // 11: makejob.companion.v1.RecognizeSpeechRequest
+	(*RecognizeSpeechResponse)(nil),          // 12: makejob.companion.v1.RecognizeSpeechResponse
+	(*ASRConfigProto)(nil),                   // 13: makejob.companion.v1.ASRConfigProto
+	(*ListASRConfigsRequest)(nil),            // 14: makejob.companion.v1.ListASRConfigsRequest
+	(*ListASRConfigsResponse)(nil),           // 15: makejob.companion.v1.ListASRConfigsResponse
+	(*UpdateASRDefaultRequest)(nil),          // 16: makejob.companion.v1.UpdateASRDefaultRequest
+	(*CreateASRConfigRequest)(nil),           // 17: makejob.companion.v1.CreateASRConfigRequest
+	(*UpdateASRConfigRequest)(nil),           // 18: makejob.companion.v1.UpdateASRConfigRequest
+	(*DeleteASRConfigRequest)(nil),           // 19: makejob.companion.v1.DeleteASRConfigRequest
+	(*timestamppb.Timestamp)(nil),            // 20: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                    // 21: google.protobuf.Empty
 }
 var file_makejob_companion_v1_companion_proto_depIdxs = []int32{
 	1,  // 0: makejob.companion.v1.CompanionChatRequest.messages:type_name -> makejob.companion.v1.CompanionChatMessage
@@ -957,18 +1616,33 @@ var file_makejob_companion_v1_companion_proto_depIdxs = []int32{
 	4,  // 2: makejob.companion.v1.CompanionChatResponse.live2d_directive:type_name -> makejob.companion.v1.Live2DDirective
 	5,  // 3: makejob.companion.v1.Live2DDirective.expression_mix:type_name -> makejob.companion.v1.Live2DDirectiveExpressionLayer
 	6,  // 4: makejob.companion.v1.Live2DDirective.parameter_overrides:type_name -> makejob.companion.v1.Live2DDirectiveParameterOverride
-	11, // 5: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
-	7,  // 7: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
-	9,  // 8: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
-	3,  // 9: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
-	8,  // 10: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
-	10, // 11: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
-	9,  // [9:12] is the sub-list for method output_type
-	6,  // [6:9] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	20, // 5: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
+	20, // 6: makejob.companion.v1.ASRConfigProto.created_at:type_name -> google.protobuf.Timestamp
+	20, // 7: makejob.companion.v1.ASRConfigProto.updated_at:type_name -> google.protobuf.Timestamp
+	13, // 8: makejob.companion.v1.ListASRConfigsResponse.configs:type_name -> makejob.companion.v1.ASRConfigProto
+	0,  // 9: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
+	7,  // 10: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
+	9,  // 11: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
+	11, // 12: makejob.companion.v1.CompanionService.RecognizeSpeech:input_type -> makejob.companion.v1.RecognizeSpeechRequest
+	14, // 13: makejob.companion.v1.CompanionService.ListASRConfigs:input_type -> makejob.companion.v1.ListASRConfigsRequest
+	17, // 14: makejob.companion.v1.CompanionService.CreateASRConfig:input_type -> makejob.companion.v1.CreateASRConfigRequest
+	18, // 15: makejob.companion.v1.CompanionService.UpdateASRConfig:input_type -> makejob.companion.v1.UpdateASRConfigRequest
+	19, // 16: makejob.companion.v1.CompanionService.DeleteASRConfig:input_type -> makejob.companion.v1.DeleteASRConfigRequest
+	16, // 17: makejob.companion.v1.CompanionService.UpdateASRDefault:input_type -> makejob.companion.v1.UpdateASRDefaultRequest
+	3,  // 18: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
+	8,  // 19: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
+	10, // 20: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
+	12, // 21: makejob.companion.v1.CompanionService.RecognizeSpeech:output_type -> makejob.companion.v1.RecognizeSpeechResponse
+	15, // 22: makejob.companion.v1.CompanionService.ListASRConfigs:output_type -> makejob.companion.v1.ListASRConfigsResponse
+	13, // 23: makejob.companion.v1.CompanionService.CreateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
+	13, // 24: makejob.companion.v1.CompanionService.UpdateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
+	21, // 25: makejob.companion.v1.CompanionService.DeleteASRConfig:output_type -> google.protobuf.Empty
+	21, // 26: makejob.companion.v1.CompanionService.UpdateASRDefault:output_type -> google.protobuf.Empty
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_makejob_companion_v1_companion_proto_init() }
@@ -982,7 +1656,7 @@ func file_makejob_companion_v1_companion_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_companion_v1_companion_proto_rawDesc), len(file_makejob_companion_v1_companion_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -28,13 +28,14 @@ func (MockInterview) TableName() string {
 
 // InterviewMessage 面试消息 GORM model（对齐单体 interview_messages 表结构）
 type InterviewMessage struct {
-	ID           uint64 `gorm:"primaryKey;autoIncrement"`
-	InterviewID  uint64 `gorm:"index;not null"`
-	Role         string `gorm:"size:20;not null"` // user, assistant
-	Content      string `gorm:"type:text;not null"`
-	MessageType  string `gorm:"size:20;default:text"` // text, code, audio
-	CreatedAt    int64  `gorm:"column:created_at;autoCreateTime:milli"`
-	MetadataJSON string `gorm:"column:metadata_json;type:text"`
+	ID            uint64 `gorm:"primaryKey;autoIncrement"`
+	InterviewID   uint64 `gorm:"index;not null"`
+	Role          string `gorm:"size:20;not null"` // user, assistant
+	Content       string `gorm:"type:text;not null"`
+	MessageType   string `gorm:"size:20;default:text"` // text, code, audio
+	QuestionIndex int32  `gorm:"column:question_index;default:0"`
+	CreatedAt     int64  `gorm:"column:created_at;autoCreateTime:milli"`
+	MetadataJSON  string `gorm:"column:metadata_json;type:text"`
 }
 
 func (InterviewMessage) TableName() string {

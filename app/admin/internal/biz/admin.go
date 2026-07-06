@@ -308,10 +308,7 @@ type PromptTemplate struct {
 	ID              uint64
 	IndustryID      uint64
 	Name            string
-	IndustryCode    string
-	TemplateType    string
 	Scene           string
-	Content         string
 	TemplateContent string
 	Variables       string
 	IsActive        bool

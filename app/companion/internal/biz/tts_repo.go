@@ -22,4 +22,6 @@ type Live2DModelRepo interface {
 type AdminConfigRepo interface {
 	// GetByKey 根据配置键获取配置值
 	GetByKey(ctx context.Context, key string) (*AdminConfig, error)
+	// Upsert 创建或更新配置
+	Upsert(ctx context.Context, config *AdminConfig) error
 }

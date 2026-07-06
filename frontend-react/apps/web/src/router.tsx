@@ -138,6 +138,7 @@ const PracticeNotesPageRoute = createLazyRouteComponent(async () => ({ default: 
 const MistakeTopicPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/practice/PracticeDetailPages')).MistakeTopicPage }))
 const InterviewHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewPage')).InterviewHubPage }))
 const InterviewHistoryPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewHistoryPage')).InterviewHistoryPage }))
+const PrototypeUIPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/prototype/PrototypeUIPage')).PrototypeUIPage }))
 const InterviewSessionPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewSessionPage')).InterviewSessionPage }))
 const InterviewReportPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewReportPage')).InterviewReportPage }))
 const CompanionHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionHubPage')).CompanionHubPage }))
@@ -370,6 +371,7 @@ function RootLayout() {
   const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
   const isStandaloneEditor = pathname.startsWith('/practice/editor')
+  const isPrototypeUI = pathname.startsWith('/prototype-ui')
   const loginPromptDialog = (
     <LoginRequiredDialog
       open={loginPromptState.open}
@@ -379,7 +381,7 @@ function RootLayout() {
     />
   )
 
-  if (isStandaloneCompanionRoom || isStandaloneEditor) {
+  if (isStandaloneCompanionRoom || isStandaloneEditor || isPrototypeUI) {
     return (
       <div className="app-shell companion-room-shell">
         <AuthBootstrap />
@@ -862,6 +864,12 @@ const interviewHistoryRoute = createRoute({
   component: InterviewHistoryPageRoute,
 })
 
+const prototypeUIRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'prototype-ui',
+  component: PrototypeUIPageRoute,
+})
+
 const interviewSessionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId',
@@ -994,6 +1002,7 @@ const routeTree = rootRoute.addChildren([
   growthRoute,
   loginRoute,
   workspaceRoute,
+  prototypeUIRoute,
 ])
 
 export const router = createRouter({

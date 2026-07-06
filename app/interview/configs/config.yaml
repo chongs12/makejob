@@ -17,6 +17,7 @@ data:
 
 ai:
   service_addr: "localhost:9011"
+  timeout_ms: 30000
 
 rag:
   service_addr: "localhost:9012"
@@ -32,3 +33,10 @@ jwt:
   secret: "makejob-secret-key-change-in-production"
   expire_hours: 168
   service_secret: "makejob-internal-service-secret"
+
+code_runner:
+  service_addr: "localhost:9013"
+  timeout_ms: 10000
+
+interview:
+  timeout_minutes: 40

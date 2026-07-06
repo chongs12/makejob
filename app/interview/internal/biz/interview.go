@@ -38,12 +38,16 @@ type AIServiceClient interface {
 	GetNextQuestionSession(ctx context.Context, req *GetNextQuestionSessionRequest) (*GetNextQuestionSessionResponse, error)
 	GenerateInterviewReport(ctx context.Context, req *GenerateInterviewReportRequest) (*GenerateInterviewReportResponse, error)
 	EndInterviewSession(ctx context.Context, req *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error)
+	// GenerateReportFromHistory 从对话历史生成报告（不依赖 session，供实时面试使用）
+	GenerateReportFromHistory(ctx context.Context, req *GenerateReportFromHistoryRequest) (*GenerateInterviewReportResponse, error)
 }
 
 // LearningArchiveClient 学习档案服务的 gRPC 客户端接口
 type LearningArchiveClient interface {
 	WriteEntry(ctx context.Context, entry *ArchiveEntry) error
 	ListByUser(ctx context.Context, userID uint64, limit int32) ([]*ArchiveEntry, error)
+	// ListBySource 按来源类型和面试 ID 服务端过滤，避免全量遍历
+	ListBySource(ctx context.Context, userID uint64, sourceType string, interviewID uint64) ([]*ArchiveEntry, error)
 }
 
 // IndustryClient 行业服务的 gRPC 客户端接口
@@ -297,6 +301,14 @@ type GenerateInterviewReportResponse struct {
 	Weaknesses      []string
 	Suggestions     []string
 	AiFeedback      string
+}
+
+// GenerateReportFromHistoryRequest 从对话历史生成报告请求（不依赖 session）
+type GenerateReportFromHistoryRequest struct {
+	History        []*InterviewMessage
+	IndustryCode   string
+	Difficulty     string
+	TotalQuestions int32
 }
 
 type EndInterviewSessionRequest struct {

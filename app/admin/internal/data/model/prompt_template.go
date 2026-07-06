@@ -1,19 +1,23 @@
 package model
 
-import "gorm.io/gorm"
+import (
+	"time"
 
-// PromptTemplate Prompt 模板 GORM model
+	"gorm.io/gorm"
+)
+
+// PromptTemplate Prompt 模板 GORM model（对齐 AI Gateway 数据库表结构）
 type PromptTemplate struct {
-	gorm.Model
-	IndustryID      *uint  `gorm:"index"`
-	Name            string `gorm:"size:100;not null"`
-	IndustryCode    string `gorm:"size:50;index"`
-	TemplateType    string `gorm:"size:50"`
-	Scene           string `gorm:"size:20;not null"`
-	TemplateContent string `gorm:"type:text;not null"`
-	Content         string `gorm:"type:text"` // legacy alias
-	Variables       string `gorm:"type:text"`
-	IsActive        bool   `gorm:"not null;default:true"`
+	ID              uint           `gorm:"primaryKey;autoIncrement"`
+	IndustryID      *uint          `gorm:"index"`
+	Name            string         `gorm:"size:100;not null"`
+	Scene           string         `gorm:"size:20;not null;index"`
+	TemplateContent string         `gorm:"type:text;not null"`
+	Variables       string         `gorm:"type:text"`
+	IsActive        bool           `gorm:"not null;default:true"`
+	CreatedAt       time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt       time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt       gorm.DeletedAt `gorm:"index"`
 }
 
 func (PromptTemplate) TableName() string { return "prompt_templates" }

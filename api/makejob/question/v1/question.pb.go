@@ -2446,16 +2446,16 @@ func (x *WrongQuestionListResponse) GetPageResult() *v1.PageResult {
 
 type WrongQuestionEntry struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
-	QuestionId  uint64                 `protobuf:"varint,1,opt,name=question_id,json=questionId,proto3" json:"question_id"`
-	Title       string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title"`
-	WrongCount  int32                  `protobuf:"varint,3,opt,name=wrong_count,json=wrongCount,proto3" json:"wrong_count"`
+	QuestionId  uint64                 `protobuf:"varint,1,opt,name=question_id,json=questionId,proto3" json:"question_id,omitempty"`
+	Title       string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	WrongCount  int32                  `protobuf:"varint,3,opt,name=wrong_count,json=wrongCount,proto3" json:"wrong_count,omitempty"`
 	LastWrongAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_wrong_at,json=lastWrongAt,proto3" json:"last_wrong_at,omitempty"`
-	LastAnswer  string                 `protobuf:"bytes,5,opt,name=last_answer,json=lastAnswer,proto3" json:"last_answer"`
+	LastAnswer  string                 `protobuf:"bytes,5,opt,name=last_answer,json=lastAnswer,proto3" json:"last_answer,omitempty"`
 	// 题目详情字段
-	Difficulty    string `protobuf:"bytes,6,opt,name=difficulty,proto3" json:"difficulty"`                         // easy / medium / hard
-	Type          string `protobuf:"bytes,7,opt,name=type,proto3" json:"type"`                                     // choice / multi / subjective / code
-	CategoryName  string `protobuf:"bytes,8,opt,name=category_name,json=categoryName,proto3" json:"category_name"` // 分类名称
-	CategoryId    uint64 `protobuf:"varint,9,opt,name=category_id,json=categoryId,proto3" json:"category_id"`      // 分类 ID
+	Difficulty    string `protobuf:"bytes,6,opt,name=difficulty,proto3" json:"difficulty,omitempty"`                         // easy / medium / hard
+	Type          string `protobuf:"bytes,7,opt,name=type,proto3" json:"type,omitempty"`                                     // choice / multi / subjective / code
+	CategoryName  string `protobuf:"bytes,8,opt,name=category_name,json=categoryName,proto3" json:"category_name,omitempty"` // 分类名称
+	CategoryId    uint64 `protobuf:"varint,9,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`      // 分类 ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

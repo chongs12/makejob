@@ -82,8 +82,28 @@ func (c *learningArchiveClient) ListByUser(ctx context.Context, userID uint64, l
 		return nil, fmt.Errorf("ListByUser gRPC call failed: %w", err)
 	}
 
-	entries := make([]*biz.ArchiveEntry, len(resp.Entries))
-	for i, e := range resp.Entries {
+	return convertArchiveEntries(resp.Entries), nil
+}
+
+// ListBySource 按来源类型和面试 ID 过滤学习档案条目。
+// 当前通过 ListByUser + 客户端过滤实现，待 proto 添加 ListBySource RPC 后改为服务端过滤。
+func (c *learningArchiveClient) ListBySource(ctx context.Context, userID uint64, sourceType string, interviewID uint64) ([]*biz.ArchiveEntry, error) {
+	all, err := c.ListByUser(ctx, userID, 1000)
+	if err != nil {
+		return nil, err
+	}
+	var filtered []*biz.ArchiveEntry
+	for _, e := range all {
+		if e.SourceType == sourceType && (interviewID == 0 || e.InterviewID == interviewID) {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered, nil
+}
+
+func convertArchiveEntries(entries []*archivev1.ArchiveEntry) []*biz.ArchiveEntry {
+	result := make([]*biz.ArchiveEntry, len(entries))
+	for i, e := range entries {
 		entry := &biz.ArchiveEntry{
 			ID:              e.Id,
 			UserID:          e.UserId,
@@ -104,7 +124,7 @@ func (c *learningArchiveClient) ListByUser(ctx context.Context, userID uint64, l
 		if e.CreatedAt != nil {
 			entry.CreatedAt = e.CreatedAt.AsTime()
 		}
-		entries[i] = entry
+		result[i] = entry
 	}
-	return entries, nil
+	return result
 }

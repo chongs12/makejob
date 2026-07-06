@@ -14,8 +14,9 @@ import (
 
 // codeRunnerClient 实现 biz.CodeRunnerClient 接口，通过 gRPC 调用代码执行服务
 type codeRunnerClient struct {
-	client coderunnerv1.CodeRunnerServiceClient
-	conn   *grpc.ClientConn
+	client    coderunnerv1.CodeRunnerServiceClient
+	conn      *grpc.ClientConn
+	timeoutMs int32
 }
 
 // NewCodeRunnerClient 创建代码执行服务客户端
@@ -24,9 +25,14 @@ func NewCodeRunnerClient(cfg *conf.CodeRunner) (biz.CodeRunnerClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to CodeRunner service at %s: %w", cfg.ServiceAddr, err)
 	}
+	timeoutMs := int32(cfg.TimeoutMs)
+	if timeoutMs <= 0 {
+		timeoutMs = 10000
+	}
 	return &codeRunnerClient{
-		client: coderunnerv1.NewCodeRunnerServiceClient(conn),
-		conn:   conn,
+		client:    coderunnerv1.NewCodeRunnerServiceClient(conn),
+		conn:      conn,
+		timeoutMs: timeoutMs,
 	}, nil
 }
 
@@ -53,7 +59,7 @@ func (c *codeRunnerClient) Execute(ctx context.Context, language, code string, t
 		Language:  language,
 		Code:      code,
 		TestCases: tc,
-		TimeoutMs: 10000,
+		TimeoutMs: c.timeoutMs,
 	}
 
 	resp, err := c.client.Execute(ctx, req)

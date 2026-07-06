@@ -13,7 +13,17 @@ type Bootstrap struct {
 	JWT       *JWT       `yaml:"jwt"`
 	AI        *AI        `yaml:"ai"`
 	TTS       *TTS       `yaml:"tts"`
+	ASR       *ASR       `yaml:"asr"`
 	Services  *Services  `yaml:"services"`
+}
+
+// ASR 语音识别服务配置
+type ASR struct {
+	AppID       string `yaml:"app_id"`
+	AccessToken string `yaml:"access_token"`
+	BaseURL     string `yaml:"base_url"`
+	Cluster     string `yaml:"cluster"`
+	Language    string `yaml:"language"`
 }
 
 // Services 外部服务配置
