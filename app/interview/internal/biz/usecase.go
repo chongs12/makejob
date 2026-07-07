@@ -75,10 +75,14 @@ func NewInterviewUseCase(
 
 // CreateInterview 创建面试会话
 func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInterviewRequest) (*Interview, *InterviewQuestion, error) {
-	// 验证行业代码（当前由本地仓储实现，接口保持不变）
-	ind, err := uc.industry.GetIndustry(ctx, req.IndustryCode)
-	if err != nil {
-		return nil, nil, kratosErr.New(400, "INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
+	// 知识点专项模式跳过 industry 校验（支持任意自定义知识点），其他模式仍校验行业代码
+	var industryID uint64
+	if strings.TrimSpace(req.InterviewType) != "knowledge" {
+		ind, err := uc.industry.GetIndustry(ctx, req.IndustryCode)
+		if err != nil {
+			return nil, nil, kratosErr.New(400, "INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
+		}
+		industryID = ind.ID
 	}
 
 	// 补充默认值：resume_driven 模式下前端可能不传 difficulty 和 question_count
@@ -93,32 +97,36 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 
 	now := time.Now()
 	interview := &Interview{
-		UserID:         req.UserID,
-		IndustryID:     ind.ID,
-		IndustryCode:   req.IndustryCode,
-		Difficulty:     difficulty,
-		Status:         "ongoing",
-		InterviewMode:  req.InterviewMode,
-		QuestionCount:  questionCount,
-		CurrentIndex:   0,
-		ResumeText:     req.ResumeText,
-		JobDescription: req.JobDescription,
-		Live2DModelKey: req.Live2DModelKey,
-		CreatedAt:      now,
-		StartedAt:      &now,
+		UserID:          req.UserID,
+		IndustryID:      industryID,
+		IndustryCode:    req.IndustryCode,
+		Difficulty:      difficulty,
+		Status:          "ongoing",
+		InterviewMode:   req.InterviewMode,
+		InterviewType:   req.InterviewType,
+		KnowledgeTopics: req.Topics,
+		QuestionCount:   questionCount,
+		CurrentIndex:    0,
+		ResumeText:      req.ResumeText,
+		JobDescription:  req.JobDescription,
+		Live2DModelKey:  req.Live2DModelKey,
+		CreatedAt:       now,
+		StartedAt:       &now,
 	}
 
 	var firstQuestion *InterviewQuestion
 	if !isRealtimeInterview(interview) {
 		// 调用 AI Gateway 的 StartInterview 获取 sessionID 和首题（对齐单体 InterviewAgent.StartInterview）
 		aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
-			InterviewID:   interview.ID,
-			IndustryCode:  req.IndustryCode,
-			Difficulty:    difficulty,
-			QuestionCount: questionCount,
-			ResumeText:    req.ResumeText,
+			InterviewID:    interview.ID,
+			IndustryCode:   req.IndustryCode,
+			Difficulty:     difficulty,
+			QuestionCount:  questionCount,
+			ResumeText:     req.ResumeText,
 			JobDescription: req.JobDescription,
-			InterviewMode: req.InterviewMode,
+			InterviewMode:  req.InterviewMode,
+			Topics:         req.Topics,
+			InterviewType:  req.InterviewType,
 		})
 		if err != nil {
 			return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
@@ -376,6 +384,8 @@ func (uc *InterviewUseCase) GetNextQuestion(ctx context.Context, interviewID, us
 		QuestionIndex: interview.CurrentIndex,
 		ResumeText:    interview.ResumeText,
 		JobDesc:       jobDesc,
+		Topics:        interview.KnowledgeTopics,
+		InterviewType: interview.InterviewType,
 	})
 	if err != nil {
 		return nil, nil, kratosErr.InternalServer("AI_CALL_FAILED", "AI 服务调用失败").WithCause(err)
@@ -488,6 +498,16 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 		return nil
 	}
 
+	// 知识点专项面试：走独立报告生成路径，不依赖 session
+	if interview.InterviewType == "knowledge" {
+		return uc.generateKnowledgeReport(ctx, interviewID, userID, interview)
+	}
+
+	// 岗位求职面试：走岗位报告生成路径，不依赖 session，基于简历+JD+对话历史
+	if interview.InterviewType == "job" {
+		return uc.generateJobReport(ctx, interviewID, userID, interview)
+	}
+
 	// 实时面试的 session 不在 AI Gateway 的内存中（走火山引擎 WebSocket），
 	// 调 GenerateInterviewReport 必然失败，改用 GenerateReportFromHistory 发送完整对话。
 	if isRealtimeInterview(interview) {
@@ -558,6 +578,133 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 	reportResp.Suggestions = suggestions
 
 	return uc.saveReport(ctx, interviewID, interview, reportResp)
+}
+
+// generateKnowledgeReport 知识点专项面试报告生成（不依赖 session，基于完整对话历史）。
+// 学习型报告必须由 LLM 生成，失败直接置 report_failed，不做字数兜底降级。
+func (uc *InterviewUseCase) generateKnowledgeReport(ctx context.Context, interviewID, userID uint64, interview *Interview) error {
+	messages, err := uc.repo.ListMessages(ctx, interviewID)
+	if err != nil {
+		return err
+	}
+
+	reportResp, err := uc.ai.GenerateKnowledgeReport(ctx, &GenerateKnowledgeReportRequest{
+		History:         messages,
+		KnowledgeTopics: interview.KnowledgeTopics,
+		Difficulty:      interview.Difficulty,
+		TotalQuestions:  interview.QuestionCount,
+	})
+	if err != nil {
+		log.Warnf("[ReportGen] knowledge report failed: interview_id=%d err=%v", interviewID, err)
+		interview.Status = "report_failed"
+		_ = uc.repo.Update(ctx, interview)
+		return err
+	}
+
+	report := &InterviewReport{
+		InterviewID:    interviewID,
+		OverallScore:   reportResp.OverallScore,
+		ReportTemplate: "knowledge",
+		ReportDataJSON: reportResp.ReportJSON,
+		Summary:        extractKnowledgeSummary(reportResp.ReportJSON),
+	}
+
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.reportRepo.Create(txCtx, report); err != nil {
+			return err
+		}
+		interview.Status = "completed"
+		interview.OverallScore = reportResp.OverallScore
+		return uc.repo.Update(txCtx, interview)
+	}); err != nil {
+		log.Errorf("[ReportGen] save knowledge report failed: interview_id=%d err=%v", interviewID, err)
+		interview.Status = "report_failed"
+		_ = uc.repo.Update(ctx, interview)
+		return err
+	}
+
+	log.Infof("[ReportGen] knowledge report saved: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
+
+	if uc.publisher != nil {
+		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, nil, nil)
+	}
+	return nil
+}
+
+// extractKnowledgeSummary 从知识点报告 JSON 中提取 conclusion 作为摘要，便于列表展示。
+func extractKnowledgeSummary(reportJSON string) string {
+	if strings.TrimSpace(reportJSON) == "" {
+		return ""
+	}
+	var partial struct {
+		Conclusion string `json:"conclusion"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &partial); err != nil {
+		return ""
+	}
+	return partial.Conclusion
+}
+
+// generateJobReport 岗位求职面试报告生成（不依赖 session，基于完整对话历史 + 简历画像 + JD）。
+// 求职型报告必须由 LLM 生成，失败直接置 report_failed，不做兜底降级。
+func (uc *InterviewUseCase) generateJobReport(ctx context.Context, interviewID, userID uint64, interview *Interview) error {
+	messages, err := uc.repo.ListMessages(ctx, interviewID)
+	if err != nil {
+		return err
+	}
+
+	reportResp, err := uc.ai.GenerateJobReport(ctx, &GenerateJobReportRequest{
+		History:          messages,
+		ResumeText:       interview.ResumeText,
+		ResumeParsedJSON: interview.ResumeParsedJSON,
+		JobDescription:   interview.JobDescription,
+		IndustryCode:     interview.IndustryCode,
+		Difficulty:       interview.Difficulty,
+		TotalQuestions:   interview.QuestionCount,
+	})
+	if err != nil {
+		log.Warnf("[ReportGen] job report failed: interview_id=%d err=%v", interviewID, err)
+		interview.Status = "report_failed"
+		_ = uc.repo.Update(ctx, interview)
+		return err
+	}
+
+	report := &InterviewReport{
+		InterviewID:    interviewID,
+		OverallScore:   reportResp.OverallScore,
+		ReportTemplate: "job",
+		ReportDataJSON: reportResp.ReportJSON,
+		Summary:        extractJobSummary(reportResp.HireRecommendation),
+	}
+
+	if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		if err := uc.reportRepo.Create(txCtx, report); err != nil {
+			return err
+		}
+		interview.Status = "completed"
+		interview.OverallScore = reportResp.OverallScore
+		return uc.repo.Update(txCtx, interview)
+	}); err != nil {
+		log.Errorf("[ReportGen] save job report failed: interview_id=%d err=%v", interviewID, err)
+		interview.Status = "report_failed"
+		_ = uc.repo.Update(ctx, interview)
+		return err
+	}
+
+	log.Infof("[ReportGen] job report saved: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
+
+	if uc.publisher != nil {
+		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, nil, nil)
+	}
+	return nil
+}
+
+// extractJobSummary 用录用建议生成列表摘要，便于历史列表展示。
+func extractJobSummary(hireRecommendation string) string {
+	if strings.TrimSpace(hireRecommendation) == "" {
+		return ""
+	}
+	return fmt.Sprintf("录用建议：%s", hireRecommendation)
 }
 
 // saveReport 将报告写入数据库并更新面试状态
@@ -799,6 +946,8 @@ type GetReportResult struct {
 	CodingDiagnostics []*CodingDiagnosisBiz
 	DurationSeconds   int32
 	CompletedAt       *time.Time
+	ReportTemplate    string // knowledge | job | ""
+	ReportDataJSON    string // 完整结构化报告 JSON，前端按 report_template 渲染
 }
 
 // CodingAnswerResult 编程题提交结果
@@ -1191,6 +1340,8 @@ func (uc *InterviewUseCase) GetReport(ctx context.Context, interviewID, userID u
 			CodingDiagnostics: codingDiagnostics,
 			DurationSeconds:   calcDurationSeconds(interview.StartedAt, interview.FinishedAt),
 			CompletedAt:       interview.FinishedAt,
+			ReportTemplate:    report.ReportTemplate,
+			ReportDataJSON:    report.ReportDataJSON,
 		}, nil
 	default:
 		return nil, ErrReportNotReady

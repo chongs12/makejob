@@ -79,6 +79,7 @@ type CreateInterviewRequest struct {
 	InterviewMode  string                 `protobuf:"bytes,7,opt,name=interview_mode,json=interviewMode,proto3" json:"interview_mode,omitempty"`
 	ResumeText     string                 `protobuf:"bytes,8,opt,name=resume_text,json=resumeText,proto3" json:"resume_text,omitempty"`
 	JobDescription string                 `protobuf:"bytes,9,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"`
+	InterviewType  string                 `protobuf:"bytes,10,opt,name=interview_type,json=interviewType,proto3" json:"interview_type,omitempty"` // knowledge | job，决定出题与报告模板
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -172,6 +173,13 @@ func (x *CreateInterviewRequest) GetResumeText() string {
 func (x *CreateInterviewRequest) GetJobDescription() string {
 	if x != nil {
 		return x.JobDescription
+	}
+	return ""
+}
+
+func (x *CreateInterviewRequest) GetInterviewType() string {
+	if x != nil {
+		return x.InterviewType
 	}
 	return ""
 }
@@ -1309,6 +1317,8 @@ type InterviewReport struct {
 	TaskError       string `protobuf:"bytes,14,opt,name=task_error,json=taskError,proto3" json:"task_error,omitempty"`
 	DurationSeconds int32  `protobuf:"varint,15,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
 	CompletedAt     string `protobuf:"bytes,16,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	ReportTemplate  string `protobuf:"bytes,17,opt,name=report_template,json=reportTemplate,proto3" json:"report_template,omitempty"`   // knowledge | job | ""，决定前端渲染模板
+	ReportDataJson  string `protobuf:"bytes,18,opt,name=report_data_json,json=reportDataJson,proto3" json:"report_data_json,omitempty"` // 完整结构化报告 JSON，前端按 report_template 解析
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1451,6 +1461,20 @@ func (x *InterviewReport) GetDurationSeconds() int32 {
 func (x *InterviewReport) GetCompletedAt() string {
 	if x != nil {
 		return x.CompletedAt
+	}
+	return ""
+}
+
+func (x *InterviewReport) GetReportTemplate() string {
+	if x != nil {
+		return x.ReportTemplate
+	}
+	return ""
+}
+
+func (x *InterviewReport) GetReportDataJson() string {
+	if x != nil {
+		return x.ReportDataJson
 	}
 	return ""
 }
@@ -2690,7 +2714,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\n" +
 	"$makejob/interview/v1/interview.proto\x12\x14makejob.interview.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\"makejob/shared/v1/pagination.proto\"(\n" +
 	"\rUserIDRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xd0\x02\n" +
+	"\auser_id\x18\x01 \x01(\x04R\x06userId\"\xf7\x02\n" +
 	"\x16CreateInterviewRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -2703,7 +2727,9 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\x0einterview_mode\x18\a \x01(\tR\rinterviewMode\x12\x1f\n" +
 	"\vresume_text\x18\b \x01(\tR\n" +
 	"resumeText\x12'\n" +
-	"\x0fjob_description\x18\t \x01(\tR\x0ejobDescription\"\xca\x04\n" +
+	"\x0fjob_description\x18\t \x01(\tR\x0ejobDescription\x12%\n" +
+	"\x0einterview_type\x18\n" +
+	" \x01(\tR\rinterviewType\"\xca\x04\n" +
 	"\x11InterviewResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12N\n" +
@@ -2823,7 +2849,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"questionNo\"T\n" +
 	"\x16FinishInterviewRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xec\x05\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xbf\x06\n" +
 	"\x0fInterviewReport\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\roverall_score\x18\x02 \x01(\x01R\foverallScore\x12'\n" +
@@ -2845,7 +2871,9 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\n" +
 	"task_error\x18\x0e \x01(\tR\ttaskError\x12)\n" +
 	"\x10duration_seconds\x18\x0f \x01(\x05R\x0fdurationSeconds\x12!\n" +
-	"\fcompleted_at\x18\x10 \x01(\tR\vcompletedAt\x1aB\n" +
+	"\fcompleted_at\x18\x10 \x01(\tR\vcompletedAt\x12'\n" +
+	"\x0freport_template\x18\x11 \x01(\tR\x0ereportTemplate\x12(\n" +
+	"\x10report_data_json\x18\x12 \x01(\tR\x0ereportDataJson\x1aB\n" +
 	"\x14DimensionScoresEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xda\x02\n" +

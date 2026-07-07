@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -232,17 +234,22 @@ func (r *interviewRepo) AppendMessageAndBumpIndex(ctx context.Context, msg *biz.
 
 func toModel(iv *biz.Interview) *model.MockInterview {
 	m := &model.MockInterview{
-		UserID:         iv.UserID,
-		IndustryID:     iv.IndustryID,
-		Status:         iv.Status,
-		Score:          iv.OverallScore,
-		TotalQuestions: iv.QuestionCount,
-		AIFeedback:     iv.AIFeedback,
-		AISessionID:    iv.AISessionID,
-		ReportJSON:     iv.ReportJSON,
-		StartedAt:      iv.StartedAt,
-		EndedAt:        iv.FinishedAt,
-		Live2DModelKey: iv.Live2DModelKey,
+		UserID:              iv.UserID,
+		IndustryID:          iv.IndustryID,
+		Status:              iv.Status,
+		InterviewType:       iv.InterviewType,
+		KnowledgeTopicsJSON: marshalKnowledgeTopics(iv.KnowledgeTopics),
+		ResumeText:          iv.ResumeText,
+		JobDescription:      iv.JobDescription,
+		ResumeParsedJSON:    iv.ResumeParsedJSON,
+		Score:               iv.OverallScore,
+		TotalQuestions:      iv.QuestionCount,
+		AIFeedback:          iv.AIFeedback,
+		AISessionID:         iv.AISessionID,
+		ReportJSON:          iv.ReportJSON,
+		StartedAt:           iv.StartedAt,
+		EndedAt:             iv.FinishedAt,
+		Live2DModelKey:      iv.Live2DModelKey,
 	}
 	if iv.ID > 0 {
 		m.Model.ID = uint(iv.ID)
@@ -255,21 +262,50 @@ func toModel(iv *biz.Interview) *model.MockInterview {
 
 func toBiz(m *model.MockInterview) *biz.Interview {
 	return &biz.Interview{
-		ID:               uint64(m.ID),
-		UserID:           m.UserID,
-		IndustryID:       m.IndustryID,
-		Status:           m.Status,
-		OverallScore:     m.Score,
-		QuestionCount:    m.TotalQuestions,
-		AIFeedback:       m.AIFeedback,
-		AISessionID:      m.AISessionID,
-		ReportJSON:       m.ReportJSON,
-		StartedAt:        m.StartedAt,
-		FinishedAt:       m.EndedAt,
-		Live2DModelKey:   m.Live2DModelKey,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
+		ID:              uint64(m.ID),
+		UserID:          m.UserID,
+		IndustryID:      m.IndustryID,
+		Status:          m.Status,
+		InterviewType:   m.InterviewType,
+		KnowledgeTopics: unmarshalKnowledgeTopics(m.KnowledgeTopicsJSON),
+		ResumeText:      m.ResumeText,
+		JobDescription:  m.JobDescription,
+		ResumeParsedJSON: m.ResumeParsedJSON,
+		OverallScore:    m.Score,
+		QuestionCount:   m.TotalQuestions,
+		AIFeedback:      m.AIFeedback,
+		AISessionID:     m.AISessionID,
+		ReportJSON:      m.ReportJSON,
+		StartedAt:       m.StartedAt,
+		FinishedAt:      m.EndedAt,
+		Live2DModelKey:  m.Live2DModelKey,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
+}
+
+// marshalKnowledgeTopics 序列化知识点列表为 JSON 字符串，空切片返回 "[]"。
+func marshalKnowledgeTopics(topics []string) string {
+	if topics == nil {
+		return "[]"
+	}
+	data, err := json.Marshal(topics)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+// unmarshalKnowledgeTopics 反序列化知识点 JSON，失败或为空返回 nil。
+func unmarshalKnowledgeTopics(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var topics []string
+	if err := json.Unmarshal([]byte(raw), &topics); err != nil {
+		return nil
+	}
+	return topics
 }
 
 // GetStats SQL 聚合查询面试统计（FIX I3: 避免全量加载）

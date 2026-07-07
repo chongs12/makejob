@@ -51,6 +51,7 @@ message CreateInterviewRequest {
   string interview_mode = 7;
   string resume_text = 8;
   string job_description = 9;
+  string interview_type = 10;  // knowledge | job，决定出题与报告模板
 }
 
 message InterviewResponse {
@@ -194,6 +195,8 @@ message InterviewReport {
   string task_error = 14;
   int32 duration_seconds = 15;
   string completed_at = 16;
+  string report_template = 17;  // knowledge | job | ""，决定前端渲染模板
+  string report_data_json = 18;  // 完整结构化报告 JSON，前端按 report_template 解析
 }
 
 message CodingDiagnosis {

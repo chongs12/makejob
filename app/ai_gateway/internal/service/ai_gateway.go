@@ -59,6 +59,8 @@ func (s *AIGatewayService) InterviewAgent(ctx context.Context, req *aiv1.Intervi
 		req.JobDescription,
 		history,
 		req.QuestionIndex,
+		req.Topics,
+		req.InterviewType,
 	)
 	if err != nil {
 		return nil, err
@@ -80,13 +82,15 @@ func (s *AIGatewayService) InterviewAgent(ctx context.Context, req *aiv1.Intervi
 // StartInterview 开始面试会话（对齐单体 InterviewAgent.StartInterview）
 func (s *AIGatewayService) StartInterview(ctx context.Context, req *aiv1.StartInterviewRequest) (*aiv1.StartInterviewResponse, error) {
 	result, err := s.interviewSessionUC.StartInterview(ctx, &biz.StartInterviewRequest{
-		InterviewID:   req.InterviewId,
-		IndustryCode:  req.IndustryCode,
-		Difficulty:    req.Difficulty,
-		QuestionCount: req.QuestionCount,
-		ResumeText:    req.ResumeText,
+		InterviewID:    req.InterviewId,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		QuestionCount:  req.QuestionCount,
+		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
-		InterviewMode: req.InterviewMode,
+		InterviewMode:  req.InterviewMode,
+		Topics:         req.Topics,
+		InterviewType:  req.InterviewType,
 	})
 	if err != nil {
 		return nil, err
@@ -181,6 +185,54 @@ func (s *AIGatewayService) GenerateReportFromHistory(ctx context.Context, req *a
 		Strengths:    result.Strengths,
 		Weaknesses:   result.Weaknesses,
 		Suggestions:  result.Suggestions,
+	}, nil
+}
+
+// GenerateKnowledgeReport 知识点专项面试报告生成 handler
+func (s *AIGatewayService) GenerateKnowledgeReport(ctx context.Context, req *aiv1.GenerateKnowledgeReportRequest) (*aiv1.GenerateKnowledgeReportResponse, error) {
+	history := make([]biz.Message, len(req.History))
+	for i, m := range req.History {
+		history[i] = biz.Message{Role: m.Role, Content: m.Content}
+	}
+	result, err := s.interviewSessionUC.GenerateKnowledgeReport(ctx, &biz.GenerateKnowledgeReportRequest{
+		History:         history,
+		KnowledgeTopics: req.KnowledgeTopics,
+		Difficulty:      req.Difficulty,
+		TotalQuestions:  req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GenerateKnowledgeReportResponse{
+		ReportJson:   result.ReportJSON,
+		OverallScore: result.OverallScore,
+		Rating:       result.Rating,
+	}, nil
+}
+
+// GenerateJobReport 岗位求职面试报告生成 handler
+func (s *AIGatewayService) GenerateJobReport(ctx context.Context, req *aiv1.GenerateJobReportRequest) (*aiv1.GenerateJobReportResponse, error) {
+	history := make([]biz.Message, len(req.History))
+	for i, m := range req.History {
+		history[i] = biz.Message{Role: m.Role, Content: m.Content}
+	}
+	result, err := s.interviewSessionUC.GenerateJobReport(ctx, &biz.GenerateJobReportRequest{
+		History:          history,
+		ResumeText:       req.ResumeText,
+		ResumeParsedJSON: req.ResumeParsedJson,
+		JobDescription:   req.JobDescription,
+		IndustryCode:     req.IndustryCode,
+		Difficulty:       req.Difficulty,
+		TotalQuestions:   req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &aiv1.GenerateJobReportResponse{
+		ReportJson:         result.ReportJSON,
+		OverallScore:       result.OverallScore,
+		Rating:             result.Rating,
+		HireRecommendation: result.HireRecommendation,
 	}, nil
 }
 

@@ -34,6 +34,7 @@ func (s *InterviewService) CreateInterview(ctx context.Context, req *interviewv1
 		Topics:         req.Topics,
 		QuestionCount:  req.QuestionCount,
 		InterviewMode:  req.InterviewMode,
+		InterviewType:  req.InterviewType,
 		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
 		Live2DModelKey: req.Live2DModelKey,
@@ -244,6 +245,8 @@ func (s *InterviewService) GetReport(ctx context.Context, req *interviewv1.GetRe
 		DimensionScores: result.DimensionScores,
 		Summary:         result.Summary,
 		DurationSeconds: result.DurationSeconds,
+		ReportTemplate:  result.ReportTemplate,
+		ReportDataJson:  result.ReportDataJSON,
 	}
 	if result.CompletedAt != nil {
 		report.CompletedAt = result.CompletedAt.Format("2006-01-02T15:04:05Z07:00")

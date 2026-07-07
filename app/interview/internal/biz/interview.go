@@ -40,6 +40,10 @@ type AIServiceClient interface {
 	EndInterviewSession(ctx context.Context, req *EndInterviewSessionRequest) (*EndInterviewSessionResponse, error)
 	// GenerateReportFromHistory 从对话历史生成报告（不依赖 session，供实时面试使用）
 	GenerateReportFromHistory(ctx context.Context, req *GenerateReportFromHistoryRequest) (*GenerateInterviewReportResponse, error)
+	// GenerateKnowledgeReport 知识点专项面试报告生成（基于完整对话历史）
+	GenerateKnowledgeReport(ctx context.Context, req *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error)
+	// GenerateJobReport 岗位求职面试报告生成（基于完整对话历史 + 简历画像 + JD）
+	GenerateJobReport(ctx context.Context, req *GenerateJobReportRequest) (*GenerateJobReportResponse, error)
 }
 
 // LearningArchiveClient 学习档案服务的 gRPC 客户端接口
@@ -98,6 +102,8 @@ type Interview struct {
 	Difficulty       string     `gorm:"-"` // 运行期字段，不落库
 	Status           string     // created, in_progress, ongoing, report_generating, report_failed, completed
 	InterviewMode    string     `gorm:"-"` // 运行期字段，不落库
+	InterviewType    string     // 落库：knowledge | job，决定出题与报告模板
+	KnowledgeTopics  []string   `gorm:"-"` // 运行期，落库为 knowledge_topics JSON
 	QuestionCount    int32      // 对应表 total_questions
 	CurrentIndex     int32      `gorm:"-"` // 运行期字段，由消息计数推导
 	OverallScore     float64    // 对应表 score
@@ -105,9 +111,9 @@ type Interview struct {
 	AISessionID      string     // 对应表 ai_session_id
 	ReportJSON       string     // 对应表 report_json
 	StartedAt        *time.Time // 对应表 started_at
-	ResumeText       string     `gorm:"-"` // 运行期字段，不落库
-	ResumeParsedJSON string     `gorm:"-"` // 运行期字段，不落库
-	JobDescription   string     `gorm:"-"` // 运行期字段，不落库
+	ResumeText       string     // 落库：简历原文，岗位求职报告依赖
+	ResumeParsedJSON string     // 落库：简历解析画像 JSON
+	JobDescription   string     // 落库：目标岗位 JD
 	Live2DModelKey   string
 	FinishedAt       *time.Time // 对应表 ended_at
 	CreatedAt        time.Time
@@ -151,6 +157,8 @@ type InterviewAgentRequest struct {
 	QuestionIndex int32
 	ResumeText    string
 	JobDesc       string
+	Topics        []string // 知识点专项面试的自定义知识点
+	InterviewType string   // knowledge | job，决定出题 prompt 分支
 	Mode          string // "question", "report", "evaluate"
 }
 
@@ -248,6 +256,8 @@ type StartInterviewRequest struct {
 	ResumeText    string
 	JobDescription string
 	InterviewMode string
+	Topics        []string // 知识点专项面试的自定义知识点
+	InterviewType string   // knowledge | job，决定出题 prompt 分支
 }
 
 type StartInterviewResponse struct {
@@ -311,6 +321,40 @@ type GenerateReportFromHistoryRequest struct {
 	TotalQuestions int32
 }
 
+// GenerateKnowledgeReportRequest 知识点专项报告生成请求
+type GenerateKnowledgeReportRequest struct {
+	History         []*InterviewMessage
+	KnowledgeTopics []string
+	Difficulty      string
+	TotalQuestions  int32
+}
+
+// GenerateKnowledgeReportResponse 知识点专项报告生成响应
+type GenerateKnowledgeReportResponse struct {
+	ReportJSON   string
+	OverallScore float64
+	Rating       string
+}
+
+// GenerateJobReportRequest 岗位求职报告生成请求
+type GenerateJobReportRequest struct {
+	History          []*InterviewMessage
+	ResumeText       string
+	ResumeParsedJSON string
+	JobDescription   string
+	IndustryCode     string
+	Difficulty       string
+	TotalQuestions   int32
+}
+
+// GenerateJobReportResponse 岗位求职报告生成响应
+type GenerateJobReportResponse struct {
+	ReportJSON         string
+	OverallScore       float64
+	Rating             string
+	HireRecommendation string
+}
+
 type EndInterviewSessionRequest struct {
 	SessionId string
 }
@@ -358,6 +402,7 @@ type CreateInterviewRequest struct {
 	Topics         []string
 	QuestionCount  int32
 	InterviewMode  string
+	InterviewType  string // knowledge | job
 	ResumeText     string
 	JobDescription string
 	Live2DModelKey string
@@ -368,6 +413,8 @@ type InterviewReport struct {
 	ID                    uint64
 	InterviewID           uint64
 	OverallScore          float64
+	ReportTemplate        string // knowledge | job | ""
+	ReportDataJSON        string // 完整结构化报告 JSON，前端按 report_template 渲染
 	DimensionScoresJSON   string
 	StrengthsJSON         string
 	WeaknessesJSON        string
