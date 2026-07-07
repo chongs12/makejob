@@ -35,6 +35,7 @@ export function buildInitialInterviewForm(): InterviewConfigForm {
     topicsText: buildDefaultInterviewTopics(INTERVIEW_DEFAULT_INDUSTRY_CODE),
     live2dModelKey: '',
     interviewMode: 'general',
+    interviewType: 'knowledge',
     resumeText: '',
     jobDescription: '',
   }

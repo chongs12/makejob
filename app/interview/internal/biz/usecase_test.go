@@ -210,6 +210,16 @@ func (a *interviewAIStub) GenerateReportFromHistory(context.Context, *GenerateRe
 	return nil, errors.New("not implemented")
 }
 
+// GenerateKnowledgeReport 知识点专项报告，测试不会走到这里。
+func (a *interviewAIStub) GenerateKnowledgeReport(context.Context, *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+// GenerateJobReport 岗位求职报告，测试不会走到这里。
+func (a *interviewAIStub) GenerateJobReport(context.Context, *GenerateJobReportRequest) (*GenerateJobReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 // interviewIndustryStub 实现 IndustryClient 接口
 type interviewIndustryStub struct{}
 
@@ -289,6 +299,14 @@ func (q *quizAnalyzerStub) EndInterviewSession(_ context.Context, _ *EndIntervie
 }
 
 func (q *quizAnalyzerStub) GenerateReportFromHistory(_ context.Context, _ *GenerateReportFromHistoryRequest) (*GenerateInterviewReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (q *quizAnalyzerStub) GenerateKnowledgeReport(_ context.Context, _ *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (q *quizAnalyzerStub) GenerateJobReport(_ context.Context, _ *GenerateJobReportRequest) (*GenerateJobReportResponse, error) {
 	return nil, errors.New("not implemented")
 }
 

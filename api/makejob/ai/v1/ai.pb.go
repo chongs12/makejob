@@ -32,6 +32,8 @@ type InterviewAgentRequest struct {
 	QuestionIndex  int32                  `protobuf:"varint,6,opt,name=question_index,json=questionIndex,proto3" json:"question_index,omitempty"`
 	ResumeText     string                 `protobuf:"bytes,7,opt,name=resume_text,json=resumeText,proto3" json:"resume_text,omitempty"`
 	JobDescription string                 `protobuf:"bytes,8,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"`
+	Topics         []string               `protobuf:"bytes,9,rep,name=topics,proto3" json:"topics,omitempty"`                                     // 知识点专项面试的自定义知识点列表
+	InterviewType  string                 `protobuf:"bytes,10,opt,name=interview_type,json=interviewType,proto3" json:"interview_type,omitempty"` // knowledge | job，决定出题 prompt 分支
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -118,6 +120,20 @@ func (x *InterviewAgentRequest) GetResumeText() string {
 func (x *InterviewAgentRequest) GetJobDescription() string {
 	if x != nil {
 		return x.JobDescription
+	}
+	return ""
+}
+
+func (x *InterviewAgentRequest) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *InterviewAgentRequest) GetInterviewType() string {
+	if x != nil {
+		return x.InterviewType
 	}
 	return ""
 }
@@ -299,6 +315,8 @@ type StartInterviewRequest struct {
 	ResumeText     string                 `protobuf:"bytes,5,opt,name=resume_text,json=resumeText,proto3" json:"resume_text,omitempty"`
 	JobDescription string                 `protobuf:"bytes,6,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"`
 	InterviewMode  string                 `protobuf:"bytes,7,opt,name=interview_mode,json=interviewMode,proto3" json:"interview_mode,omitempty"`
+	Topics         []string               `protobuf:"bytes,8,rep,name=topics,proto3" json:"topics,omitempty"`                                    // 知识点专项面试的自定义知识点列表
+	InterviewType  string                 `protobuf:"bytes,9,opt,name=interview_type,json=interviewType,proto3" json:"interview_type,omitempty"` // knowledge | job，决定出题 prompt 分支
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -378,6 +396,20 @@ func (x *StartInterviewRequest) GetJobDescription() string {
 func (x *StartInterviewRequest) GetInterviewMode() string {
 	if x != nil {
 		return x.InterviewMode
+	}
+	return ""
+}
+
+func (x *StartInterviewRequest) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *StartInterviewRequest) GetInterviewType() string {
+	if x != nil {
+		return x.InterviewType
 	}
 	return ""
 }
@@ -1114,6 +1146,298 @@ func (x *GenerateReportFromHistoryRequest) GetTotalQuestions() int32 {
 	return 0
 }
 
+// GenerateKnowledgeReportRequest 知识点专项面试报告生成请求（不依赖 session，基于完整对话历史）
+type GenerateKnowledgeReportRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	History         []*HistoryMessage      `protobuf:"bytes,1,rep,name=history,proto3" json:"history,omitempty"`
+	KnowledgeTopics []string               `protobuf:"bytes,2,rep,name=knowledge_topics,json=knowledgeTopics,proto3" json:"knowledge_topics,omitempty"` // 用户自定义知识点列表
+	Difficulty      string                 `protobuf:"bytes,3,opt,name=difficulty,proto3" json:"difficulty,omitempty"`
+	TotalQuestions  int32                  `protobuf:"varint,4,opt,name=total_questions,json=totalQuestions,proto3" json:"total_questions,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GenerateKnowledgeReportRequest) Reset() {
+	*x = GenerateKnowledgeReportRequest{}
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateKnowledgeReportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateKnowledgeReportRequest) ProtoMessage() {}
+
+func (x *GenerateKnowledgeReportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateKnowledgeReportRequest.ProtoReflect.Descriptor instead.
+func (*GenerateKnowledgeReportRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GenerateKnowledgeReportRequest) GetHistory() []*HistoryMessage {
+	if x != nil {
+		return x.History
+	}
+	return nil
+}
+
+func (x *GenerateKnowledgeReportRequest) GetKnowledgeTopics() []string {
+	if x != nil {
+		return x.KnowledgeTopics
+	}
+	return nil
+}
+
+func (x *GenerateKnowledgeReportRequest) GetDifficulty() string {
+	if x != nil {
+		return x.Difficulty
+	}
+	return ""
+}
+
+func (x *GenerateKnowledgeReportRequest) GetTotalQuestions() int32 {
+	if x != nil {
+		return x.TotalQuestions
+	}
+	return 0
+}
+
+// GenerateKnowledgeReportResponse 知识点专项面试报告生成响应
+type GenerateKnowledgeReportResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReportJson    string                 `protobuf:"bytes,1,opt,name=report_json,json=reportJson,proto3" json:"report_json,omitempty"`         // 完整结构化报告 JSON，前端按 knowledge 模板渲染
+	OverallScore  float64                `protobuf:"fixed64,2,opt,name=overall_score,json=overallScore,proto3" json:"overall_score,omitempty"` // 总分，便于落库顶层字段
+	Rating        string                 `protobuf:"bytes,3,opt,name=rating,proto3" json:"rating,omitempty"`                                   // 评级：优秀/良好/合格/薄弱
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GenerateKnowledgeReportResponse) Reset() {
+	*x = GenerateKnowledgeReportResponse{}
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateKnowledgeReportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateKnowledgeReportResponse) ProtoMessage() {}
+
+func (x *GenerateKnowledgeReportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateKnowledgeReportResponse.ProtoReflect.Descriptor instead.
+func (*GenerateKnowledgeReportResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GenerateKnowledgeReportResponse) GetReportJson() string {
+	if x != nil {
+		return x.ReportJson
+	}
+	return ""
+}
+
+func (x *GenerateKnowledgeReportResponse) GetOverallScore() float64 {
+	if x != nil {
+		return x.OverallScore
+	}
+	return 0
+}
+
+func (x *GenerateKnowledgeReportResponse) GetRating() string {
+	if x != nil {
+		return x.Rating
+	}
+	return ""
+}
+
+// GenerateJobReportRequest 岗位求职面试报告生成请求（基于完整对话历史 + 简历画像 + JD）
+type GenerateJobReportRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	History          []*HistoryMessage      `protobuf:"bytes,1,rep,name=history,proto3" json:"history,omitempty"`
+	ResumeText       string                 `protobuf:"bytes,2,opt,name=resume_text,json=resumeText,proto3" json:"resume_text,omitempty"`                     // 简历原文
+	ResumeParsedJson string                 `protobuf:"bytes,3,opt,name=resume_parsed_json,json=resumeParsedJson,proto3" json:"resume_parsed_json,omitempty"` // 简历解析画像 JSON（skills/projects/weak_signals 等）
+	JobDescription   string                 `protobuf:"bytes,4,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"`         // 目标岗位 JD
+	IndustryCode     string                 `protobuf:"bytes,5,opt,name=industry_code,json=industryCode,proto3" json:"industry_code,omitempty"`
+	Difficulty       string                 `protobuf:"bytes,6,opt,name=difficulty,proto3" json:"difficulty,omitempty"`
+	TotalQuestions   int32                  `protobuf:"varint,7,opt,name=total_questions,json=totalQuestions,proto3" json:"total_questions,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GenerateJobReportRequest) Reset() {
+	*x = GenerateJobReportRequest{}
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateJobReportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateJobReportRequest) ProtoMessage() {}
+
+func (x *GenerateJobReportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateJobReportRequest.ProtoReflect.Descriptor instead.
+func (*GenerateJobReportRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GenerateJobReportRequest) GetHistory() []*HistoryMessage {
+	if x != nil {
+		return x.History
+	}
+	return nil
+}
+
+func (x *GenerateJobReportRequest) GetResumeText() string {
+	if x != nil {
+		return x.ResumeText
+	}
+	return ""
+}
+
+func (x *GenerateJobReportRequest) GetResumeParsedJson() string {
+	if x != nil {
+		return x.ResumeParsedJson
+	}
+	return ""
+}
+
+func (x *GenerateJobReportRequest) GetJobDescription() string {
+	if x != nil {
+		return x.JobDescription
+	}
+	return ""
+}
+
+func (x *GenerateJobReportRequest) GetIndustryCode() string {
+	if x != nil {
+		return x.IndustryCode
+	}
+	return ""
+}
+
+func (x *GenerateJobReportRequest) GetDifficulty() string {
+	if x != nil {
+		return x.Difficulty
+	}
+	return ""
+}
+
+func (x *GenerateJobReportRequest) GetTotalQuestions() int32 {
+	if x != nil {
+		return x.TotalQuestions
+	}
+	return 0
+}
+
+// GenerateJobReportResponse 岗位求职面试报告生成响应
+type GenerateJobReportResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ReportJson         string                 `protobuf:"bytes,1,opt,name=report_json,json=reportJson,proto3" json:"report_json,omitempty"`                         // 完整结构化报告 JSON，前端按 job 模板渲染
+	OverallScore       float64                `protobuf:"fixed64,2,opt,name=overall_score,json=overallScore,proto3" json:"overall_score,omitempty"`                 // 总分（后端加权算，覆盖 LLM）
+	Rating             string                 `protobuf:"bytes,3,opt,name=rating,proto3" json:"rating,omitempty"`                                                   // 评级：优秀/良好/合格/薄弱
+	HireRecommendation string                 `protobuf:"bytes,4,opt,name=hire_recommendation,json=hireRecommendation,proto3" json:"hire_recommendation,omitempty"` // 录用建议：建议录用/建议复试考察/人才储备/不予录用
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *GenerateJobReportResponse) Reset() {
+	*x = GenerateJobReportResponse{}
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateJobReportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateJobReportResponse) ProtoMessage() {}
+
+func (x *GenerateJobReportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateJobReportResponse.ProtoReflect.Descriptor instead.
+func (*GenerateJobReportResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GenerateJobReportResponse) GetReportJson() string {
+	if x != nil {
+		return x.ReportJson
+	}
+	return ""
+}
+
+func (x *GenerateJobReportResponse) GetOverallScore() float64 {
+	if x != nil {
+		return x.OverallScore
+	}
+	return 0
+}
+
+func (x *GenerateJobReportResponse) GetRating() string {
+	if x != nil {
+		return x.Rating
+	}
+	return ""
+}
+
+func (x *GenerateJobReportResponse) GetHireRecommendation() string {
+	if x != nil {
+		return x.HireRecommendation
+	}
+	return ""
+}
+
 type PlanAgentRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	UserId           uint64                 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -1128,7 +1452,7 @@ type PlanAgentRequest struct {
 
 func (x *PlanAgentRequest) Reset() {
 	*x = PlanAgentRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[15]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1464,7 @@ func (x *PlanAgentRequest) String() string {
 func (*PlanAgentRequest) ProtoMessage() {}
 
 func (x *PlanAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[15]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1477,7 @@ func (x *PlanAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanAgentRequest.ProtoReflect.Descriptor instead.
 func (*PlanAgentRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{15}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PlanAgentRequest) GetUserId() uint64 {
@@ -1209,7 +1533,7 @@ type PlanAgentResponse struct {
 
 func (x *PlanAgentResponse) Reset() {
 	*x = PlanAgentResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[16]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1221,7 +1545,7 @@ func (x *PlanAgentResponse) String() string {
 func (*PlanAgentResponse) ProtoMessage() {}
 
 func (x *PlanAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[16]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1234,7 +1558,7 @@ func (x *PlanAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanAgentResponse.ProtoReflect.Descriptor instead.
 func (*PlanAgentResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{16}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PlanAgentResponse) GetPlanTitle() string {
@@ -1276,7 +1600,7 @@ type AdjustPlanRequest struct {
 
 func (x *AdjustPlanRequest) Reset() {
 	*x = AdjustPlanRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[17]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1288,7 +1612,7 @@ func (x *AdjustPlanRequest) String() string {
 func (*AdjustPlanRequest) ProtoMessage() {}
 
 func (x *AdjustPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[17]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1301,7 +1625,7 @@ func (x *AdjustPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdjustPlanRequest.ProtoReflect.Descriptor instead.
 func (*AdjustPlanRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{17}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AdjustPlanRequest) GetUserId() uint64 {
@@ -1382,7 +1706,7 @@ type AdjustPlanResponse struct {
 
 func (x *AdjustPlanResponse) Reset() {
 	*x = AdjustPlanResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[18]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1394,7 +1718,7 @@ func (x *AdjustPlanResponse) String() string {
 func (*AdjustPlanResponse) ProtoMessage() {}
 
 func (x *AdjustPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[18]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1407,7 +1731,7 @@ func (x *AdjustPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdjustPlanResponse.ProtoReflect.Descriptor instead.
 func (*AdjustPlanResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{18}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *AdjustPlanResponse) GetPlanTitle() string {
@@ -1469,7 +1793,7 @@ type GetStudySuggestionRequest struct {
 
 func (x *GetStudySuggestionRequest) Reset() {
 	*x = GetStudySuggestionRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[19]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1481,7 +1805,7 @@ func (x *GetStudySuggestionRequest) String() string {
 func (*GetStudySuggestionRequest) ProtoMessage() {}
 
 func (x *GetStudySuggestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[19]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1494,7 +1818,7 @@ func (x *GetStudySuggestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStudySuggestionRequest.ProtoReflect.Descriptor instead.
 func (*GetStudySuggestionRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{19}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetStudySuggestionRequest) GetUserId() uint64 {
@@ -1563,7 +1887,7 @@ type GetStudySuggestionResponse struct {
 
 func (x *GetStudySuggestionResponse) Reset() {
 	*x = GetStudySuggestionResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[20]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +1899,7 @@ func (x *GetStudySuggestionResponse) String() string {
 func (*GetStudySuggestionResponse) ProtoMessage() {}
 
 func (x *GetStudySuggestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[20]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1588,7 +1912,7 @@ func (x *GetStudySuggestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStudySuggestionResponse.ProtoReflect.Descriptor instead.
 func (*GetStudySuggestionResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{20}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetStudySuggestionResponse) GetSuggestion() string {
@@ -1616,7 +1940,7 @@ type PlanTask struct {
 
 func (x *PlanTask) Reset() {
 	*x = PlanTask{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1628,7 +1952,7 @@ func (x *PlanTask) String() string {
 func (*PlanTask) ProtoMessage() {}
 
 func (x *PlanTask) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[21]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1641,7 +1965,7 @@ func (x *PlanTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanTask.ProtoReflect.Descriptor instead.
 func (*PlanTask) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{21}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *PlanTask) GetTitle() string {
@@ -1727,7 +2051,7 @@ type CompanionAgentRequest struct {
 
 func (x *CompanionAgentRequest) Reset() {
 	*x = CompanionAgentRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[22]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1739,7 +2063,7 @@ func (x *CompanionAgentRequest) String() string {
 func (*CompanionAgentRequest) ProtoMessage() {}
 
 func (x *CompanionAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[22]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1752,7 +2076,7 @@ func (x *CompanionAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionAgentRequest.ProtoReflect.Descriptor instead.
 func (*CompanionAgentRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{22}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *CompanionAgentRequest) GetUserId() uint64 {
@@ -1803,7 +2127,7 @@ type CompanionAgentResponse struct {
 
 func (x *CompanionAgentResponse) Reset() {
 	*x = CompanionAgentResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[23]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1815,7 +2139,7 @@ func (x *CompanionAgentResponse) String() string {
 func (*CompanionAgentResponse) ProtoMessage() {}
 
 func (x *CompanionAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[23]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1828,7 +2152,7 @@ func (x *CompanionAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionAgentResponse.ProtoReflect.Descriptor instead.
 func (*CompanionAgentResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{23}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CompanionAgentResponse) GetReply() string {
@@ -1878,7 +2202,7 @@ type GetGreetingRequest struct {
 
 func (x *GetGreetingRequest) Reset() {
 	*x = GetGreetingRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[24]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1890,7 +2214,7 @@ func (x *GetGreetingRequest) String() string {
 func (*GetGreetingRequest) ProtoMessage() {}
 
 func (x *GetGreetingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[24]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1903,7 +2227,7 @@ func (x *GetGreetingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGreetingRequest.ProtoReflect.Descriptor instead.
 func (*GetGreetingRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{24}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetGreetingRequest) GetUserId() uint64 {
@@ -1939,7 +2263,7 @@ type GetGreetingResponse struct {
 
 func (x *GetGreetingResponse) Reset() {
 	*x = GetGreetingResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[25]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1951,7 +2275,7 @@ func (x *GetGreetingResponse) String() string {
 func (*GetGreetingResponse) ProtoMessage() {}
 
 func (x *GetGreetingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[25]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1964,7 +2288,7 @@ func (x *GetGreetingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGreetingResponse.ProtoReflect.Descriptor instead.
 func (*GetGreetingResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{25}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetGreetingResponse) GetContent() string {
@@ -1999,7 +2323,7 @@ type GetEncouragementRequest struct {
 
 func (x *GetEncouragementRequest) Reset() {
 	*x = GetEncouragementRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[26]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2011,7 +2335,7 @@ func (x *GetEncouragementRequest) String() string {
 func (*GetEncouragementRequest) ProtoMessage() {}
 
 func (x *GetEncouragementRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[26]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2024,7 +2348,7 @@ func (x *GetEncouragementRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEncouragementRequest.ProtoReflect.Descriptor instead.
 func (*GetEncouragementRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{26}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetEncouragementRequest) GetUserId() uint64 {
@@ -2053,7 +2377,7 @@ type GetEncouragementResponse struct {
 
 func (x *GetEncouragementResponse) Reset() {
 	*x = GetEncouragementResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[27]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2065,7 +2389,7 @@ func (x *GetEncouragementResponse) String() string {
 func (*GetEncouragementResponse) ProtoMessage() {}
 
 func (x *GetEncouragementResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[27]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2078,7 +2402,7 @@ func (x *GetEncouragementResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEncouragementResponse.ProtoReflect.Descriptor instead.
 func (*GetEncouragementResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{27}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetEncouragementResponse) GetContent() string {
@@ -2115,7 +2439,7 @@ type QuizAnalyzerRequest struct {
 
 func (x *QuizAnalyzerRequest) Reset() {
 	*x = QuizAnalyzerRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[28]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2127,7 +2451,7 @@ func (x *QuizAnalyzerRequest) String() string {
 func (*QuizAnalyzerRequest) ProtoMessage() {}
 
 func (x *QuizAnalyzerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[28]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2140,7 +2464,7 @@ func (x *QuizAnalyzerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuizAnalyzerRequest.ProtoReflect.Descriptor instead.
 func (*QuizAnalyzerRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{28}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *QuizAnalyzerRequest) GetQuestion() string {
@@ -2192,7 +2516,7 @@ type QuizAnalyzerResponse struct {
 
 func (x *QuizAnalyzerResponse) Reset() {
 	*x = QuizAnalyzerResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[29]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2204,7 +2528,7 @@ func (x *QuizAnalyzerResponse) String() string {
 func (*QuizAnalyzerResponse) ProtoMessage() {}
 
 func (x *QuizAnalyzerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[29]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2217,7 +2541,7 @@ func (x *QuizAnalyzerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuizAnalyzerResponse.ProtoReflect.Descriptor instead.
 func (*QuizAnalyzerResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{29}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *QuizAnalyzerResponse) GetScore() float64 {
@@ -2274,7 +2598,7 @@ type AnalyzeCodeRequest struct {
 
 func (x *AnalyzeCodeRequest) Reset() {
 	*x = AnalyzeCodeRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[30]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2286,7 +2610,7 @@ func (x *AnalyzeCodeRequest) String() string {
 func (*AnalyzeCodeRequest) ProtoMessage() {}
 
 func (x *AnalyzeCodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[30]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2299,7 +2623,7 @@ func (x *AnalyzeCodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeCodeRequest.ProtoReflect.Descriptor instead.
 func (*AnalyzeCodeRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{30}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *AnalyzeCodeRequest) GetCode() string {
@@ -2341,7 +2665,7 @@ type AnalyzeCodeResponse struct {
 
 func (x *AnalyzeCodeResponse) Reset() {
 	*x = AnalyzeCodeResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[31]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2353,7 +2677,7 @@ func (x *AnalyzeCodeResponse) String() string {
 func (*AnalyzeCodeResponse) ProtoMessage() {}
 
 func (x *AnalyzeCodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[31]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2366,7 +2690,7 @@ func (x *AnalyzeCodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeCodeResponse.ProtoReflect.Descriptor instead.
 func (*AnalyzeCodeResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{31}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *AnalyzeCodeResponse) GetIsCorrect() bool {
@@ -2444,7 +2768,7 @@ type CodingProcessEvent struct {
 
 func (x *CodingProcessEvent) Reset() {
 	*x = CodingProcessEvent{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[32]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2456,7 +2780,7 @@ func (x *CodingProcessEvent) String() string {
 func (*CodingProcessEvent) ProtoMessage() {}
 
 func (x *CodingProcessEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[32]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2469,7 +2793,7 @@ func (x *CodingProcessEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodingProcessEvent.ProtoReflect.Descriptor instead.
 func (*CodingProcessEvent) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{32}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CodingProcessEvent) GetType() string {
@@ -2507,7 +2831,7 @@ type DiagnoseInterviewCodingRequest struct {
 
 func (x *DiagnoseInterviewCodingRequest) Reset() {
 	*x = DiagnoseInterviewCodingRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[33]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2519,7 +2843,7 @@ func (x *DiagnoseInterviewCodingRequest) String() string {
 func (*DiagnoseInterviewCodingRequest) ProtoMessage() {}
 
 func (x *DiagnoseInterviewCodingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[33]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2532,7 +2856,7 @@ func (x *DiagnoseInterviewCodingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiagnoseInterviewCodingRequest.ProtoReflect.Descriptor instead.
 func (*DiagnoseInterviewCodingRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{33}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DiagnoseInterviewCodingRequest) GetQuestion() string {
@@ -2585,7 +2909,7 @@ type DiagnoseInterviewCodingResponse struct {
 
 func (x *DiagnoseInterviewCodingResponse) Reset() {
 	*x = DiagnoseInterviewCodingResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[34]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2597,7 +2921,7 @@ func (x *DiagnoseInterviewCodingResponse) String() string {
 func (*DiagnoseInterviewCodingResponse) ProtoMessage() {}
 
 func (x *DiagnoseInterviewCodingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[34]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2610,7 +2934,7 @@ func (x *DiagnoseInterviewCodingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiagnoseInterviewCodingResponse.ProtoReflect.Descriptor instead.
 func (*DiagnoseInterviewCodingResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{34}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *DiagnoseInterviewCodingResponse) GetScore() float64 {
@@ -2667,7 +2991,7 @@ type ExplainAnswerRequest struct {
 
 func (x *ExplainAnswerRequest) Reset() {
 	*x = ExplainAnswerRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[35]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2679,7 +3003,7 @@ func (x *ExplainAnswerRequest) String() string {
 func (*ExplainAnswerRequest) ProtoMessage() {}
 
 func (x *ExplainAnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[35]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2692,7 +3016,7 @@ func (x *ExplainAnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAnswerRequest.ProtoReflect.Descriptor instead.
 func (*ExplainAnswerRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{35}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExplainAnswerRequest) GetQuestionTitle() string {
@@ -2726,7 +3050,7 @@ type ExplainAnswerResponse struct {
 
 func (x *ExplainAnswerResponse) Reset() {
 	*x = ExplainAnswerResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[36]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2738,7 +3062,7 @@ func (x *ExplainAnswerResponse) String() string {
 func (*ExplainAnswerResponse) ProtoMessage() {}
 
 func (x *ExplainAnswerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[36]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2751,7 +3075,7 @@ func (x *ExplainAnswerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAnswerResponse.ProtoReflect.Descriptor instead.
 func (*ExplainAnswerResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{36}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ExplainAnswerResponse) GetExplanation() string {
@@ -2772,7 +3096,7 @@ type GenerateHintRequest struct {
 
 func (x *GenerateHintRequest) Reset() {
 	*x = GenerateHintRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[37]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2784,7 +3108,7 @@ func (x *GenerateHintRequest) String() string {
 func (*GenerateHintRequest) ProtoMessage() {}
 
 func (x *GenerateHintRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[37]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2797,7 +3121,7 @@ func (x *GenerateHintRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateHintRequest.ProtoReflect.Descriptor instead.
 func (*GenerateHintRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{37}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GenerateHintRequest) GetQuestionTitle() string {
@@ -2824,7 +3148,7 @@ type GenerateHintResponse struct {
 
 func (x *GenerateHintResponse) Reset() {
 	*x = GenerateHintResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[38]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2836,7 +3160,7 @@ func (x *GenerateHintResponse) String() string {
 func (*GenerateHintResponse) ProtoMessage() {}
 
 func (x *GenerateHintResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[38]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2849,7 +3173,7 @@ func (x *GenerateHintResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateHintResponse.ProtoReflect.Descriptor instead.
 func (*GenerateHintResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{38}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GenerateHintResponse) GetHint() string {
@@ -2869,7 +3193,7 @@ type ResumeParserRequest struct {
 
 func (x *ResumeParserRequest) Reset() {
 	*x = ResumeParserRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[39]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2881,7 +3205,7 @@ func (x *ResumeParserRequest) String() string {
 func (*ResumeParserRequest) ProtoMessage() {}
 
 func (x *ResumeParserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[39]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2894,7 +3218,7 @@ func (x *ResumeParserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeParserRequest.ProtoReflect.Descriptor instead.
 func (*ResumeParserRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{39}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ResumeParserRequest) GetResumeText() string {
@@ -2926,7 +3250,7 @@ type ResumeParserResponse struct {
 
 func (x *ResumeParserResponse) Reset() {
 	*x = ResumeParserResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[40]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2938,7 +3262,7 @@ func (x *ResumeParserResponse) String() string {
 func (*ResumeParserResponse) ProtoMessage() {}
 
 func (x *ResumeParserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[40]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2951,7 +3275,7 @@ func (x *ResumeParserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeParserResponse.ProtoReflect.Descriptor instead.
 func (*ResumeParserResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{40}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ResumeParserResponse) GetSkills() []string {
@@ -3014,7 +3338,7 @@ type Live2DDirectiveRequest struct {
 
 func (x *Live2DDirectiveRequest) Reset() {
 	*x = Live2DDirectiveRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[41]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3026,7 +3350,7 @@ func (x *Live2DDirectiveRequest) String() string {
 func (*Live2DDirectiveRequest) ProtoMessage() {}
 
 func (x *Live2DDirectiveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[41]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3039,7 +3363,7 @@ func (x *Live2DDirectiveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveRequest.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{41}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *Live2DDirectiveRequest) GetContext() string {
@@ -3084,7 +3408,7 @@ type Live2DDirectiveResponse struct {
 
 func (x *Live2DDirectiveResponse) Reset() {
 	*x = Live2DDirectiveResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[42]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3096,7 +3420,7 @@ func (x *Live2DDirectiveResponse) String() string {
 func (*Live2DDirectiveResponse) ProtoMessage() {}
 
 func (x *Live2DDirectiveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[42]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3109,7 +3433,7 @@ func (x *Live2DDirectiveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveResponse.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{42}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Live2DDirectiveResponse) GetEmotion() string {
@@ -3213,7 +3537,7 @@ type Live2DDirectiveExpressionLayer struct {
 
 func (x *Live2DDirectiveExpressionLayer) Reset() {
 	*x = Live2DDirectiveExpressionLayer{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[43]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3225,7 +3549,7 @@ func (x *Live2DDirectiveExpressionLayer) String() string {
 func (*Live2DDirectiveExpressionLayer) ProtoMessage() {}
 
 func (x *Live2DDirectiveExpressionLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[43]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3238,7 +3562,7 @@ func (x *Live2DDirectiveExpressionLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveExpressionLayer.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveExpressionLayer) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{43}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *Live2DDirectiveExpressionLayer) GetKey() string {
@@ -3265,7 +3589,7 @@ type Live2DDirectiveParameterOverride struct {
 
 func (x *Live2DDirectiveParameterOverride) Reset() {
 	*x = Live2DDirectiveParameterOverride{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[44]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3277,7 +3601,7 @@ func (x *Live2DDirectiveParameterOverride) String() string {
 func (*Live2DDirectiveParameterOverride) ProtoMessage() {}
 
 func (x *Live2DDirectiveParameterOverride) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[44]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3290,7 +3614,7 @@ func (x *Live2DDirectiveParameterOverride) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveParameterOverride.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveParameterOverride) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{44}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *Live2DDirectiveParameterOverride) GetId() string {
@@ -3329,7 +3653,7 @@ type Live2DDirective struct {
 
 func (x *Live2DDirective) Reset() {
 	*x = Live2DDirective{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[45]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3341,7 +3665,7 @@ func (x *Live2DDirective) String() string {
 func (*Live2DDirective) ProtoMessage() {}
 
 func (x *Live2DDirective) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[45]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3354,7 +3678,7 @@ func (x *Live2DDirective) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirective.ProtoReflect.Descriptor instead.
 func (*Live2DDirective) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{45}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *Live2DDirective) GetEmotion() string {
@@ -3460,7 +3784,7 @@ type RenderPromptRequest struct {
 
 func (x *RenderPromptRequest) Reset() {
 	*x = RenderPromptRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[46]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3472,7 +3796,7 @@ func (x *RenderPromptRequest) String() string {
 func (*RenderPromptRequest) ProtoMessage() {}
 
 func (x *RenderPromptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[46]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3485,7 +3809,7 @@ func (x *RenderPromptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderPromptRequest.ProtoReflect.Descriptor instead.
 func (*RenderPromptRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{46}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RenderPromptRequest) GetScene() string {
@@ -3529,7 +3853,7 @@ type RenderPromptResponse struct {
 
 func (x *RenderPromptResponse) Reset() {
 	*x = RenderPromptResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[47]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3541,7 +3865,7 @@ func (x *RenderPromptResponse) String() string {
 func (*RenderPromptResponse) ProtoMessage() {}
 
 func (x *RenderPromptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[47]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3554,7 +3878,7 @@ func (x *RenderPromptResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderPromptResponse.ProtoReflect.Descriptor instead.
 func (*RenderPromptResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{47}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *RenderPromptResponse) GetRenderedPrompt() string {
@@ -3604,7 +3928,7 @@ type DebugAIRequest struct {
 
 func (x *DebugAIRequest) Reset() {
 	*x = DebugAIRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[48]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3616,7 +3940,7 @@ func (x *DebugAIRequest) String() string {
 func (*DebugAIRequest) ProtoMessage() {}
 
 func (x *DebugAIRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[48]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3629,7 +3953,7 @@ func (x *DebugAIRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugAIRequest.ProtoReflect.Descriptor instead.
 func (*DebugAIRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{48}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DebugAIRequest) GetScene() string {
@@ -3675,7 +3999,7 @@ type DebugAIResponse struct {
 
 func (x *DebugAIResponse) Reset() {
 	*x = DebugAIResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[49]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3687,7 +4011,7 @@ func (x *DebugAIResponse) String() string {
 func (*DebugAIResponse) ProtoMessage() {}
 
 func (x *DebugAIResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[49]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3700,7 +4024,7 @@ func (x *DebugAIResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugAIResponse.ProtoReflect.Descriptor instead.
 func (*DebugAIResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{49}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *DebugAIResponse) GetRenderedPrompt() string {
@@ -3770,7 +4094,7 @@ type GenerateQuestionCandidatesRequest struct {
 
 func (x *GenerateQuestionCandidatesRequest) Reset() {
 	*x = GenerateQuestionCandidatesRequest{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[50]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3782,7 +4106,7 @@ func (x *GenerateQuestionCandidatesRequest) String() string {
 func (*GenerateQuestionCandidatesRequest) ProtoMessage() {}
 
 func (x *GenerateQuestionCandidatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[50]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3795,7 +4119,7 @@ func (x *GenerateQuestionCandidatesRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GenerateQuestionCandidatesRequest.ProtoReflect.Descriptor instead.
 func (*GenerateQuestionCandidatesRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{50}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *GenerateQuestionCandidatesRequest) GetIndustryCode() string {
@@ -3880,7 +4204,7 @@ type GenerateQuestionCandidatesResponse struct {
 
 func (x *GenerateQuestionCandidatesResponse) Reset() {
 	*x = GenerateQuestionCandidatesResponse{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[51]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3892,7 +4216,7 @@ func (x *GenerateQuestionCandidatesResponse) String() string {
 func (*GenerateQuestionCandidatesResponse) ProtoMessage() {}
 
 func (x *GenerateQuestionCandidatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[51]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3905,7 +4229,7 @@ func (x *GenerateQuestionCandidatesResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GenerateQuestionCandidatesResponse.ProtoReflect.Descriptor instead.
 func (*GenerateQuestionCandidatesResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{51}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GenerateQuestionCandidatesResponse) GetIndustryCode() string {
@@ -3960,7 +4284,7 @@ type QuestionCandidate struct {
 
 func (x *QuestionCandidate) Reset() {
 	*x = QuestionCandidate{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[52]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3972,7 +4296,7 @@ func (x *QuestionCandidate) String() string {
 func (*QuestionCandidate) ProtoMessage() {}
 
 func (x *QuestionCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[52]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3985,7 +4309,7 @@ func (x *QuestionCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionCandidate.ProtoReflect.Descriptor instead.
 func (*QuestionCandidate) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{52}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *QuestionCandidate) GetId() string {
@@ -4121,7 +4445,7 @@ type QuestionPipelineStreamEvent struct {
 
 func (x *QuestionPipelineStreamEvent) Reset() {
 	*x = QuestionPipelineStreamEvent{}
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[53]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4133,7 +4457,7 @@ func (x *QuestionPipelineStreamEvent) String() string {
 func (*QuestionPipelineStreamEvent) ProtoMessage() {}
 
 func (x *QuestionPipelineStreamEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_ai_v1_ai_proto_msgTypes[53]
+	mi := &file_makejob_ai_v1_ai_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4146,7 +4470,7 @@ func (x *QuestionPipelineStreamEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionPipelineStreamEvent.ProtoReflect.Descriptor instead.
 func (*QuestionPipelineStreamEvent) Descriptor() ([]byte, []int) {
-	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{53}
+	return file_makejob_ai_v1_ai_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *QuestionPipelineStreamEvent) GetEvent() string {
@@ -4237,7 +4561,7 @@ var File_makejob_ai_v1_ai_proto protoreflect.FileDescriptor
 
 const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\n" +
-	"\x16makejob/ai/v1/ai.proto\x12\rmakejob.ai.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xc3\x02\n" +
+	"\x16makejob/ai/v1/ai.proto\x12\rmakejob.ai.v1\x1a\x1cgoogle/protobuf/struct.proto\"\x82\x03\n" +
 	"\x15InterviewAgentRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -4250,7 +4574,10 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\x0equestion_index\x18\x06 \x01(\x05R\rquestionIndex\x12\x1f\n" +
 	"\vresume_text\x18\a \x01(\tR\n" +
 	"resumeText\x12'\n" +
-	"\x0fjob_description\x18\b \x01(\tR\x0ejobDescription\"7\n" +
+	"\x0fjob_description\x18\b \x01(\tR\x0ejobDescription\x12\x16\n" +
+	"\x06topics\x18\t \x03(\tR\x06topics\x12%\n" +
+	"\x0einterview_type\x18\n" +
+	" \x01(\tR\rinterviewType\"7\n" +
 	"\aMessage\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\"\xb1\x02\n" +
@@ -4268,7 +4595,7 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"should_end\x18\b \x01(\bR\tshouldEnd\x12%\n" +
 	"\x0elive2d_emotion\x18\t \x01(\tR\rlive2dEmotion\x12#\n" +
 	"\rlive2d_action\x18\n" +
-	" \x01(\tR\flive2dAction\"\x97\x02\n" +
+	" \x01(\tR\flive2dAction\"\xd6\x02\n" +
 	"\x15StartInterviewRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -4279,7 +4606,9 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\vresume_text\x18\x05 \x01(\tR\n" +
 	"resumeText\x12'\n" +
 	"\x0fjob_description\x18\x06 \x01(\tR\x0ejobDescription\x12%\n" +
-	"\x0einterview_mode\x18\a \x01(\tR\rinterviewMode\"\xfe\x01\n" +
+	"\x0einterview_mode\x18\a \x01(\tR\rinterviewMode\x12\x16\n" +
+	"\x06topics\x18\b \x03(\tR\x06topics\x12%\n" +
+	"\x0einterview_type\x18\t \x01(\tR\rinterviewType\"\xfe\x01\n" +
 	"\x16StartInterviewResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1a\n" +
@@ -4353,7 +4682,36 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\n" +
 	"difficulty\x18\x03 \x01(\tR\n" +
 	"difficulty\x12'\n" +
-	"\x0ftotal_questions\x18\x04 \x01(\x05R\x0etotalQuestions\"\xd3\x01\n" +
+	"\x0ftotal_questions\x18\x04 \x01(\x05R\x0etotalQuestions\"\xcd\x01\n" +
+	"\x1eGenerateKnowledgeReportRequest\x127\n" +
+	"\ahistory\x18\x01 \x03(\v2\x1d.makejob.ai.v1.HistoryMessageR\ahistory\x12)\n" +
+	"\x10knowledge_topics\x18\x02 \x03(\tR\x0fknowledgeTopics\x12\x1e\n" +
+	"\n" +
+	"difficulty\x18\x03 \x01(\tR\n" +
+	"difficulty\x12'\n" +
+	"\x0ftotal_questions\x18\x04 \x01(\x05R\x0etotalQuestions\"\x7f\n" +
+	"\x1fGenerateKnowledgeReportResponse\x12\x1f\n" +
+	"\vreport_json\x18\x01 \x01(\tR\n" +
+	"reportJson\x12#\n" +
+	"\roverall_score\x18\x02 \x01(\x01R\foverallScore\x12\x16\n" +
+	"\x06rating\x18\x03 \x01(\tR\x06rating\"\xb9\x02\n" +
+	"\x18GenerateJobReportRequest\x127\n" +
+	"\ahistory\x18\x01 \x03(\v2\x1d.makejob.ai.v1.HistoryMessageR\ahistory\x12\x1f\n" +
+	"\vresume_text\x18\x02 \x01(\tR\n" +
+	"resumeText\x12,\n" +
+	"\x12resume_parsed_json\x18\x03 \x01(\tR\x10resumeParsedJson\x12'\n" +
+	"\x0fjob_description\x18\x04 \x01(\tR\x0ejobDescription\x12#\n" +
+	"\rindustry_code\x18\x05 \x01(\tR\findustryCode\x12\x1e\n" +
+	"\n" +
+	"difficulty\x18\x06 \x01(\tR\n" +
+	"difficulty\x12'\n" +
+	"\x0ftotal_questions\x18\a \x01(\x05R\x0etotalQuestions\"\xaa\x01\n" +
+	"\x19GenerateJobReportResponse\x12\x1f\n" +
+	"\vreport_json\x18\x01 \x01(\tR\n" +
+	"reportJson\x12#\n" +
+	"\roverall_score\x18\x02 \x01(\x01R\foverallScore\x12\x16\n" +
+	"\x06rating\x18\x03 \x01(\tR\x06rating\x12/\n" +
+	"\x13hire_recommendation\x18\x04 \x01(\tR\x12hireRecommendation\"\xd3\x01\n" +
 	"\x10PlanAgentRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x12\n" +
@@ -4668,7 +5026,7 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	" \x01(\x05R\n" +
 	"retryIndex\x124\n" +
 	"\x04card\x18\v \x01(\v2 .makejob.ai.v1.QuestionCandidateR\x04card\x12M\n" +
-	"\bresponse\x18\f \x01(\v21.makejob.ai.v1.GenerateQuestionCandidatesResponseR\bresponse2\xf1\x12\n" +
+	"\bresponse\x18\f \x01(\v21.makejob.ai.v1.GenerateQuestionCandidatesResponseR\bresponse2\xd3\x14\n" +
 	"\tAIService\x12]\n" +
 	"\x0eInterviewAgent\x12$.makejob.ai.v1.InterviewAgentRequest\x1a%.makejob.ai.v1.InterviewAgentResponse\x12N\n" +
 	"\tPlanAgent\x12\x1f.makejob.ai.v1.PlanAgentRequest\x1a .makejob.ai.v1.PlanAgentResponse\x12]\n" +
@@ -4685,7 +5043,9 @@ const file_makejob_ai_v1_ai_proto_rawDesc = "" +
 	"\x16GetNextQuestionSession\x12,.makejob.ai.v1.GetNextQuestionSessionRequest\x1a-.makejob.ai.v1.GetNextQuestionSessionResponse\x12x\n" +
 	"\x17GenerateInterviewReport\x12-.makejob.ai.v1.GenerateInterviewReportRequest\x1a..makejob.ai.v1.GenerateInterviewReportResponse\x12l\n" +
 	"\x13EndInterviewSession\x12).makejob.ai.v1.EndInterviewSessionRequest\x1a*.makejob.ai.v1.EndInterviewSessionResponse\x12|\n" +
-	"\x19GenerateReportFromHistory\x12/.makejob.ai.v1.GenerateReportFromHistoryRequest\x1a..makejob.ai.v1.GenerateInterviewReportResponse\x12Q\n" +
+	"\x19GenerateReportFromHistory\x12/.makejob.ai.v1.GenerateReportFromHistoryRequest\x1a..makejob.ai.v1.GenerateInterviewReportResponse\x12x\n" +
+	"\x17GenerateKnowledgeReport\x12-.makejob.ai.v1.GenerateKnowledgeReportRequest\x1a..makejob.ai.v1.GenerateKnowledgeReportResponse\x12f\n" +
+	"\x11GenerateJobReport\x12'.makejob.ai.v1.GenerateJobReportRequest\x1a(.makejob.ai.v1.GenerateJobReportResponse\x12Q\n" +
 	"\n" +
 	"AdjustPlan\x12 .makejob.ai.v1.AdjustPlanRequest\x1a!.makejob.ai.v1.AdjustPlanResponse\x12i\n" +
 	"\x12GetStudySuggestion\x12(.makejob.ai.v1.GetStudySuggestionRequest\x1a).makejob.ai.v1.GetStudySuggestionResponse\x12T\n" +
@@ -4708,7 +5068,7 @@ func file_makejob_ai_v1_ai_proto_rawDescGZIP() []byte {
 	return file_makejob_ai_v1_ai_proto_rawDescData
 }
 
-var file_makejob_ai_v1_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
+var file_makejob_ai_v1_ai_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
 var file_makejob_ai_v1_ai_proto_goTypes = []any{
 	(*InterviewAgentRequest)(nil),              // 0: makejob.ai.v1.InterviewAgentRequest
 	(*Message)(nil),                            // 1: makejob.ai.v1.Message
@@ -4725,125 +5085,135 @@ var file_makejob_ai_v1_ai_proto_goTypes = []any{
 	(*EndInterviewSessionResponse)(nil),        // 12: makejob.ai.v1.EndInterviewSessionResponse
 	(*HistoryMessage)(nil),                     // 13: makejob.ai.v1.HistoryMessage
 	(*GenerateReportFromHistoryRequest)(nil),   // 14: makejob.ai.v1.GenerateReportFromHistoryRequest
-	(*PlanAgentRequest)(nil),                   // 15: makejob.ai.v1.PlanAgentRequest
-	(*PlanAgentResponse)(nil),                  // 16: makejob.ai.v1.PlanAgentResponse
-	(*AdjustPlanRequest)(nil),                  // 17: makejob.ai.v1.AdjustPlanRequest
-	(*AdjustPlanResponse)(nil),                 // 18: makejob.ai.v1.AdjustPlanResponse
-	(*GetStudySuggestionRequest)(nil),          // 19: makejob.ai.v1.GetStudySuggestionRequest
-	(*GetStudySuggestionResponse)(nil),         // 20: makejob.ai.v1.GetStudySuggestionResponse
-	(*PlanTask)(nil),                           // 21: makejob.ai.v1.PlanTask
-	(*CompanionAgentRequest)(nil),              // 22: makejob.ai.v1.CompanionAgentRequest
-	(*CompanionAgentResponse)(nil),             // 23: makejob.ai.v1.CompanionAgentResponse
-	(*GetGreetingRequest)(nil),                 // 24: makejob.ai.v1.GetGreetingRequest
-	(*GetGreetingResponse)(nil),                // 25: makejob.ai.v1.GetGreetingResponse
-	(*GetEncouragementRequest)(nil),            // 26: makejob.ai.v1.GetEncouragementRequest
-	(*GetEncouragementResponse)(nil),           // 27: makejob.ai.v1.GetEncouragementResponse
-	(*QuizAnalyzerRequest)(nil),                // 28: makejob.ai.v1.QuizAnalyzerRequest
-	(*QuizAnalyzerResponse)(nil),               // 29: makejob.ai.v1.QuizAnalyzerResponse
-	(*AnalyzeCodeRequest)(nil),                 // 30: makejob.ai.v1.AnalyzeCodeRequest
-	(*AnalyzeCodeResponse)(nil),                // 31: makejob.ai.v1.AnalyzeCodeResponse
-	(*CodingProcessEvent)(nil),                 // 32: makejob.ai.v1.CodingProcessEvent
-	(*DiagnoseInterviewCodingRequest)(nil),     // 33: makejob.ai.v1.DiagnoseInterviewCodingRequest
-	(*DiagnoseInterviewCodingResponse)(nil),    // 34: makejob.ai.v1.DiagnoseInterviewCodingResponse
-	(*ExplainAnswerRequest)(nil),               // 35: makejob.ai.v1.ExplainAnswerRequest
-	(*ExplainAnswerResponse)(nil),              // 36: makejob.ai.v1.ExplainAnswerResponse
-	(*GenerateHintRequest)(nil),                // 37: makejob.ai.v1.GenerateHintRequest
-	(*GenerateHintResponse)(nil),               // 38: makejob.ai.v1.GenerateHintResponse
-	(*ResumeParserRequest)(nil),                // 39: makejob.ai.v1.ResumeParserRequest
-	(*ResumeParserResponse)(nil),               // 40: makejob.ai.v1.ResumeParserResponse
-	(*Live2DDirectiveRequest)(nil),             // 41: makejob.ai.v1.Live2DDirectiveRequest
-	(*Live2DDirectiveResponse)(nil),            // 42: makejob.ai.v1.Live2DDirectiveResponse
-	(*Live2DDirectiveExpressionLayer)(nil),     // 43: makejob.ai.v1.Live2DDirectiveExpressionLayer
-	(*Live2DDirectiveParameterOverride)(nil),   // 44: makejob.ai.v1.Live2DDirectiveParameterOverride
-	(*Live2DDirective)(nil),                    // 45: makejob.ai.v1.Live2DDirective
-	(*RenderPromptRequest)(nil),                // 46: makejob.ai.v1.RenderPromptRequest
-	(*RenderPromptResponse)(nil),               // 47: makejob.ai.v1.RenderPromptResponse
-	(*DebugAIRequest)(nil),                     // 48: makejob.ai.v1.DebugAIRequest
-	(*DebugAIResponse)(nil),                    // 49: makejob.ai.v1.DebugAIResponse
-	(*GenerateQuestionCandidatesRequest)(nil),  // 50: makejob.ai.v1.GenerateQuestionCandidatesRequest
-	(*GenerateQuestionCandidatesResponse)(nil), // 51: makejob.ai.v1.GenerateQuestionCandidatesResponse
-	(*QuestionCandidate)(nil),                  // 52: makejob.ai.v1.QuestionCandidate
-	(*QuestionPipelineStreamEvent)(nil),        // 53: makejob.ai.v1.QuestionPipelineStreamEvent
-	nil,                                        // 54: makejob.ai.v1.GenerateInterviewReportResponse.DimensionScoresEntry
-	nil,                                        // 55: makejob.ai.v1.AdjustPlanRequest.PerformanceEntry
-	nil,                                        // 56: makejob.ai.v1.RenderPromptRequest.VariablesEntry
-	nil,                                        // 57: makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
-	nil,                                        // 58: makejob.ai.v1.DebugAIRequest.ParamsEntry
+	(*GenerateKnowledgeReportRequest)(nil),     // 15: makejob.ai.v1.GenerateKnowledgeReportRequest
+	(*GenerateKnowledgeReportResponse)(nil),    // 16: makejob.ai.v1.GenerateKnowledgeReportResponse
+	(*GenerateJobReportRequest)(nil),           // 17: makejob.ai.v1.GenerateJobReportRequest
+	(*GenerateJobReportResponse)(nil),          // 18: makejob.ai.v1.GenerateJobReportResponse
+	(*PlanAgentRequest)(nil),                   // 19: makejob.ai.v1.PlanAgentRequest
+	(*PlanAgentResponse)(nil),                  // 20: makejob.ai.v1.PlanAgentResponse
+	(*AdjustPlanRequest)(nil),                  // 21: makejob.ai.v1.AdjustPlanRequest
+	(*AdjustPlanResponse)(nil),                 // 22: makejob.ai.v1.AdjustPlanResponse
+	(*GetStudySuggestionRequest)(nil),          // 23: makejob.ai.v1.GetStudySuggestionRequest
+	(*GetStudySuggestionResponse)(nil),         // 24: makejob.ai.v1.GetStudySuggestionResponse
+	(*PlanTask)(nil),                           // 25: makejob.ai.v1.PlanTask
+	(*CompanionAgentRequest)(nil),              // 26: makejob.ai.v1.CompanionAgentRequest
+	(*CompanionAgentResponse)(nil),             // 27: makejob.ai.v1.CompanionAgentResponse
+	(*GetGreetingRequest)(nil),                 // 28: makejob.ai.v1.GetGreetingRequest
+	(*GetGreetingResponse)(nil),                // 29: makejob.ai.v1.GetGreetingResponse
+	(*GetEncouragementRequest)(nil),            // 30: makejob.ai.v1.GetEncouragementRequest
+	(*GetEncouragementResponse)(nil),           // 31: makejob.ai.v1.GetEncouragementResponse
+	(*QuizAnalyzerRequest)(nil),                // 32: makejob.ai.v1.QuizAnalyzerRequest
+	(*QuizAnalyzerResponse)(nil),               // 33: makejob.ai.v1.QuizAnalyzerResponse
+	(*AnalyzeCodeRequest)(nil),                 // 34: makejob.ai.v1.AnalyzeCodeRequest
+	(*AnalyzeCodeResponse)(nil),                // 35: makejob.ai.v1.AnalyzeCodeResponse
+	(*CodingProcessEvent)(nil),                 // 36: makejob.ai.v1.CodingProcessEvent
+	(*DiagnoseInterviewCodingRequest)(nil),     // 37: makejob.ai.v1.DiagnoseInterviewCodingRequest
+	(*DiagnoseInterviewCodingResponse)(nil),    // 38: makejob.ai.v1.DiagnoseInterviewCodingResponse
+	(*ExplainAnswerRequest)(nil),               // 39: makejob.ai.v1.ExplainAnswerRequest
+	(*ExplainAnswerResponse)(nil),              // 40: makejob.ai.v1.ExplainAnswerResponse
+	(*GenerateHintRequest)(nil),                // 41: makejob.ai.v1.GenerateHintRequest
+	(*GenerateHintResponse)(nil),               // 42: makejob.ai.v1.GenerateHintResponse
+	(*ResumeParserRequest)(nil),                // 43: makejob.ai.v1.ResumeParserRequest
+	(*ResumeParserResponse)(nil),               // 44: makejob.ai.v1.ResumeParserResponse
+	(*Live2DDirectiveRequest)(nil),             // 45: makejob.ai.v1.Live2DDirectiveRequest
+	(*Live2DDirectiveResponse)(nil),            // 46: makejob.ai.v1.Live2DDirectiveResponse
+	(*Live2DDirectiveExpressionLayer)(nil),     // 47: makejob.ai.v1.Live2DDirectiveExpressionLayer
+	(*Live2DDirectiveParameterOverride)(nil),   // 48: makejob.ai.v1.Live2DDirectiveParameterOverride
+	(*Live2DDirective)(nil),                    // 49: makejob.ai.v1.Live2DDirective
+	(*RenderPromptRequest)(nil),                // 50: makejob.ai.v1.RenderPromptRequest
+	(*RenderPromptResponse)(nil),               // 51: makejob.ai.v1.RenderPromptResponse
+	(*DebugAIRequest)(nil),                     // 52: makejob.ai.v1.DebugAIRequest
+	(*DebugAIResponse)(nil),                    // 53: makejob.ai.v1.DebugAIResponse
+	(*GenerateQuestionCandidatesRequest)(nil),  // 54: makejob.ai.v1.GenerateQuestionCandidatesRequest
+	(*GenerateQuestionCandidatesResponse)(nil), // 55: makejob.ai.v1.GenerateQuestionCandidatesResponse
+	(*QuestionCandidate)(nil),                  // 56: makejob.ai.v1.QuestionCandidate
+	(*QuestionPipelineStreamEvent)(nil),        // 57: makejob.ai.v1.QuestionPipelineStreamEvent
+	nil,                                        // 58: makejob.ai.v1.GenerateInterviewReportResponse.DimensionScoresEntry
+	nil,                                        // 59: makejob.ai.v1.AdjustPlanRequest.PerformanceEntry
+	nil,                                        // 60: makejob.ai.v1.RenderPromptRequest.VariablesEntry
+	nil,                                        // 61: makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
+	nil,                                        // 62: makejob.ai.v1.DebugAIRequest.ParamsEntry
 }
 var file_makejob_ai_v1_ai_proto_depIdxs = []int32{
 	1,  // 0: makejob.ai.v1.InterviewAgentRequest.history:type_name -> makejob.ai.v1.Message
-	45, // 1: makejob.ai.v1.StartInterviewResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
-	45, // 2: makejob.ai.v1.GetNextQuestionSessionResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
-	54, // 3: makejob.ai.v1.GenerateInterviewReportResponse.dimension_scores:type_name -> makejob.ai.v1.GenerateInterviewReportResponse.DimensionScoresEntry
+	49, // 1: makejob.ai.v1.StartInterviewResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
+	49, // 2: makejob.ai.v1.GetNextQuestionSessionResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
+	58, // 3: makejob.ai.v1.GenerateInterviewReportResponse.dimension_scores:type_name -> makejob.ai.v1.GenerateInterviewReportResponse.DimensionScoresEntry
 	13, // 4: makejob.ai.v1.GenerateReportFromHistoryRequest.history:type_name -> makejob.ai.v1.HistoryMessage
-	21, // 5: makejob.ai.v1.PlanAgentResponse.tasks:type_name -> makejob.ai.v1.PlanTask
-	55, // 6: makejob.ai.v1.AdjustPlanRequest.performance:type_name -> makejob.ai.v1.AdjustPlanRequest.PerformanceEntry
-	21, // 7: makejob.ai.v1.AdjustPlanResponse.tasks:type_name -> makejob.ai.v1.PlanTask
-	45, // 8: makejob.ai.v1.CompanionAgentResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
-	32, // 9: makejob.ai.v1.DiagnoseInterviewCodingRequest.process_events:type_name -> makejob.ai.v1.CodingProcessEvent
-	43, // 10: makejob.ai.v1.Live2DDirectiveResponse.expression_mix:type_name -> makejob.ai.v1.Live2DDirectiveExpressionLayer
-	44, // 11: makejob.ai.v1.Live2DDirectiveResponse.parameter_overrides:type_name -> makejob.ai.v1.Live2DDirectiveParameterOverride
-	43, // 12: makejob.ai.v1.Live2DDirective.expression_mix:type_name -> makejob.ai.v1.Live2DDirectiveExpressionLayer
-	44, // 13: makejob.ai.v1.Live2DDirective.parameter_overrides:type_name -> makejob.ai.v1.Live2DDirectiveParameterOverride
-	56, // 14: makejob.ai.v1.RenderPromptRequest.variables:type_name -> makejob.ai.v1.RenderPromptRequest.VariablesEntry
-	57, // 15: makejob.ai.v1.RenderPromptResponse.resolved_variables:type_name -> makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
-	58, // 16: makejob.ai.v1.DebugAIRequest.params:type_name -> makejob.ai.v1.DebugAIRequest.ParamsEntry
-	52, // 17: makejob.ai.v1.GenerateQuestionCandidatesResponse.candidates:type_name -> makejob.ai.v1.QuestionCandidate
-	52, // 18: makejob.ai.v1.QuestionPipelineStreamEvent.card:type_name -> makejob.ai.v1.QuestionCandidate
-	51, // 19: makejob.ai.v1.QuestionPipelineStreamEvent.response:type_name -> makejob.ai.v1.GenerateQuestionCandidatesResponse
-	0,  // 20: makejob.ai.v1.AIService.InterviewAgent:input_type -> makejob.ai.v1.InterviewAgentRequest
-	15, // 21: makejob.ai.v1.AIService.PlanAgent:input_type -> makejob.ai.v1.PlanAgentRequest
-	22, // 22: makejob.ai.v1.AIService.CompanionAgent:input_type -> makejob.ai.v1.CompanionAgentRequest
-	28, // 23: makejob.ai.v1.AIService.QuizAnalyzer:input_type -> makejob.ai.v1.QuizAnalyzerRequest
-	30, // 24: makejob.ai.v1.AIService.AnalyzeCode:input_type -> makejob.ai.v1.AnalyzeCodeRequest
-	33, // 25: makejob.ai.v1.AIService.DiagnoseInterviewCoding:input_type -> makejob.ai.v1.DiagnoseInterviewCodingRequest
-	35, // 26: makejob.ai.v1.AIService.ExplainAnswer:input_type -> makejob.ai.v1.ExplainAnswerRequest
-	37, // 27: makejob.ai.v1.AIService.GenerateHint:input_type -> makejob.ai.v1.GenerateHintRequest
-	39, // 28: makejob.ai.v1.AIService.ResumeParser:input_type -> makejob.ai.v1.ResumeParserRequest
-	41, // 29: makejob.ai.v1.AIService.Live2DDirector:input_type -> makejob.ai.v1.Live2DDirectiveRequest
-	3,  // 30: makejob.ai.v1.AIService.StartInterview:input_type -> makejob.ai.v1.StartInterviewRequest
-	5,  // 31: makejob.ai.v1.AIService.EvaluateAnswer:input_type -> makejob.ai.v1.EvaluateAnswerRequest
-	7,  // 32: makejob.ai.v1.AIService.GetNextQuestionSession:input_type -> makejob.ai.v1.GetNextQuestionSessionRequest
-	9,  // 33: makejob.ai.v1.AIService.GenerateInterviewReport:input_type -> makejob.ai.v1.GenerateInterviewReportRequest
-	11, // 34: makejob.ai.v1.AIService.EndInterviewSession:input_type -> makejob.ai.v1.EndInterviewSessionRequest
-	14, // 35: makejob.ai.v1.AIService.GenerateReportFromHistory:input_type -> makejob.ai.v1.GenerateReportFromHistoryRequest
-	17, // 36: makejob.ai.v1.AIService.AdjustPlan:input_type -> makejob.ai.v1.AdjustPlanRequest
-	19, // 37: makejob.ai.v1.AIService.GetStudySuggestion:input_type -> makejob.ai.v1.GetStudySuggestionRequest
-	24, // 38: makejob.ai.v1.AIService.GetGreeting:input_type -> makejob.ai.v1.GetGreetingRequest
-	26, // 39: makejob.ai.v1.AIService.GetEncouragement:input_type -> makejob.ai.v1.GetEncouragementRequest
-	46, // 40: makejob.ai.v1.AIService.RenderPrompt:input_type -> makejob.ai.v1.RenderPromptRequest
-	48, // 41: makejob.ai.v1.AIService.DebugAI:input_type -> makejob.ai.v1.DebugAIRequest
-	50, // 42: makejob.ai.v1.AIService.GenerateQuestionCandidates:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
-	50, // 43: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
-	2,  // 44: makejob.ai.v1.AIService.InterviewAgent:output_type -> makejob.ai.v1.InterviewAgentResponse
-	16, // 45: makejob.ai.v1.AIService.PlanAgent:output_type -> makejob.ai.v1.PlanAgentResponse
-	23, // 46: makejob.ai.v1.AIService.CompanionAgent:output_type -> makejob.ai.v1.CompanionAgentResponse
-	29, // 47: makejob.ai.v1.AIService.QuizAnalyzer:output_type -> makejob.ai.v1.QuizAnalyzerResponse
-	31, // 48: makejob.ai.v1.AIService.AnalyzeCode:output_type -> makejob.ai.v1.AnalyzeCodeResponse
-	34, // 49: makejob.ai.v1.AIService.DiagnoseInterviewCoding:output_type -> makejob.ai.v1.DiagnoseInterviewCodingResponse
-	36, // 50: makejob.ai.v1.AIService.ExplainAnswer:output_type -> makejob.ai.v1.ExplainAnswerResponse
-	38, // 51: makejob.ai.v1.AIService.GenerateHint:output_type -> makejob.ai.v1.GenerateHintResponse
-	40, // 52: makejob.ai.v1.AIService.ResumeParser:output_type -> makejob.ai.v1.ResumeParserResponse
-	42, // 53: makejob.ai.v1.AIService.Live2DDirector:output_type -> makejob.ai.v1.Live2DDirectiveResponse
-	4,  // 54: makejob.ai.v1.AIService.StartInterview:output_type -> makejob.ai.v1.StartInterviewResponse
-	6,  // 55: makejob.ai.v1.AIService.EvaluateAnswer:output_type -> makejob.ai.v1.EvaluateAnswerResponse
-	8,  // 56: makejob.ai.v1.AIService.GetNextQuestionSession:output_type -> makejob.ai.v1.GetNextQuestionSessionResponse
-	10, // 57: makejob.ai.v1.AIService.GenerateInterviewReport:output_type -> makejob.ai.v1.GenerateInterviewReportResponse
-	12, // 58: makejob.ai.v1.AIService.EndInterviewSession:output_type -> makejob.ai.v1.EndInterviewSessionResponse
-	10, // 59: makejob.ai.v1.AIService.GenerateReportFromHistory:output_type -> makejob.ai.v1.GenerateInterviewReportResponse
-	18, // 60: makejob.ai.v1.AIService.AdjustPlan:output_type -> makejob.ai.v1.AdjustPlanResponse
-	20, // 61: makejob.ai.v1.AIService.GetStudySuggestion:output_type -> makejob.ai.v1.GetStudySuggestionResponse
-	25, // 62: makejob.ai.v1.AIService.GetGreeting:output_type -> makejob.ai.v1.GetGreetingResponse
-	27, // 63: makejob.ai.v1.AIService.GetEncouragement:output_type -> makejob.ai.v1.GetEncouragementResponse
-	47, // 64: makejob.ai.v1.AIService.RenderPrompt:output_type -> makejob.ai.v1.RenderPromptResponse
-	49, // 65: makejob.ai.v1.AIService.DebugAI:output_type -> makejob.ai.v1.DebugAIResponse
-	51, // 66: makejob.ai.v1.AIService.GenerateQuestionCandidates:output_type -> makejob.ai.v1.GenerateQuestionCandidatesResponse
-	53, // 67: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:output_type -> makejob.ai.v1.QuestionPipelineStreamEvent
-	44, // [44:68] is the sub-list for method output_type
-	20, // [20:44] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	13, // 5: makejob.ai.v1.GenerateKnowledgeReportRequest.history:type_name -> makejob.ai.v1.HistoryMessage
+	13, // 6: makejob.ai.v1.GenerateJobReportRequest.history:type_name -> makejob.ai.v1.HistoryMessage
+	25, // 7: makejob.ai.v1.PlanAgentResponse.tasks:type_name -> makejob.ai.v1.PlanTask
+	59, // 8: makejob.ai.v1.AdjustPlanRequest.performance:type_name -> makejob.ai.v1.AdjustPlanRequest.PerformanceEntry
+	25, // 9: makejob.ai.v1.AdjustPlanResponse.tasks:type_name -> makejob.ai.v1.PlanTask
+	49, // 10: makejob.ai.v1.CompanionAgentResponse.live2d_directive:type_name -> makejob.ai.v1.Live2DDirective
+	36, // 11: makejob.ai.v1.DiagnoseInterviewCodingRequest.process_events:type_name -> makejob.ai.v1.CodingProcessEvent
+	47, // 12: makejob.ai.v1.Live2DDirectiveResponse.expression_mix:type_name -> makejob.ai.v1.Live2DDirectiveExpressionLayer
+	48, // 13: makejob.ai.v1.Live2DDirectiveResponse.parameter_overrides:type_name -> makejob.ai.v1.Live2DDirectiveParameterOverride
+	47, // 14: makejob.ai.v1.Live2DDirective.expression_mix:type_name -> makejob.ai.v1.Live2DDirectiveExpressionLayer
+	48, // 15: makejob.ai.v1.Live2DDirective.parameter_overrides:type_name -> makejob.ai.v1.Live2DDirectiveParameterOverride
+	60, // 16: makejob.ai.v1.RenderPromptRequest.variables:type_name -> makejob.ai.v1.RenderPromptRequest.VariablesEntry
+	61, // 17: makejob.ai.v1.RenderPromptResponse.resolved_variables:type_name -> makejob.ai.v1.RenderPromptResponse.ResolvedVariablesEntry
+	62, // 18: makejob.ai.v1.DebugAIRequest.params:type_name -> makejob.ai.v1.DebugAIRequest.ParamsEntry
+	56, // 19: makejob.ai.v1.GenerateQuestionCandidatesResponse.candidates:type_name -> makejob.ai.v1.QuestionCandidate
+	56, // 20: makejob.ai.v1.QuestionPipelineStreamEvent.card:type_name -> makejob.ai.v1.QuestionCandidate
+	55, // 21: makejob.ai.v1.QuestionPipelineStreamEvent.response:type_name -> makejob.ai.v1.GenerateQuestionCandidatesResponse
+	0,  // 22: makejob.ai.v1.AIService.InterviewAgent:input_type -> makejob.ai.v1.InterviewAgentRequest
+	19, // 23: makejob.ai.v1.AIService.PlanAgent:input_type -> makejob.ai.v1.PlanAgentRequest
+	26, // 24: makejob.ai.v1.AIService.CompanionAgent:input_type -> makejob.ai.v1.CompanionAgentRequest
+	32, // 25: makejob.ai.v1.AIService.QuizAnalyzer:input_type -> makejob.ai.v1.QuizAnalyzerRequest
+	34, // 26: makejob.ai.v1.AIService.AnalyzeCode:input_type -> makejob.ai.v1.AnalyzeCodeRequest
+	37, // 27: makejob.ai.v1.AIService.DiagnoseInterviewCoding:input_type -> makejob.ai.v1.DiagnoseInterviewCodingRequest
+	39, // 28: makejob.ai.v1.AIService.ExplainAnswer:input_type -> makejob.ai.v1.ExplainAnswerRequest
+	41, // 29: makejob.ai.v1.AIService.GenerateHint:input_type -> makejob.ai.v1.GenerateHintRequest
+	43, // 30: makejob.ai.v1.AIService.ResumeParser:input_type -> makejob.ai.v1.ResumeParserRequest
+	45, // 31: makejob.ai.v1.AIService.Live2DDirector:input_type -> makejob.ai.v1.Live2DDirectiveRequest
+	3,  // 32: makejob.ai.v1.AIService.StartInterview:input_type -> makejob.ai.v1.StartInterviewRequest
+	5,  // 33: makejob.ai.v1.AIService.EvaluateAnswer:input_type -> makejob.ai.v1.EvaluateAnswerRequest
+	7,  // 34: makejob.ai.v1.AIService.GetNextQuestionSession:input_type -> makejob.ai.v1.GetNextQuestionSessionRequest
+	9,  // 35: makejob.ai.v1.AIService.GenerateInterviewReport:input_type -> makejob.ai.v1.GenerateInterviewReportRequest
+	11, // 36: makejob.ai.v1.AIService.EndInterviewSession:input_type -> makejob.ai.v1.EndInterviewSessionRequest
+	14, // 37: makejob.ai.v1.AIService.GenerateReportFromHistory:input_type -> makejob.ai.v1.GenerateReportFromHistoryRequest
+	15, // 38: makejob.ai.v1.AIService.GenerateKnowledgeReport:input_type -> makejob.ai.v1.GenerateKnowledgeReportRequest
+	17, // 39: makejob.ai.v1.AIService.GenerateJobReport:input_type -> makejob.ai.v1.GenerateJobReportRequest
+	21, // 40: makejob.ai.v1.AIService.AdjustPlan:input_type -> makejob.ai.v1.AdjustPlanRequest
+	23, // 41: makejob.ai.v1.AIService.GetStudySuggestion:input_type -> makejob.ai.v1.GetStudySuggestionRequest
+	28, // 42: makejob.ai.v1.AIService.GetGreeting:input_type -> makejob.ai.v1.GetGreetingRequest
+	30, // 43: makejob.ai.v1.AIService.GetEncouragement:input_type -> makejob.ai.v1.GetEncouragementRequest
+	50, // 44: makejob.ai.v1.AIService.RenderPrompt:input_type -> makejob.ai.v1.RenderPromptRequest
+	52, // 45: makejob.ai.v1.AIService.DebugAI:input_type -> makejob.ai.v1.DebugAIRequest
+	54, // 46: makejob.ai.v1.AIService.GenerateQuestionCandidates:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
+	54, // 47: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:input_type -> makejob.ai.v1.GenerateQuestionCandidatesRequest
+	2,  // 48: makejob.ai.v1.AIService.InterviewAgent:output_type -> makejob.ai.v1.InterviewAgentResponse
+	20, // 49: makejob.ai.v1.AIService.PlanAgent:output_type -> makejob.ai.v1.PlanAgentResponse
+	27, // 50: makejob.ai.v1.AIService.CompanionAgent:output_type -> makejob.ai.v1.CompanionAgentResponse
+	33, // 51: makejob.ai.v1.AIService.QuizAnalyzer:output_type -> makejob.ai.v1.QuizAnalyzerResponse
+	35, // 52: makejob.ai.v1.AIService.AnalyzeCode:output_type -> makejob.ai.v1.AnalyzeCodeResponse
+	38, // 53: makejob.ai.v1.AIService.DiagnoseInterviewCoding:output_type -> makejob.ai.v1.DiagnoseInterviewCodingResponse
+	40, // 54: makejob.ai.v1.AIService.ExplainAnswer:output_type -> makejob.ai.v1.ExplainAnswerResponse
+	42, // 55: makejob.ai.v1.AIService.GenerateHint:output_type -> makejob.ai.v1.GenerateHintResponse
+	44, // 56: makejob.ai.v1.AIService.ResumeParser:output_type -> makejob.ai.v1.ResumeParserResponse
+	46, // 57: makejob.ai.v1.AIService.Live2DDirector:output_type -> makejob.ai.v1.Live2DDirectiveResponse
+	4,  // 58: makejob.ai.v1.AIService.StartInterview:output_type -> makejob.ai.v1.StartInterviewResponse
+	6,  // 59: makejob.ai.v1.AIService.EvaluateAnswer:output_type -> makejob.ai.v1.EvaluateAnswerResponse
+	8,  // 60: makejob.ai.v1.AIService.GetNextQuestionSession:output_type -> makejob.ai.v1.GetNextQuestionSessionResponse
+	10, // 61: makejob.ai.v1.AIService.GenerateInterviewReport:output_type -> makejob.ai.v1.GenerateInterviewReportResponse
+	12, // 62: makejob.ai.v1.AIService.EndInterviewSession:output_type -> makejob.ai.v1.EndInterviewSessionResponse
+	10, // 63: makejob.ai.v1.AIService.GenerateReportFromHistory:output_type -> makejob.ai.v1.GenerateInterviewReportResponse
+	16, // 64: makejob.ai.v1.AIService.GenerateKnowledgeReport:output_type -> makejob.ai.v1.GenerateKnowledgeReportResponse
+	18, // 65: makejob.ai.v1.AIService.GenerateJobReport:output_type -> makejob.ai.v1.GenerateJobReportResponse
+	22, // 66: makejob.ai.v1.AIService.AdjustPlan:output_type -> makejob.ai.v1.AdjustPlanResponse
+	24, // 67: makejob.ai.v1.AIService.GetStudySuggestion:output_type -> makejob.ai.v1.GetStudySuggestionResponse
+	29, // 68: makejob.ai.v1.AIService.GetGreeting:output_type -> makejob.ai.v1.GetGreetingResponse
+	31, // 69: makejob.ai.v1.AIService.GetEncouragement:output_type -> makejob.ai.v1.GetEncouragementResponse
+	51, // 70: makejob.ai.v1.AIService.RenderPrompt:output_type -> makejob.ai.v1.RenderPromptResponse
+	53, // 71: makejob.ai.v1.AIService.DebugAI:output_type -> makejob.ai.v1.DebugAIResponse
+	55, // 72: makejob.ai.v1.AIService.GenerateQuestionCandidates:output_type -> makejob.ai.v1.GenerateQuestionCandidatesResponse
+	57, // 73: makejob.ai.v1.AIService.GenerateQuestionCandidatesStream:output_type -> makejob.ai.v1.QuestionPipelineStreamEvent
+	48, // [48:74] is the sub-list for method output_type
+	22, // [22:48] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_makejob_ai_v1_ai_proto_init() }
@@ -4857,7 +5227,7 @@ func file_makejob_ai_v1_ai_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_ai_v1_ai_proto_rawDesc), len(file_makejob_ai_v1_ai_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   59,
+			NumMessages:   63,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

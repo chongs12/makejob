@@ -236,6 +236,7 @@ export function InterviewHubPage() {
     try {
       await createMutation.mutateAsync({
         industry_code: effectiveIndustryCode,
+        interview_type: form.interviewType,
         live2d_model_key: readSelectedLive2DModelKey('interview', effectiveIndustryCode),
         ...(isResumeMode
           ? {
@@ -373,7 +374,7 @@ export function InterviewHubPage() {
           }}>
             <button
               type="button"
-              onClick={() => setForm((current) => ({ ...current, interviewMode: 'general' }))}
+              onClick={() => setForm((current) => ({ ...current, interviewMode: 'general', interviewType: 'knowledge' }))}
               style={{
                 flex: 1,
                 padding: '10px 16px',
@@ -392,7 +393,7 @@ export function InterviewHubPage() {
             </button>
             <button
               type="button"
-              onClick={() => setForm((current) => ({ ...current, interviewMode: 'resume_driven' }))}
+              onClick={() => setForm((current) => ({ ...current, interviewMode: 'resume_driven', interviewType: 'job' }))}
               style={{
                 flex: 1,
                 padding: '10px 16px',

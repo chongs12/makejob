@@ -173,6 +173,115 @@ func codingDiagnosisSchema() string {
 }`
 }
 
+// knowledgeReportSchema 知识点专项面试报告结构化输出合同。
+// 仅围绕用户自定义知识点考核，输出 8 大板块的完整结构化报告。
+func knowledgeReportSchema() string {
+	return `{
+  "overall_score": 78,
+  "rating": "良好",
+  "conclusion": "一句话整体考核结论",
+  "basic_info": {
+    "knowledge_topics": ["Java集合"],
+    "question_type": "问答",
+    "duration_seconds": 600,
+    "total_questions": 5,
+    "correct_count": 3,
+    "accuracy": 0.6
+  },
+  "question_reviews": [
+    {
+      "question_index": 0,
+      "question": "题目正文",
+      "user_answer": "用户作答原文",
+      "score": 80,
+      "max_score": 100,
+      "errors": ["错误点"],
+      "omissions": ["遗漏点"],
+      "highlights": ["亮点"],
+      "standard_answer": "标准答案",
+      "key_points": ["核心得分点1"]
+    }
+  ],
+  "dimension_scores": [
+    {"dimension": "知识点基础掌握度", "score": 80, "comment": "评语"},
+    {"dimension": "知识点应用落地能力", "score": 70, "comment": "评语"},
+    {"dimension": "知识延伸与深度", "score": 60, "comment": "评语"},
+    {"dimension": "答题精准度与严谨度", "score": 75, "comment": "评语"}
+  ],
+  "mastered_points": ["已掌握知识点1"],
+  "blind_spots": [
+    {"topic": "知识点", "level": "完全不会", "detail": "说明"}
+  ],
+  "study_suggestions": [
+    {"focus": "重点背诵", "detail": "具体内容"}
+  ],
+  "next_quiz_topics": [
+    {"topic": "知识点", "reason": "针对短板"}
+  ]
+}`
+}
+
+// jobReportSchema 岗位求职面试报告结构化输出合同。
+// 围绕简历+岗位+面试表现，输出 6 维加权评分 + 9 板块的求职型报告。
+func jobReportSchema() string {
+	return `{
+  "overall_score": 78,
+  "rating": "良好",
+  "hire_recommendation": "建议复试考察",
+  "basic_info": {
+    "candidate_name": "候选人姓名",
+    "target_position": "应聘岗位",
+    "interview_type": "技术面",
+    "duration_seconds": 600,
+    "total_questions": 8,
+    "overall_score": 78,
+    "rating": "良好"
+  },
+  "jd_match_overview": {
+    "matched_items": ["匹配项"],
+    "missing_items": ["缺失项"],
+    "hard_requirements_met": true,
+    "resume_highlights": ["简历优势"],
+    "resume_hard_wounds": ["简历硬伤"]
+  },
+  "question_reviews": [
+    {
+      "question_index": 0,
+      "question": "面试问题",
+      "user_answer": "用户回答原文",
+      "score": 80,
+      "max_score": 100,
+      "highlights": ["面试亮点"],
+      "loopholes": ["回答漏洞"],
+      "pitfalls": ["踩坑点"],
+      "taboos": ["职场禁忌点"]
+    }
+  ],
+  "dimension_scores": [
+    {"dimension": "岗位硬技能匹配度", "score": 80, "weight": 0.35, "comment": "优缺点解读"},
+    {"dimension": "简历项目真实性&含金量", "score": 75, "weight": 0.25, "comment": "优缺点解读"},
+    {"dimension": "逻辑思维与表达能力", "score": 70, "weight": 0.15, "comment": "优缺点解读"},
+    {"dimension": "求职动机与岗位认知", "score": 65, "weight": 0.10, "comment": "优缺点解读"},
+    {"dimension": "职业素养与稳定性", "score": 72, "weight": 0.10, "comment": "优缺点解读"},
+    {"dimension": "综合面试印象", "score": 78, "weight": 0.05, "comment": "优缺点解读"}
+  ],
+  "core_advantages": ["核心求职优势"],
+  "weaknesses_risks": [
+    {"item": "短板", "level": "致命", "impact": "对录用的影响"}
+  ],
+  "hire_decision": {
+    "decision": "建议复试考察",
+    "rationale": "核心依据"
+  },
+  "optimization_plan": [
+    {"aspect": "话术优化", "detail": "具体方案"}
+  ],
+  "next_round_questions": [
+    {"question": "预测题", "focus": "考点", "difficulty": "medium"}
+  ]
+}`
+}
+
 // buildCodeAnalysisSystemPrompt 构造代码分析系统提示词。
 func buildCodeAnalysisSystemPrompt() string {
 	return `请分析这道题的答案，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：

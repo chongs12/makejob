@@ -9,17 +9,22 @@ import (
 // MockInterview 面试会话 GORM model（对齐单体 mock_interviews 表结构）
 type MockInterview struct {
 	gorm.Model
-	UserID         uint64      `gorm:"index;not null"`
-	IndustryID     uint64      `gorm:"column:industry_id;index;not null"`
-	Status         string      `gorm:"size:20;default:created;index"` // created, in_progress, ongoing, report_generating, report_failed, completed
-	Score          float64     `gorm:"column:score"`
-	TotalQuestions int32       `gorm:"column:total_questions"`
-	AIFeedback     string      `gorm:"column:ai_feedback;type:text"`
-	AISessionID    string      `gorm:"column:ai_session_id;type:text"`
-	ReportJSON     string      `gorm:"column:report_json;type:text"`
-	StartedAt      *time.Time  `gorm:"column:started_at"`
-	EndedAt        *time.Time  `gorm:"column:ended_at;index"`
-	Live2DModelKey string      `gorm:"size:128"`
+	UserID             uint64     `gorm:"index;not null"`
+	IndustryID         uint64     `gorm:"column:industry_id;index;not null"`
+	Status             string     `gorm:"size:20;default:created;index"` // created, in_progress, ongoing, report_generating, report_failed, completed
+	InterviewType      string     `gorm:"size:20;default:'';index"` // knowledge | job，决定出题与报告模板
+	KnowledgeTopicsJSON string    `gorm:"column:knowledge_topics;type:text"` // 知识点专项面试的自定义知识点 JSON 数组
+	ResumeText          string    `gorm:"column:resume_text;type:text"` // 简历原文，岗位求职报告依赖
+	JobDescription      string    `gorm:"column:job_description;type:text"` // 目标岗位 JD
+	ResumeParsedJSON    string    `gorm:"column:resume_parsed_json;type:text"` // 简历解析画像 JSON
+	Score               float64   `gorm:"column:score"`
+	TotalQuestions     int32      `gorm:"column:total_questions"`
+	AIFeedback         string     `gorm:"column:ai_feedback;type:text"`
+	AISessionID        string     `gorm:"column:ai_session_id;type:text"`
+	ReportJSON         string     `gorm:"column:report_json;type:text"`
+	StartedAt          *time.Time `gorm:"column:started_at"`
+	EndedAt            *time.Time `gorm:"column:ended_at;index"`
+	Live2DModelKey     string     `gorm:"size:128"`
 }
 
 func (MockInterview) TableName() string {
@@ -70,6 +75,8 @@ type InterviewReport struct {
 	ID                    uint64  `gorm:"primaryKey;autoIncrement"`
 	InterviewID           uint64  `gorm:"uniqueIndex;not null"`
 	OverallScore          float64 `gorm:"not null;default:0"`
+	ReportTemplate        string  `gorm:"size:20;default:''"` // knowledge | job | ""
+	ReportDataJSON        string  `gorm:"type:text"` // 完整结构化报告 JSON，前端按 report_template 渲染
 	DimensionScoresJSON   string  `gorm:"type:text"`
 	StrengthsJSON         string  `gorm:"type:text"`
 	WeaknessesJSON        string  `gorm:"type:text"`

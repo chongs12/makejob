@@ -54,6 +54,9 @@ import {
   formatInterviewDuration,
   normalizeInterviewDimensions,
 } from './interviewHelpers'
+import { KnowledgeReportView } from './KnowledgeReportView'
+import { JobReportView } from './JobReportView'
+import type { KnowledgeReportData, JobReportData } from './interviewTypes'
 
 const THEME = {
   bg: '#f8f9fa',
@@ -304,7 +307,13 @@ export function InterviewReportPage() {
             )}
           </div>
 
-          {report && (
+          {report && report.report_template === 'knowledge' && report.report_data_json && (
+            <KnowledgeReportView data={parseKnowledgeReport(report.report_data_json)} />
+          )}
+          {report && report.report_template === 'job' && report.report_data_json && (
+            <JobReportView data={parseJobReport(report.report_data_json)} />
+          )}
+          {report && report.report_template !== 'knowledge' && report.report_template !== 'job' && (
             <>
               {/* 核心指标 */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -586,4 +595,75 @@ export function InterviewReportPage() {
       </div>
     </div>
   )
+}
+
+// parseKnowledgeReport 解析知识点报告 JSON，失败时返回带默认值的空报告，保证视图不崩。
+function parseKnowledgeReport(raw: string): KnowledgeReportData {
+  const emptyBasic = { knowledge_topics: [], question_type: '', duration_seconds: 0, total_questions: 0, correct_count: 0, accuracy: 0 }
+  try {
+    const parsed = JSON.parse(raw) as KnowledgeReportData
+    return {
+      overall_score: parsed.overall_score ?? 0,
+      rating: parsed.rating ?? '',
+      conclusion: parsed.conclusion ?? '',
+      basic_info: parsed.basic_info ?? emptyBasic,
+      question_reviews: parsed.question_reviews ?? [],
+      dimension_scores: parsed.dimension_scores ?? [],
+      mastered_points: parsed.mastered_points ?? [],
+      blind_spots: parsed.blind_spots ?? [],
+      study_suggestions: parsed.study_suggestions ?? [],
+      next_quiz_topics: parsed.next_quiz_topics ?? [],
+    }
+  } catch {
+    return {
+      overall_score: 0,
+      rating: '',
+      conclusion: '报告数据解析失败，请稍后重试或重新生成报告。',
+      basic_info: emptyBasic,
+      question_reviews: [],
+      dimension_scores: [],
+      mastered_points: [],
+      blind_spots: [],
+      study_suggestions: [],
+      next_quiz_topics: [],
+    }
+  }
+}
+
+// parseJobReport 解析岗位报告 JSON，失败时返回带默认值的空报告。
+function parseJobReport(raw: string): JobReportData {
+  const emptyBasic = { candidate_name: '', target_position: '', interview_type: '', duration_seconds: 0, total_questions: 0, overall_score: 0, rating: '' }
+  const emptyMatch = { matched_items: [], missing_items: [], hard_requirements_met: false, resume_highlights: [], resume_hard_wounds: [] }
+  try {
+    const parsed = JSON.parse(raw) as JobReportData
+    return {
+      overall_score: parsed.overall_score ?? 0,
+      rating: parsed.rating ?? '',
+      hire_recommendation: parsed.hire_recommendation ?? '',
+      basic_info: parsed.basic_info ?? emptyBasic,
+      jd_match_overview: parsed.jd_match_overview ?? emptyMatch,
+      question_reviews: parsed.question_reviews ?? [],
+      dimension_scores: parsed.dimension_scores ?? [],
+      core_advantages: parsed.core_advantages ?? [],
+      weaknesses_risks: parsed.weaknesses_risks ?? [],
+      hire_decision: parsed.hire_decision ?? { decision: '', rationale: '' },
+      optimization_plan: parsed.optimization_plan ?? [],
+      next_round_questions: parsed.next_round_questions ?? [],
+    }
+  } catch {
+    return {
+      overall_score: 0,
+      rating: '',
+      hire_recommendation: '报告数据解析失败，请稍后重试或重新生成报告。',
+      basic_info: emptyBasic,
+      jd_match_overview: emptyMatch,
+      question_reviews: [],
+      dimension_scores: [],
+      core_advantages: [],
+      weaknesses_risks: [],
+      hire_decision: { decision: '', rationale: '' },
+      optimization_plan: [],
+      next_round_questions: [],
+    }
+  }
 }

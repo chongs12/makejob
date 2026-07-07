@@ -65,7 +65,7 @@ func TestInterviewAgentUseCase_GenerateQuestion_Success(t *testing.T) {
 
 	uc := NewInterviewAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, log.DefaultLogger)
 
-	result, err := uc.GenerateQuestion(context.Background(), "golang", "medium", "", "", "", nil, 1)
+	result, err := uc.GenerateQuestion(context.Background(), "golang", "medium", "", "", "", nil, 1, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestInterviewAgentUseCase_GenerateQuestion_ConfigNotFound(t *testing.T) {
 
 	uc := NewInterviewAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, log.DefaultLogger)
 
-	_, err := uc.GenerateQuestion(context.Background(), "golang", "medium", "", "", "", nil, 1)
+	_, err := uc.GenerateQuestion(context.Background(), "golang", "medium", "", "", "", nil, 1, nil, "")
 	if err != ErrAIConfigNotFound {
 		t.Errorf("expected ErrAIConfigNotFound, got %v", err)
 	}

@@ -23,6 +23,8 @@ service AIService {
   rpc GenerateInterviewReport(GenerateInterviewReportRequest) returns (GenerateInterviewReportResponse);
   rpc EndInterviewSession(EndInterviewSessionRequest) returns (EndInterviewSessionResponse);
   rpc GenerateReportFromHistory(GenerateReportFromHistoryRequest) returns (GenerateInterviewReportResponse);
+  rpc GenerateKnowledgeReport(GenerateKnowledgeReportRequest) returns (GenerateKnowledgeReportResponse);
+  rpc GenerateJobReport(GenerateJobReportRequest) returns (GenerateJobReportResponse);
 
   // === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
@@ -50,6 +52,8 @@ message InterviewAgentRequest {
   int32 question_index = 6;
   string resume_text = 7;
   string job_description = 8;
+  repeated string topics = 9;  // 知识点专项面试的自定义知识点列表
+  string interview_type = 10;  // knowledge | job，决定出题 prompt 分支
 }
 
 message Message {
@@ -82,6 +86,8 @@ message StartInterviewRequest {
   string resume_text = 5;
   string job_description = 6;
   string interview_mode = 7;
+  repeated string topics = 8;  // 知识点专项面试的自定义知识点列表
+  string interview_type = 9;  // knowledge | job，决定出题 prompt 分支
 }
 
 message StartInterviewResponse {
@@ -157,6 +163,40 @@ message GenerateReportFromHistoryRequest {
   string industry_code = 2;
   string difficulty = 3;
   int32 total_questions = 4;
+}
+
+// GenerateKnowledgeReportRequest 知识点专项面试报告生成请求（不依赖 session，基于完整对话历史）
+message GenerateKnowledgeReportRequest {
+  repeated HistoryMessage history = 1;
+  repeated string knowledge_topics = 2;  // 用户自定义知识点列表
+  string difficulty = 3;
+  int32 total_questions = 4;
+}
+
+// GenerateKnowledgeReportResponse 知识点专项面试报告生成响应
+message GenerateKnowledgeReportResponse {
+  string report_json = 1;   // 完整结构化报告 JSON，前端按 knowledge 模板渲染
+  double overall_score = 2;  // 总分，便于落库顶层字段
+  string rating = 3;         // 评级：优秀/良好/合格/薄弱
+}
+
+// GenerateJobReportRequest 岗位求职面试报告生成请求（基于完整对话历史 + 简历画像 + JD）
+message GenerateJobReportRequest {
+  repeated HistoryMessage history = 1;
+  string resume_text = 2;          // 简历原文
+  string resume_parsed_json = 3;   // 简历解析画像 JSON（skills/projects/weak_signals 等）
+  string job_description = 4;      // 目标岗位 JD
+  string industry_code = 5;
+  string difficulty = 6;
+  int32 total_questions = 7;
+}
+
+// GenerateJobReportResponse 岗位求职面试报告生成响应
+message GenerateJobReportResponse {
+  string report_json = 1;          // 完整结构化报告 JSON，前端按 job 模板渲染
+  double overall_score = 2;        // 总分（后端加权算，覆盖 LLM）
+  string rating = 3;               // 评级：优秀/良好/合格/薄弱
+  string hire_recommendation = 4;  // 录用建议：建议录用/建议复试考察/人才储备/不予录用
 }
 
 message PlanAgentRequest {

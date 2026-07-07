@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type interviewSessionState struct {
 	ResumeText      string
 	JobDescription  string
 	InterviewMode   string
+	KnowledgeTopics []string // 知识点专项面试的自定义知识点，供后续出题与报告使用
 	CurrentIndex    int32
 	History         []Message
 	Questions       []InterviewSessionQuestion
@@ -78,19 +80,26 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 		return nil, ErrAIConfigNotFound
 	}
 
-	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
-	if err != nil {
-		return nil, ErrPromptRenderFailed
+	// 构造首题 prompt：按面试类型选内联 prompt 或 DB 模板
+	var promptText string
+	switch req.InterviewType {
+	case "knowledge":
+		promptText = buildKnowledgeQuestionPrompt(req.Topics, req.Difficulty, "0")
+	case "job":
+		promptText = buildJobQuestionPrompt(req.ResumeText, req.JobDescription, req.Difficulty, "0")
+	default:
+		tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+		if err != nil {
+			return nil, ErrPromptRenderFailed
+		}
+		promptText = RenderPrompt(tpl.TemplateContent, map[string]string{
+			"industry_code":   req.IndustryCode,
+			"difficulty":      req.Difficulty,
+			"resume_text":     req.ResumeText,
+			"job_description": req.JobDescription,
+			"question_index":  "0",
+		})
 	}
-
-	// 构造首题 prompt
-	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"industry_code":   req.IndustryCode,
-		"difficulty":      req.Difficulty,
-		"resume_text":     req.ResumeText,
-		"job_description": req.JobDescription,
-		"question_index":  "0",
-	})
 
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
@@ -113,17 +122,18 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 	// 创建会话
 	sessionID := uuid.NewString()
 	session := &interviewSessionState{
-		SessionID:     sessionID,
-		InterviewID:   req.InterviewID,
-		IndustryCode:  req.IndustryCode,
-		Difficulty:    req.Difficulty,
-		QuestionCount: req.QuestionCount,
-		ResumeText:    req.ResumeText,
+		SessionID:      sessionID,
+		InterviewID:    req.InterviewID,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		QuestionCount:  req.QuestionCount,
+		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
-		InterviewMode: req.InterviewMode,
-		CurrentIndex:  0,
-		HasStarted:    true,
-		CreatedAt:     time.Now(),
+		InterviewMode:  req.InterviewMode,
+		KnowledgeTopics: req.Topics,
+		CurrentIndex:   0,
+		HasStarted:     true,
+		CreatedAt:      time.Now(),
 	}
 
 	// 记录首题
@@ -508,6 +518,8 @@ type StartInterviewRequest struct {
 	ResumeText    string
 	JobDescription string
 	InterviewMode string
+	Topics        []string // 知识点专项面试的自定义知识点列表
+	InterviewType string   // knowledge | job，决定出题 prompt 分支
 }
 
 // StartInterviewResponse 开始面试响应
@@ -604,4 +616,429 @@ func (uc *InterviewSessionUseCase) saveLog(ctx context.Context, scene, model str
 	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
 		uc.logger.Warnf("写入AI调用日志失败: %v", err)
 	}
+}
+
+// GenerateKnowledgeReport 知识点专项面试报告生成（不依赖 session，基于完整对话历史）。
+// 学习型报告必须由 LLM 生成，失败直接返回错误，不做字数兜底降级。
+func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, req *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error) {
+	if len(req.History) == 0 {
+		return nil, kratosErr.BadRequest("EMPTY_HISTORY", "对话历史不能为空")
+	}
+
+	const scene = "interview_agent"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	prompt := uc.buildKnowledgeReportPrompt(req.History, req.KnowledgeTopics, req.Difficulty, req.TotalQuestions)
+	schema := knowledgeReportSchema()
+	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
+	messages = append(messages, req.History...)
+
+	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := parseStructuredJSON[KnowledgeReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+
+	// 后端定级，确保评级规则一致，不依赖 LLM 自由发挥
+	rating := classifyKnowledgeRating(result.OverallScore)
+	result.Rating = rating
+
+	reportBytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal knowledge report failed: %w", err)
+	}
+
+	return &GenerateKnowledgeReportResponse{
+		ReportJSON:   string(reportBytes),
+		OverallScore: result.OverallScore,
+		Rating:       rating,
+	}, nil
+}
+
+// buildKnowledgeReportPrompt 构造知识点专项报告生成 prompt。
+func (uc *InterviewSessionUseCase) buildKnowledgeReportPrompt(history []Message, topics []string, difficulty string, totalQuestions int32) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位严谨的知识点考核评估专家。请根据以下完整面试对话记录，围绕候选人自定义的知识点生成一份学习型评估报告。\n\n")
+	sb.WriteString(fmt.Sprintf("考核知识点：%s\n目标难度：%s\n题目数量：%d\n\n", strings.Join(topics, "、"), difficulty, totalQuestions))
+	sb.WriteString("完整面试对话记录：\n")
+	for _, msg := range history {
+		role := "候选人"
+		if msg.Role == "assistant" {
+			role = "面试官"
+		}
+		sb.WriteString(fmt.Sprintf("[%s] %s\n", role, msg.Content))
+	}
+	sb.WriteString("\n请严格按 JSON 合同输出报告，要求：\n")
+	sb.WriteString("1. overall_score: 总体评分 0-100；rating: 优秀(>=85)/良好(>=70)/合格(>=60)/薄弱(<60)。\n")
+	sb.WriteString("2. conclusion: 一句话总结该知识点掌握现状。\n")
+	sb.WriteString("3. question_reviews: 逐题复盘，含用户作答原文、得分、错误点/遗漏点/亮点、标准答案、核心得分点。\n")
+	sb.WriteString("4. dimension_scores: 四个固定维度（知识点基础掌握度/知识点应用落地能力/知识延伸与深度/答题精准度与严谨度）各打分 0-100 并给评语。\n")
+	sb.WriteString("5. mastered_points: 本次完全掌握的知识点。\n")
+	sb.WriteString("6. blind_spots: 知识盲区，level 必须是 完全不会/一知半解/容易混淆/答题不严谨 之一。\n")
+	sb.WriteString("7. study_suggestions: 针对薄弱点的补强学习建议。\n")
+	sb.WriteString("8. next_quiz_topics: 下一轮专项刷题方向及原因。\n")
+	return sb.String()
+}
+
+// buildKnowledgeQuestionPrompt 构造知识点专项出题 prompt（内联，不依赖 DB 模板）。
+func buildKnowledgeQuestionPrompt(topics []string, difficulty, questionIndex string) string {
+	return fmt.Sprintf("你是一位严谨的技术考核官，正在对候选人进行知识点专项考核。\n\n"+
+		"考核知识点：%s\n难度：%s\n当前题号：%s\n\n"+
+		"出题要求：\n"+
+		"1. 围绕上述知识点出题，每道题聚焦一个具体知识点或其易错点。\n"+
+		"2. 题目类型在 technical/behavioral/coding 中选择，coding 题需给出可运行的题目描述。\n"+
+		"3. 由浅入深，覆盖基础概念、应用场景、进阶边界与易错点。\n"+
+		"4. topic 字段必须填写本题对应的具体知识点名称。\n",
+		strings.Join(topics, "、"), difficulty, questionIndex)
+}
+
+// classifyKnowledgeRating 按总分映射评级，保证一致性。
+func classifyKnowledgeRating(score float64) string {
+	switch {
+	case score >= 85:
+		return "优秀"
+	case score >= 70:
+		return "良好"
+	case score >= 60:
+		return "合格"
+	default:
+		return "薄弱"
+	}
+}
+
+// GenerateKnowledgeReportRequest 知识点专项报告生成请求
+type GenerateKnowledgeReportRequest struct {
+	History         []Message
+	KnowledgeTopics []string
+	Difficulty      string
+	TotalQuestions  int32
+}
+
+// GenerateKnowledgeReportResponse 知识点专项报告生成响应
+type GenerateKnowledgeReportResponse struct {
+	ReportJSON   string
+	OverallScore float64
+	Rating       string
+}
+
+// KnowledgeReportResult 知识点专项报告 LLM 结构化输出结果
+type KnowledgeReportResult struct {
+	OverallScore     float64                    `json:"overall_score"`
+	Rating           string                     `json:"rating"`
+	Conclusion       string                     `json:"conclusion"`
+	BasicInfo        KnowledgeReportBasicInfo   `json:"basic_info"`
+	QuestionReviews  []KnowledgeQuestionReview  `json:"question_reviews"`
+	DimensionScores  []KnowledgeDimensionScore  `json:"dimension_scores"`
+	MasteredPoints   []string                   `json:"mastered_points"`
+	BlindSpots       []KnowledgeBlindSpot       `json:"blind_spots"`
+	StudySuggestions []KnowledgeStudySuggestion `json:"study_suggestions"`
+	NextQuizTopics   []KnowledgeNextQuizTopic   `json:"next_quiz_topics"`
+}
+
+// KnowledgeReportBasicInfo 报告基础信息
+type KnowledgeReportBasicInfo struct {
+	KnowledgeTopics []string `json:"knowledge_topics"`
+	QuestionType    string   `json:"question_type"`
+	DurationSeconds int32    `json:"duration_seconds"`
+	TotalQuestions  int32    `json:"total_questions"`
+	CorrectCount    int32    `json:"correct_count"`
+	Accuracy        float64  `json:"accuracy"`
+}
+
+// KnowledgeQuestionReview 逐题复盘
+type KnowledgeQuestionReview struct {
+	QuestionIndex  int32    `json:"question_index"`
+	Question       string   `json:"question"`
+	UserAnswer     string   `json:"user_answer"`
+	Score          float64  `json:"score"`
+	MaxScore       float64  `json:"max_score"`
+	Errors         []string `json:"errors"`
+	Omissions      []string `json:"omissions"`
+	Highlights     []string `json:"highlights"`
+	StandardAnswer string   `json:"standard_answer"`
+	KeyPoints      []string `json:"key_points"`
+}
+
+// KnowledgeDimensionScore 维度评分
+type KnowledgeDimensionScore struct {
+	Dimension string  `json:"dimension"`
+	Score     float64 `json:"score"`
+	Comment   string  `json:"comment"`
+}
+
+// KnowledgeBlindSpot 知识盲区
+type KnowledgeBlindSpot struct {
+	Topic  string `json:"topic"`
+	Level  string `json:"level"`
+	Detail string `json:"detail"`
+}
+
+// KnowledgeStudySuggestion 补强学习建议
+type KnowledgeStudySuggestion struct {
+	Focus  string `json:"focus"`
+	Detail string `json:"detail"`
+}
+
+// KnowledgeNextQuizTopic 二次考核出题建议
+type KnowledgeNextQuizTopic struct {
+	Topic  string `json:"topic"`
+	Reason string `json:"reason"`
+}
+
+// GenerateJobReport 岗位求职面试报告生成（不依赖 session，基于完整对话历史 + 简历画像 + JD）。
+// 求职型报告必须由 LLM 生成，失败直接返回错误，不做兜底降级。
+func (uc *InterviewSessionUseCase) GenerateJobReport(ctx context.Context, req *GenerateJobReportRequest) (*GenerateJobReportResponse, error) {
+	if len(req.History) == 0 {
+		return nil, kratosErr.BadRequest("EMPTY_HISTORY", "对话历史不能为空")
+	}
+
+	const scene = "interview_agent"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+
+	prompt := uc.buildJobReportPrompt(req)
+	schema := jobReportSchema()
+	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
+	messages = append(messages, req.History...)
+
+	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := parseStructuredJSON[JobReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		return nil, err
+	}
+
+	// 后端按固定权重加权算总分，覆盖 LLM 综合，确保一致性
+	overallScore := computeJobOverallScore(result.DimensionScores)
+	result.OverallScore = overallScore
+	result.Rating = classifyKnowledgeRating(overallScore) // 复用评级逻辑
+
+	reportBytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal job report failed: %w", err)
+	}
+
+	return &GenerateJobReportResponse{
+		ReportJSON:         string(reportBytes),
+		OverallScore:       overallScore,
+		Rating:             result.Rating,
+		HireRecommendation: result.HireRecommendation,
+	}, nil
+}
+
+// buildJobReportPrompt 构造岗位求职报告生成 prompt。
+func (uc *InterviewSessionUseCase) buildJobReportPrompt(req *GenerateJobReportRequest) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位资深的企业招聘面试评估专家。请根据候选人简历、目标岗位要求与完整面试对话记录，生成一份求职型面试评估报告。\n\n")
+	sb.WriteString(fmt.Sprintf("目标岗位 JD：\n%s\n\n", strings.TrimSpace(req.JobDescription)))
+	if strings.TrimSpace(req.ResumeParsedJSON) != "" {
+		sb.WriteString(fmt.Sprintf("简历结构化画像（JSON）：\n%s\n\n", req.ResumeParsedJSON))
+	}
+	if strings.TrimSpace(req.ResumeText) != "" {
+		sb.WriteString(fmt.Sprintf("简历原文：\n%s\n\n", req.ResumeText))
+	}
+	sb.WriteString(fmt.Sprintf("行业方向：%s  目标难度：%s  题目数量：%d\n\n", req.IndustryCode, req.Difficulty, req.TotalQuestions))
+	sb.WriteString("完整面试对话记录：\n")
+	for _, msg := range req.History {
+		role := "候选人"
+		if msg.Role == "assistant" {
+			role = "面试官"
+		}
+		sb.WriteString(fmt.Sprintf("[%s] %s\n", role, msg.Content))
+	}
+	sb.WriteString("\n请严格按 JSON 合同输出报告，要求：\n")
+	sb.WriteString("1. overall_score: 总体评分 0-100（后端会按维度权重重新加权计算，此处给出你的综合判断即可）；rating: 优秀(>=85)/良好(>=70)/合格(>=60)/薄弱(<60)。\n")
+	sb.WriteString("2. hire_recommendation: 录用建议，建议录用/建议复试考察/人才储备/不予录用 之一。\n")
+	sb.WriteString("3. basic_info: 面试档案基础信息，candidate_name 从简历提取（无则填'候选人'）。\n")
+	sb.WriteString("4. jd_match_overview: 简历与岗位 JD 的匹配总览，含核心匹配项、缺失项、硬性条件达标、简历优势与硬伤。\n")
+	sb.WriteString("5. question_reviews: 逐题复盘，含面试亮点、回答漏洞、踩坑点、职场面试禁忌点。\n")
+	sb.WriteString("6. dimension_scores: 六大维度评分（0-100）+ 详细优缺点解读，维度名与权重必须严格按合同：岗位硬技能匹配度(0.35)、简历项目真实性&含金量(0.25)、逻辑思维与表达能力(0.15)、求职动机与岗位认知(0.10)、职业素养与稳定性(0.10)、综合面试印象(0.05)。\n")
+	sb.WriteString("7. core_advantages: 核心求职优势，可直接用于优化自我介绍与应答话术。\n")
+	sb.WriteString("8. weaknesses_risks: 面试短板与求职风险，level 必须是 致命 或 轻微 之一，注明对录用的影响。\n")
+	sb.WriteString("9. hire_decision: 最终面试决策，含 decision 与核心依据 rationale。\n")
+	sb.WriteString("10. optimization_plan: 针对性面试优化方案，aspect 从 话术优化/项目包装/短板补强/高频追问应对/简历优化 中选择。\n")
+	sb.WriteString("11. next_round_questions: 下一轮复试预测题库，含考点与难度。\n")
+	return sb.String()
+}
+
+// buildJobQuestionPrompt 构造岗位求职出题 prompt（内联，不依赖 DB 模板）。
+func buildJobQuestionPrompt(resumeText, jobDescription, difficulty, questionIndex string) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位资深的企业面试官，正在对候选人进行岗位求职面试。请结合候选人简历与目标岗位要求出题。\n\n")
+	sb.WriteString(fmt.Sprintf("目标难度：%s  当前题号：%s\n\n", difficulty, questionIndex))
+	if strings.TrimSpace(jobDescription) != "" {
+		sb.WriteString(fmt.Sprintf("目标岗位 JD：\n%s\n\n", jobDescription))
+	}
+	if strings.TrimSpace(resumeText) != "" {
+		sb.WriteString(fmt.Sprintf("候选人简历：\n%s\n\n", resumeText))
+	}
+	sb.WriteString("出题要求：\n")
+	sb.WriteString("1. 围绕岗位 JD 的核心能力要求与简历经历出题，模拟真实企业面试（技术面/HR面/综合面）。\n")
+	sb.WriteString("2. 追问简历项目的真实性、个人贡献、成果量化，挖掘注水与含金量。\n")
+	sb.WriteString("3. 由浅入深，覆盖硬技能、项目经历、逻辑表达、求职动机、职业素养等维度。\n")
+	sb.WriteString("4. topic 字段填写本题考察的维度（如'岗位硬技能匹配度'、'项目含金量'、'逻辑表达'）。\n")
+	return sb.String()
+}
+
+// computeJobOverallScore 按固定权重加权计算岗位面试总分，归一化容错缺失维度。
+func computeJobOverallScore(dimensions []JobDimensionScore) float64 {
+	if len(dimensions) == 0 {
+		return 0
+	}
+	var weightedSum, weightSum float64
+	for _, d := range dimensions {
+		w := jobDimensionWeight(d.Dimension)
+		weightedSum += d.Score * w
+		weightSum += w
+	}
+	if weightSum <= 0 {
+		return 0
+	}
+	return weightedSum / weightSum
+}
+
+// jobDimensionWeight 返回维度的固定权重，未知维度返回 0。
+func jobDimensionWeight(dimension string) float64 {
+	switch strings.TrimSpace(dimension) {
+	case "岗位硬技能匹配度":
+		return 0.35
+	case "简历项目真实性&含金量":
+		return 0.25
+	case "逻辑思维与表达能力":
+		return 0.15
+	case "求职动机与岗位认知":
+		return 0.10
+	case "职业素养与稳定性":
+		return 0.10
+	case "综合面试印象":
+		return 0.05
+	default:
+		return 0
+	}
+}
+
+// GenerateJobReportRequest 岗位求职报告生成请求
+type GenerateJobReportRequest struct {
+	History          []Message
+	ResumeText       string
+	ResumeParsedJSON string
+	JobDescription   string
+	IndustryCode     string
+	Difficulty       string
+	TotalQuestions   int32
+}
+
+// GenerateJobReportResponse 岗位求职报告生成响应
+type GenerateJobReportResponse struct {
+	ReportJSON         string
+	OverallScore       float64
+	Rating             string
+	HireRecommendation string
+}
+
+// JobReportResult 岗位求职报告 LLM 结构化输出结果
+type JobReportResult struct {
+	OverallScore       float64                `json:"overall_score"`
+	Rating             string                 `json:"rating"`
+	HireRecommendation string                 `json:"hire_recommendation"`
+	BasicInfo          JobReportBasicInfo     `json:"basic_info"`
+	JDMatchOverview    JobJDMatchOverview     `json:"jd_match_overview"`
+	QuestionReviews    []JobQuestionReview    `json:"question_reviews"`
+	DimensionScores    []JobDimensionScore    `json:"dimension_scores"`
+	CoreAdvantages     []string               `json:"core_advantages"`
+	WeaknessesRisks    []JobWeaknessRisk      `json:"weaknesses_risks"`
+	HireDecision       JobHireDecision        `json:"hire_decision"`
+	OptimizationPlan   []JobOptimizationItem  `json:"optimization_plan"`
+	NextRoundQuestions []JobNextRoundQuestion `json:"next_round_questions"`
+}
+
+// JobReportBasicInfo 面试档案基础信息
+type JobReportBasicInfo struct {
+	CandidateName   string  `json:"candidate_name"`
+	TargetPosition  string  `json:"target_position"`
+	InterviewType   string  `json:"interview_type"`
+	DurationSeconds int32   `json:"duration_seconds"`
+	TotalQuestions  int32   `json:"total_questions"`
+	OverallScore    float64 `json:"overall_score"`
+	Rating          string  `json:"rating"`
+}
+
+// JobJDMatchOverview 简历&JD匹配总览
+type JobJDMatchOverview struct {
+	MatchedItems        []string `json:"matched_items"`
+	MissingItems        []string `json:"missing_items"`
+	HardRequirementsMet bool     `json:"hard_requirements_met"`
+	ResumeHighlights    []string `json:"resume_highlights"`
+	ResumeHardWounds    []string `json:"resume_hard_wounds"`
+}
+
+// JobQuestionReview 逐题复盘
+type JobQuestionReview struct {
+	QuestionIndex int32    `json:"question_index"`
+	Question      string   `json:"question"`
+	UserAnswer    string   `json:"user_answer"`
+	Score         float64  `json:"score"`
+	MaxScore      float64  `json:"max_score"`
+	Highlights    []string `json:"highlights"`
+	Loopholes     []string `json:"loopholes"`
+	Pitfalls      []string `json:"pitfalls"`
+	Taboos        []string `json:"taboos"`
+}
+
+// JobDimensionScore 维度评分
+type JobDimensionScore struct {
+	Dimension string  `json:"dimension"`
+	Score     float64 `json:"score"`
+	Weight    float64 `json:"weight"`
+	Comment   string  `json:"comment"`
+}
+
+// JobWeaknessRisk 短板风险
+type JobWeaknessRisk struct {
+	Item   string `json:"item"`
+	Level  string `json:"level"`
+	Impact string `json:"impact"`
+}
+
+// JobHireDecision 最终面试决策
+type JobHireDecision struct {
+	Decision  string `json:"decision"`
+	Rationale string `json:"rationale"`
+}
+
+// JobOptimizationItem 面试优化方案
+type JobOptimizationItem struct {
+	Aspect string `json:"aspect"`
+	Detail string `json:"detail"`
+}
+
+// JobNextRoundQuestion 复试预测题
+type JobNextRoundQuestion struct {
+	Question   string `json:"question"`
+	Focus      string `json:"focus"`
+	Difficulty string `json:"difficulty"`
 }

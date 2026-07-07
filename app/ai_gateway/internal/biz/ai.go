@@ -124,7 +124,7 @@ type InterviewResult struct {
 }
 
 // GenerateQuestion 生成面试题目或对用户回答进行反馈
-func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryCode, difficulty, userAnswer, resumeText, jobDescription string, history []Message, questionIndex int32) (*InterviewResult, error) {
+func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryCode, difficulty, userAnswer, resumeText, jobDescription string, history []Message, questionIndex int32, topics []string, interviewType string) (*InterviewResult, error) {
 	const scene = "interview_agent"
 	start := time.Now()
 
@@ -133,19 +133,27 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 		return nil, ErrAIConfigNotFound
 	}
 
-	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
-	if err != nil {
-		return nil, ErrPromptRenderFailed
+	// 构造 prompt：按面试类型选内联 prompt 或 DB 模板
+	var promptText string
+	switch interviewType {
+	case "knowledge":
+		promptText = buildKnowledgeQuestionPrompt(topics, difficulty, fmt.Sprintf("%d", questionIndex))
+	case "job":
+		promptText = buildJobQuestionPrompt(resumeText, jobDescription, difficulty, fmt.Sprintf("%d", questionIndex))
+	default:
+		tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
+		if err != nil {
+			return nil, ErrPromptRenderFailed
+		}
+		promptText = RenderPrompt(tpl.TemplateContent, map[string]string{
+			"industry_code":   industryCode,
+			"difficulty":      difficulty,
+			"user_answer":     userAnswer,
+			"resume_text":     resumeText,
+			"job_description": jobDescription,
+			"question_index":  fmt.Sprintf("%d", questionIndex),
+		})
 	}
-
-	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"industry_code":   industryCode,
-		"difficulty":      difficulty,
-		"user_answer":     userAnswer,
-		"resume_text":     resumeText,
-		"job_description": jobDescription,
-		"question_index":  fmt.Sprintf("%d", questionIndex),
-	})
 
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}

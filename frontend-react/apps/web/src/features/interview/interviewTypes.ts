@@ -6,6 +6,7 @@ export interface InterviewConfigForm {
   topicsText: string
   live2dModelKey: string
   interviewMode: 'general' | 'resume_driven'
+  interviewType: 'knowledge' | 'job'
   resumeText: string
   jobDescription: string
 }
@@ -42,6 +43,113 @@ export interface InterviewReport {
   suggestions: string[]
   summary: string
   coding_diagnostics?: InterviewCodingDiagnosis[]
+  report_template?: string
+  report_data_json?: string
+}
+
+// 知识点专项面试报告结构化数据（对应后端 report_data_json，report_template === 'knowledge' 时使用）
+export interface KnowledgeReportData {
+  overall_score: number
+  rating: string
+  conclusion: string
+  basic_info: {
+    knowledge_topics: string[]
+    question_type: string
+    duration_seconds: number
+    total_questions: number
+    correct_count: number
+    accuracy: number
+  }
+  question_reviews: Array<{
+    question_index: number
+    question: string
+    user_answer: string
+    score: number
+    max_score: number
+    errors: string[]
+    omissions: string[]
+    highlights: string[]
+    standard_answer: string
+    key_points: string[]
+  }>
+  dimension_scores: Array<{
+    dimension: string
+    score: number
+    comment: string
+  }>
+  mastered_points: string[]
+  blind_spots: Array<{
+    topic: string
+    level: string
+    detail: string
+  }>
+  study_suggestions: Array<{
+    focus: string
+    detail: string
+  }>
+  next_quiz_topics: Array<{
+    topic: string
+    reason: string
+  }>
+}
+
+// 岗位求职面试报告结构化数据（对应后端 report_data_json，report_template === 'job' 时使用）
+export interface JobReportData {
+  overall_score: number
+  rating: string
+  hire_recommendation: string
+  basic_info: {
+    candidate_name: string
+    target_position: string
+    interview_type: string
+    duration_seconds: number
+    total_questions: number
+    overall_score: number
+    rating: string
+  }
+  jd_match_overview: {
+    matched_items: string[]
+    missing_items: string[]
+    hard_requirements_met: boolean
+    resume_highlights: string[]
+    resume_hard_wounds: string[]
+  }
+  question_reviews: Array<{
+    question_index: number
+    question: string
+    user_answer: string
+    score: number
+    max_score: number
+    highlights: string[]
+    loopholes: string[]
+    pitfalls: string[]
+    taboos: string[]
+  }>
+  dimension_scores: Array<{
+    dimension: string
+    score: number
+    weight: number
+    comment: string
+  }>
+  core_advantages: string[]
+  weaknesses_risks: Array<{
+    item: string
+    level: string // 致命 | 轻微
+    impact: string
+  }>
+  hire_decision: {
+    decision: string
+    rationale: string
+  }
+  optimization_plan: Array<{
+    aspect: string
+    detail: string
+  }>
+  next_round_questions: Array<{
+    question: string
+    focus: string
+    difficulty: string
+  }>
 }
 
 export interface InterviewCodingDiagnosis {
@@ -62,6 +170,7 @@ export interface InterviewCreatePayload {
   question_count?: number
   live2d_model_key?: string
   interview_mode?: 'general' | 'resume_driven'
+  interview_type?: 'knowledge' | 'job'
   resume_text?: string
   job_description?: string
 }

@@ -89,6 +89,8 @@ func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.Interview
 		QuestionIndex:  req.QuestionIndex,
 		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDesc,
+		Topics:         req.Topics,
+		InterviewType:  req.InterviewType,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("InterviewAgent gRPC call failed: %w", err)
@@ -176,13 +178,15 @@ func (c *aiServiceClient) StartInterview(ctx context.Context, req *biz.StartInte
 	defer cancel()
 
 	resp, err := c.client.StartInterview(ctx, &aiv1.StartInterviewRequest{
-		InterviewId:   req.InterviewID,
-		IndustryCode:  req.IndustryCode,
-		Difficulty:    req.Difficulty,
-		QuestionCount: req.QuestionCount,
-		ResumeText:    req.ResumeText,
+		InterviewId:    req.InterviewID,
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		QuestionCount:  req.QuestionCount,
+		ResumeText:     req.ResumeText,
 		JobDescription: req.JobDescription,
-		InterviewMode: req.InterviewMode,
+		InterviewMode:  req.InterviewMode,
+		Topics:         req.Topics,
+		InterviewType:  req.InterviewType,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("StartInterview gRPC call failed: %w", err)
@@ -312,5 +316,63 @@ func (c *aiServiceClient) GenerateReportFromHistory(ctx context.Context, req *bi
 		Strengths:    resp.Strengths,
 		Weaknesses:   resp.Weaknesses,
 		Suggestions:  resp.Suggestions,
+	}, nil
+}
+
+// GenerateKnowledgeReport 知识点专项面试报告生成
+func (c *aiServiceClient) GenerateKnowledgeReport(ctx context.Context, req *biz.GenerateKnowledgeReportRequest) (*biz.GenerateKnowledgeReportResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	history := make([]*aiv1.HistoryMessage, len(req.History))
+	for i, m := range req.History {
+		history[i] = &aiv1.HistoryMessage{Role: m.Role, Content: m.Content}
+	}
+
+	resp, err := c.client.GenerateKnowledgeReport(ctx, &aiv1.GenerateKnowledgeReportRequest{
+		History:         history,
+		KnowledgeTopics: req.KnowledgeTopics,
+		Difficulty:      req.Difficulty,
+		TotalQuestions:  req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GenerateKnowledgeReport gRPC call failed: %w", err)
+	}
+
+	return &biz.GenerateKnowledgeReportResponse{
+		ReportJSON:   resp.ReportJson,
+		OverallScore: resp.OverallScore,
+		Rating:       resp.Rating,
+	}, nil
+}
+
+// GenerateJobReport 岗位求职面试报告生成
+func (c *aiServiceClient) GenerateJobReport(ctx context.Context, req *biz.GenerateJobReportRequest) (*biz.GenerateJobReportResponse, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	history := make([]*aiv1.HistoryMessage, len(req.History))
+	for i, m := range req.History {
+		history[i] = &aiv1.HistoryMessage{Role: m.Role, Content: m.Content}
+	}
+
+	resp, err := c.client.GenerateJobReport(ctx, &aiv1.GenerateJobReportRequest{
+		History:          history,
+		ResumeText:       req.ResumeText,
+		ResumeParsedJson: req.ResumeParsedJSON,
+		JobDescription:   req.JobDescription,
+		IndustryCode:     req.IndustryCode,
+		Difficulty:       req.Difficulty,
+		TotalQuestions:   req.TotalQuestions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GenerateJobReport gRPC call failed: %w", err)
+	}
+
+	return &biz.GenerateJobReportResponse{
+		ReportJSON:         resp.ReportJson,
+		OverallScore:       resp.OverallScore,
+		Rating:             resp.Rating,
+		HireRecommendation: resp.HireRecommendation,
 	}, nil
 }
