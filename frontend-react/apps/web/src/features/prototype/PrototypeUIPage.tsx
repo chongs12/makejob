@@ -19,7 +19,9 @@ import {
   ArrowLeftOutlined,
 } from '@ant-design/icons'
 import { loadLive2DRuntime } from '../../shared/live2dRuntime'
-import { resolveSelectableLive2DBackgroundImageUrl } from '../../shared/live2dModelCatalog'
+import { resolveSelectableLive2DBackgroundImageUrl, type SelectableLive2DModelMotion } from '../../shared/live2dModelCatalog'
+import { useLive2DDialoguePlayback } from '../../shared/useLive2DDialoguePlayback'
+import type { Live2DDirective } from '../../shared/live2dDirective'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../state/auth'
 import { useFrontendIndustriesQuery, usePracticeStatsQuery } from '../../shared/frontendQueries'
@@ -34,9 +36,30 @@ import type { CompanionPlanDetail, CompanionPlanTask, CompanionHistoryItem, Comp
 /* ========== Public demo model fallback ========== */
 const DEMO_MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@v0.4.0/test/assets/haru/haru_greeter_t03.model3.json'
 
+/* ========== Mouth shape sync — drives Live2D mouth params from TTS amplitude ========== */
+
+const MOUTH_PARAM_CANDIDATES = ['ParamMouthOpen', 'ParamMouthOpenY']
+
+/**
+ * 把当前嘴型开合值写入模型参数，兼容 Cubism3/4 与旧版参数名。
+ */
+function applyLive2DMouthOpen(model: any, value: number): void {
+  const coreModel = model?.internalModel?.coreModel
+  if (!coreModel?.setParameterValueById) {
+    return
+  }
+  for (const parameterId of MOUTH_PARAM_CANDIDATES) {
+    try {
+      coreModel.setParameterValueById(parameterId, value)
+    } catch {
+      // 部分模型不持有该参数，跳过即可。
+    }
+  }
+}
+
 /* ========== Live2D Canvas with full interaction ========== */
 
-function SimpleLive2DCanvas({ modelUrl, backgroundImageUrl }: { modelUrl: string; backgroundImageUrl?: string }) {
+function SimpleLive2DCanvas({ modelUrl, backgroundImageUrl, mouthOpen, motions, directive }: { modelUrl: string; backgroundImageUrl?: string; mouthOpen: number; motions: SelectableLive2DModelMotion[]; directive: Live2DDirective | null }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<any>(null)
   const [status, setStatus] = useState('等待加载...')
@@ -51,6 +74,58 @@ function SimpleLive2DCanvas({ modelUrl, backgroundImageUrl }: { modelUrl: string
   const animFrameRef = useRef<number>(0)
   const EASING = 0.15
   const MIN_SCALE = 0.3
+
+  // 嘴型开合由父组件传入，每帧写入模型参数，避免 React 重渲染参与逐帧更新。
+  const mouthOpenRef = useRef(0)
+  useEffect(() => {
+    mouthOpenRef.current = mouthOpen
+  }, [mouthOpen])
+
+  // 记录最近一次播放的动作，用于节流，避免同 key 短时间内重复触发。
+  const lastMotionRef = useRef<{ key: string; at: number } | null>(null)
+
+  /**
+   * 当后端指令带来新的 motion_key 时，在模型动作清单里查到对应 group 并播放一次。
+   * 不做 settings hydrate，仅播放模型 model3.json 自带声明的动作。
+   */
+  useEffect(() => {
+    const runtime = runtimeRef.current
+    const motionKey = directive?.motion_key
+    if (!runtime || !motionKey) {
+      return
+    }
+
+    const now = Date.now()
+    if (lastMotionRef.current?.key === motionKey && now - lastMotionRef.current.at < 900) {
+      return
+    }
+
+    const motionDef = motions.find((item) => item.key === motionKey)
+    if (!motionDef) {
+      return
+    }
+
+    const group = motionDef.group || 'auto'
+    const priority = directive?.motion_priority === 'force'
+      ? runtime.motionPriority.FORCE
+      : runtime.motionPriority.NORMAL
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const started = await runtime.model.motion(group, 0, priority)
+        if (!cancelled && started) {
+          lastMotionRef.current = { key: motionKey, at: now }
+        }
+      } catch {
+        // 模型不持有该动作时静默跳过。
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [directive?.motion_key, motions])
   const MAX_SCALE = 3.0
   const WHEEL_STEP = 0.02
 
@@ -64,7 +139,7 @@ function SimpleLive2DCanvas({ modelUrl, backgroundImageUrl }: { modelUrl: string
     async function mount() {
       setStatus('正在加载 Live2D 运行时...')
       try {
-        const { PIXI, Live2DModel } = await loadLive2DRuntime()
+        const { PIXI, Live2DModel, MotionPriority } = await loadLive2DRuntime()
         if (disposed) return
 
         setStatus('正在加载模型...')
@@ -177,7 +252,12 @@ function SimpleLive2DCanvas({ modelUrl, backgroundImageUrl }: { modelUrl: string
           animFrameRef.current = requestAnimationFrame(animateScale)
         }
 
-        runtimeRef.current = { app, model }
+        // 每帧把最新嘴型开合写入模型，与音频分析器输出同步驱动说话口型。
+        app.ticker.add(() => {
+          applyLive2DMouthOpen(model, mouthOpenRef.current)
+        })
+
+        runtimeRef.current = { app, model, motionPriority: MotionPriority }
         setStatus('模型已就绪')
       } catch (err) {
         if (disposed) return
@@ -739,27 +819,14 @@ function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, i
   )
 }
 
-/* ========== Typewriter Subtitle ========== */
-
-function TypewriterSubtitle({ text, sending }: { text: string; sending: boolean }) {
-  const [displayed, setDisplayed] = useState('')
-  const [done, setDone] = useState(false)
-
-  useEffect(() => {
-    setDisplayed('')
-    setDone(false)
-    let i = 0
-    const timer = setInterval(() => {
-      if (i < text.length) {
-        setDisplayed(text.slice(0, i + 1))
-        i++
-      } else {
-        setDone(true)
-        clearInterval(timer)
-      }
-    }, 30)
-    return () => clearInterval(timer)
-  }, [text])
+/**
+ * 舞台字幕：直接展示 useLive2DDialoguePlayback 推进的当前文本，
+ * 与 TTS 音频进度同步，避免独立计时器与音频脱节。
+ */
+function TypewriterSubtitle({ text, typing }: { text: string; typing: boolean }) {
+  if (!text && !typing) {
+    return null
+  }
 
   return (
     <div style={{
@@ -776,11 +843,11 @@ function TypewriterSubtitle({ text, sending }: { text: string; sending: boolean 
             padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
             background: 'rgba(66,153,225,0.3)', color: '#93c5fd',
           }}>陪伴助手</span>
-          {!done && <span style={{ fontSize: 11, color: '#9ca3af' }}>输入中...</span>}
+          {typing && <span style={{ fontSize: 11, color: '#9ca3af' }}>输入中...</span>}
         </div>
         <p style={{ margin: 0, fontSize: 15, color: '#fff', lineHeight: 1.6, minHeight: 24 }}>
-          {displayed}
-          {!done && <span style={{ opacity: 0.5 }}>|</span>}
+          {text}
+          {typing && <span style={{ opacity: 0.5 }}>|</span>}
         </p>
       </div>
     </div>
@@ -788,6 +855,8 @@ function TypewriterSubtitle({ text, sending }: { text: string; sending: boolean 
 }
 
 /* ========== Main Page ========== */
+
+const PROTOTYPE_INITIAL_DIALOGUE = '我是你的学习陪伴助手。先把今天要推进的学习目标摆清楚，我们再一项一项完成。'
 
 export function PrototypeUIPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -798,12 +867,34 @@ export function PrototypeUIPage() {
   const industriesQuery = useFrontendIndustriesQuery()
   const practiceStatsQuery = usePracticeStatsQuery(accessToken)
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || DEFAULT_FRONTEND_INDUSTRY_CODE)
-  const [history, setHistory] = useState<CompanionHistoryItem[]>([])
+  const [history, setHistory] = useState<CompanionHistoryItem[]>(() => [
+    {
+      id: 'assistant-welcome',
+      role: 'assistant',
+      content: PROTOTYPE_INITIAL_DIALOGUE,
+      createdAt: Date.now(),
+    },
+  ])
   const [composer, setComposer] = useState('')
   const [sending, setSending] = useState(false)
   const [selectedModelKey, setSelectedModelKey] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
+
+  // 统一管理 TTS 播放、字幕打字与嘴型同步，复用 companion/room 同一套播放链路。
+  const {
+    liveDialogue,
+    isDialogueTyping,
+    mouthOpen,
+    startDialogueTyping,
+    stopCurrentPlayback,
+    playTTSAudio,
+  } = useLive2DDialoguePlayback({
+    initialDialogue: PROTOTYPE_INITIAL_DIALOGUE,
+    onPlaybackError: (error) => {
+      console.warn('陪伴语音播放失败，已回退到文本模式。', error)
+    },
+  })
   const recordStreamRef = useRef<MediaStream | null>(null)
   const recordAudioContextRef = useRef<AudioContext | null>(null)
   const recordSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
@@ -862,6 +953,10 @@ export function PrototypeUIPage() {
     () => resolveFocusedCompanionTask(currentPlanQuery.data || null, readCompanionFocusTask()),
     [currentPlanQuery.data],
   )
+  const latestDirective = useMemo<Live2DDirective | null>(
+    () => [...history].reverse().find((item) => item.role === 'assistant')?.live2dDirective || null,
+    [history],
+  )
 
   // 真实聊天发送：组装用户消息，调用陪伴 API，追加助手回复
   async function handleSend() {
@@ -878,6 +973,7 @@ export function PrototypeUIPage() {
       createdAt: Date.now(),
     }
 
+    stopCurrentPlayback()
     setHistory((prev) => [...prev, userMessage])
     setComposer('')
     setSending(true)
@@ -904,6 +1000,13 @@ export function PrototypeUIPage() {
       }
 
       setHistory((prev) => [...prev, assistantMessage])
+
+      // 有 TTS 音频则播放并驱动嘴型/字幕；否则回退到纯打字机字幕。
+      if (reply.audio_url) {
+        void playTTSAudio(reply.audio_url, assistantMessage.content)
+      } else {
+        startDialogueTyping(assistantMessage.content)
+      }
     } catch (error) {
       const errorMessage: CompanionHistoryItem = {
         id: `error-${Date.now()}`,
@@ -912,6 +1015,7 @@ export function PrototypeUIPage() {
         createdAt: Date.now(),
       }
       setHistory((prev) => [...prev, errorMessage])
+      startDialogueTyping(errorMessage.content)
     } finally {
       setSending(false)
     }
@@ -1037,6 +1141,9 @@ export function PrototypeUIPage() {
             <SimpleLive2DCanvas
               modelUrl={currentModel?.model_url || DEMO_MODEL_URL}
               backgroundImageUrl={currentModel ? resolveSelectableLive2DBackgroundImageUrl(currentModel) : undefined}
+              mouthOpen={mouthOpen}
+              motions={currentModel?.motions || []}
+              directive={latestDirective}
             />
           </ErrorBoundary>
 
@@ -1070,18 +1177,8 @@ export function PrototypeUIPage() {
             </div>
           </div>
 
-          {/* Dialogue subtitle with typewriter effect */}
-          {history.length > 0 && (() => {
-            const lastAssistantMsg = [...history].reverse().find((m) => m.role === 'assistant')
-            if (!lastAssistantMsg) return null
-            return (
-              <TypewriterSubtitle
-                key={lastAssistantMsg.id}
-                text={lastAssistantMsg.content}
-                sending={sending}
-              />
-            )
-          })()}
+          {/* Dialogue subtitle — text advanced by useLive2DDialoguePlayback, synced with TTS audio */}
+          <TypewriterSubtitle text={liveDialogue} typing={isDialogueTyping} />
         </div>
 
         <div style={{
