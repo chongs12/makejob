@@ -73,3 +73,6 @@ realtime_dialog/
 .gocache/
 
 Open-LLM-VTuber-Web/
+
+# Claude Code worktrees (local, disposable)
+.claude/worktrees/
