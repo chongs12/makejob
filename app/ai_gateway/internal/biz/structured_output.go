@@ -282,6 +282,33 @@ func jobReportSchema() string {
 }`
 }
 
+// SuggestedActionItem 结构化引导动作 biz 结构，对齐 ai.proto SuggestedAction。
+type SuggestedActionItem struct {
+	Type   string `json:"type"`
+	Target string `json:"target"`
+	Params string `json:"params"`
+}
+
+// CompanionPayload 陪伴聊天结构化输出合同解析结果。
+type CompanionPayload struct {
+	Reply            string                `json:"reply"`
+	SuggestedActions []SuggestedActionItem `json:"suggested_actions"`
+}
+
+// companionResultSchema 陪伴聊天结构化输出合同。
+// reply 保持陪伴口吻；suggested_actions 由 LLM 基于上下文里的题集/弱项产出引导动作。
+func companionResultSchema() string {
+	return `{
+  "reply": "给用户的自然语言回复，保持陪伴口吻",
+  "suggested_actions": [
+    {"type": "practice", "target": "题集编码", "params": ""},
+    {"type": "interview", "target": "", "params": ""},
+    {"type": "adjust_plan", "target": "", "params": ""},
+    {"type": "chat", "target": "", "params": "可让用户直接发送的追问"}
+  ]
+}`
+}
+
 // buildCodeAnalysisSystemPrompt 构造代码分析系统提示词。
 func buildCodeAnalysisSystemPrompt() string {
 	return `请分析这道题的答案，并严格返回 JSON，不要输出 Markdown 或额外解释。JSON 结构如下：

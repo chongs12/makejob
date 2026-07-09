@@ -74,7 +74,7 @@ func (c *planAgentClient) AdjustPlan(ctx context.Context, req *biz.PlanAgentAdju
 		IndustryCode:     req.Plan.Industry,
 		Goal:             buildAdjustGoal(req),
 		DailyHours:       dailyHours,
-		WeakTopics:       collectWeakTopics(req.Feedbacks),
+		WeakTopics:       append(collectWeakTopics(req.Feedbacks), req.ExtraWeakTopics...),
 		RecentActivities: buildRecentActivities(req.Feedbacks),
 	})
 	if err != nil {

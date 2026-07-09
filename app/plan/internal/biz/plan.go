@@ -212,10 +212,11 @@ type PlanAgentTask struct {
 
 // PlanAgentAdjustRequest AI 调整计划请求
 type PlanAgentAdjustRequest struct {
-	Plan         *LearningPlan
-	CurrentTasks []*LearningTask
-	Feedbacks    []*TaskFeedback
-	Reason       string
+	Plan            *LearningPlan
+	CurrentTasks    []*LearningTask
+	Feedbacks       []*TaskFeedback
+	Reason          string
+	ExtraWeakTopics []string
 }
 
 // PlanAgentAdjustResponse AI 调整计划响应
@@ -367,6 +368,8 @@ type PlanUseCase struct {
 // LearningArchiveClient 学习档案 gRPC 客户端接口。
 type LearningArchiveClient interface {
 	WritePlanFeedback(ctx context.Context, entry *PlanFeedbackArchiveEntry) error
+	// GetWeakTopics 读取用户高频薄弱主题，供计划生成/调整消费画像。
+	GetWeakTopics(ctx context.Context, userID uint64) ([]string, error)
 }
 
 // PlanFeedbackArchiveEntry 计划反馈诊断写入学习档案的参数。
@@ -476,13 +479,23 @@ func (uc *PlanUseCase) CreatePlan(ctx context.Context, req *CreatePlanRequest) (
 
 // GeneratePlan 消费 MQ 消息后调用 AI 生成计划并原子落库。
 func (uc *PlanUseCase) GeneratePlan(ctx context.Context, planID, userID uint64, req *CreatePlanRequest) error {
+	// 合并学习档案高频薄弱主题，让计划生成贴合用户真实画像（降级：失败只用表单弱项）。
+	weakTopics := make([]string, 0, len(req.WeakTopics)+8)
+	weakTopics = append(weakTopics, req.WeakTopics...)
+	if uc.archiveClient != nil {
+		if topics, archErr := uc.archiveClient.GetWeakTopics(ctx, userID); archErr == nil {
+			weakTopics = append(weakTopics, topics...)
+		} else {
+			uc.logger.Warnf("读取档案弱项失败，回退表单弱项: plan_id=%d err=%v", planID, archErr)
+		}
+	}
 	aiResp, err := uc.aiClient.GeneratePlan(ctx, &PlanAgentRequest{
 		PlanID:            planID,
 		UserID:            userID,
 		IndustryCode:      req.IndustryCode,
 		Goal:              req.Goal,
 		DailyHours:        req.DailyHours,
-		WeakTopics:        req.WeakTopics,
+		WeakTopics:        weakTopics,
 		Level:             req.Level,
 		DurationDays:      req.DurationDays,
 		DailyStudyMinutes: req.DailyStudyMinutes,
@@ -939,11 +952,22 @@ func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, re
 		return nil, kratosErr.InternalServer("LIST_FEEDBACKS_FAILED", "获取反馈列表失败").WithCause(err)
 	}
 
+	// 读取学习档案高频薄弱主题，让计划调整基于真实画像（降级：失败则只用本地反馈弱项）。
+	var extraWeakTopics []string
+	if uc.archiveClient != nil {
+		if topics, archErr := uc.archiveClient.GetWeakTopics(ctx, userID); archErr == nil {
+			extraWeakTopics = topics
+		} else {
+			uc.logger.Warnf("读取档案弱项失败，回退本地反馈: plan_id=%d err=%v", planID, archErr)
+		}
+	}
+
 	aiResp, err := uc.aiClient.AdjustPlan(ctx, &PlanAgentAdjustRequest{
-		Plan:         plan,
-		CurrentTasks: tasks,
-		Feedbacks:    feedbacks,
-		Reason:       reason,
+		Plan:            plan,
+		CurrentTasks:    tasks,
+		Feedbacks:       feedbacks,
+		Reason:          reason,
+		ExtraWeakTopics: extraWeakTopics,
 	})
 	if err != nil {
 		return nil, ErrAdjustFailed.WithCause(err)

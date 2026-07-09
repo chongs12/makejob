@@ -58,12 +58,29 @@ func (c *companionAIClient) CompanionAgent(ctx context.Context, req *biz.Compani
 	}
 
 	return &biz.CompanionAgentResponse{
-		Reply:           resp.GetReply(),
-		Emotion:         resp.GetEmotion(),
-		Suggestions:     resp.GetSuggestions(),
-		Action:          resp.GetAction(),
-		Live2DDirective: live2dDirective,
+		Reply:            resp.GetReply(),
+		Emotion:          resp.GetEmotion(),
+		Suggestions:      resp.GetSuggestions(),
+		Action:           resp.GetAction(),
+		SuggestedActions: toBizSuggestedActions(resp.GetSuggestedActions()),
+		Live2DDirective:  live2dDirective,
 	}, nil
+}
+
+// toBizSuggestedActions 将 proto SuggestedAction 列表转换为 biz SuggestedAction 列表。
+func toBizSuggestedActions(actions []*aiv1.SuggestedAction) []biz.SuggestedAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	result := make([]biz.SuggestedAction, 0, len(actions))
+	for _, a := range actions {
+		result = append(result, biz.SuggestedAction{
+			Type:   a.GetType(),
+			Target: a.GetTarget(),
+			Params: a.GetParams(),
+		})
+	}
+	return result
 }
 
 // GetGreeting 调用 AI Gateway 的 GetGreeting RPC

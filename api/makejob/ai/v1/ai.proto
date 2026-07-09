@@ -281,6 +281,14 @@ message CompanionAgentResponse {
   repeated string suggestions = 3;
   string action = 4;
   Live2DDirective live2d_directive = 5;
+  repeated SuggestedAction suggested_actions = 6;
+}
+
+// SuggestedAction 结构化引导动作，供前端渲染跳转 chip。
+message SuggestedAction {
+  string type = 1;    // practice | interview | adjust_plan | chat
+  string target = 2;  // 题集编码 / 面试类型 / 空
+  string params = 3;  // 额外参数 JSON 字符串
 }
 
 // GetGreeting 本地欢迎语请求（对齐单体 CompanionAgent.GetGreeting）

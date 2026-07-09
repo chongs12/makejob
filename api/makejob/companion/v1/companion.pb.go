@@ -268,20 +268,21 @@ func (x *CompanionChatContext) GetLatestTaskAction() string {
 }
 
 type CompanionChatResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Reply           string                 `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
-	Emotion         string                 `protobuf:"bytes,2,opt,name=emotion,proto3" json:"emotion,omitempty"`
-	Suggestions     []string               `protobuf:"bytes,3,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
-	Content         string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
-	Mood            string                 `protobuf:"bytes,5,opt,name=mood,proto3" json:"mood,omitempty"`
-	Action          string                 `protobuf:"bytes,6,opt,name=action,proto3" json:"action,omitempty"`
-	AudioUrl        string                 `protobuf:"bytes,7,opt,name=audio_url,json=audioUrl,proto3" json:"audio_url,omitempty"`
-	AudioDuration   int32                  `protobuf:"varint,8,opt,name=audio_duration,json=audioDuration,proto3" json:"audio_duration,omitempty"`
-	AudioFormat     string                 `protobuf:"bytes,9,opt,name=audio_format,json=audioFormat,proto3" json:"audio_format,omitempty"`
-	AudioSampleRate int32                  `protobuf:"varint,10,opt,name=audio_sample_rate,json=audioSampleRate,proto3" json:"audio_sample_rate,omitempty"`
-	Live2DDirective *Live2DDirective       `protobuf:"bytes,11,opt,name=live2d_directive,json=live2dDirective,proto3" json:"live2d_directive,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Reply            string                 `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
+	Emotion          string                 `protobuf:"bytes,2,opt,name=emotion,proto3" json:"emotion,omitempty"`
+	Suggestions      []string               `protobuf:"bytes,3,rep,name=suggestions,proto3" json:"suggestions,omitempty"`
+	Content          string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	Mood             string                 `protobuf:"bytes,5,opt,name=mood,proto3" json:"mood,omitempty"`
+	Action           string                 `protobuf:"bytes,6,opt,name=action,proto3" json:"action,omitempty"`
+	AudioUrl         string                 `protobuf:"bytes,7,opt,name=audio_url,json=audioUrl,proto3" json:"audio_url,omitempty"`
+	AudioDuration    int32                  `protobuf:"varint,8,opt,name=audio_duration,json=audioDuration,proto3" json:"audio_duration,omitempty"`
+	AudioFormat      string                 `protobuf:"bytes,9,opt,name=audio_format,json=audioFormat,proto3" json:"audio_format,omitempty"`
+	AudioSampleRate  int32                  `protobuf:"varint,10,opt,name=audio_sample_rate,json=audioSampleRate,proto3" json:"audio_sample_rate,omitempty"`
+	Live2DDirective  *Live2DDirective       `protobuf:"bytes,11,opt,name=live2d_directive,json=live2dDirective,proto3" json:"live2d_directive,omitempty"`
+	SuggestedActions []*SuggestedAction     `protobuf:"bytes,12,rep,name=suggested_actions,json=suggestedActions,proto3" json:"suggested_actions,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CompanionChatResponse) Reset() {
@@ -391,6 +392,74 @@ func (x *CompanionChatResponse) GetLive2DDirective() *Live2DDirective {
 	return nil
 }
 
+func (x *CompanionChatResponse) GetSuggestedActions() []*SuggestedAction {
+	if x != nil {
+		return x.SuggestedActions
+	}
+	return nil
+}
+
+// SuggestedAction 结构化引导动作，供前端渲染跳转 chip。
+type SuggestedAction struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // practice | interview | adjust_plan | chat
+	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // 题集编码 / 面试类型 / 空
+	Params        string                 `protobuf:"bytes,3,opt,name=params,proto3" json:"params,omitempty"` // 额外参数 JSON 字符串
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SuggestedAction) Reset() {
+	*x = SuggestedAction{}
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SuggestedAction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SuggestedAction) ProtoMessage() {}
+
+func (x *SuggestedAction) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SuggestedAction.ProtoReflect.Descriptor instead.
+func (*SuggestedAction) Descriptor() ([]byte, []int) {
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SuggestedAction) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *SuggestedAction) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *SuggestedAction) GetParams() string {
+	if x != nil {
+		return x.Params
+	}
+	return ""
+}
+
 type Live2DDirective struct {
 	state              protoimpl.MessageState              `protogen:"open.v1"`
 	Reply              string                              `protobuf:"bytes,1,opt,name=reply,proto3" json:"reply,omitempty"`
@@ -412,7 +481,7 @@ type Live2DDirective struct {
 
 func (x *Live2DDirective) Reset() {
 	*x = Live2DDirective{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -424,7 +493,7 @@ func (x *Live2DDirective) String() string {
 func (*Live2DDirective) ProtoMessage() {}
 
 func (x *Live2DDirective) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[4]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -437,7 +506,7 @@ func (x *Live2DDirective) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirective.ProtoReflect.Descriptor instead.
 func (*Live2DDirective) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{4}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Live2DDirective) GetReply() string {
@@ -541,7 +610,7 @@ type Live2DDirectiveExpressionLayer struct {
 
 func (x *Live2DDirectiveExpressionLayer) Reset() {
 	*x = Live2DDirectiveExpressionLayer{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -553,7 +622,7 @@ func (x *Live2DDirectiveExpressionLayer) String() string {
 func (*Live2DDirectiveExpressionLayer) ProtoMessage() {}
 
 func (x *Live2DDirectiveExpressionLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[5]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -566,7 +635,7 @@ func (x *Live2DDirectiveExpressionLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveExpressionLayer.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveExpressionLayer) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{5}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Live2DDirectiveExpressionLayer) GetKey() string {
@@ -593,7 +662,7 @@ type Live2DDirectiveParameterOverride struct {
 
 func (x *Live2DDirectiveParameterOverride) Reset() {
 	*x = Live2DDirectiveParameterOverride{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -605,7 +674,7 @@ func (x *Live2DDirectiveParameterOverride) String() string {
 func (*Live2DDirectiveParameterOverride) ProtoMessage() {}
 
 func (x *Live2DDirectiveParameterOverride) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[6]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -618,7 +687,7 @@ func (x *Live2DDirectiveParameterOverride) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Live2DDirectiveParameterOverride.ProtoReflect.Descriptor instead.
 func (*Live2DDirectiveParameterOverride) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{6}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Live2DDirectiveParameterOverride) GetId() string {
@@ -644,7 +713,7 @@ type GetCompanionStateRequest struct {
 
 func (x *GetCompanionStateRequest) Reset() {
 	*x = GetCompanionStateRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -656,7 +725,7 @@ func (x *GetCompanionStateRequest) String() string {
 func (*GetCompanionStateRequest) ProtoMessage() {}
 
 func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[7]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,7 +738,7 @@ func (x *GetCompanionStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCompanionStateRequest.ProtoReflect.Descriptor instead.
 func (*GetCompanionStateRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{7}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetCompanionStateRequest) GetUserId() uint64 {
@@ -690,7 +759,7 @@ type CompanionState struct {
 
 func (x *CompanionState) Reset() {
 	*x = CompanionState{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -702,7 +771,7 @@ func (x *CompanionState) String() string {
 func (*CompanionState) ProtoMessage() {}
 
 func (x *CompanionState) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[8]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -715,7 +784,7 @@ func (x *CompanionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompanionState.ProtoReflect.Descriptor instead.
 func (*CompanionState) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{8}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CompanionState) GetEmotion() string {
@@ -749,7 +818,7 @@ type SynthesizeSpeechRequest struct {
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -761,7 +830,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[9]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -774,7 +843,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{9}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SynthesizeSpeechRequest) GetText() string {
@@ -801,7 +870,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -813,7 +882,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[10]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -826,7 +895,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{10}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudioData() []byte {
@@ -855,7 +924,7 @@ type RecognizeSpeechRequest struct {
 
 func (x *RecognizeSpeechRequest) Reset() {
 	*x = RecognizeSpeechRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +936,7 @@ func (x *RecognizeSpeechRequest) String() string {
 func (*RecognizeSpeechRequest) ProtoMessage() {}
 
 func (x *RecognizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[11]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +949,7 @@ func (x *RecognizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecognizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*RecognizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{11}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RecognizeSpeechRequest) GetAudioData() []byte {
@@ -922,7 +991,7 @@ type RecognizeSpeechResponse struct {
 
 func (x *RecognizeSpeechResponse) Reset() {
 	*x = RecognizeSpeechResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -934,7 +1003,7 @@ func (x *RecognizeSpeechResponse) String() string {
 func (*RecognizeSpeechResponse) ProtoMessage() {}
 
 func (x *RecognizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[12]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -947,7 +1016,7 @@ func (x *RecognizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecognizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*RecognizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{12}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RecognizeSpeechResponse) GetText() string {
@@ -988,7 +1057,7 @@ type ASRConfigProto struct {
 
 func (x *ASRConfigProto) Reset() {
 	*x = ASRConfigProto{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1000,7 +1069,7 @@ func (x *ASRConfigProto) String() string {
 func (*ASRConfigProto) ProtoMessage() {}
 
 func (x *ASRConfigProto) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[13]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1013,7 +1082,7 @@ func (x *ASRConfigProto) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ASRConfigProto.ProtoReflect.Descriptor instead.
 func (*ASRConfigProto) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{13}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ASRConfigProto) GetId() uint64 {
@@ -1087,7 +1156,7 @@ type ListASRConfigsRequest struct {
 
 func (x *ListASRConfigsRequest) Reset() {
 	*x = ListASRConfigsRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1099,7 +1168,7 @@ func (x *ListASRConfigsRequest) String() string {
 func (*ListASRConfigsRequest) ProtoMessage() {}
 
 func (x *ListASRConfigsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[14]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1112,7 +1181,7 @@ func (x *ListASRConfigsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListASRConfigsRequest.ProtoReflect.Descriptor instead.
 func (*ListASRConfigsRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{14}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{15}
 }
 
 type ListASRConfigsResponse struct {
@@ -1125,7 +1194,7 @@ type ListASRConfigsResponse struct {
 
 func (x *ListASRConfigsResponse) Reset() {
 	*x = ListASRConfigsResponse{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +1206,7 @@ func (x *ListASRConfigsResponse) String() string {
 func (*ListASRConfigsResponse) ProtoMessage() {}
 
 func (x *ListASRConfigsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[15]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1219,7 @@ func (x *ListASRConfigsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListASRConfigsResponse.ProtoReflect.Descriptor instead.
 func (*ListASRConfigsResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{15}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListASRConfigsResponse) GetConfigs() []*ASRConfigProto {
@@ -1176,7 +1245,7 @@ type UpdateASRDefaultRequest struct {
 
 func (x *UpdateASRDefaultRequest) Reset() {
 	*x = UpdateASRDefaultRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1188,7 +1257,7 @@ func (x *UpdateASRDefaultRequest) String() string {
 func (*UpdateASRDefaultRequest) ProtoMessage() {}
 
 func (x *UpdateASRDefaultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[16]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1201,7 +1270,7 @@ func (x *UpdateASRDefaultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateASRDefaultRequest.ProtoReflect.Descriptor instead.
 func (*UpdateASRDefaultRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{16}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UpdateASRDefaultRequest) GetConfigId() uint64 {
@@ -1225,7 +1294,7 @@ type CreateASRConfigRequest struct {
 
 func (x *CreateASRConfigRequest) Reset() {
 	*x = CreateASRConfigRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1306,7 @@ func (x *CreateASRConfigRequest) String() string {
 func (*CreateASRConfigRequest) ProtoMessage() {}
 
 func (x *CreateASRConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[17]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1319,7 @@ func (x *CreateASRConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateASRConfigRequest.ProtoReflect.Descriptor instead.
 func (*CreateASRConfigRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{17}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CreateASRConfigRequest) GetName() string {
@@ -1310,7 +1379,7 @@ type UpdateASRConfigRequest struct {
 
 func (x *UpdateASRConfigRequest) Reset() {
 	*x = UpdateASRConfigRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1322,7 +1391,7 @@ func (x *UpdateASRConfigRequest) String() string {
 func (*UpdateASRConfigRequest) ProtoMessage() {}
 
 func (x *UpdateASRConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[18]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1335,7 +1404,7 @@ func (x *UpdateASRConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateASRConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateASRConfigRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{18}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateASRConfigRequest) GetId() uint64 {
@@ -1396,7 +1465,7 @@ type DeleteASRConfigRequest struct {
 
 func (x *DeleteASRConfigRequest) Reset() {
 	*x = DeleteASRConfigRequest{}
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1477,7 @@ func (x *DeleteASRConfigRequest) String() string {
 func (*DeleteASRConfigRequest) ProtoMessage() {}
 
 func (x *DeleteASRConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_companion_v1_companion_proto_msgTypes[19]
+	mi := &file_makejob_companion_v1_companion_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1490,7 @@ func (x *DeleteASRConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteASRConfigRequest.ProtoReflect.Descriptor instead.
 func (*DeleteASRConfigRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{19}
+	return file_makejob_companion_v1_companion_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DeleteASRConfigRequest) GetId() uint64 {
@@ -1456,7 +1525,7 @@ const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\x18focused_task_description\x18\x06 \x01(\tR\x16focusedTaskDescription\x122\n" +
 	"\x15completed_today_count\x18\a \x01(\x05R\x13completedTodayCount\x12.\n" +
 	"\x13skipped_today_count\x18\b \x01(\x05R\x11skippedTodayCount\x12,\n" +
-	"\x12latest_task_action\x18\t \x01(\tR\x10latestTaskAction\"\x94\x03\n" +
+	"\x12latest_task_action\x18\t \x01(\tR\x10latestTaskAction\"\xe8\x03\n" +
 	"\x15CompanionChatResponse\x12\x14\n" +
 	"\x05reply\x18\x01 \x01(\tR\x05reply\x12\x18\n" +
 	"\aemotion\x18\x02 \x01(\tR\aemotion\x12 \n" +
@@ -1469,7 +1538,12 @@ const file_makejob_companion_v1_companion_proto_rawDesc = "" +
 	"\faudio_format\x18\t \x01(\tR\vaudioFormat\x12*\n" +
 	"\x11audio_sample_rate\x18\n" +
 	" \x01(\x05R\x0faudioSampleRate\x12P\n" +
-	"\x10live2d_directive\x18\v \x01(\v2%.makejob.companion.v1.Live2DDirectiveR\x0flive2dDirective\"\xae\x04\n" +
+	"\x10live2d_directive\x18\v \x01(\v2%.makejob.companion.v1.Live2DDirectiveR\x0flive2dDirective\x12R\n" +
+	"\x11suggested_actions\x18\f \x03(\v2%.makejob.companion.v1.SuggestedActionR\x10suggestedActions\"U\n" +
+	"\x0fSuggestedAction\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12\x16\n" +
+	"\x06params\x18\x03 \x01(\tR\x06params\"\xae\x04\n" +
 	"\x0fLive2DDirective\x12\x14\n" +
 	"\x05reply\x18\x01 \x01(\tR\x05reply\x12\x18\n" +
 	"\aemotion\x18\x02 \x01(\tR\aemotion\x12\x16\n" +
@@ -1585,64 +1659,66 @@ func file_makejob_companion_v1_companion_proto_rawDescGZIP() []byte {
 	return file_makejob_companion_v1_companion_proto_rawDescData
 }
 
-var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_makejob_companion_v1_companion_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_makejob_companion_v1_companion_proto_goTypes = []any{
 	(*CompanionChatRequest)(nil),             // 0: makejob.companion.v1.CompanionChatRequest
 	(*CompanionChatMessage)(nil),             // 1: makejob.companion.v1.CompanionChatMessage
 	(*CompanionChatContext)(nil),             // 2: makejob.companion.v1.CompanionChatContext
 	(*CompanionChatResponse)(nil),            // 3: makejob.companion.v1.CompanionChatResponse
-	(*Live2DDirective)(nil),                  // 4: makejob.companion.v1.Live2DDirective
-	(*Live2DDirectiveExpressionLayer)(nil),   // 5: makejob.companion.v1.Live2DDirectiveExpressionLayer
-	(*Live2DDirectiveParameterOverride)(nil), // 6: makejob.companion.v1.Live2DDirectiveParameterOverride
-	(*GetCompanionStateRequest)(nil),         // 7: makejob.companion.v1.GetCompanionStateRequest
-	(*CompanionState)(nil),                   // 8: makejob.companion.v1.CompanionState
-	(*SynthesizeSpeechRequest)(nil),          // 9: makejob.companion.v1.SynthesizeSpeechRequest
-	(*SynthesizeSpeechResponse)(nil),         // 10: makejob.companion.v1.SynthesizeSpeechResponse
-	(*RecognizeSpeechRequest)(nil),           // 11: makejob.companion.v1.RecognizeSpeechRequest
-	(*RecognizeSpeechResponse)(nil),          // 12: makejob.companion.v1.RecognizeSpeechResponse
-	(*ASRConfigProto)(nil),                   // 13: makejob.companion.v1.ASRConfigProto
-	(*ListASRConfigsRequest)(nil),            // 14: makejob.companion.v1.ListASRConfigsRequest
-	(*ListASRConfigsResponse)(nil),           // 15: makejob.companion.v1.ListASRConfigsResponse
-	(*UpdateASRDefaultRequest)(nil),          // 16: makejob.companion.v1.UpdateASRDefaultRequest
-	(*CreateASRConfigRequest)(nil),           // 17: makejob.companion.v1.CreateASRConfigRequest
-	(*UpdateASRConfigRequest)(nil),           // 18: makejob.companion.v1.UpdateASRConfigRequest
-	(*DeleteASRConfigRequest)(nil),           // 19: makejob.companion.v1.DeleteASRConfigRequest
-	(*timestamppb.Timestamp)(nil),            // 20: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                    // 21: google.protobuf.Empty
+	(*SuggestedAction)(nil),                  // 4: makejob.companion.v1.SuggestedAction
+	(*Live2DDirective)(nil),                  // 5: makejob.companion.v1.Live2DDirective
+	(*Live2DDirectiveExpressionLayer)(nil),   // 6: makejob.companion.v1.Live2DDirectiveExpressionLayer
+	(*Live2DDirectiveParameterOverride)(nil), // 7: makejob.companion.v1.Live2DDirectiveParameterOverride
+	(*GetCompanionStateRequest)(nil),         // 8: makejob.companion.v1.GetCompanionStateRequest
+	(*CompanionState)(nil),                   // 9: makejob.companion.v1.CompanionState
+	(*SynthesizeSpeechRequest)(nil),          // 10: makejob.companion.v1.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil),         // 11: makejob.companion.v1.SynthesizeSpeechResponse
+	(*RecognizeSpeechRequest)(nil),           // 12: makejob.companion.v1.RecognizeSpeechRequest
+	(*RecognizeSpeechResponse)(nil),          // 13: makejob.companion.v1.RecognizeSpeechResponse
+	(*ASRConfigProto)(nil),                   // 14: makejob.companion.v1.ASRConfigProto
+	(*ListASRConfigsRequest)(nil),            // 15: makejob.companion.v1.ListASRConfigsRequest
+	(*ListASRConfigsResponse)(nil),           // 16: makejob.companion.v1.ListASRConfigsResponse
+	(*UpdateASRDefaultRequest)(nil),          // 17: makejob.companion.v1.UpdateASRDefaultRequest
+	(*CreateASRConfigRequest)(nil),           // 18: makejob.companion.v1.CreateASRConfigRequest
+	(*UpdateASRConfigRequest)(nil),           // 19: makejob.companion.v1.UpdateASRConfigRequest
+	(*DeleteASRConfigRequest)(nil),           // 20: makejob.companion.v1.DeleteASRConfigRequest
+	(*timestamppb.Timestamp)(nil),            // 21: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                    // 22: google.protobuf.Empty
 }
 var file_makejob_companion_v1_companion_proto_depIdxs = []int32{
 	1,  // 0: makejob.companion.v1.CompanionChatRequest.messages:type_name -> makejob.companion.v1.CompanionChatMessage
 	2,  // 1: makejob.companion.v1.CompanionChatRequest.context:type_name -> makejob.companion.v1.CompanionChatContext
-	4,  // 2: makejob.companion.v1.CompanionChatResponse.live2d_directive:type_name -> makejob.companion.v1.Live2DDirective
-	5,  // 3: makejob.companion.v1.Live2DDirective.expression_mix:type_name -> makejob.companion.v1.Live2DDirectiveExpressionLayer
-	6,  // 4: makejob.companion.v1.Live2DDirective.parameter_overrides:type_name -> makejob.companion.v1.Live2DDirectiveParameterOverride
-	20, // 5: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
-	20, // 6: makejob.companion.v1.ASRConfigProto.created_at:type_name -> google.protobuf.Timestamp
-	20, // 7: makejob.companion.v1.ASRConfigProto.updated_at:type_name -> google.protobuf.Timestamp
-	13, // 8: makejob.companion.v1.ListASRConfigsResponse.configs:type_name -> makejob.companion.v1.ASRConfigProto
-	0,  // 9: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
-	7,  // 10: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
-	9,  // 11: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
-	11, // 12: makejob.companion.v1.CompanionService.RecognizeSpeech:input_type -> makejob.companion.v1.RecognizeSpeechRequest
-	14, // 13: makejob.companion.v1.CompanionService.ListASRConfigs:input_type -> makejob.companion.v1.ListASRConfigsRequest
-	17, // 14: makejob.companion.v1.CompanionService.CreateASRConfig:input_type -> makejob.companion.v1.CreateASRConfigRequest
-	18, // 15: makejob.companion.v1.CompanionService.UpdateASRConfig:input_type -> makejob.companion.v1.UpdateASRConfigRequest
-	19, // 16: makejob.companion.v1.CompanionService.DeleteASRConfig:input_type -> makejob.companion.v1.DeleteASRConfigRequest
-	16, // 17: makejob.companion.v1.CompanionService.UpdateASRDefault:input_type -> makejob.companion.v1.UpdateASRDefaultRequest
-	3,  // 18: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
-	8,  // 19: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
-	10, // 20: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
-	12, // 21: makejob.companion.v1.CompanionService.RecognizeSpeech:output_type -> makejob.companion.v1.RecognizeSpeechResponse
-	15, // 22: makejob.companion.v1.CompanionService.ListASRConfigs:output_type -> makejob.companion.v1.ListASRConfigsResponse
-	13, // 23: makejob.companion.v1.CompanionService.CreateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
-	13, // 24: makejob.companion.v1.CompanionService.UpdateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
-	21, // 25: makejob.companion.v1.CompanionService.DeleteASRConfig:output_type -> google.protobuf.Empty
-	21, // 26: makejob.companion.v1.CompanionService.UpdateASRDefault:output_type -> google.protobuf.Empty
-	18, // [18:27] is the sub-list for method output_type
-	9,  // [9:18] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	5,  // 2: makejob.companion.v1.CompanionChatResponse.live2d_directive:type_name -> makejob.companion.v1.Live2DDirective
+	4,  // 3: makejob.companion.v1.CompanionChatResponse.suggested_actions:type_name -> makejob.companion.v1.SuggestedAction
+	6,  // 4: makejob.companion.v1.Live2DDirective.expression_mix:type_name -> makejob.companion.v1.Live2DDirectiveExpressionLayer
+	7,  // 5: makejob.companion.v1.Live2DDirective.parameter_overrides:type_name -> makejob.companion.v1.Live2DDirectiveParameterOverride
+	21, // 6: makejob.companion.v1.CompanionState.last_active_at:type_name -> google.protobuf.Timestamp
+	21, // 7: makejob.companion.v1.ASRConfigProto.created_at:type_name -> google.protobuf.Timestamp
+	21, // 8: makejob.companion.v1.ASRConfigProto.updated_at:type_name -> google.protobuf.Timestamp
+	14, // 9: makejob.companion.v1.ListASRConfigsResponse.configs:type_name -> makejob.companion.v1.ASRConfigProto
+	0,  // 10: makejob.companion.v1.CompanionService.Chat:input_type -> makejob.companion.v1.CompanionChatRequest
+	8,  // 11: makejob.companion.v1.CompanionService.GetCompanionState:input_type -> makejob.companion.v1.GetCompanionStateRequest
+	10, // 12: makejob.companion.v1.CompanionService.SynthesizeSpeech:input_type -> makejob.companion.v1.SynthesizeSpeechRequest
+	12, // 13: makejob.companion.v1.CompanionService.RecognizeSpeech:input_type -> makejob.companion.v1.RecognizeSpeechRequest
+	15, // 14: makejob.companion.v1.CompanionService.ListASRConfigs:input_type -> makejob.companion.v1.ListASRConfigsRequest
+	18, // 15: makejob.companion.v1.CompanionService.CreateASRConfig:input_type -> makejob.companion.v1.CreateASRConfigRequest
+	19, // 16: makejob.companion.v1.CompanionService.UpdateASRConfig:input_type -> makejob.companion.v1.UpdateASRConfigRequest
+	20, // 17: makejob.companion.v1.CompanionService.DeleteASRConfig:input_type -> makejob.companion.v1.DeleteASRConfigRequest
+	17, // 18: makejob.companion.v1.CompanionService.UpdateASRDefault:input_type -> makejob.companion.v1.UpdateASRDefaultRequest
+	3,  // 19: makejob.companion.v1.CompanionService.Chat:output_type -> makejob.companion.v1.CompanionChatResponse
+	9,  // 20: makejob.companion.v1.CompanionService.GetCompanionState:output_type -> makejob.companion.v1.CompanionState
+	11, // 21: makejob.companion.v1.CompanionService.SynthesizeSpeech:output_type -> makejob.companion.v1.SynthesizeSpeechResponse
+	13, // 22: makejob.companion.v1.CompanionService.RecognizeSpeech:output_type -> makejob.companion.v1.RecognizeSpeechResponse
+	16, // 23: makejob.companion.v1.CompanionService.ListASRConfigs:output_type -> makejob.companion.v1.ListASRConfigsResponse
+	14, // 24: makejob.companion.v1.CompanionService.CreateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
+	14, // 25: makejob.companion.v1.CompanionService.UpdateASRConfig:output_type -> makejob.companion.v1.ASRConfigProto
+	22, // 26: makejob.companion.v1.CompanionService.DeleteASRConfig:output_type -> google.protobuf.Empty
+	22, // 27: makejob.companion.v1.CompanionService.UpdateASRDefault:output_type -> google.protobuf.Empty
+	19, // [19:28] is the sub-list for method output_type
+	10, // [10:19] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_makejob_companion_v1_companion_proto_init() }
@@ -1656,7 +1732,7 @@ func file_makejob_companion_v1_companion_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_companion_v1_companion_proto_rawDesc), len(file_makejob_companion_v1_companion_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

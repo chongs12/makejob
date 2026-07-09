@@ -335,12 +335,29 @@ func (s *AIGatewayService) CompanionAgent(ctx context.Context, req *aiv1.Compani
 	}
 
 	return &aiv1.CompanionAgentResponse{
-		Reply:          result.Reply,
-		Emotion:        result.Emotion,
-		Suggestions:    result.Suggestions,
-		Action:         result.Action,
-		Live2DDirective: live2dDirective,
+		Reply:            result.Reply,
+		Emotion:          result.Emotion,
+		Suggestions:      result.Suggestions,
+		Action:           result.Action,
+		SuggestedActions: toProtoSuggestedActions(result.SuggestedActions),
+		Live2DDirective:  live2dDirective,
 	}, nil
+}
+
+// toProtoSuggestedActions 将 biz SuggestedActionItem 列表转换为 proto SuggestedAction 列表。
+func toProtoSuggestedActions(actions []biz.SuggestedActionItem) []*aiv1.SuggestedAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	protos := make([]*aiv1.SuggestedAction, 0, len(actions))
+	for _, a := range actions {
+		protos = append(protos, &aiv1.SuggestedAction{
+			Type:   a.Type,
+			Target: a.Target,
+			Params: a.Params,
+		})
+	}
+	return protos
 }
 
 // GetGreeting 本地欢迎语 handler（对齐单体 CompanionAgent.GetGreeting）

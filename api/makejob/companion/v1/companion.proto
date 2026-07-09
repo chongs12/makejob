@@ -55,6 +55,14 @@ message CompanionChatResponse {
   string audio_format = 9;
   int32 audio_sample_rate = 10;
   Live2DDirective live2d_directive = 11;
+  repeated SuggestedAction suggested_actions = 12;
+}
+
+// SuggestedAction 结构化引导动作，供前端渲染跳转 chip。
+message SuggestedAction {
+  string type = 1;    // practice | interview | adjust_plan | chat
+  string target = 2;  // 题集编码 / 面试类型 / 空
+  string params = 3;  // 额外参数 JSON 字符串
 }
 
 message Live2DDirective {

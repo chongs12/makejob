@@ -69,3 +69,14 @@ func (c *learningArchiveClient) WritePlanFeedback(ctx context.Context, entry *bi
 	}
 	return nil
 }
+
+// GetWeakTopics 读取用户高频薄弱主题列表，供计划生成/调整消费画像。
+func (c *learningArchiveClient) GetWeakTopics(ctx context.Context, userID uint64) ([]string, error) {
+	resp, err := c.client.GetWeakTopics(ctx, &archivev1.GetWeakTopicsRequest{
+		UserId: userID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetWeakTopics gRPC call failed: %w", err)
+	}
+	return resp.GetTopics(), nil
+}

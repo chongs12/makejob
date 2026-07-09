@@ -87,6 +87,13 @@ export interface CompanionHistoryItem {
   createdAt: number
 }
 
+// SuggestedAction 结构化引导动作，前端按 type 渲染跳转 chip。
+export interface SuggestedAction {
+  type: string
+  target?: string
+  params?: string
+}
+
 export interface CompanionChatReply {
   content?: string
   reply?: string
@@ -98,6 +105,8 @@ export interface CompanionChatReply {
   audio_format?: string
   audio_sample_rate?: number
   live2d_directive?: Live2DDirective | null
+  suggestions?: string[]
+  suggested_actions?: SuggestedAction[]
 }
 
 export interface CompanionSessionSummary {
