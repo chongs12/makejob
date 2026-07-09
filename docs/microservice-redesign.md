@@ -251,9 +251,9 @@ LearningArchive ──▶ (无出站 gRPC，纯被动)
 | AppendRealtimeAssistantReply | 待实现 | 存储 AI 回复 |
 | GetInterviewStats | 现有 | 不变 |
 
-**数据模型**：
-- `interviews` (id, user_id, type, mode, industry_id, status, resume_text, jd_text, config_json, started_at, finished_at)
-- `interview_messages` (id, interview_id, role, content, question_index, coding_metadata)
+**数据模型**（实际表结构，psql 已核实；权威定义见 `docs/backend/internal/model/mock_interview.go`）：
+- `mock_interviews` (id, user_id, industry_id, status, score, ai_feedback, total_questions, started_at, ended_at, ai_session_id, report_json, live2_d_model_key)
+- `interview_messages` (id, interview_id, role, content, message_type, created_at[bigint], metadata_json) — 无 updated_at / deleted_at / question_index
 - `interview_reports` (id, interview_id, overall_score, dimension_scores_json, strengths, weaknesses, suggestions, coding_diagnostics)
 - `interview_coding_attempts` (id, interview_id, question_index, code, language, result_json)
 

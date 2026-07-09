@@ -1,5 +1,7 @@
 # 面试模块RAG集成里程碑文档
 
+> ⚠️ **路径迁移说明（2026-07-09）**：本文档成于单体时代，文中 `backend/internal/rag/...`、`backend/internal/handler/...` 等路径已随微服务化迁移：RAG 能力在 `app/rag/`、面试逻辑在 `app/interview/`、实时对话在 `app/realtime/`。架构图与接口签名仍有参考价值，阅读时请将路径对应替换。
+
 ## 一、项目概述
 
 ### 1.1 目标

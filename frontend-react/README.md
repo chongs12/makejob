@@ -1,6 +1,6 @@
 # MakeJob React Frontend
 
-本文档基于当前代码状态更新于 `2026-05-15`，描述 `frontend-react` 工作区的真实现状。
+本文档基于当前代码状态更新于 `2026-07-09`，描述 `frontend-react` 工作区的真实现状。后端已微服务化（15 个 Kratos 服务 + Gateway，详见 `docs/phase-progress-and-run-guide.md`），前端通过 Gateway HTTP `:8080` 的 `/api/v1` 访问后端。
 
 ## 1. 目录定位
 

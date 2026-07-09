@@ -1,5 +1,7 @@
 # Live2D 功能改造里程碑文档
 
+> ⚠️ **路径迁移说明（2026-07-09）**：本文档前半段（1-10 节）引用的单体 `backend/internal/...` 路径已归档至 `docs/backend/`；后半段（第 11 节起）已是微服务 `app/admin`、`app/gateway` 路径，仍为当前实现。阅读前半段时请将 `backend/internal/...` 对应到 `docs/backend/internal/...`。
+
 ## 1. 改造目标
 
 本轮 Live2D 改造围绕一个核心目标展开：让当前项目的 Live2D 能力逐步对齐 `LLM_Live2D` 参考项目，最终实现“大模型根据回复语义直接控制 Live2D 的表情、参数与动作”，并且所有前台可见模型都必须经过后台确认与治理。

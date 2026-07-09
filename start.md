@@ -1,130 +1,88 @@
 # MakeJob 启动说明
 
-本文档基于当前代码状态更新于 `2026-05-15`，用于说明仓库的真实启动方式和依赖关系。
+> 更新于 `2026-07-09`。后端已从单体 `backend/` 迁移为 15 个 Kratos 微服务（单体归档于 `docs/backend/`）。完整的进度、端口表与运行指南见 [`docs/phase-progress-and-run-guide.md`](docs/phase-progress-and-run-guide.md)，本文仅给快速启动。
 
 ## 1. 当前主线
 
-- 当前前端主线是 `frontend-react`，采用 `React 19 + Vite + TanStack Router + TanStack Query + Zustand`。
-- 旧 Nuxt 前端已不再作为当前开发基线，本仓库现阶段以前后端分离的 React 工作区为准。
-- 后端主入口是 `backend/cmd/server/main.go`。
-- 异步任务消费入口是 `backend/cmd/worker/main.go`。
+- **后端**：`app/` 下 15 个微服务（Kratos DDD 四层）+ 1 个 BFF Gateway。Gateway 是唯一 HTTP 入口（`:8080`），对外暴露 `/api/v1/*`，内部通过 gRPC 调用各服务。
+- **前端**：`frontend-react/` 工作区，React 19 + Vite 7 + TanStack Router/Query + Zustand，含 `apps/web`（用户前台）和 `apps/admin`（管理后台）。
+- 单体 `backend/` 已废弃并归档至 `docs/backend/`，**不要再启动它**。
 
 ## 2. 运行前依赖
 
-启动前至少准备以下依赖：
+| 依赖 | 用途 | 默认地址 |
+|------|------|---------|
+| PostgreSQL | 各服务数据存储 | `localhost:5432`（各服务 config 可独立配置） |
+| Redis | User 服务 Token 黑名单 / 缓存 | `localhost:6379` |
+| RabbitMQ | 异步任务（面试报告、RAG 同步、计划生成等） | `amqp://localhost:5672` |
+| Milvus | RAG 向量检索 | `localhost:19530` |
+| Piston | CodeRunner 代码执行沙箱 | `http://localhost:2000` |
+| etcd | 服务发现（开发环境可直连，可选） | `localhost:2379` |
 
-- PostgreSQL
-- Redis
-- 可选的 Piston 代码执行服务
-- 可选的 AI / TTS / ASR 第三方配置
-
-当前默认开发配置来自 `backend/config.yaml`：
-
-- HTTP 服务端口：`8082`
-- PostgreSQL：`localhost:5434`
-- Redis：`localhost:6384`
-- Piston：`http://localhost:2000/api/v2/execute`
+各服务的连接配置在 `app/<service>/configs/config.yaml`，启动前请确认数据库 / MQ / 第三方 API Key 正确。
 
 ## 3. 启动命令
 
-### 3.1 启动后端 API
+所有命令在项目根目录 `D:\gogogo\makejob` 下执行。
+
+### 3.1 编译
 
 ```bash
-cd d:/gogogo/makejob/backend
-go run cmd/server/main.go
+go build ./...          # 编译全部服务
+make build              # 或用 Makefile（当前仅构建 7 个核心服务）
 ```
 
-说明：
+### 3.2 启动后端微服务
 
-- 启动后会自动尝试连接数据库和 Redis。
-- 数据库可用时会执行迁移、基础种子和管理员引导。
-- 健康检查地址为 `http://localhost:8082/api/health`。
-
-### 3.2 启动异步 Worker
+每个服务独立启动，指定各自配置：
 
 ```bash
-cd d:/gogogo/makejob/backend
-go run cmd/worker/main.go
+go run ./app/<service>/cmd/server -conf ./app/<service>/configs/config.yaml
 ```
 
-说明：
+15 个服务及其端口：
 
-- 当前 worker 负责消费异步导入任务和题目流水线生成任务。
-- 如果你只验证同步接口，可暂时不启动 worker。
-- 如果你要验证后台的异步题目流水线或异步导入，必须额外启动 worker。
+| 服务 | 端口 | 服务 | 端口 |
+|------|------|------|------|
+| Gateway（HTTP 入口） | :8080 | Companion | :9008 |
+| User | :9001 | Community | :9009 |
+| Membership | :9002 | LearningArchive | :9010 |
+| Question | :9003 | AI Gateway | :9011 |
+| Interview | :9004 | RAG | :9012 |
+| Realtime（+WS :8085） | :9005 | CodeRunner | :9013 |
+| Growth | :9006 | Admin（BFF） | :9014 |
+| Plan | :9007 | | |
 
-### 3.3 启动前台 Web
+### 3.3 推荐启动顺序
+
+1. 基础设施：CodeRunner → AI Gateway → RAG
+2. 数据服务：User → Membership → Community → LearningArchive → Question
+3. 业务服务：Interview → Realtime → Plan → Growth → Companion
+4. 入口层：Admin → **Gateway（最后启动，依赖所有 gRPC 服务）**
+
+> 最小验证：只想跑某个服务，启动它和它的直接依赖即可（如只测 CodeRunner 无需任何依赖）。
+
+### 3.4 启动前端
 
 ```bash
-cd d:/gogogo/makejob/frontend-react
-npm run dev -w @makejob/web
+cd frontend-react
+npm run dev:web      # 用户前台
+npm run dev:admin    # 管理后台
 ```
 
-或：
+前端 dev 服务将 `/api/v1` 代理到 Gateway（`:8080`）。
+
+## 4. 测试与生成
 
 ```bash
-cd d:/gogogo/makejob/frontend-react
-npm run dev:web
+go test ./...                    # 全部后端测试
+buf generate                     # Proto 代码生成
+cd app/interview && wire ./...   # Wire 依赖注入（仅 interview / question 用 wire）
 ```
 
-### 3.4 启动后台 Admin
+## 5. 注意事项
 
-```bash
-cd d:/gogogo/makejob/frontend-react
-npm run dev -w @makejob/admin
-```
-
-或：
-
-```bash
-cd d:/gogogo/makejob/frontend-react
-npm run dev:admin
-```
-
-## 4. 建议启动顺序
-
-建议按以下顺序启动：
-
-1. 启动 PostgreSQL 和 Redis
-2. 启动 `backend` API 服务
-3. 按需启动 `worker`
-4. 启动 `frontend-react` 的 `web` 或 `admin`
-
-## 5. 当前功能入口
-
-前台 `web` 当前已经接入这些主路径：
-
-- `/`
-- `/practice`
-- `/community`
-- `/interview`
-- `/companion`
-- `/growth`
-- `/auth/login`
-
-后台 `admin` 当前已经接入这些主路径：
-
-- `/dashboard`
-- `/runtime`
-- `/ai-configs`
-- `/prompts`
-- `/live2d`
-- `/tts`
-- `/taxonomy`
-- `/question-pipeline`
-- `/questions`
-- `/auth/login`
-
-## 6. 当前验证结论
-
-基于 `2026-05-15` 的本地核验：
-
-- `backend` 执行 `go test ./...` 通过
-- `frontend-react` 执行 `npm run build` 通过
-- `frontend-react` 执行 `npm run test:web` 通过
-
-## 7. 需要注意的现实约束
-
-- AI 面试、学习计划和题目流水线虽然都已落代码，但完整效果依赖数据库数据和第三方配置。
-- 配置文件当前包含开发环境信息，接手前应先检查环境变量与敏感信息治理策略。
-- 后台异步任务相关能力如果只启动 API、未启动 worker，会表现为“可创建任务但不消费”。
+- 异步任务（面试报告生成、RAG 索引同步、学习计划生成）依赖 RabbitMQ；MQ 未启动时相关流程会降级或失败。
+- AI 面试 / 学习计划 / RAG 的完整效果依赖数据库种子数据与第三方（火山引擎 / MiniMax 等）API 配置。
+- 健康检查端点、OpenTelemetry 链路追踪、CI/CD 属 Phase 7，**尚未实现**。
+- 更多细节（各服务 RPC 清单、测试覆盖、Makefile 更新建议）见 `docs/phase-progress-and-run-guide.md`。
