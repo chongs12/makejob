@@ -73,9 +73,20 @@ type PlanClient interface {
 
 // FocusSignal 高频薄弱点
 type FocusSignal struct {
-	Tag          string
-	TopicTitle   string
-	OccurrenceCount int32
+	Tag                 string
+	TopicTitle          string
+	OccurrenceCount     int32
+	PrimaryQuestionSet  string
+	RelatedQuestionSets []string
+	RecommendedActions  []string
+	Reason              string
+}
+
+// SuggestedAction 结构化引导动作，对齐 companion.proto SuggestedAction。
+type SuggestedAction struct {
+	Type   string
+	Target string
+	Params string
 }
 
 // InterviewBrief 面试摘要
@@ -162,11 +173,12 @@ type CompanionAgentRequest struct {
 
 // CompanionAgentResponse AI Gateway CompanionAgent 响应
 type CompanionAgentResponse struct {
-	Reply          string
-	Emotion        string
-	Suggestions    []string
-	Action         string
-	Live2DDirective *Live2DDirectiveResponse
+	Reply            string
+	Emotion          string
+	Suggestions      []string
+	Action           string
+	SuggestedActions []SuggestedAction
+	Live2DDirective  *Live2DDirectiveResponse
 }
 
 // Live2DDirectorRequest AI Gateway Live2DDirector 请求
@@ -207,12 +219,13 @@ type ParameterOverride struct {
 
 // ChatResult 完整对话结果
 type ChatResult struct {
-	Reply          string
-	Emotion        string
-	Action         string
-	Suggestions    []string
-	AudioURL       string
-	Live2DDirective *Live2DDirectiveResponse
+	Reply            string
+	Emotion          string
+	Action           string
+	Suggestions      []string
+	SuggestedActions []SuggestedAction
+	AudioURL         string
+	Live2DDirective  *Live2DDirectiveResponse
 }
 
 // TTSAudio 表示语音合成结果，兼容二进制音频和过渡 URL 两种返回形式
@@ -393,12 +406,13 @@ func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, co
 		suggestions = []string{}
 	}
 	return &ChatResult{
-		Reply:           replyContent,
-		Emotion:         live2dEmotion,
-		Action:          live2dAction,
-		Suggestions:     suggestions,
-		AudioURL:        audioURL,
-		Live2DDirective: live2dResp,
+		Reply:            replyContent,
+		Emotion:          live2dEmotion,
+		Action:           live2dAction,
+		Suggestions:      suggestions,
+		SuggestedActions: aiResp.SuggestedActions,
+		AudioURL:         audioURL,
+		Live2DDirective:  live2dResp,
 	}, nil
 }
 
@@ -411,18 +425,32 @@ func (uc *CompanionUseCase) enrichContext(ctx context.Context, userID uint64, me
 
 	parts := make([]string, 0, 4)
 
-	// 查询高频薄弱点
+	// 查询高频薄弱点与可推荐题集，供 LLM 生成导航建议
 	if uc.growthClient != nil {
 		signals, err := uc.growthClient.GetFocusSignals(ctx, userID)
 		if err == nil && len(signals) > 0 {
-			tags := make([]string, 0, len(signals))
-			for _, s := range signals {
-				if s.Tag != "" {
-					tags = append(tags, s.Tag)
+			top := signals
+			if len(top) > 3 {
+				top = top[:3]
+			}
+			focusLines := make([]string, 0, len(top))
+			for _, s := range top {
+				line := s.Tag
+				if s.TopicTitle != "" {
+					line = s.TopicTitle
+				}
+				if s.Reason != "" {
+					line = fmt.Sprintf("%s（%s）", line, s.Reason)
+				}
+				if s.PrimaryQuestionSet != "" {
+					line = fmt.Sprintf("%s；建议题集：%s", line, s.PrimaryQuestionSet)
+				}
+				if line != "" {
+					focusLines = append(focusLines, line)
 				}
 			}
-			if len(tags) > 0 {
-				parts = append(parts, fmt.Sprintf("当前高频薄弱点：%s", strings.Join(tags, "、")))
+			if len(focusLines) > 0 {
+				parts = append(parts, fmt.Sprintf("当前高频薄弱点与推荐题集：\n- %s", strings.Join(focusLines, "\n- ")))
 			}
 		}
 	}

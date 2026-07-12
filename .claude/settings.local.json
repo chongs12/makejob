@@ -85,7 +85,10 @@
       "Bash(git ls-tree *)",
       "Bash(git worktree *)",
       "Bash(git branch *)",
-      "Bash(grep -nE \"^#{1,3} \" docs/proto-frontend-mismatch-report.md)"
+      "Bash(grep -nE \"^#{1,3} \" docs/proto-frontend-mismatch-report.md)",
+      "Bash(git restore *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

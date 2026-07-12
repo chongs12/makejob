@@ -6,7 +6,7 @@
  * Delete this file and the /prototype-ui route when done.
  */
 import { useState, useRef, useEffect, useMemo, Component, type ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { Spin } from 'antd'
 import {
   SettingOutlined,
@@ -25,13 +25,17 @@ import type { Live2DDirective } from '../../shared/live2dDirective'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../../state/auth'
 import { useFrontendIndustriesQuery, usePracticeStatsQuery } from '../../shared/frontendQueries'
-import { DEFAULT_FRONTEND_INDUSTRY_CODE, readSelectedFrontendIndustryCode, resolvePreferredFrontendIndustry } from '../../shared/industryContext'
+import { DEFAULT_FRONTEND_INDUSTRY_CODE, readSelectedFrontendIndustryCode, resolvePreferredFrontendIndustry, persistSelectedFrontendIndustryCode } from '../../shared/industryContext'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
-import { fetchCurrentPlan, fetchCompanionPlanProgress, fetchSelectableCompanionLive2DModels, sendCompanionChatRequest, recognizeSpeech } from '../companion/companionApi'
-import { buildCompanionCurrentPlanQueryKey, buildCompanionPlanProgressQueryKey, buildCompanionLive2DModelsQueryKey } from '../../shared/queryKeys'
-import { deriveTodayGoals, deriveActiveGoals, resolveFocusedCompanionTask } from '../companion/companionHelpers'
-import { readCompanionFocusTask } from '../companion/companionStorage'
-import type { CompanionPlanDetail, CompanionPlanTask, CompanionHistoryItem, CompanionChatReply } from '../companion/companionTypes'
+import { adjustCompanionPlan, fetchCurrentPlan, fetchCompanionPlanProgress, fetchSelectableCompanionLive2DModels, sendCompanionChatRequest, recognizeSpeech } from '../companion/companionApi'
+import { buildCompanionCurrentPlanQueryKey, buildCompanionPlanProgressQueryKey, buildCompanionLive2DModelsQueryKey, invalidateCompanionPlanQueries } from '../../shared/queryKeys'
+import { deriveTodayGoals, deriveActiveGoals, resolveFocusedCompanionTask, buildCompanionWorkspaceResumeMessage } from '../companion/companionHelpers'
+import { readCompanionFocusTask, readCompanionDailyDigest, persistCompanionSessionSummary, readSelectedCompanionModelKey, persistSelectedCompanionModelKey } from '../companion/companionStorage'
+import { buildCompanionSessionSummary } from '../companion/companionShared'
+import { useCompanionStudyLogSync } from '../companion/useCompanionStudyLogSync'
+import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
+import { buildPracticeRouteSearch } from '../../shared/practiceRoute'
+import type { CompanionPlanDetail, CompanionPlanTask, CompanionHistoryItem, CompanionChatReply, CompanionDailyDigest, SuggestedAction } from '../companion/companionTypes'
 
 /* ========== Public demo model fallback ========== */
 const DEMO_MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@v0.4.0/test/assets/haru/haru_greeter_t03.model3.json'
@@ -492,7 +496,7 @@ function TaskRow({ task }: { task: CompanionPlanTask }) {
 
 type SidebarPanel = 'model' | 'plan' | 'goals' | 'chat'
 
-function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToken, todayGoals, activeGoals, currentPlanQuery, modelOptions, selectedModelKey, setSelectedModelKey, modelOptionsQuery, history }: {
+function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToken, todayGoals, activeGoals, currentPlanQuery, modelOptions, selectedModelKey, setSelectedModelKey, modelOptionsQuery, history, onAdjustPlan, adjustingPlan, planActionMessage }: {
   collapsed: boolean
   onToggle: () => void
   plan: CompanionPlanDetail | null
@@ -507,6 +511,9 @@ function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToke
   setSelectedModelKey: (key: string) => void
   modelOptionsQuery: any
   history: CompanionHistoryItem[]
+  onAdjustPlan: () => void
+  adjustingPlan: boolean
+  planActionMessage: string
 }) {
   const [activePanel, setActivePanel] = useState<SidebarPanel>('chat')
   const listRef = useRef<HTMLDivElement>(null)
@@ -621,7 +628,7 @@ function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToke
                   border: `1px solid ${C.white200}`, background: 'rgba(0,0,0,0.2)',
                 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-                    {plan?.title || '还没有学习计划'}
+                    {plan?.status === 'generating' ? '学习计划生成中...' : (plan?.title || '还没有学习计划')}
                   </div>
                   {plan?.phase && (
                     <div style={{ fontSize: 12, color: C.gray500, marginBottom: 12 }}>
@@ -661,6 +668,27 @@ function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToke
                       <div style={{ fontSize: 12, color: C.gray500, marginBottom: 4 }}>
                         阶段：{focusedTask.phase}
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {plan && accessToken && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={onAdjustPlan}
+                      disabled={adjustingPlan}
+                      style={{
+                        padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.white200}`,
+                        background: adjustingPlan ? C.white050 : 'transparent', color: C.white700,
+                        fontSize: 13, fontWeight: 600, cursor: adjustingPlan ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {adjustingPlan ? '正在调整计划...' : '重新调整计划'}
+                    </button>
+                    {planActionMessage && (
+                      <p style={{ fontSize: 12, color: C.gray500, margin: 0 }}>{planActionMessage}</p>
                     )}
                   </div>
                 )}
@@ -739,7 +767,17 @@ function Sidebar({ collapsed, onToggle, plan, planStats, focusedTask, accessToke
 
 /* ========== Footer ========== */
 
-function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, isRecording, isRecognizing, onToggleRecording }: {
+function actionLabel(action: SuggestedAction): string {
+  switch (action.type) {
+    case 'practice': return '去刷题'
+    case 'interview': return '模拟面试'
+    case 'adjust_plan': return '调整计划'
+    case 'chat': return action.params || '继续追问'
+    default: return action.params || action.target || '继续'
+  }
+}
+
+function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, isRecording, isRecognizing, onToggleRecording, suggestedActions, onApplyAction }: {
   collapsed: boolean
   onToggle: () => void
   composer: string
@@ -749,6 +787,8 @@ function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, i
   isRecording: boolean
   isRecognizing: boolean
   onToggleRecording: () => void
+  suggestedActions: SuggestedAction[]
+  onApplyAction: (action: SuggestedAction) => void
 }) {
   return (
     <div style={{
@@ -768,7 +808,27 @@ function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, i
         <DownOutlined style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s', fontSize: 10 }} />
       </div>
       {!collapsed && (
-        <div style={{ display: 'flex', gap: 8, padding: '0 16px', alignItems: 'flex-end', height: 'calc(100% - 24px)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 16px', height: 'calc(100% - 24px)' }}>
+          {suggestedActions.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {suggestedActions.slice(0, 4).map((action, index) => (
+                <button
+                  key={`action-${index}`}
+                  type="button"
+                  onClick={() => onApplyAction(action)}
+                  title={action.target || actionLabel(action)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 14, border: `1px solid ${C.white200}`,
+                    background: C.white050, color: C.white, fontSize: 12, cursor: 'pointer',
+                    maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {actionLabel(action)}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           {/* Mic button */}
           <button
             onClick={onToggleRecording}
@@ -813,6 +873,7 @@ function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, i
           >
             <SendOutlined />
           </button>
+        </div>
         </div>
       )}
     </div>
@@ -863,6 +924,7 @@ export function PrototypeUIPage() {
   const [footerCollapsed, setFooterCollapsed] = useState(false)
 
   const accessToken = useAuthStore((s) => s.accessToken)
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const industriesQuery = useFrontendIndustriesQuery()
   const practiceStatsQuery = usePracticeStatsQuery(accessToken)
@@ -877,7 +939,12 @@ export function PrototypeUIPage() {
   ])
   const [composer, setComposer] = useState('')
   const [sending, setSending] = useState(false)
-  const [selectedModelKey, setSelectedModelKey] = useState('')
+  const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([])
+  const [adjustingPlan, setAdjustingPlan] = useState(false)
+  const [planActionMessage, setPlanActionMessage] = useState('')
+  const [dailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
+  const hasInjectedResumeMessageRef = useRef(false)
+  const [selectedModelKey, setSelectedModelKey] = useState(() => readSelectedCompanionModelKey(selectedIndustryCode))
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
 
@@ -906,6 +973,19 @@ export function PrototypeUIPage() {
     [industriesQuery.data, selectedIndustryCode],
   )
   const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || DEFAULT_FRONTEND_INDUSTRY_CODE
+
+  // 行业与模型偏好本地持久化：刷新或返回后能恢复上次选择。
+  useEffect(() => {
+    if (effectiveIndustryCode) {
+      persistSelectedFrontendIndustryCode(effectiveIndustryCode)
+    }
+  }, [effectiveIndustryCode])
+
+  useEffect(() => {
+    if (selectedModelKey) {
+      persistSelectedCompanionModelKey(effectiveIndustryCode, selectedModelKey)
+    }
+  }, [selectedModelKey, effectiveIndustryCode])
 
   // Plan queries
   const currentPlanQuery = useQuery({
@@ -947,6 +1027,7 @@ export function PrototypeUIPage() {
 
   // Derived plan data
   const planStats = planProgressQuery.data
+  const isPlanGenerating = currentPlanQuery.data?.status === 'generating'
   const todayGoals = useMemo(() => deriveTodayGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
   const activeGoals = useMemo(() => deriveActiveGoals(currentPlanQuery.data || null), [currentPlanQuery.data])
   const focusedTask = useMemo(
@@ -958,9 +1039,61 @@ export function PrototypeUIPage() {
     [history],
   )
 
+  // 每日执行摘要与学习日志同步：房内 digest 为只读快照，更新交由主站刷题页回写。
+  useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
+
+  // 进入房间且计划就绪后，注入一条续接提示，避免每次都像从零开始。
+  useEffect(() => {
+    if (hasInjectedResumeMessageRef.current || !accessToken || !currentPlanQuery.data || currentPlanQuery.data.status === 'generating') {
+      return
+    }
+    hasInjectedResumeMessageRef.current = true
+    const resumeMessage = buildCompanionWorkspaceResumeMessage(currentPlanQuery.data, focusedTask, dailyDigest)
+    setHistory((prev) => [...prev, {
+      id: `assistant-resume-${currentPlanQuery.data!.id}`,
+      role: 'assistant',
+      content: resumeMessage,
+      createdAt: Date.now(),
+    }])
+  }, [accessToken, currentPlanQuery.data, dailyDigest, focusedTask])
+
+  // 将当前会话摘要持续写回入口页可读的本地缓存。
+  useEffect(() => {
+    const summary = buildCompanionSessionSummary(history, currentPlanQuery.data || null)
+    if (summary) {
+      persistCompanionSessionSummary(summary)
+    }
+  }, [history, currentPlanQuery.data])
+
+  // 应用结构化引导动作：按 type 跳转刷题/面试页，或触发计划调整，或填入输入框。
+  function handleApplyAction(action: SuggestedAction) {
+    switch (action.type) {
+      case 'practice':
+        navigate({
+          to: '/practice',
+          search: buildPracticeRouteSearch({
+            questionSetSlug: action.target || '',
+            source: 'companion_suggested_action',
+            title: action.target || '',
+          }),
+        })
+        return
+      case 'interview':
+        navigate({ to: '/interview' })
+        return
+      case 'adjust_plan':
+        void handleAdjustPlan()
+        return
+      case 'chat':
+      default:
+        setComposer(action.params || action.target || '')
+    }
+  }
+
   // 真实聊天发送：组装用户消息，调用陪伴 API，追加助手回复
   async function handleSend() {
     if (!composer.trim() || sending) return
+    if (isPlanGenerating) return
     if (!accessToken) {
       requestLoginPrompt('/companion', 'missing')
       return
@@ -976,6 +1109,7 @@ export function PrototypeUIPage() {
     stopCurrentPlayback()
     setHistory((prev) => [...prev, userMessage])
     setComposer('')
+    setSuggestedActions([])
     setSending(true)
 
     try {
@@ -984,7 +1118,7 @@ export function PrototypeUIPage() {
         [...history, userMessage],
         currentPlanQuery.data || null,
         focusedTask,
-        null,
+        dailyDigest,
         selectedModelKey,
         { deriveTodayGoals, deriveActiveGoals },
       )
@@ -1000,6 +1134,7 @@ export function PrototypeUIPage() {
       }
 
       setHistory((prev) => [...prev, assistantMessage])
+      setSuggestedActions(reply.suggested_actions || [])
 
       // 有 TTS 音频则播放并驱动嘴型/字幕；否则回退到纯打字机字幕。
       if (reply.audio_url) {
@@ -1018,6 +1153,38 @@ export function PrototypeUIPage() {
       startDialogueTyping(errorMessage.content)
     } finally {
       setSending(false)
+    }
+  }
+
+  /**
+   * 触发后端重新调整当前学习计划，作为"计划-执行模式"的人机交互入口。
+   */
+  async function handleAdjustPlan() {
+    if (!accessToken) {
+      requestLoginPrompt('/companion', 'missing')
+      return
+    }
+
+    const planId = currentPlanQuery.data?.id
+    if (!planId) {
+      setPlanActionMessage('还没有学习计划，无法调整。')
+      return
+    }
+    if (currentPlanQuery.data?.status === 'generating') {
+      setPlanActionMessage('当前计划仍在生成中，待落库后再调整。')
+      return
+    }
+
+    setAdjustingPlan(true)
+    setPlanActionMessage('陪伴助手正在重新整理你的计划节奏...')
+    try {
+      await adjustCompanionPlan(accessToken, planId)
+      await invalidateCompanionPlanQueries(queryClient)
+      setPlanActionMessage('计划已重新调整。')
+    } catch (error) {
+      setPlanActionMessage(`调整失败：${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setAdjustingPlan(false)
     }
   }
 
@@ -1110,6 +1277,11 @@ export function PrototypeUIPage() {
       width: '100vw', height: '100vh', overflow: 'hidden',
       background: C.gray900, color: '#fff', display: 'flex', flexDirection: 'row',
     }}>
+      <SectionErrorBoundary
+        title="侧栏区域加载失败"
+        description="计划进度、目标或对话记录在渲染时出现异常。你可以重试当前区域，右侧舞台仍可继续使用。"
+        resetKeys={[currentPlanQuery.data?.id, history.length, focusedTask?.id, accessToken]}
+      >
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -1129,7 +1301,11 @@ export function PrototypeUIPage() {
         setSelectedModelKey={setSelectedModelKey}
         modelOptionsQuery={modelOptionsQuery}
         history={history}
+        onAdjustPlan={() => void handleAdjustPlan()}
+        adjustingPlan={adjustingPlan}
+        planActionMessage={planActionMessage}
       />
+      </SectionErrorBoundary>
 
       <div style={{
         flex: 1, height: '100%', position: 'relative',
@@ -1182,7 +1358,7 @@ export function PrototypeUIPage() {
         </div>
 
         <div style={{
-          width: '100%', height: footerCollapsed ? 24 : 135,
+          width: '100%', height: footerCollapsed ? 24 : (suggestedActions.length > 0 ? 168 : 135),
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           willChange: 'transform', position: 'relative', zIndex: 1,
         }}>
@@ -1196,6 +1372,8 @@ export function PrototypeUIPage() {
             isRecording={isRecording}
             isRecognizing={isRecognizing}
             onToggleRecording={() => void handleToggleRecording()}
+            suggestedActions={suggestedActions}
+            onApplyAction={handleApplyAction}
           />
         </div>
       </div>

@@ -48,9 +48,13 @@ func (c *growthClient) GetFocusSignals(ctx context.Context, userID uint64) ([]bi
 	signals := make([]biz.FocusSignal, 0, len(resp.GetFocusSignals()))
 	for _, s := range resp.GetFocusSignals() {
 		signals = append(signals, biz.FocusSignal{
-			Tag:             s.GetFocusTag(),
-			TopicTitle:      s.GetTopicTitle(),
-			OccurrenceCount: s.GetOccurrenceCount(),
+			Tag:                 s.GetFocusTag(),
+			TopicTitle:          s.GetTopicTitle(),
+			OccurrenceCount:     s.GetOccurrenceCount(),
+			PrimaryQuestionSet:  s.GetPrimaryQuestionSet(),
+			RelatedQuestionSets: s.GetRelatedQuestionSets(),
+			RecommendedActions:  s.GetRecommendedActions(),
+			Reason:              s.GetReason(),
 		})
 	}
 	return signals, nil

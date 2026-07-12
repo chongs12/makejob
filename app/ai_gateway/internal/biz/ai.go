@@ -407,11 +407,12 @@ func NewCompanionAgentUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // CompanionResult 陪伴聊天返回结果
 type CompanionResult struct {
-	Reply          string              `json:"reply"`
-	Emotion        string              `json:"emotion"`
-	Suggestions    []string            `json:"suggestions"`
-	Action         string              `json:"action"`
-	Live2DDirective *Live2DDirectiveResult `json:"live2d_directive,omitempty"`
+	Reply            string                 `json:"reply"`
+	Emotion          string                 `json:"emotion"`
+	Suggestions      []string               `json:"suggestions"`
+	Action           string                 `json:"action"`
+	SuggestedActions []SuggestedActionItem  `json:"suggested_actions,omitempty"`
+	Live2DDirective  *Live2DDirectiveResult `json:"live2d_directive,omitempty"`
 }
 
 // Chat 生成陪伴聊天回复
@@ -429,12 +430,13 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrPromptRenderFailed
 	}
 
-	// 对齐单体实现：Prompt 模板作为 system message，用户消息作为 user message
+	// 渲染对话式 Prompt，再追加 JSON 合同，让 LLM 返回结构化回复（含 suggested_actions）。
 	promptText := renderCompanionPrompt(tpl.TemplateContent, userMessage, contextType, username, recentTopics)
+	schema := companionResultSchema()
+	contractPrompt := buildJSONContractPrompt(promptText, schema)
 
-	// 构建消息列表：system prompt + user message（对齐单体 prependSystemPrompt）
 	messages := []Message{
-		{Role: "system", Content: promptText},
+		{Role: "system", Content: contractPrompt},
 		{Role: "user", Content: userMessage},
 	}
 
@@ -444,17 +446,34 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrLLMCallFailed
 	}
 
-	// 对齐单体实现：陪伴回复为纯文本，不解析 JSON；emotion 本地推导。
+	emotion := normalizeCompanionEmotion(contextType)
+	// 优先按 JSON 合同解析结构化回复；解析失败降级为纯文本，保证可用。
+	payload, parseErr := parseStructuredJSON[CompanionPayload](ctx, uc.llm, cfg, resp.Content, schema)
+	if parseErr == nil && strings.TrimSpace(payload.Reply) != "" {
+		actions := payload.SuggestedActions
+		if actions == nil {
+			actions = []SuggestedActionItem{}
+		}
+		return &CompanionResult{
+			Reply:            strings.TrimSpace(payload.Reply),
+			Emotion:          emotion,
+			Suggestions:      []string{},
+			Action:           companionActionForEmotion(emotion),
+			SuggestedActions: actions,
+		}, nil
+	}
+
+	// 降级：LLM 输出无法解析为结构化 JSON，直接用纯文本回复。
 	reply := strings.TrimSpace(resp.Content)
 	if reply == "" {
 		return nil, ErrParseFailed
 	}
-	emotion := normalizeCompanionEmotion(contextType)
 	return &CompanionResult{
-		Reply:       reply,
-		Emotion:     emotion,
-		Suggestions: []string{},
-		Action:      companionActionForEmotion(emotion),
+		Reply:            reply,
+		Emotion:          emotion,
+		Suggestions:      []string{},
+		Action:           companionActionForEmotion(emotion),
+		SuggestedActions: []SuggestedActionItem{},
 	}, nil
 }
 

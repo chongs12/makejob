@@ -41,26 +41,40 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 	}
 
 	return &companionv1.CompanionChatResponse{
-		Reply:       result.Reply,
-		Emotion:     result.Emotion,
-		Action:      result.Action,
-		Suggestions: result.Suggestions,
-		AudioUrl:    result.AudioURL,
-		Live2DDirective: toProtoLive2DDirective(result.Live2DDirective),
+		Reply:            result.Reply,
+		Emotion:          result.Emotion,
+		Action:           result.Action,
+		Suggestions:      result.Suggestions,
+		SuggestedActions: toProtoCompanionSuggestedActions(result.SuggestedActions),
+		AudioUrl:         result.AudioURL,
+		Live2DDirective:  toProtoLive2DDirective(result.Live2DDirective),
 	}, nil
+}
+
+// toProtoCompanionSuggestedActions 将 biz SuggestedAction 列表转换为 proto SuggestedAction 列表。
+func toProtoCompanionSuggestedActions(actions []biz.SuggestedAction) []*companionv1.SuggestedAction {
+	if len(actions) == 0 {
+		return nil
+	}
+	protos := make([]*companionv1.SuggestedAction, 0, len(actions))
+	for _, a := range actions {
+		protos = append(protos, &companionv1.SuggestedAction{
+			Type:   a.Type,
+			Target: a.Target,
+			Params: a.Params,
+		})
+	}
+	return protos
 }
 
 // buildEnrichedMessage 将前端传入的 messages 数组和 context 对象合并为单个富文本消息。
 func buildEnrichedMessage(req *companionv1.CompanionChatRequest) string {
 	var parts []string
 
-	// 注入上下文信息
+	// 注入上下文信息（计划标题/进度由 biz.enrichContext 后端实时查询注入，此处不重复拼装）
 	ctx := req.GetContext()
 	if ctx != nil {
 		var contextParts []string
-		if ctx.CurrentPlanTitle != "" {
-			contextParts = append(contextParts, fmt.Sprintf("当前计划：%s（进度 %.0f%%）", ctx.CurrentPlanTitle, ctx.CurrentPlanProgress*100))
-		}
 		if len(ctx.TodayGoals) > 0 {
 			contextParts = append(contextParts, fmt.Sprintf("今日目标：%s", strings.Join(ctx.TodayGoals, "、")))
 		}

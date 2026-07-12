@@ -31,3 +31,8 @@ asr:
   app_id: ""
   access_token: ""
   language: "zh-CN"
+
+services:
+  growth: "localhost:9006"
+  interview: "localhost:9004"
+  plan: "localhost:9007"
