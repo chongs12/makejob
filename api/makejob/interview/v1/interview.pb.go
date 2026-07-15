@@ -352,8 +352,10 @@ type InterviewDetail struct {
 	CurrentQuestion *InterviewQuestion     `protobuf:"bytes,14,opt,name=current_question,json=currentQuestion,proto3" json:"current_question,omitempty"`
 	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	EndedAt         *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 是否为实时语音面试（由 Live2DModelKey 或 realtime 模式推断），供前端决定走 WebSocket 还是 HTTP 链路。
+	IsRealtime    bool `protobuf:"varint,17,opt,name=is_realtime,json=isRealtime,proto3" json:"is_realtime,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InterviewDetail) Reset() {
@@ -496,6 +498,13 @@ func (x *InterviewDetail) GetEndedAt() *timestamppb.Timestamp {
 		return x.EndedAt
 	}
 	return nil
+}
+
+func (x *InterviewDetail) GetIsRealtime() bool {
+	if x != nil {
+		return x.IsRealtime
+	}
+	return false
 }
 
 type InterviewMessage struct {
@@ -2749,7 +2758,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x125\n" +
 	"\bended_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12#\n" +
 	"\rindustry_code\x18\r \x01(\tR\findustryCode\x12%\n" +
-	"\x0einterview_mode\x18\x0e \x01(\tR\rinterviewMode\"\xc5\x05\n" +
+	"\x0einterview_mode\x18\x0e \x01(\tR\rinterviewMode\"\xe6\x05\n" +
 	"\x0fInterviewDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12#\n" +
@@ -2771,7 +2780,9 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\x10current_question\x18\x0e \x01(\v2'.makejob.interview.v1.InterviewQuestionR\x0fcurrentQuestion\x129\n" +
 	"\n" +
 	"started_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x125\n" +
-	"\bended_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\"\xf3\x01\n" +
+	"\bended_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12\x1f\n" +
+	"\vis_realtime\x18\x11 \x01(\bR\n" +
+	"isRealtime\"\xf3\x01\n" +
 	"\x10InterviewMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x18\n" +

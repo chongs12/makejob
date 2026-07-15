@@ -59,6 +59,11 @@ type IndustryClient interface {
 	GetIndustry(ctx context.Context, code string) (*Industry, error)
 }
 
+// MembershipClient 会员服务的 gRPC 客户端接口（用于实时语音面试门禁校验）
+type MembershipClient interface {
+	CheckFeatureAccess(ctx context.Context, userID uint64, feature string) (bool, string, error)
+}
+
 // RAGClient RAG 检索服务的 gRPC 客户端接口
 type RAGClient interface {
 	Retrieve(ctx context.Context, query string, topK int32) ([]*RAGDocument, error)

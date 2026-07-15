@@ -216,6 +216,7 @@ export interface InterviewDetailResponse {
   current_question?: InterviewQuestion | null
   started_at?: string
   ended_at?: string
+  is_realtime?: boolean
 }
 
 export interface InterviewCodingProcessEvent {

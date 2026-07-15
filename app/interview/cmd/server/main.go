@@ -84,6 +84,11 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, fmt.Errorf("failed to create Archive client: %w", err)
 	}
 
+	membershipClient, err := data.NewMembershipClient(bc.Membership, archiveServiceToken)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create Membership client: %w", err)
+	}
+
 	// 行业数据直接查本地 DB（行业是静态字典表，各服务本地都有副本）
 	industryRepo := data.NewIndustryRepo(db)
 
@@ -107,6 +112,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		aiClient,
 		archiveClient,
 		industryRepo,
+		membershipClient,
 		ragClient,
 		codeRunnerClient,
 		reportRepo,
@@ -145,6 +151,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		closers = append(closers, c)
 	}
 	if c, ok := archiveClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := membershipClient.(closer); ok {
 		closers = append(closers, c)
 	}
 	if c, ok := ragClient.(closer); ok {

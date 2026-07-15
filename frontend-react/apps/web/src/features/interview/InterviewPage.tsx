@@ -96,6 +96,7 @@ export function InterviewHubPage() {
   const user = useAuthStore((state) => state.user)
   const [form, setForm] = useState<InterviewConfigForm>(() => buildInitialInterviewForm())
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
+  const [channelChoice, setChannelChoice] = useState<'voice' | 'text'>('voice')
   const [message, setMessage] = useState('')
   const [pdfFileName, setPdfFileName] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
@@ -117,6 +118,10 @@ export function InterviewHubPage() {
   )
   const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || INTERVIEW_DEFAULT_INDUSTRY_CODE
   const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
+
+  // 实时语音面试为会员专属：免费用户固定文字模式，付费用户可在语音/文字间选择（默认语音）。
+  const isPaidMember = Boolean(user?.membershipLevel) && user.membershipLevel !== 'free'
+  const deliveryChannel: 'voice' | 'text' = isPaidMember ? channelChoice : 'text'
 
   const createMutation = useMutation({
     mutationFn: (payload: InterviewCreatePayload) => createInterviewRequest(accessToken as string, payload),
@@ -237,7 +242,9 @@ export function InterviewHubPage() {
       await createMutation.mutateAsync({
         industry_code: effectiveIndustryCode,
         interview_type: form.interviewType,
-        live2d_model_key: readSelectedLive2DModelKey('interview', effectiveIndustryCode),
+        live2d_model_key: deliveryChannel === 'voice'
+          ? readSelectedLive2DModelKey('interview', effectiveIndustryCode)
+          : '',
         ...(isResumeMode
           ? {
               interview_mode: 'resume_driven',
@@ -411,6 +418,68 @@ export function InterviewHubPage() {
               实战面试
             </button>
           </div>
+
+          {/* 交付通道：语音面试（会员专属）/ 文字面试 */}
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: THEME.textMain, marginBottom: 8 }}>
+              面试方式
+            </label>
+            <div style={{
+              display: 'flex',
+              gap: 8,
+              padding: 4,
+              background: '#fafaf9',
+              borderRadius: THEME.radiusSm,
+            }}>
+              <button
+                type="button"
+                disabled={!isPaidMember}
+                onClick={() => isPaidMember && setChannelChoice('voice')}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: deliveryChannel === 'voice' ? THEME.cardBg : 'transparent',
+                  boxShadow: deliveryChannel === 'voice' ? THEME.shadow : 'none',
+                  fontSize: 14,
+                  fontWeight: deliveryChannel === 'voice' ? 600 : 500,
+                  color: deliveryChannel === 'voice' ? THEME.textMain : THEME.textSecondary,
+                  cursor: isPaidMember ? 'pointer' : 'not-allowed',
+                  opacity: isPaidMember ? 1 : 0.55,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                语音面试{isPaidMember ? '' : '（会员）'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannelChoice('text')}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: deliveryChannel === 'text' ? THEME.cardBg : 'transparent',
+                  boxShadow: deliveryChannel === 'text' ? THEME.shadow : 'none',
+                  fontSize: 14,
+                  fontWeight: deliveryChannel === 'text' ? 600 : 500,
+                  color: deliveryChannel === 'text' ? THEME.textMain : THEME.textSecondary,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                文字面试
+              </button>
+            </div>
+          </div>
+          {!isPaidMember && (
+            <p style={{ fontSize: 12, color: THEME.primary, margin: '0 0 20px' }}>
+              <Link to="/membership" style={{ color: THEME.primary, textDecoration: 'none' }}>
+                实时语音面试是会员专属功能，升级会员解锁 →
+              </Link>
+            </p>
+          )}
 
           <form onSubmit={handleCreateInterview}>
             {/* 行业选择 */}

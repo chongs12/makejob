@@ -22,6 +22,12 @@ export interface AuthSession {
   refreshToken: string | null
 }
 
+/**
+ * 会员套餐等级，与后端 UserMembership.Level 一致。
+ * free = 无有效付费套餐；其余为付费套餐。是否付费由 tier !== 'free' 派生。
+ */
+export type MembershipTier = 'free' | 'monthly' | 'quarterly' | 'yearly'
+
 export interface UserProfile {
   id: number
   username: string
@@ -31,7 +37,7 @@ export interface UserProfile {
   bio?: string
   role: 'user' | 'admin'
   rawRole?: string
-  membershipLevel: 'free' | 'pro'
+  membershipLevel: MembershipTier
   membershipExpireAt?: string
   industry?: string
   targetPosition?: string
@@ -84,7 +90,7 @@ export function normalizeUserProfile(profile?: RawUserProfile | null): UserProfi
     bio: profile.bio,
     role: profile.role === 'admin' ? 'admin' : 'user',
     rawRole: profile.role,
-    membershipLevel: (profile.membership_level || profile.membershipLevel || 'free') as 'free' | 'pro',
+    membershipLevel: (profile.membership_level || profile.membershipLevel || 'free') as MembershipTier,
     membershipExpireAt: profile.membership_expire_at || profile.membershipExpireAt,
     industry: profile.industry,
     targetPosition: profile.target_position || profile.targetPosition,

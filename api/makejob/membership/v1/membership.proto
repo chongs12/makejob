@@ -20,7 +20,7 @@ message UserIDRequest {
 }
 
 message MembershipStatus {
-  string level = 1;           // "free" or "pro"
+  string level = 1;           // free | monthly | quarterly | yearly
   google.protobuf.Timestamp expire_at = 2;
   bool is_active = 3;
   int32 daily_practice_limit = 4;     // 每日练习限制

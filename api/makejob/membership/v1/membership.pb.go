@@ -68,7 +68,7 @@ func (x *UserIDRequest) GetUserId() uint64 {
 
 type MembershipStatus struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
-	Level               string                 `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"` // "free" or "pro"
+	Level               string                 `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"` // free | monthly | quarterly | yearly
 	ExpireAt            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_at,json=expireAt,proto3" json:"expire_at,omitempty"`
 	IsActive            bool                   `protobuf:"varint,3,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
 	DailyPracticeLimit  int32                  `protobuf:"varint,4,opt,name=daily_practice_limit,json=dailyPracticeLimit,proto3" json:"daily_practice_limit,omitempty"`    // 每日练习限制

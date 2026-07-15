@@ -34,6 +34,7 @@ type InterviewUseCase struct {
 	ai               AIServiceClient
 	archive          LearningArchiveClient
 	industry         IndustryClient
+	membership       MembershipClient
 	rag              RAGClient
 	codeRunner       CodeRunnerClient
 	reportRepo       ReportRepo
@@ -48,6 +49,7 @@ func NewInterviewUseCase(
 	ai AIServiceClient,
 	archive LearningArchiveClient,
 	industry IndustryClient,
+	membership MembershipClient,
 	rag RAGClient,
 	codeRunner CodeRunnerClient,
 	reportRepo ReportRepo,
@@ -64,6 +66,7 @@ func NewInterviewUseCase(
 		ai:               ai,
 		archive:          archive,
 		industry:         industry,
+		membership:       membership,
 		rag:              rag,
 		codeRunner:       codeRunner,
 		reportRepo:       reportRepo,
@@ -114,8 +117,20 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		StartedAt:       &now,
 	}
 
+	// 实时语音面试门禁：仅付费会员可创建实时面试，免费用户返回 403。
+	// 门禁在创建时生效，进行中的面试不受会员状态后续变化影响（见 ADR-0004）。
+	if IsRealtimeInterview(interview) {
+		allowed, reason, err := uc.membership.CheckFeatureAccess(ctx, req.UserID, "realtime_interview")
+		if err != nil {
+			return nil, nil, kratosErr.InternalServer("MEMBERSHIP_CHECK_FAILED", "会员校验失败").WithCause(err)
+		}
+		if !allowed {
+			return nil, nil, kratosErr.Forbidden("MEMBERSHIP_REQUIRED", reason)
+		}
+	}
+
 	var firstQuestion *InterviewQuestion
-	if !isRealtimeInterview(interview) {
+	if !IsRealtimeInterview(interview) {
 		// 调用 AI Gateway 的 StartInterview 获取 sessionID 和首题（对齐单体 InterviewAgent.StartInterview）
 		aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
 			InterviewID:    interview.ID,
@@ -510,7 +525,7 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 
 	// 实时面试的 session 不在 AI Gateway 的内存中（走火山引擎 WebSocket），
 	// 调 GenerateInterviewReport 必然失败，改用 GenerateReportFromHistory 发送完整对话。
-	if isRealtimeInterview(interview) {
+	if IsRealtimeInterview(interview) {
 		log.Infof("[ReportGen] realtime interview, generating report from history: interview_id=%d", interviewID)
 		messages, msgErr := uc.repo.ListMessages(ctx, interviewID)
 		if msgErr != nil {
@@ -737,7 +752,7 @@ func (uc *InterviewUseCase) saveReport(ctx context.Context, interviewID uint64, 
 	log.Infof("[ReportGen] report saved successfully: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
 
 	// 结束 AI 会话（仅标准面试，实时面试的 session 不在 AI Gateway 中）
-	if !isRealtimeInterview(interview) && interview.AISessionID != "" {
+	if !IsRealtimeInterview(interview) && interview.AISessionID != "" {
 		_, _ = uc.ai.EndInterviewSession(ctx, &EndInterviewSessionRequest{
 			SessionId: interview.AISessionID,
 		})
@@ -1103,7 +1118,7 @@ func (uc *InterviewUseCase) IsRealtimeInterview(ctx context.Context, interviewID
 	if interview.Status != "ongoing" {
 		return false, ErrInterviewNotOngoing
 	}
-	return isRealtimeInterview(interview), nil
+	return IsRealtimeInterview(interview), nil
 }
 
 // RealtimeContextResult 实时面试上下文结果（对齐单体 RealtimeInterviewContext）
@@ -1147,7 +1162,7 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 	if interview.Status != "ongoing" {
 		return nil, ErrInterviewNotOngoing
 	}
-	if !isRealtimeInterview(interview) {
+	if !IsRealtimeInterview(interview) {
 		return nil, ErrInterviewNotRealtime
 	}
 
@@ -1172,6 +1187,12 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 		interviewMode = "realtime"
 	}
 
+	// 知识点专项面试优先使用用户自定义主题，否则按行业映射默认主题
+	topics := interview.KnowledgeTopics
+	if len(topics) == 0 {
+		topics = resolveTopicsByIndustry(interview.IndustryCode)
+	}
+
 	return &RealtimeContextResult{
 		InterviewID:    interview.ID,
 		IndustryCode:   interview.IndustryCode,
@@ -1179,7 +1200,7 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 		TotalQuestions: int(interview.QuestionCount),
 		Difficulty:     interview.Difficulty,
 		InterviewMode:  interviewMode,
-		Topics:         resolveTopicsByIndustry(interview.IndustryCode),
+		Topics:         topics,
 		WeakTopics:     resolveWeakTopics(recentMessages),
 		ResumeProfile:  resumeProfile,
 		DialogID:       interview.AISessionID,
@@ -1202,7 +1223,7 @@ func (uc *InterviewUseCase) BindRealtimeDialog(ctx context.Context, interviewID,
 	if interview.Status != "ongoing" {
 		return ErrInterviewNotOngoing
 	}
-	if !isRealtimeInterview(interview) {
+	if !IsRealtimeInterview(interview) {
 		return ErrInterviewNotRealtime
 	}
 	return uc.repo.BindRealtimeDialog(ctx, interviewID, dialogID)
@@ -1220,7 +1241,7 @@ func (uc *InterviewUseCase) AppendRealtimeUserAnswer(ctx context.Context, interv
 	if interview.Status != "ongoing" {
 		return ErrInterviewNotOngoing
 	}
-	if !isRealtimeInterview(interview) {
+	if !IsRealtimeInterview(interview) {
 		return ErrInterviewNotRealtime
 	}
 	msg := &InterviewMessage{
@@ -1245,7 +1266,7 @@ func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, in
 	if interview.Status != "ongoing" {
 		return false, nil, ErrInterviewNotOngoing
 	}
-	if !isRealtimeInterview(interview) {
+	if !IsRealtimeInterview(interview) {
 		return false, nil, ErrInterviewNotRealtime
 	}
 
@@ -1399,9 +1420,9 @@ func isRealtimeMode(mode string) bool {
 	}
 }
 
-// isRealtimeInterview 判断面试是否为实时模式（兼容 InterviewMode 未落库场景）
+// IsRealtimeInterview 判断面试是否为实时模式（兼容 InterviewMode 未落库场景）
 // 优先检查 InterviewMode（内存值），其次通过 Live2DModelKey 非空推断
-func isRealtimeInterview(iv *Interview) bool {
+func IsRealtimeInterview(iv *Interview) bool {
 	if isRealtimeMode(iv.InterviewMode) {
 		return true
 	}

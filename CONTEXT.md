@@ -58,6 +58,22 @@ Go微服务框架，提供服务发现、负载均衡、中间件等功能。
 ### WeakSignals（候选人薄弱信号）
 简历解析时 LLM 提取的候选人潜在薄弱点，用于在简历驱动面试中引导 AI 针对性追问。
 
+## 会员域术语
+
+### 会员套餐 (Membership Tier)
+用户当前持有的有效套餐等级，取值为 `free | monthly | quarterly | yearly`。`free` 表示无有效付费套餐。套餐等级是会员状态的唯一事实来源，与后端 `UserMembership.Level` 一致。
+_Avoid_: pro（不存在该等级）、VIP、会员等级（歧义）
+
+### 是否付费 (Paid)
+由会员套餐派生的布尔状态：`tier !== 'free'` 即为付费。功能门禁（如实时语音面试）只依赖此派生值，不单独持久化。
+_Avoid_: isPro、isVip、高级用户
+
+### 实时语音面试门禁 (Realtime Interview Gate)
+领域规则：仅付费用户可创建实时语音面试（携带 Live2D 模型 / realtime 模式）；免费用户只能使用 HTTP 文字面试。门禁在面试服务的 `CreateInterview` 域层执行，realtime 服务的 `GetRealtimeContext` 中既有的 `isRealtimeInterview` 校验作为 WebSocket 入口的天然 backstop。
+
+### 模拟支付 (Mock Pay)
+预支付阶段用于打通“建单→支付→会员生效”事务的临时机制：前端建单后调用专用的 mock-pay 端点，内部复用 `HandlePaymentCallback` 完成订单转 paid 与会员 upsert。真实支付接入后删除该端点，替换为支付方跳转。
+
 ## 学习计划域术语
 
 ### 学习阶段 (Learning Phase)

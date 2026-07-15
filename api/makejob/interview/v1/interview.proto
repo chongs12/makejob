@@ -90,6 +90,8 @@ message InterviewDetail {
   InterviewQuestion current_question = 14;
   google.protobuf.Timestamp started_at = 15;
   google.protobuf.Timestamp ended_at = 16;
+  // 是否为实时语音面试（由 Live2DModelKey 或 realtime 模式推断），供前端决定走 WebSocket 还是 HTTP 链路。
+  bool is_realtime = 17;
 }
 
 message InterviewMessage {

@@ -1842,6 +1842,7 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.GET("/membership/orders", gw.requireService("membership", gw.membershipClient != nil, gw.handleListOrders))
 		protected.GET("/membership/orders/:id", gw.requireService("membership", gw.membershipClient != nil, gw.handleGetOrder))
 		protected.POST("/membership/upgrade", gw.requireService("membership", gw.membershipClient != nil, gw.handleUpgradeMembership))
+		protected.POST("/membership/checkout/mock-pay", gw.requireService("membership", gw.membershipClient != nil, gw.handleMockPay))
 
 		protected.POST("/questions/:id/submit", gw.requireService("question", gw.questionClient != nil, gw.handleSubmitAnswer))
 		protected.POST("/questions/:id/run", gw.requireService("question", gw.questionClient != nil, gw.handleRunCode))
@@ -2541,6 +2542,52 @@ func (gw *Gateway) handlePaymentCallback(c *gin.Context) {
 		OrderNo:       req.OrderNo,
 		Channel:       req.Channel,
 		TransactionId: req.TransactionID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleMockPay 预支付阶段的模拟支付：校验订单归属后，复用 HandlePaymentCallback
+// 完成订单转 paid 与会员生效。真实支付接入后删除该端点，见 ADR-0003。
+func (gw *Gateway) handleMockPay(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		OrderID uint64 `json:"order_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.OrderID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order_id is required"})
+		return
+	}
+
+	// GetOrder 内部校验订单归属（order.UserID != userID 返回 NotFound），
+	// 顺带取 order_no 供回调使用，避免越权支付他人订单。
+	order, err := gw.membershipClient.GetOrder(c.Request.Context(), &membershipv1.GetOrderRequest{
+		UserId:  userID,
+		OrderId: req.OrderID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	if order.Status != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order is not pending: " + order.Status})
+		return
+	}
+
+	resp, err := gw.membershipClient.HandlePaymentCallback(c.Request.Context(), &membershipv1.PaymentCallbackRequest{
+		OrderNo:       order.OrderNo,
+		Channel:       "mock",
+		TransactionId: "mock_" + order.OrderNo,
 	})
 	if err != nil {
 		grpcErr(c, err)

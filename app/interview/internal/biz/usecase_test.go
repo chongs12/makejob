@@ -335,7 +335,7 @@ func TestSubmitCodingAnswerPassesHintsAsStdin(t *testing.T) {
 	ai := &quizAnalyzerStub{
 		result: &QuizAnalyzerResponse{Score: 85, Feedback: "不错"},
 	}
-	uc := NewInterviewUseCase(repo, ai, nil, interviewIndustryStub{}, nil, runner, &reportRepoStub{}, nil, log.DefaultLogger, 0)
+	uc := NewInterviewUseCase(repo, ai, nil, interviewIndustryStub{}, nil, nil, runner, &reportRepoStub{}, nil, log.DefaultLogger, 0)
 
 	_, err := uc.SubmitCodingAnswer(context.Background(), 1, 9, 0, "go", "func reverse(s string) string {}")
 	if err != nil {
@@ -374,7 +374,7 @@ func TestSubmitCodingAnswerNoHintsPassesNilTestCases(t *testing.T) {
 		result: &QuizAnalyzerResponse{Score: 85, Feedback: "不错"},
 	}
 	archive := &archiveStub{}
-	uc := NewInterviewUseCase(repo, ai, archive, interviewIndustryStub{}, nil, runner, &reportRepoStub{}, nil, log.DefaultLogger, 0)
+	uc := NewInterviewUseCase(repo, ai, archive, interviewIndustryStub{}, nil, nil, runner, &reportRepoStub{}, nil, log.DefaultLogger, 0)
 
 	_, err := uc.SubmitCodingAnswer(context.Background(), 1, 9, 0, "go", "func reverse(s string) string {}")
 	if err != nil {
@@ -393,7 +393,7 @@ func TestHasCodingArchiveUsesFilteredQuery(t *testing.T) {
 		},
 	}
 	repo := &interviewRepoStub{}
-	uc := NewInterviewUseCase(repo, nil, archive, nil, nil, nil, &reportRepoStub{}, nil, log.DefaultLogger, 0)
+	uc := NewInterviewUseCase(repo, nil, archive, nil, nil, nil, nil, &reportRepoStub{}, nil, log.DefaultLogger, 0)
 
 	exists, err := uc.HasCodingArchive(context.Background(), 1, 9)
 	if err != nil {
@@ -414,7 +414,7 @@ func TestHasCodingArchiveReturnsFalseWhenEmpty(t *testing.T) {
 		filteredEntries: []*ArchiveEntry{},
 	}
 	repo := &interviewRepoStub{}
-	uc := NewInterviewUseCase(repo, nil, archive, nil, nil, nil, &reportRepoStub{}, nil, log.DefaultLogger, 0)
+	uc := NewInterviewUseCase(repo, nil, archive, nil, nil, nil, nil, &reportRepoStub{}, nil, log.DefaultLogger, 0)
 
 	exists, err := uc.HasCodingArchive(context.Background(), 1, 9)
 	if err != nil {

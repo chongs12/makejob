@@ -837,7 +837,7 @@ export function InterviewSessionPage() {
    * 订阅面试 WebSocket 事件，并在页面侧同步更新题目、语音和表情状态。
    */
   useEffect(() => {
-    if (!accessToken || !interviewId || !detailQuery.data || !isInterviewOngoing) {
+    if (!accessToken || !interviewId || !detailQuery.data || !isInterviewOngoing || !detailQuery.data.is_realtime) {
       cancelScheduledSocketClose()
       return undefined
     }

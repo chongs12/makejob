@@ -41,6 +41,7 @@ interface AuthState {
   profileLoaded: boolean
   initAuth: () => void
   login: (email: string, password: string) => Promise<{ ok: boolean; message: string }>
+  register: (username: string, email: string, password: string) => Promise<{ ok: boolean; message: string }>
   fetchProfile: () => Promise<boolean>
   ensureProfile: () => Promise<boolean>
   refreshSession: () => Promise<boolean>
@@ -291,6 +292,77 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return {
         ok: false,
         message: extractErrorMessage(error, '登录失败，请稍后重试'),
+      }
+    } finally {
+      set({
+        loading: false,
+      })
+    }
+  },
+
+  /**
+   * 提交注册请求，成功后直接用返回的会话令牌登录（后端 Register 返回 AuthResponse）。
+   */
+  async register(username: string, email: string, password: string) {
+    set({
+      loading: true,
+    })
+
+    try {
+      const response = await requestJson<ApiEnvelope<LoginResult & { user?: RawUserProfile }>>('/auth/register', {
+        method: 'POST',
+        body: { username, email, password },
+      })
+
+      if (!isSuccessCode(response.code)) {
+        return {
+          ok: false,
+          message: response.message || '注册失败',
+        }
+      }
+
+      const accessToken = extractAccessToken(response.data)
+      if (!accessToken) {
+        return {
+          ok: false,
+          message: '注册成功但未返回 token',
+        }
+      }
+
+      const user = normalizeUserProfile(response.data.user)
+      const refreshToken = extractRefreshToken(response.data)
+
+      persistSession({
+        accessToken,
+        refreshToken,
+        user,
+      })
+
+      set({
+        accessToken,
+        refreshToken,
+        user,
+        loading: false,
+        initialized: true,
+        profileLoaded: Boolean(user),
+      })
+
+      if (!user) {
+        await get().fetchProfile()
+      }
+
+      return {
+        ok: true,
+        message: '注册成功',
+      }
+    } catch (error) {
+      set({
+        loading: false,
+      })
+
+      return {
+        ok: false,
+        message: extractErrorMessage(error, '注册失败，请稍后重试'),
       }
     } finally {
       set({

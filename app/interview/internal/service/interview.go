@@ -93,6 +93,7 @@ func (s *InterviewService) GetInterview(ctx context.Context, req *interviewv1.Ge
 		IndustryCode:   interview.IndustryCode,
 		Status:         interview.Status,
 		InterviewMode:  interview.InterviewMode,
+		IsRealtime:     biz.IsRealtimeInterview(interview),
 		Messages:       msgs,
 		Score:          int32(interview.OverallScore),
 		TotalQuestions: interview.QuestionCount,

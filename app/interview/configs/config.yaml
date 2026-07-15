@@ -25,6 +25,9 @@ rag:
 archive:
   service_addr: "localhost:9010"
 
+membership:
+  service_addr: "localhost:9002"
+
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"

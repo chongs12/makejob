@@ -12,6 +12,7 @@ type Bootstrap struct {
 	Data       *Data       `yaml:"data"`
 	AI         *AI         `yaml:"ai"`
 	Archive    *Archive    `yaml:"archive"`
+	Membership *Membership `yaml:"membership"`
 	MQ         *MQ         `yaml:"mq"`
 	JWT        *JWT        `yaml:"jwt"`
 	RAG        *RAG        `yaml:"rag"`
@@ -56,6 +57,11 @@ type AI struct {
 }
 
 type Archive struct {
+	ServiceAddr string `yaml:"service_addr"`
+}
+
+// Membership 会员服务配置（用于实时语音面试的会员门禁校验）
+type Membership struct {
 	ServiceAddr string `yaml:"service_addr"`
 }
 
@@ -130,6 +136,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.Archive == nil {
 		bc.Archive = &Archive{}
+	}
+	if bc.Membership == nil {
+		bc.Membership = &Membership{}
 	}
 	if bc.MQ == nil {
 		bc.MQ = &MQ{}

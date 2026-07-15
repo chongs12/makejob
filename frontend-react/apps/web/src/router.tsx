@@ -143,6 +143,7 @@ const InterviewSessionPageRoute = createLazyRouteComponent(async () => ({ defaul
 const InterviewReportPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewReportPage')).InterviewReportPage }))
 const CompanionHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionHubPage')).CompanionHubPage }))
 const GrowthPageRoute = createLazyRouteComponent(() => import('./features/growth/GrowthPage'))
+const MembershipPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/membership/MembershipPage')).MembershipPage }))
 
 /**
  * 渲染全局统一的登录提示弹窗，引导用户在需要完整功能时主动进入登录页。
@@ -368,6 +369,7 @@ function RootLayout() {
     { to: '/growth', label: '成长档案', match: pathname.startsWith('/growth') || pathname.startsWith('/workspace') },
   ]
   const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
+  const isPaidMember = Boolean(user?.membershipLevel) && user.membershipLevel !== 'free'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
   const isStandaloneEditor = pathname.startsWith('/practice/editor')
   const isPrototypeUI = pathname.startsWith('/prototype-ui')
@@ -488,6 +490,21 @@ function RootLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             {accessToken ? (
               <>
+                {!isPaidMember && (
+                  <Link to="/membership" style={{ textDecoration: 'none' }}>
+                    <Button
+                      size="small"
+                      style={{
+                        borderRadius: 8,
+                        border: '1px solid #f97316',
+                        color: '#f97316',
+                        fontWeight: 600,
+                      }}
+                    >
+                      升级会员
+                    </Button>
+                  </Link>
+                )}
                 <Button
                   type="primary"
                   size="small"
@@ -505,6 +522,12 @@ function RootLayout() {
                 <Dropdown
                   menu={{
                     items: [
+                      {
+                        key: 'membership',
+                        icon: <ProfileOutlined />,
+                        label: '会员中心',
+                        onClick: () => navigate({ to: '/membership' }),
+                      },
                       {
                         key: 'profile',
                         icon: <ProfileOutlined />,
@@ -698,6 +721,183 @@ function LoginPage() {
         }}>
           <div>令牌状态：{accessToken ? `${accessToken.slice(0, 12)}...` : '未写入'}</div>
           <div>用户资料：{user?.username || '未同步'}</div>
+        </div>
+
+        <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: ROUTER_THEME.textSecondary }}>
+          还没账号？{' '}
+          <Link to="/auth/register" style={{ color: ROUTER_THEME.primary, fontWeight: 600, textDecoration: 'none' }}>
+            去注册
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 提供前台注册页面，注册成功后自动登录并跳转到目标地址或成长档案页。
+ */
+function RegisterPage() {
+  const navigate = useNavigate()
+  const redirectTarget = useRouterState({
+    select: (state) => resolveLoginRedirectTarget((state.location.search as Record<string, unknown> | undefined)?.redirect),
+  })
+  const register = useAuthStore((state) => state.register)
+  const loading = useAuthStore((state) => state.loading)
+  const [form, setForm] = useState({ username: '', email: '', password: '', confirm: '' })
+  const [message, setMessage] = useState('')
+
+  /**
+   * 提交注册表单，前端校验通过后调用注册并自动登录。
+   */
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const username = form.username.trim()
+    const email = form.email.trim()
+    const password = form.password
+
+    if (!username) {
+      setMessage('请输入用户名')
+      return
+    }
+    if (!email.includes('@')) {
+      setMessage('请输入合法的邮箱')
+      return
+    }
+    if (password.length < 6) {
+      setMessage('密码至少 6 位')
+      return
+    }
+    if (password !== form.confirm) {
+      setMessage('两次输入的密码不一致')
+      return
+    }
+
+    const result = await register(username, email, password)
+    setMessage(result.message)
+
+    if (result.ok) {
+      if (typeof window !== 'undefined') {
+        window.location.replace(redirectTarget)
+        return
+      }
+      navigate({ to: '/growth', replace: true })
+    }
+  }
+
+  const fieldLabelStyle: CSSProperties = {
+    display: 'block',
+    fontSize: 13,
+    fontWeight: 600,
+    color: ROUTER_THEME.textMain,
+    marginBottom: 6,
+  }
+
+  return (
+    <div style={{ minHeight: 'calc(100vh - 56px)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ROUTER_THEME.bg, padding: '40px 16px' }}>
+      <div style={{
+        background: ROUTER_THEME.cardBg,
+        borderRadius: ROUTER_THEME.radius,
+        border: `1px solid ${ROUTER_THEME.border}`,
+        padding: '40px 36px',
+        maxWidth: 400,
+        width: '100%',
+        boxShadow: ROUTER_THEME.shadow,
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, #f97316, #fb923c)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 20,
+            fontWeight: 800,
+            color: '#fff',
+            marginBottom: 16,
+          }}>
+            M
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>注册 MakeJob</h1>
+          <p style={{ margin: '8px 0 0', fontSize: 14, color: ROUTER_THEME.textSecondary }}>
+            注册即登录，立刻开始你的学习之旅
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabelStyle}>用户名</label>
+            <Input
+              size="large"
+              value={form.username}
+              onChange={(e) => setForm((current) => ({ ...current, username: e.target.value }))}
+              placeholder="请输入用户名"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabelStyle}>邮箱</label>
+            <Input
+              size="large"
+              value={form.email}
+              onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+              placeholder="请输入邮箱（作为登录账号）"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={fieldLabelStyle}>密码</label>
+            <Input.Password
+              size="large"
+              value={form.password}
+              onChange={(e) => setForm((current) => ({ ...current, password: e.target.value }))}
+              placeholder="至少 6 位"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={fieldLabelStyle}>确认密码</label>
+            <Input.Password
+              size="large"
+              value={form.confirm}
+              onChange={(e) => setForm((current) => ({ ...current, confirm: e.target.value }))}
+              placeholder="再次输入密码"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+          <Button
+            type="primary"
+            htmlType="submit"
+            size="large"
+            block
+            loading={loading}
+            style={{ borderRadius: 8, background: ROUTER_THEME.primary, borderColor: ROUTER_THEME.primary, fontWeight: 600, height: 44 }}
+          >
+            {loading ? '注册中...' : '注册并登录'}
+          </Button>
+        </form>
+
+        {message && (
+          <div style={{
+            marginTop: 20,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: ROUTER_THEME.primaryLight,
+            fontSize: 13,
+            color: ROUTER_THEME.textSecondary,
+            textAlign: 'center',
+          }}>
+            {message}
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: ROUTER_THEME.textSecondary }}>
+          已有账号？{' '}
+          <Link to="/auth/login" style={{ color: ROUTER_THEME.primary, fontWeight: 600, textDecoration: 'none' }}>
+            去登录
+          </Link>
         </div>
       </div>
     </div>
@@ -947,6 +1147,28 @@ const growthRoute = createRoute({
   component: GrowthPageRoute,
 })
 
+const membershipRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'membership',
+  beforeLoad: async ({ location }) => {
+    if (!await getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+
+    const ready = await useAuthStore.getState().ensureProfile()
+    if (!ready) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: MembershipPageRoute,
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth/login',
@@ -954,6 +1176,15 @@ const loginRoute = createRoute({
     redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
   }),
   component: LoginPage,
+})
+
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'auth/register',
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
+  }),
+  component: RegisterPage,
 })
 
 const workspaceRoute = createRoute({
@@ -999,7 +1230,9 @@ const routeTree = rootRoute.addChildren([
   companionRoute,
   companionRoomRoute,
   growthRoute,
+  membershipRoute,
   loginRoute,
+  registerRoute,
   workspaceRoute,
   prototypeUIRoute,
 ])

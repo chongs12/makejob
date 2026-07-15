@@ -311,6 +311,11 @@ func getFeatureAccess(level string, feature string) (bool, string) {
 			return true, ""
 		}
 		return false, "高级 AI 功能仅对会员开放，请升级会员"
+	case "realtime_interview":
+		if isPaid {
+			return true, ""
+		}
+		return false, "实时语音面试是会员专属功能，升级会员即可体验AI语音面试官"
 	default:
 		return true, ""
 	}
