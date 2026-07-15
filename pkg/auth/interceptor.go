@@ -50,6 +50,8 @@ func NewInterceptor(secret string, opts ...Option) *Interceptor {
 			// AI Gateway 全部方法（内部服务间调用，不走用户 JWT）
 			"/makejob.ai.v1.AIService/InterviewAgent":                true,
 			"/makejob.ai.v1.AIService/PlanAgent":                     true,
+			"/makejob.ai.v1.AIService/AdjustPlan":                    true,
+			"/makejob.ai.v1.AIService/GetStudySuggestion":            true,
 			"/makejob.ai.v1.AIService/CompanionAgent":                true,
 			"/makejob.ai.v1.AIService/QuizAnalyzer":                  true,
 			"/makejob.ai.v1.AIService/ResumeParser":                  true,
@@ -58,12 +60,20 @@ func NewInterceptor(secret string, opts ...Option) *Interceptor {
 			"/makejob.ai.v1.AIService/DebugAI":                       true,
 			"/makejob.ai.v1.AIService/GenerateQuestionCandidates":    true,
 			"/makejob.ai.v1.AIService/GenerateQuestionCandidatesStream": true,
+			// AI Gateway 代码分析 RPC（内部服务间调用）
+			"/makejob.ai.v1.AIService/AnalyzeCode":                  true,
+			"/makejob.ai.v1.AIService/DiagnoseInterviewCoding":      true,
+			"/makejob.ai.v1.AIService/ExplainAnswer":                true,
+			"/makejob.ai.v1.AIService/GenerateHint":                 true,
 			// AI Gateway 会话式面试 RPC（内部服务间调用）
 			"/makejob.ai.v1.AIService/StartInterview":               true,
 			"/makejob.ai.v1.AIService/EvaluateAnswer":               true,
 			"/makejob.ai.v1.AIService/GetNextQuestionSession":       true,
 			"/makejob.ai.v1.AIService/GenerateInterviewReport":      true,
 			"/makejob.ai.v1.AIService/EndInterviewSession":          true,
+			"/makejob.ai.v1.AIService/GenerateReportFromHistory":    true,
+			"/makejob.ai.v1.AIService/GenerateKnowledgeReport":      true,
+			"/makejob.ai.v1.AIService/GenerateJobReport":            true,
 			// AI Gateway Companion 扩展 RPC
 			"/makejob.ai.v1.AIService/GetGreeting":                  true,
 			"/makejob.ai.v1.AIService/GetEncouragement":             true,

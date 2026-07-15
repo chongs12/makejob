@@ -1440,6 +1440,602 @@ func (x *AdjustPlanResponse) GetUpdatedTasks() []*TaskDetail {
 	return nil
 }
 
+type PreviewAdjustPlanRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PlanId        uint64                 `protobuf:"varint,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	UserId        uint64                 `protobuf:"varint,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewAdjustPlanRequest) Reset() {
+	*x = PreviewAdjustPlanRequest{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewAdjustPlanRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewAdjustPlanRequest) ProtoMessage() {}
+
+func (x *PreviewAdjustPlanRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewAdjustPlanRequest.ProtoReflect.Descriptor instead.
+func (*PreviewAdjustPlanRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PreviewAdjustPlanRequest) GetPlanId() uint64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *PreviewAdjustPlanRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *PreviewAdjustPlanRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+type PreviewAdjustPlanResponse struct {
+	state             protoimpl.MessageState      `protogen:"open.v1"`
+	PreviewToken      string                      `protobuf:"bytes,1,opt,name=preview_token,json=previewToken,proto3" json:"preview_token,omitempty"`
+	TasksAdded        int32                       `protobuf:"varint,2,opt,name=tasks_added,json=tasksAdded,proto3" json:"tasks_added,omitempty"`
+	TasksRemoved      int32                       `protobuf:"varint,3,opt,name=tasks_removed,json=tasksRemoved,proto3" json:"tasks_removed,omitempty"`
+	TasksReordered    int32                       `protobuf:"varint,4,opt,name=tasks_reordered,json=tasksReordered,proto3" json:"tasks_reordered,omitempty"`
+	AdjustmentSummary string                      `protobuf:"bytes,5,opt,name=adjustment_summary,json=adjustmentSummary,proto3" json:"adjustment_summary,omitempty"`
+	Add               []*AdjustmentPreviewTask    `protobuf:"bytes,6,rep,name=add,proto3" json:"add,omitempty"`
+	Remove            []*AdjustmentPreviewRemoval `protobuf:"bytes,7,rep,name=remove,proto3" json:"remove,omitempty"`
+	Reorder           []*AdjustmentPreviewReorder `protobuf:"bytes,8,rep,name=reorder,proto3" json:"reorder,omitempty"`
+	PreviewTasks      []*AdjustmentPreviewTask    `protobuf:"bytes,9,rep,name=preview_tasks,json=previewTasks,proto3" json:"preview_tasks,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *PreviewAdjustPlanResponse) Reset() {
+	*x = PreviewAdjustPlanResponse{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewAdjustPlanResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewAdjustPlanResponse) ProtoMessage() {}
+
+func (x *PreviewAdjustPlanResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewAdjustPlanResponse.ProtoReflect.Descriptor instead.
+func (*PreviewAdjustPlanResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *PreviewAdjustPlanResponse) GetPreviewToken() string {
+	if x != nil {
+		return x.PreviewToken
+	}
+	return ""
+}
+
+func (x *PreviewAdjustPlanResponse) GetTasksAdded() int32 {
+	if x != nil {
+		return x.TasksAdded
+	}
+	return 0
+}
+
+func (x *PreviewAdjustPlanResponse) GetTasksRemoved() int32 {
+	if x != nil {
+		return x.TasksRemoved
+	}
+	return 0
+}
+
+func (x *PreviewAdjustPlanResponse) GetTasksReordered() int32 {
+	if x != nil {
+		return x.TasksReordered
+	}
+	return 0
+}
+
+func (x *PreviewAdjustPlanResponse) GetAdjustmentSummary() string {
+	if x != nil {
+		return x.AdjustmentSummary
+	}
+	return ""
+}
+
+func (x *PreviewAdjustPlanResponse) GetAdd() []*AdjustmentPreviewTask {
+	if x != nil {
+		return x.Add
+	}
+	return nil
+}
+
+func (x *PreviewAdjustPlanResponse) GetRemove() []*AdjustmentPreviewRemoval {
+	if x != nil {
+		return x.Remove
+	}
+	return nil
+}
+
+func (x *PreviewAdjustPlanResponse) GetReorder() []*AdjustmentPreviewReorder {
+	if x != nil {
+		return x.Reorder
+	}
+	return nil
+}
+
+func (x *PreviewAdjustPlanResponse) GetPreviewTasks() []*AdjustmentPreviewTask {
+	if x != nil {
+		return x.PreviewTasks
+	}
+	return nil
+}
+
+type ApplyAdjustPlanRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PlanId        uint64                 `protobuf:"varint,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	PreviewToken  string                 `protobuf:"bytes,2,opt,name=preview_token,json=previewToken,proto3" json:"preview_token,omitempty"`
+	UserId        uint64                 `protobuf:"varint,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyAdjustPlanRequest) Reset() {
+	*x = ApplyAdjustPlanRequest{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyAdjustPlanRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyAdjustPlanRequest) ProtoMessage() {}
+
+func (x *ApplyAdjustPlanRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyAdjustPlanRequest.ProtoReflect.Descriptor instead.
+func (*ApplyAdjustPlanRequest) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ApplyAdjustPlanRequest) GetPlanId() uint64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *ApplyAdjustPlanRequest) GetPreviewToken() string {
+	if x != nil {
+		return x.PreviewToken
+	}
+	return ""
+}
+
+func (x *ApplyAdjustPlanRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+type ApplyAdjustPlanResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TasksAdded        int32                  `protobuf:"varint,1,opt,name=tasks_added,json=tasksAdded,proto3" json:"tasks_added,omitempty"`
+	TasksRemoved      int32                  `protobuf:"varint,2,opt,name=tasks_removed,json=tasksRemoved,proto3" json:"tasks_removed,omitempty"`
+	TasksReordered    int32                  `protobuf:"varint,3,opt,name=tasks_reordered,json=tasksReordered,proto3" json:"tasks_reordered,omitempty"`
+	AdjustmentSummary string                 `protobuf:"bytes,4,opt,name=adjustment_summary,json=adjustmentSummary,proto3" json:"adjustment_summary,omitempty"`
+	UpdatedTasks      []*TaskDetail          `protobuf:"bytes,5,rep,name=updated_tasks,json=updatedTasks,proto3" json:"updated_tasks,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ApplyAdjustPlanResponse) Reset() {
+	*x = ApplyAdjustPlanResponse{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyAdjustPlanResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyAdjustPlanResponse) ProtoMessage() {}
+
+func (x *ApplyAdjustPlanResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyAdjustPlanResponse.ProtoReflect.Descriptor instead.
+func (*ApplyAdjustPlanResponse) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ApplyAdjustPlanResponse) GetTasksAdded() int32 {
+	if x != nil {
+		return x.TasksAdded
+	}
+	return 0
+}
+
+func (x *ApplyAdjustPlanResponse) GetTasksRemoved() int32 {
+	if x != nil {
+		return x.TasksRemoved
+	}
+	return 0
+}
+
+func (x *ApplyAdjustPlanResponse) GetTasksReordered() int32 {
+	if x != nil {
+		return x.TasksReordered
+	}
+	return 0
+}
+
+func (x *ApplyAdjustPlanResponse) GetAdjustmentSummary() string {
+	if x != nil {
+		return x.AdjustmentSummary
+	}
+	return ""
+}
+
+func (x *ApplyAdjustPlanResponse) GetUpdatedTasks() []*TaskDetail {
+	if x != nil {
+		return x.UpdatedTasks
+	}
+	return nil
+}
+
+type AdjustmentPreviewTask struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TaskId          uint64                 `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Title           string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Description     string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	TaskType        string                 `protobuf:"bytes,4,opt,name=task_type,json=taskType,proto3" json:"task_type,omitempty"`
+	Phase           string                 `protobuf:"bytes,5,opt,name=phase,proto3" json:"phase,omitempty"`
+	PhaseGoal       string                 `protobuf:"bytes,6,opt,name=phase_goal,json=phaseGoal,proto3" json:"phase_goal,omitempty"`
+	DurationMinutes int32                  `protobuf:"varint,7,opt,name=duration_minutes,json=durationMinutes,proto3" json:"duration_minutes,omitempty"`
+	Priority        string                 `protobuf:"bytes,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Status          string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
+	SortOrder       int32                  `protobuf:"varint,10,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	Source          string                 `protobuf:"bytes,11,opt,name=source,proto3" json:"source,omitempty"`
+	SourceLabel     string                 `protobuf:"bytes,12,opt,name=source_label,json=sourceLabel,proto3" json:"source_label,omitempty"`
+	Reason          string                 `protobuf:"bytes,13,opt,name=reason,proto3" json:"reason,omitempty"`
+	IsNew           bool                   `protobuf:"varint,14,opt,name=is_new,json=isNew,proto3" json:"is_new,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AdjustmentPreviewTask) Reset() {
+	*x = AdjustmentPreviewTask{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdjustmentPreviewTask) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdjustmentPreviewTask) ProtoMessage() {}
+
+func (x *AdjustmentPreviewTask) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdjustmentPreviewTask.ProtoReflect.Descriptor instead.
+func (*AdjustmentPreviewTask) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *AdjustmentPreviewTask) GetTaskId() uint64 {
+	if x != nil {
+		return x.TaskId
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewTask) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetTaskType() string {
+	if x != nil {
+		return x.TaskType
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetPhaseGoal() string {
+	if x != nil {
+		return x.PhaseGoal
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetDurationMinutes() int32 {
+	if x != nil {
+		return x.DurationMinutes
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewTask) GetPriority() string {
+	if x != nil {
+		return x.Priority
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewTask) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetSourceLabel() string {
+	if x != nil {
+		return x.SourceLabel
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewTask) GetIsNew() bool {
+	if x != nil {
+		return x.IsNew
+	}
+	return false
+}
+
+type AdjustmentPreviewRemoval struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        uint64                 `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Phase         string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
+	SortOrder     int32                  `protobuf:"varint,4,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdjustmentPreviewRemoval) Reset() {
+	*x = AdjustmentPreviewRemoval{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdjustmentPreviewRemoval) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdjustmentPreviewRemoval) ProtoMessage() {}
+
+func (x *AdjustmentPreviewRemoval) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdjustmentPreviewRemoval.ProtoReflect.Descriptor instead.
+func (*AdjustmentPreviewRemoval) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *AdjustmentPreviewRemoval) GetTaskId() uint64 {
+	if x != nil {
+		return x.TaskId
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewRemoval) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewRemoval) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewRemoval) GetSortOrder() int32 {
+	if x != nil {
+		return x.SortOrder
+	}
+	return 0
+}
+
+type AdjustmentPreviewReorder struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        uint64                 `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Phase         string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
+	FromSortOrder int32                  `protobuf:"varint,4,opt,name=from_sort_order,json=fromSortOrder,proto3" json:"from_sort_order,omitempty"`
+	ToSortOrder   int32                  `protobuf:"varint,5,opt,name=to_sort_order,json=toSortOrder,proto3" json:"to_sort_order,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AdjustmentPreviewReorder) Reset() {
+	*x = AdjustmentPreviewReorder{}
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AdjustmentPreviewReorder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AdjustmentPreviewReorder) ProtoMessage() {}
+
+func (x *AdjustmentPreviewReorder) ProtoReflect() protoreflect.Message {
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AdjustmentPreviewReorder.ProtoReflect.Descriptor instead.
+func (*AdjustmentPreviewReorder) Descriptor() ([]byte, []int) {
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *AdjustmentPreviewReorder) GetTaskId() uint64 {
+	if x != nil {
+		return x.TaskId
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewReorder) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewReorder) GetPhase() string {
+	if x != nil {
+		return x.Phase
+	}
+	return ""
+}
+
+func (x *AdjustmentPreviewReorder) GetFromSortOrder() int32 {
+	if x != nil {
+		return x.FromSortOrder
+	}
+	return 0
+}
+
+func (x *AdjustmentPreviewReorder) GetToSortOrder() int32 {
+	if x != nil {
+		return x.ToSortOrder
+	}
+	return 0
+}
+
 type GetProgressRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlanId        uint64                 `protobuf:"varint,1,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
@@ -1450,7 +2046,7 @@ type GetProgressRequest struct {
 
 func (x *GetProgressRequest) Reset() {
 	*x = GetProgressRequest{}
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1462,7 +2058,7 @@ func (x *GetProgressRequest) String() string {
 func (*GetProgressRequest) ProtoMessage() {}
 
 func (x *GetProgressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[16]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1475,7 +2071,7 @@ func (x *GetProgressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProgressRequest.ProtoReflect.Descriptor instead.
 func (*GetProgressRequest) Descriptor() ([]byte, []int) {
-	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{16}
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetProgressRequest) GetPlanId() uint64 {
@@ -1509,7 +2105,7 @@ type PlanProgressResponse struct {
 
 func (x *PlanProgressResponse) Reset() {
 	*x = PlanProgressResponse{}
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1521,7 +2117,7 @@ func (x *PlanProgressResponse) String() string {
 func (*PlanProgressResponse) ProtoMessage() {}
 
 func (x *PlanProgressResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[17]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1534,7 +2130,7 @@ func (x *PlanProgressResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanProgressResponse.ProtoReflect.Descriptor instead.
 func (*PlanProgressResponse) Descriptor() ([]byte, []int) {
-	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{17}
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PlanProgressResponse) GetPlanId() uint64 {
@@ -1611,7 +2207,7 @@ type DailyProgress struct {
 
 func (x *DailyProgress) Reset() {
 	*x = DailyProgress{}
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1623,7 +2219,7 @@ func (x *DailyProgress) String() string {
 func (*DailyProgress) ProtoMessage() {}
 
 func (x *DailyProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[18]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1636,7 +2232,7 @@ func (x *DailyProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DailyProgress.ProtoReflect.Descriptor instead.
 func (*DailyProgress) Descriptor() ([]byte, []int) {
-	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{18}
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DailyProgress) GetDayNumber() int32 {
@@ -1671,7 +2267,7 @@ type TaskTypeStat struct {
 
 func (x *TaskTypeStat) Reset() {
 	*x = TaskTypeStat{}
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[19]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1683,7 +2279,7 @@ func (x *TaskTypeStat) String() string {
 func (*TaskTypeStat) ProtoMessage() {}
 
 func (x *TaskTypeStat) ProtoReflect() protoreflect.Message {
-	mi := &file_makejob_plan_v1_plan_proto_msgTypes[19]
+	mi := &file_makejob_plan_v1_plan_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1696,7 +2292,7 @@ func (x *TaskTypeStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskTypeStat.ProtoReflect.Descriptor instead.
 func (*TaskTypeStat) Descriptor() ([]byte, []int) {
-	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{19}
+	return file_makejob_plan_v1_plan_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *TaskTypeStat) GetTaskType() string {
@@ -1871,7 +2467,63 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\rtasks_removed\x18\x02 \x01(\x05R\ftasksRemoved\x12'\n" +
 	"\x0ftasks_reordered\x18\x03 \x01(\x05R\x0etasksReordered\x12-\n" +
 	"\x12adjustment_summary\x18\x04 \x01(\tR\x11adjustmentSummary\x12@\n" +
-	"\rupdated_tasks\x18\x05 \x03(\v2\x1b.makejob.plan.v1.TaskDetailR\fupdatedTasks\"F\n" +
+	"\rupdated_tasks\x18\x05 \x03(\v2\x1b.makejob.plan.v1.TaskDetailR\fupdatedTasks\"d\n" +
+	"\x18PreviewAdjustPlanRequest\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\x04R\x06userId\"\xed\x03\n" +
+	"\x19PreviewAdjustPlanResponse\x12#\n" +
+	"\rpreview_token\x18\x01 \x01(\tR\fpreviewToken\x12\x1f\n" +
+	"\vtasks_added\x18\x02 \x01(\x05R\n" +
+	"tasksAdded\x12#\n" +
+	"\rtasks_removed\x18\x03 \x01(\x05R\ftasksRemoved\x12'\n" +
+	"\x0ftasks_reordered\x18\x04 \x01(\x05R\x0etasksReordered\x12-\n" +
+	"\x12adjustment_summary\x18\x05 \x01(\tR\x11adjustmentSummary\x128\n" +
+	"\x03add\x18\x06 \x03(\v2&.makejob.plan.v1.AdjustmentPreviewTaskR\x03add\x12A\n" +
+	"\x06remove\x18\a \x03(\v2).makejob.plan.v1.AdjustmentPreviewRemovalR\x06remove\x12C\n" +
+	"\areorder\x18\b \x03(\v2).makejob.plan.v1.AdjustmentPreviewReorderR\areorder\x12K\n" +
+	"\rpreview_tasks\x18\t \x03(\v2&.makejob.plan.v1.AdjustmentPreviewTaskR\fpreviewTasks\"o\n" +
+	"\x16ApplyAdjustPlanRequest\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12#\n" +
+	"\rpreview_token\x18\x02 \x01(\tR\fpreviewToken\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\x04R\x06userId\"\xf9\x01\n" +
+	"\x17ApplyAdjustPlanResponse\x12\x1f\n" +
+	"\vtasks_added\x18\x01 \x01(\x05R\n" +
+	"tasksAdded\x12#\n" +
+	"\rtasks_removed\x18\x02 \x01(\x05R\ftasksRemoved\x12'\n" +
+	"\x0ftasks_reordered\x18\x03 \x01(\x05R\x0etasksReordered\x12-\n" +
+	"\x12adjustment_summary\x18\x04 \x01(\tR\x11adjustmentSummary\x12@\n" +
+	"\rupdated_tasks\x18\x05 \x03(\v2\x1b.makejob.plan.v1.TaskDetailR\fupdatedTasks\"\xa2\x03\n" +
+	"\x15AdjustmentPreviewTask\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\x04R\x06taskId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1b\n" +
+	"\ttask_type\x18\x04 \x01(\tR\btaskType\x12\x14\n" +
+	"\x05phase\x18\x05 \x01(\tR\x05phase\x12\x1d\n" +
+	"\n" +
+	"phase_goal\x18\x06 \x01(\tR\tphaseGoal\x12)\n" +
+	"\x10duration_minutes\x18\a \x01(\x05R\x0fdurationMinutes\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\tR\bpriority\x12\x16\n" +
+	"\x06status\x18\t \x01(\tR\x06status\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\n" +
+	" \x01(\x05R\tsortOrder\x12\x16\n" +
+	"\x06source\x18\v \x01(\tR\x06source\x12!\n" +
+	"\fsource_label\x18\f \x01(\tR\vsourceLabel\x12\x16\n" +
+	"\x06reason\x18\r \x01(\tR\x06reason\x12\x15\n" +
+	"\x06is_new\x18\x0e \x01(\bR\x05isNew\"~\n" +
+	"\x18AdjustmentPreviewRemoval\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\x04R\x06taskId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05phase\x18\x03 \x01(\tR\x05phase\x12\x1d\n" +
+	"\n" +
+	"sort_order\x18\x04 \x01(\x05R\tsortOrder\"\xab\x01\n" +
+	"\x18AdjustmentPreviewReorder\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\x04R\x06taskId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05phase\x18\x03 \x01(\tR\x05phase\x12&\n" +
+	"\x0ffrom_sort_order\x18\x04 \x01(\x05R\rfromSortOrder\x12\"\n" +
+	"\rto_sort_order\x18\x05 \x01(\x05R\vtoSortOrder\"F\n" +
 	"\x12GetProgressRequest\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\x04R\x06planId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\x99\x03\n" +
@@ -1894,7 +2546,7 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\fTaskTypeStat\x12\x1b\n" +
 	"\ttask_type\x18\x01 \x01(\tR\btaskType\x12\x1c\n" +
 	"\tcompleted\x18\x02 \x01(\x05R\tcompleted\x12\x14\n" +
-	"\x05total\x18\x03 \x01(\x05R\x05total2\xce\x05\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total2\xa0\a\n" +
 	"\vPlanService\x12O\n" +
 	"\n" +
 	"CreatePlan\x12\".makejob.plan.v1.CreatePlanRequest\x1a\x1d.makejob.plan.v1.PlanResponse\x12G\n" +
@@ -1904,7 +2556,9 @@ const file_makejob_plan_v1_plan_proto_rawDesc = "" +
 	"\x10UpdateTaskStatus\x12(.makejob.plan.v1.UpdateTaskStatusRequest\x1a).makejob.plan.v1.UpdateTaskStatusResponse\x12_\n" +
 	"\x12SubmitTaskFeedback\x12&.makejob.plan.v1.SubmitFeedbackRequest\x1a!.makejob.plan.v1.FeedbackResponse\x12U\n" +
 	"\n" +
-	"AdjustPlan\x12\".makejob.plan.v1.AdjustPlanRequest\x1a#.makejob.plan.v1.AdjustPlanResponse\x12Y\n" +
+	"AdjustPlan\x12\".makejob.plan.v1.AdjustPlanRequest\x1a#.makejob.plan.v1.AdjustPlanResponse\x12j\n" +
+	"\x11PreviewAdjustPlan\x12).makejob.plan.v1.PreviewAdjustPlanRequest\x1a*.makejob.plan.v1.PreviewAdjustPlanResponse\x12d\n" +
+	"\x0fApplyAdjustPlan\x12'.makejob.plan.v1.ApplyAdjustPlanRequest\x1a(.makejob.plan.v1.ApplyAdjustPlanResponse\x12Y\n" +
 	"\vGetProgress\x12#.makejob.plan.v1.GetProgressRequest\x1a%.makejob.plan.v1.PlanProgressResponseB$Z\"makejob/api/makejob/plan/v1;planv1b\x06proto3"
 
 var (
@@ -1919,7 +2573,7 @@ func file_makejob_plan_v1_plan_proto_rawDescGZIP() []byte {
 	return file_makejob_plan_v1_plan_proto_rawDescData
 }
 
-var file_makejob_plan_v1_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_makejob_plan_v1_plan_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_makejob_plan_v1_plan_proto_goTypes = []any{
 	(*CreatePlanRequest)(nil),          // 0: makejob.plan.v1.CreatePlanRequest
 	(*PlanResponse)(nil),               // 1: makejob.plan.v1.PlanResponse
@@ -1937,44 +2591,60 @@ var file_makejob_plan_v1_plan_proto_goTypes = []any{
 	(*FeedbackResponse)(nil),           // 13: makejob.plan.v1.FeedbackResponse
 	(*AdjustPlanRequest)(nil),          // 14: makejob.plan.v1.AdjustPlanRequest
 	(*AdjustPlanResponse)(nil),         // 15: makejob.plan.v1.AdjustPlanResponse
-	(*GetProgressRequest)(nil),         // 16: makejob.plan.v1.GetProgressRequest
-	(*PlanProgressResponse)(nil),       // 17: makejob.plan.v1.PlanProgressResponse
-	(*DailyProgress)(nil),              // 18: makejob.plan.v1.DailyProgress
-	(*TaskTypeStat)(nil),               // 19: makejob.plan.v1.TaskTypeStat
-	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
+	(*PreviewAdjustPlanRequest)(nil),   // 16: makejob.plan.v1.PreviewAdjustPlanRequest
+	(*PreviewAdjustPlanResponse)(nil),  // 17: makejob.plan.v1.PreviewAdjustPlanResponse
+	(*ApplyAdjustPlanRequest)(nil),     // 18: makejob.plan.v1.ApplyAdjustPlanRequest
+	(*ApplyAdjustPlanResponse)(nil),    // 19: makejob.plan.v1.ApplyAdjustPlanResponse
+	(*AdjustmentPreviewTask)(nil),      // 20: makejob.plan.v1.AdjustmentPreviewTask
+	(*AdjustmentPreviewRemoval)(nil),   // 21: makejob.plan.v1.AdjustmentPreviewRemoval
+	(*AdjustmentPreviewReorder)(nil),   // 22: makejob.plan.v1.AdjustmentPreviewReorder
+	(*GetProgressRequest)(nil),         // 23: makejob.plan.v1.GetProgressRequest
+	(*PlanProgressResponse)(nil),       // 24: makejob.plan.v1.PlanProgressResponse
+	(*DailyProgress)(nil),              // 25: makejob.plan.v1.DailyProgress
+	(*TaskTypeStat)(nil),               // 26: makejob.plan.v1.TaskTypeStat
+	(*timestamppb.Timestamp)(nil),      // 27: google.protobuf.Timestamp
 }
 var file_makejob_plan_v1_plan_proto_depIdxs = []int32{
-	20, // 0: makejob.plan.v1.PlanResponse.created_at:type_name -> google.protobuf.Timestamp
+	27, // 0: makejob.plan.v1.PlanResponse.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 1: makejob.plan.v1.PlanDetail.tasks:type_name -> makejob.plan.v1.TaskDetail
-	20, // 2: makejob.plan.v1.PlanDetail.created_at:type_name -> google.protobuf.Timestamp
+	27, // 2: makejob.plan.v1.PlanDetail.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 3: makejob.plan.v1.PlanDetail.phase_blueprint_summary:type_name -> makejob.plan.v1.PhaseBlueprintSummaryEntry
-	20, // 4: makejob.plan.v1.TaskDetail.completed_at:type_name -> google.protobuf.Timestamp
+	27, // 4: makejob.plan.v1.TaskDetail.completed_at:type_name -> google.protobuf.Timestamp
 	9,  // 5: makejob.plan.v1.ListPlansResponse.items:type_name -> makejob.plan.v1.PlanSummary
-	20, // 6: makejob.plan.v1.PlanSummary.created_at:type_name -> google.protobuf.Timestamp
+	27, // 6: makejob.plan.v1.PlanSummary.created_at:type_name -> google.protobuf.Timestamp
 	6,  // 7: makejob.plan.v1.AdjustPlanResponse.updated_tasks:type_name -> makejob.plan.v1.TaskDetail
-	18, // 8: makejob.plan.v1.PlanProgressResponse.daily_progress:type_name -> makejob.plan.v1.DailyProgress
-	19, // 9: makejob.plan.v1.PlanProgressResponse.task_type_stats:type_name -> makejob.plan.v1.TaskTypeStat
-	0,  // 10: makejob.plan.v1.PlanService.CreatePlan:input_type -> makejob.plan.v1.CreatePlanRequest
-	2,  // 11: makejob.plan.v1.PlanService.GetPlan:input_type -> makejob.plan.v1.GetPlanRequest
-	3,  // 12: makejob.plan.v1.PlanService.GetCurrentPlan:input_type -> makejob.plan.v1.GetCurrentPlanRequest
-	7,  // 13: makejob.plan.v1.PlanService.ListPlans:input_type -> makejob.plan.v1.ListPlansRequest
-	10, // 14: makejob.plan.v1.PlanService.UpdateTaskStatus:input_type -> makejob.plan.v1.UpdateTaskStatusRequest
-	12, // 15: makejob.plan.v1.PlanService.SubmitTaskFeedback:input_type -> makejob.plan.v1.SubmitFeedbackRequest
-	14, // 16: makejob.plan.v1.PlanService.AdjustPlan:input_type -> makejob.plan.v1.AdjustPlanRequest
-	16, // 17: makejob.plan.v1.PlanService.GetProgress:input_type -> makejob.plan.v1.GetProgressRequest
-	1,  // 18: makejob.plan.v1.PlanService.CreatePlan:output_type -> makejob.plan.v1.PlanResponse
-	4,  // 19: makejob.plan.v1.PlanService.GetPlan:output_type -> makejob.plan.v1.PlanDetail
-	4,  // 20: makejob.plan.v1.PlanService.GetCurrentPlan:output_type -> makejob.plan.v1.PlanDetail
-	8,  // 21: makejob.plan.v1.PlanService.ListPlans:output_type -> makejob.plan.v1.ListPlansResponse
-	11, // 22: makejob.plan.v1.PlanService.UpdateTaskStatus:output_type -> makejob.plan.v1.UpdateTaskStatusResponse
-	13, // 23: makejob.plan.v1.PlanService.SubmitTaskFeedback:output_type -> makejob.plan.v1.FeedbackResponse
-	15, // 24: makejob.plan.v1.PlanService.AdjustPlan:output_type -> makejob.plan.v1.AdjustPlanResponse
-	17, // 25: makejob.plan.v1.PlanService.GetProgress:output_type -> makejob.plan.v1.PlanProgressResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	20, // 8: makejob.plan.v1.PreviewAdjustPlanResponse.add:type_name -> makejob.plan.v1.AdjustmentPreviewTask
+	21, // 9: makejob.plan.v1.PreviewAdjustPlanResponse.remove:type_name -> makejob.plan.v1.AdjustmentPreviewRemoval
+	22, // 10: makejob.plan.v1.PreviewAdjustPlanResponse.reorder:type_name -> makejob.plan.v1.AdjustmentPreviewReorder
+	20, // 11: makejob.plan.v1.PreviewAdjustPlanResponse.preview_tasks:type_name -> makejob.plan.v1.AdjustmentPreviewTask
+	6,  // 12: makejob.plan.v1.ApplyAdjustPlanResponse.updated_tasks:type_name -> makejob.plan.v1.TaskDetail
+	25, // 13: makejob.plan.v1.PlanProgressResponse.daily_progress:type_name -> makejob.plan.v1.DailyProgress
+	26, // 14: makejob.plan.v1.PlanProgressResponse.task_type_stats:type_name -> makejob.plan.v1.TaskTypeStat
+	0,  // 15: makejob.plan.v1.PlanService.CreatePlan:input_type -> makejob.plan.v1.CreatePlanRequest
+	2,  // 16: makejob.plan.v1.PlanService.GetPlan:input_type -> makejob.plan.v1.GetPlanRequest
+	3,  // 17: makejob.plan.v1.PlanService.GetCurrentPlan:input_type -> makejob.plan.v1.GetCurrentPlanRequest
+	7,  // 18: makejob.plan.v1.PlanService.ListPlans:input_type -> makejob.plan.v1.ListPlansRequest
+	10, // 19: makejob.plan.v1.PlanService.UpdateTaskStatus:input_type -> makejob.plan.v1.UpdateTaskStatusRequest
+	12, // 20: makejob.plan.v1.PlanService.SubmitTaskFeedback:input_type -> makejob.plan.v1.SubmitFeedbackRequest
+	14, // 21: makejob.plan.v1.PlanService.AdjustPlan:input_type -> makejob.plan.v1.AdjustPlanRequest
+	16, // 22: makejob.plan.v1.PlanService.PreviewAdjustPlan:input_type -> makejob.plan.v1.PreviewAdjustPlanRequest
+	18, // 23: makejob.plan.v1.PlanService.ApplyAdjustPlan:input_type -> makejob.plan.v1.ApplyAdjustPlanRequest
+	23, // 24: makejob.plan.v1.PlanService.GetProgress:input_type -> makejob.plan.v1.GetProgressRequest
+	1,  // 25: makejob.plan.v1.PlanService.CreatePlan:output_type -> makejob.plan.v1.PlanResponse
+	4,  // 26: makejob.plan.v1.PlanService.GetPlan:output_type -> makejob.plan.v1.PlanDetail
+	4,  // 27: makejob.plan.v1.PlanService.GetCurrentPlan:output_type -> makejob.plan.v1.PlanDetail
+	8,  // 28: makejob.plan.v1.PlanService.ListPlans:output_type -> makejob.plan.v1.ListPlansResponse
+	11, // 29: makejob.plan.v1.PlanService.UpdateTaskStatus:output_type -> makejob.plan.v1.UpdateTaskStatusResponse
+	13, // 30: makejob.plan.v1.PlanService.SubmitTaskFeedback:output_type -> makejob.plan.v1.FeedbackResponse
+	15, // 31: makejob.plan.v1.PlanService.AdjustPlan:output_type -> makejob.plan.v1.AdjustPlanResponse
+	17, // 32: makejob.plan.v1.PlanService.PreviewAdjustPlan:output_type -> makejob.plan.v1.PreviewAdjustPlanResponse
+	19, // 33: makejob.plan.v1.PlanService.ApplyAdjustPlan:output_type -> makejob.plan.v1.ApplyAdjustPlanResponse
+	24, // 34: makejob.plan.v1.PlanService.GetProgress:output_type -> makejob.plan.v1.PlanProgressResponse
+	25, // [25:35] is the sub-list for method output_type
+	15, // [15:25] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_makejob_plan_v1_plan_proto_init() }
@@ -1988,7 +2658,7 @@ func file_makejob_plan_v1_plan_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_makejob_plan_v1_plan_proto_rawDesc), len(file_makejob_plan_v1_plan_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

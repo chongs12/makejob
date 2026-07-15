@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -296,4 +297,57 @@ func (r *planAdjustmentRepo) getDB(ctx context.Context) *gorm.DB {
 // Create 创建调整记录
 func (r *planAdjustmentRepo) Create(ctx context.Context, adjustment *biz.PlanAdjustment) error {
 	return r.getDB(ctx).WithContext(ctx).Create(adjustment).Error
+}
+
+// planAdjustmentPreviewRepo 实现 biz.PlanAdjustmentPreviewRepo 接口。
+type planAdjustmentPreviewRepo struct {
+	db *gorm.DB
+}
+
+// newPlanAdjustmentPreviewRepo 创建调整预览仓库实例。
+func newPlanAdjustmentPreviewRepo(db *gorm.DB) *planAdjustmentPreviewRepo {
+	return &planAdjustmentPreviewRepo{db: db}
+}
+
+// NewPlanAdjustmentPreviewRepo 创建调整预览仓库实现。
+func NewPlanAdjustmentPreviewRepo(db *gorm.DB) biz.PlanAdjustmentPreviewRepo {
+	return newPlanAdjustmentPreviewRepo(db)
+}
+
+// getDB 从 context 获取事务 DB，若无则返回默认 DB。
+func (r *planAdjustmentPreviewRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx, ok := ctx.Value(txContextKey{}).(*gorm.DB); ok {
+		return tx
+	}
+	return r.db
+}
+
+// Create 创建待确认的调整预览记录。
+func (r *planAdjustmentPreviewRepo) Create(ctx context.Context, preview *biz.PlanAdjustmentPreview) error {
+	return r.getDB(ctx).WithContext(ctx).Create(preview).Error
+}
+
+// GetByToken 根据预览令牌读取调整预览记录。
+func (r *planAdjustmentPreviewRepo) GetByToken(ctx context.Context, token string) (*biz.PlanAdjustmentPreview, error) {
+	var preview biz.PlanAdjustmentPreview
+	if err := r.getDB(ctx).WithContext(ctx).Where("token = ?", token).First(&preview).Error; err != nil {
+		return nil, err
+	}
+	return &preview, nil
+}
+
+// MarkApplied 标记调整预览已被应用，避免重复确认。
+func (r *planAdjustmentPreviewRepo) MarkApplied(ctx context.Context, previewID uint64) error {
+	now := time.Now()
+	result := r.getDB(ctx).WithContext(ctx).Model(&biz.PlanAdjustmentPreview{}).Where("id = ? AND status = ?", previewID, "pending").Updates(map[string]any{
+		"status":     "applied",
+		"applied_at": &now,
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

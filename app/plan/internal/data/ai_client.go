@@ -62,27 +62,58 @@ func (c *planAgentClient) GeneratePlan(ctx context.Context, req *biz.PlanAgentRe
 	return toBizPlanAgentResponse(resp), nil
 }
 
-// AdjustPlan 复用 PlanAgent 生成最新建议，并在客户端本地计算增删改。
+// AdjustPlan 调用专用 AdjustPlan RPC 生成最新建议，并在客户端本地计算增删改。
 func (c *planAgentClient) AdjustPlan(ctx context.Context, req *biz.PlanAgentAdjustRequest) (*biz.PlanAgentAdjustResponse, error) {
 	if req.Plan == nil {
 		return nil, fmt.Errorf("plan is required for adjustment")
 	}
 
-	dailyHours := int32(math.Ceil(float64(req.Plan.DailyStudyMinutes) / 60))
-	resp, err := c.client.PlanAgent(ctx, &aiv1.PlanAgentRequest{
-		UserId:           req.Plan.UserID,
-		IndustryCode:     req.Plan.Industry,
-		Goal:             buildAdjustGoal(req),
-		DailyHours:       dailyHours,
-		WeakTopics:       append(collectWeakTopics(req.Feedbacks), req.ExtraWeakTopics...),
-		RecentActivities: buildRecentActivities(req.Feedbacks),
+	resp, err := c.client.AdjustPlan(ctx, &aiv1.AdjustPlanRequest{
+		UserId:          req.Plan.UserID,
+		PlanId:          fmt.Sprintf("%d", req.Plan.ID),
+		CompletedTasks:  buildCompletedTaskTitles(req.CurrentTasks),
+		Performance:     buildAdjustPerformance(req.Feedbacks),
+		CurrentPhase:    req.Plan.Phase,
+		WeakTopics:      mergeWeakTopics(collectWeakTopics(req.Feedbacks), req.ExtraWeakTopics),
+		GoalDescription: buildAdjustGoal(req),
+		IndustryCode:    strings.TrimSpace(req.Plan.Industry),
+		DailyHours:      deriveAdjustDailyHours(req.Plan, req.CurrentTasks),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("PlanAgent adjust call failed: %w", err)
+		return nil, fmt.Errorf("AdjustPlan RPC call failed: %w", err)
 	}
 
-	planResp := toBizPlanAgentResponse(resp)
-	return buildAdjustResponse(req.CurrentTasks, planResp.Tasks, planResp.Summary), nil
+	generatedTasks := make([]*biz.PlanAgentTask, 0, len(resp.GetTasks()))
+	for _, task := range resp.GetTasks() {
+		durationMinutes := task.GetDurationMinutes()
+		if durationMinutes <= 0 {
+			durationMinutes = task.GetEstimatedHours() * 60
+		}
+		if durationMinutes <= 0 {
+			durationMinutes = 30
+		}
+		taskType := task.GetTaskType()
+		if taskType == "" {
+			taskType = inferTaskType(task.GetPhase())
+		}
+		priority := task.GetPriority()
+		if priority == "" {
+			priority = inferPriority(task.GetEstimatedHours())
+		}
+		generatedTasks = append(generatedTasks, &biz.PlanAgentTask{
+			Title:           task.GetTitle(),
+			Description:     task.GetDescription(),
+			TaskType:        taskType,
+			Phase:           task.GetPhase(),
+			PhaseGoal:       task.GetPhaseGoal(),
+			DayNumber:       firstPositive(task.GetDayNumber(), task.GetOrderIndex()),
+			DurationMinutes: durationMinutes,
+			Priority:        priority,
+			SortOrder:       firstPositive(task.GetOrderIndex(), task.GetDayNumber()),
+		})
+	}
+
+	return buildAdjustResponse(req.CurrentTasks, generatedTasks, resp.GetSummary()), nil
 }
 
 // toBizPlanAgentResponse 将 AI proto 响应转换为 biz 响应。
@@ -100,6 +131,7 @@ func toBizPlanAgentResponse(resp *aiv1.PlanAgentResponse) *biz.PlanAgentResponse
 			Description:     task.Description,
 			TaskType:        taskType,
 			Phase:           task.Phase,
+			PhaseGoal:       task.PhaseGoal,
 			DayNumber:       task.OrderIndex,
 			DurationMinutes: durationMinutes,
 			Priority:        priority,
@@ -188,6 +220,97 @@ func buildRecentActivities(feedbacks []*biz.TaskFeedback) []string {
 		activities = append(activities, fmt.Sprintf("task=%d difficulty=%s feedback=%s", feedback.TaskID, feedback.DifficultyFeeling, feedback.FeedbackText))
 	}
 	return activities
+}
+
+// deriveAdjustDailyHours 推断调整计划时可用的每日学习时长，缺失时给出保守默认值。
+func deriveAdjustDailyHours(plan *biz.LearningPlan, tasks []*biz.LearningTask) int32 {
+	if plan != nil && plan.DailyStudyMinutes > 0 {
+		return int32(math.Ceil(float64(plan.DailyStudyMinutes) / 60))
+	}
+
+	var maxDuration int32
+	for _, task := range tasks {
+		if task != nil && task.DurationMinutes > maxDuration {
+			maxDuration = task.DurationMinutes
+		}
+	}
+	if maxDuration > 0 {
+		return int32(math.Ceil(float64(maxDuration) / 60))
+	}
+	return 1
+}
+
+// buildCompletedTaskTitles 提取已完成或已跳过任务标题，供调整 prompt 识别当前推进情况。
+func buildCompletedTaskTitles(tasks []*biz.LearningTask) []string {
+	titles := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		if task.Status != "completed" && task.Status != "skipped" {
+			continue
+		}
+		title := strings.TrimSpace(task.Title)
+		if title == "" {
+			continue
+		}
+		titles = append(titles, title)
+	}
+	return titles
+}
+
+// buildAdjustPerformance 将反馈分布压缩为简要指标，供调整 prompt 判断节奏和难度。
+func buildAdjustPerformance(feedbacks []*biz.TaskFeedback) map[string]float64 {
+	performance := map[string]float64{
+		"feedback_count": float64(len(feedbacks)),
+	}
+	for _, feedback := range feedbacks {
+		if feedback == nil {
+			continue
+		}
+		if feedback.DiagnosisStatus == "completed" {
+			performance["diagnosed_feedback_count"]++
+		}
+		switch feedback.DifficultyFeeling {
+		case "too_hard":
+			performance["too_hard_count"]++
+		case "just_right":
+			performance["just_right_count"]++
+		case "too_easy":
+			performance["too_easy_count"]++
+		}
+	}
+	return performance
+}
+
+// mergeWeakTopics 合并反馈薄弱点与画像薄弱点，并保持去重顺序稳定。
+func mergeWeakTopics(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	topics := make([]string, 0)
+	for _, group := range groups {
+		for _, topic := range group {
+			trimmed := strings.TrimSpace(topic)
+			if trimmed == "" {
+				continue
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			topics = append(topics, trimmed)
+		}
+	}
+	return topics
+}
+
+// firstPositive 返回首个大于 0 的值，用于兼容 order/day_number 任一字段缺失的 AI 输出。
+func firstPositive(values ...int32) int32 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 1
 }
 
 // inferTaskType 根据阶段推断任务类型。

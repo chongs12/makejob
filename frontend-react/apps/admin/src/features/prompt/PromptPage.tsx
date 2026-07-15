@@ -16,7 +16,7 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
 
-type PromptScene = 'interview' | 'companion' | 'quiz' | 'plan'
+type PromptScene = 'interview' | 'companion' | 'quiz' | 'quiz_analyzer' | 'plan' | 'plan_adjust' | 'study_suggestion' | 'resume_parser'
 
 interface Industry {
   id: number
@@ -88,14 +88,22 @@ const SCENE_CONFIG: Record<PromptScene, { label: string; color: string }> = {
   interview: { label: '面试', color: '#8b5cf6' },
   companion: { label: '陪伴', color: '#3b82f6' },
   quiz: { label: '刷题', color: '#f59e0b' },
+  quiz_analyzer: { label: '刷题分析', color: '#f59e0b' },
   plan: { label: '学习计划', color: '#10b981' },
+  plan_adjust: { label: '计划调整', color: '#06b6d4' },
+  study_suggestion: { label: '学习建议', color: '#14b8a6' },
+  resume_parser: { label: '简历解析', color: '#8b5cf6' },
 }
 
 const PROMPT_SCENE_OPTIONS: Array<{ value: PromptScene; label: string }> = [
   { value: 'interview', label: '面试' },
   { value: 'companion', label: '陪伴' },
   { value: 'quiz', label: '刷题' },
+  { value: 'quiz_analyzer', label: '刷题分析' },
   { value: 'plan', label: '学习计划' },
+  { value: 'plan_adjust', label: '计划调整' },
+  { value: 'study_suggestion', label: '学习建议' },
+  { value: 'resume_parser', label: '简历解析' },
 ]
 
 /**
@@ -589,7 +597,7 @@ export function PromptPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(promptsQuery.data || []).map((prompt) => {
-                    const sceneCfg = SCENE_CONFIG[prompt.scene]
+                    const sceneCfg = SCENE_CONFIG[prompt.scene] ?? { label: prompt.scene || '未知场景', color: '#94a3b8' }
                     const isActive = selectedPromptId === prompt.id
                     return (
                       <div

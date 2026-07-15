@@ -94,6 +94,35 @@ export interface SuggestedAction {
   params?: string
 }
 
+// InlineTrigger 字幕行内可点击关键词。
+export interface InlineTrigger {
+  keyword: string
+  action_type: string  // practice | interview | adjust_plan
+  target: string
+  position_hint?: string  // head | middle | tail
+}
+
+// IntentInfo LLM 意图识别结果。
+export interface IntentInfo {
+  type: string       // practice | adjust_plan | interview | chat
+  confidence: number // 0-1
+  stage: string      // collecting_info | ready_to_execute | none
+}
+
+// PendingAction 待执行动作，ready=true 时前端自动触发。
+export interface PendingAction {
+  type: string                // adjust_plan | practice 等
+  ready: boolean
+  params: Record<string, string>
+  missing_info: string[]
+}
+
+// ConversationState 多轮对话状态跟踪。
+export interface ConversationState {
+  phase: string                       // greeting | collecting | ready | executing
+  collected_params: Record<string, string>
+}
+
 export interface CompanionChatReply {
   content?: string
   reply?: string
@@ -107,6 +136,10 @@ export interface CompanionChatReply {
   live2d_directive?: Live2DDirective | null
   suggestions?: string[]
   suggested_actions?: SuggestedAction[]
+  inline_triggers?: InlineTrigger[]
+  intent?: IntentInfo | null
+  pending_action?: PendingAction | null
+  conversation_state?: ConversationState | null
 }
 
 export interface CompanionSessionSummary {
@@ -154,6 +187,50 @@ export interface CompanionPlanProgress {
   in_progress_tasks: number
   pending_tasks: number
   progress: number
+}
+
+export interface CompanionAdjustmentPreviewTask {
+  task_id: number
+  title: string
+  description: string
+  task_type: string
+  phase: string
+  phase_goal: string
+  duration_minutes: number
+  priority: string
+  status: string
+  sort_order: number
+  source: string
+  source_label: string
+  reason: string
+  is_new: boolean
+}
+
+export interface CompanionAdjustmentPreviewRemoval {
+  task_id: number
+  title: string
+  phase: string
+  sort_order: number
+}
+
+export interface CompanionAdjustmentPreviewReorder {
+  task_id: number
+  title: string
+  phase: string
+  from_sort_order: number
+  to_sort_order: number
+}
+
+export interface CompanionAdjustmentPreview {
+  preview_token: string
+  tasks_added: number
+  tasks_removed: number
+  tasks_reordered: number
+  adjustment_summary: string
+  add: CompanionAdjustmentPreviewTask[]
+  remove: CompanionAdjustmentPreviewRemoval[]
+  reorder: CompanionAdjustmentPreviewReorder[]
+  preview_tasks: CompanionAdjustmentPreviewTask[]
 }
 
 export interface CompanionCategoryNode {

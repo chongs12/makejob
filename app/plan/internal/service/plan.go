@@ -176,6 +176,45 @@ func (s *PlanService) AdjustPlan(ctx context.Context, req *planv1.AdjustPlanRequ
 	}, nil
 }
 
+// PreviewAdjustPlan 生成待确认的调整预览结果。
+func (s *PlanService) PreviewAdjustPlan(ctx context.Context, req *planv1.PreviewAdjustPlanRequest) (*planv1.PreviewAdjustPlanResponse, error) {
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		userID = req.GetUserId()
+	}
+
+	result, err := s.uc.PreviewAdjustPlan(ctx, userID, req.GetPlanId(), req.GetReason())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return toProtoPreviewAdjustPlanResponse(result), nil
+}
+
+// ApplyAdjustPlan 按确认过的预览令牌执行一次真实调整并返回最新任务列表。
+func (s *PlanService) ApplyAdjustPlan(ctx context.Context, req *planv1.ApplyAdjustPlanRequest) (*planv1.ApplyAdjustPlanResponse, error) {
+	userID := auth.GetUserIDFromContext(ctx)
+	if userID == 0 {
+		userID = req.GetUserId()
+	}
+
+	result, err := s.uc.ApplyAdjustPlan(ctx, userID, req.GetPlanId(), req.GetPreviewToken())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	updatedTasks := make([]*planv1.TaskDetail, 0, len(result.Tasks))
+	for _, task := range result.Tasks {
+		updatedTasks = append(updatedTasks, toProtoTaskDetail(task))
+	}
+	return &planv1.ApplyAdjustPlanResponse{
+		TasksAdded:        result.Adjustment.AddedCount,
+		TasksRemoved:      result.Adjustment.RemovedCount,
+		TasksReordered:    result.Adjustment.ReorderedCount,
+		AdjustmentSummary: result.Adjustment.Summary,
+		UpdatedTasks:      updatedTasks,
+	}, nil
+}
+
 // toProtoPlanDetailWithTasks 将 LearningPlan 和任务列表转换为 PlanDetail。
 func toProtoPlanDetailWithTasks(plan *biz.LearningPlan, tasks []*biz.LearningTask) *planv1.PlanDetail {
 	taskDetails := make([]*planv1.TaskDetail, 0, len(tasks))
@@ -278,6 +317,68 @@ func toProtoTaskDetail(task *biz.LearningTask) *planv1.TaskDetail {
 		detail.CompletedAt = timestamppb.New(*task.CompletedAt)
 	}
 	return detail
+}
+
+// toProtoPreviewAdjustPlanResponse 将调整预览结果转换为 gRPC 响应。
+func toProtoPreviewAdjustPlanResponse(result *biz.PlanAdjustmentPreviewResult) *planv1.PreviewAdjustPlanResponse {
+	add := make([]*planv1.AdjustmentPreviewTask, 0, len(result.Add))
+	for _, item := range result.Add {
+		add = append(add, toProtoAdjustmentPreviewTask(item))
+	}
+	remove := make([]*planv1.AdjustmentPreviewRemoval, 0, len(result.Remove))
+	for _, item := range result.Remove {
+		remove = append(remove, &planv1.AdjustmentPreviewRemoval{
+			TaskId:    item.TaskID,
+			Title:     item.Title,
+			Phase:     item.Phase,
+			SortOrder: item.SortOrder,
+		})
+	}
+	reorder := make([]*planv1.AdjustmentPreviewReorder, 0, len(result.Reorder))
+	for _, item := range result.Reorder {
+		reorder = append(reorder, &planv1.AdjustmentPreviewReorder{
+			TaskId:        item.TaskID,
+			Title:         item.Title,
+			Phase:         item.Phase,
+			FromSortOrder: item.FromSortOrder,
+			ToSortOrder:   item.ToSortOrder,
+		})
+	}
+	previewTasks := make([]*planv1.AdjustmentPreviewTask, 0, len(result.PreviewTasks))
+	for _, item := range result.PreviewTasks {
+		previewTasks = append(previewTasks, toProtoAdjustmentPreviewTask(item))
+	}
+	return &planv1.PreviewAdjustPlanResponse{
+		PreviewToken:      result.PreviewToken,
+		TasksAdded:        result.AddedCount,
+		TasksRemoved:      result.RemovedCount,
+		TasksReordered:    result.ReorderedCount,
+		AdjustmentSummary: result.Summary,
+		Add:               add,
+		Remove:            remove,
+		Reorder:           reorder,
+		PreviewTasks:      previewTasks,
+	}
+}
+
+// toProtoAdjustmentPreviewTask 将任务预览快照转换为 gRPC 消息。
+func toProtoAdjustmentPreviewTask(task biz.PlanAdjustmentPreviewTask) *planv1.AdjustmentPreviewTask {
+	return &planv1.AdjustmentPreviewTask{
+		TaskId:          task.TaskID,
+		Title:           task.Title,
+		Description:     task.Description,
+		TaskType:        task.TaskType,
+		Phase:           task.Phase,
+		PhaseGoal:       task.PhaseGoal,
+		DurationMinutes: task.DurationMinutes,
+		Priority:        task.Priority,
+		Status:          task.Status,
+		SortOrder:       task.SortOrder,
+		Source:          task.Source,
+		SourceLabel:     task.SourceLabel,
+		Reason:          task.Reason,
+		IsNew:           task.IsNew,
+	}
 }
 
 // GetProgress 获取学习计划进度统计

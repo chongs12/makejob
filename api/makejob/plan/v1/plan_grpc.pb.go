@@ -26,6 +26,8 @@ const (
 	PlanService_UpdateTaskStatus_FullMethodName   = "/makejob.plan.v1.PlanService/UpdateTaskStatus"
 	PlanService_SubmitTaskFeedback_FullMethodName = "/makejob.plan.v1.PlanService/SubmitTaskFeedback"
 	PlanService_AdjustPlan_FullMethodName         = "/makejob.plan.v1.PlanService/AdjustPlan"
+	PlanService_PreviewAdjustPlan_FullMethodName  = "/makejob.plan.v1.PlanService/PreviewAdjustPlan"
+	PlanService_ApplyAdjustPlan_FullMethodName    = "/makejob.plan.v1.PlanService/ApplyAdjustPlan"
 	PlanService_GetProgress_FullMethodName        = "/makejob.plan.v1.PlanService/GetProgress"
 )
 
@@ -40,6 +42,8 @@ type PlanServiceClient interface {
 	UpdateTaskStatus(ctx context.Context, in *UpdateTaskStatusRequest, opts ...grpc.CallOption) (*UpdateTaskStatusResponse, error)
 	SubmitTaskFeedback(ctx context.Context, in *SubmitFeedbackRequest, opts ...grpc.CallOption) (*FeedbackResponse, error)
 	AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error)
+	PreviewAdjustPlan(ctx context.Context, in *PreviewAdjustPlanRequest, opts ...grpc.CallOption) (*PreviewAdjustPlanResponse, error)
+	ApplyAdjustPlan(ctx context.Context, in *ApplyAdjustPlanRequest, opts ...grpc.CallOption) (*ApplyAdjustPlanResponse, error)
 	GetProgress(ctx context.Context, in *GetProgressRequest, opts ...grpc.CallOption) (*PlanProgressResponse, error)
 }
 
@@ -121,6 +125,26 @@ func (c *planServiceClient) AdjustPlan(ctx context.Context, in *AdjustPlanReques
 	return out, nil
 }
 
+func (c *planServiceClient) PreviewAdjustPlan(ctx context.Context, in *PreviewAdjustPlanRequest, opts ...grpc.CallOption) (*PreviewAdjustPlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PreviewAdjustPlanResponse)
+	err := c.cc.Invoke(ctx, PlanService_PreviewAdjustPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *planServiceClient) ApplyAdjustPlan(ctx context.Context, in *ApplyAdjustPlanRequest, opts ...grpc.CallOption) (*ApplyAdjustPlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyAdjustPlanResponse)
+	err := c.cc.Invoke(ctx, PlanService_ApplyAdjustPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *planServiceClient) GetProgress(ctx context.Context, in *GetProgressRequest, opts ...grpc.CallOption) (*PlanProgressResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PlanProgressResponse)
@@ -142,6 +166,8 @@ type PlanServiceServer interface {
 	UpdateTaskStatus(context.Context, *UpdateTaskStatusRequest) (*UpdateTaskStatusResponse, error)
 	SubmitTaskFeedback(context.Context, *SubmitFeedbackRequest) (*FeedbackResponse, error)
 	AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error)
+	PreviewAdjustPlan(context.Context, *PreviewAdjustPlanRequest) (*PreviewAdjustPlanResponse, error)
+	ApplyAdjustPlan(context.Context, *ApplyAdjustPlanRequest) (*ApplyAdjustPlanResponse, error)
 	GetProgress(context.Context, *GetProgressRequest) (*PlanProgressResponse, error)
 	mustEmbedUnimplementedPlanServiceServer()
 }
@@ -173,6 +199,12 @@ func (UnimplementedPlanServiceServer) SubmitTaskFeedback(context.Context, *Submi
 }
 func (UnimplementedPlanServiceServer) AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdjustPlan not implemented")
+}
+func (UnimplementedPlanServiceServer) PreviewAdjustPlan(context.Context, *PreviewAdjustPlanRequest) (*PreviewAdjustPlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PreviewAdjustPlan not implemented")
+}
+func (UnimplementedPlanServiceServer) ApplyAdjustPlan(context.Context, *ApplyAdjustPlanRequest) (*ApplyAdjustPlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyAdjustPlan not implemented")
 }
 func (UnimplementedPlanServiceServer) GetProgress(context.Context, *GetProgressRequest) (*PlanProgressResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProgress not implemented")
@@ -324,6 +356,42 @@ func _PlanService_AdjustPlan_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PlanService_PreviewAdjustPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PreviewAdjustPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).PreviewAdjustPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_PreviewAdjustPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).PreviewAdjustPlan(ctx, req.(*PreviewAdjustPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PlanService_ApplyAdjustPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyAdjustPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).ApplyAdjustPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_ApplyAdjustPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).ApplyAdjustPlan(ctx, req.(*ApplyAdjustPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _PlanService_GetProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProgressRequest)
 	if err := dec(in); err != nil {
@@ -376,6 +444,14 @@ var PlanService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdjustPlan",
 			Handler:    _PlanService_AdjustPlan_Handler,
+		},
+		{
+			MethodName: "PreviewAdjustPlan",
+			Handler:    _PlanService_PreviewAdjustPlan_Handler,
+		},
+		{
+			MethodName: "ApplyAdjustPlan",
+			Handler:    _PlanService_ApplyAdjustPlan_Handler,
 		},
 		{
 			MethodName: "GetProgress",

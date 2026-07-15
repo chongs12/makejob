@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"makejob/app/plan/internal/biz"
 	"makejob/app/plan/internal/conf"
 )
 
@@ -26,5 +27,23 @@ func NewData(cfg *conf.Data) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 
+	if err := migratePlanSchema(db); err != nil {
+		return nil, err
+	}
+
 	return db, nil
+}
+
+// migratePlanSchema 启动时确保 plan 服务依赖的核心表已存在，避免缺表导致调整计划或反馈能力直接失败。
+func migratePlanSchema(db *gorm.DB) error {
+	if err := db.AutoMigrate(
+		&biz.LearningPlan{},
+		&biz.LearningTask{},
+		&biz.TaskFeedback{},
+		&biz.PlanAdjustment{},
+		&biz.PlanAdjustmentPreview{},
+	); err != nil {
+		return fmt.Errorf("failed to migrate plan schema: %w", err)
+	}
+	return nil
 }

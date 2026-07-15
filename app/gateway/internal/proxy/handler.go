@@ -1817,6 +1817,8 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.PUT("/plans/:id/tasks/:tid/status", gw.requireService("plan", gw.planClient != nil, gw.handleUpdateTaskStatusV1))
 		protected.POST("/plans/:id/tasks/:tid/feedback", gw.requireService("plan", gw.planClient != nil, gw.handleSubmitTaskFeedbackV1))
 		protected.POST("/plans/:id/adjust", gw.requireService("plan", gw.planClient != nil, gw.handleAdjustPlan))
+		protected.POST("/plans/:id/adjust-preview", gw.requireService("plan", gw.planClient != nil, gw.handlePreviewAdjustPlan))
+		protected.POST("/plans/:id/adjust-apply", gw.requireService("plan", gw.planClient != nil, gw.handleApplyAdjustPlan))
 		protected.GET("/plans/:id/progress", gw.requireService("plan", gw.planClient != nil, gw.handleGetPlanProgress))
 
 		protected.GET("/growth/summary", gw.requireService("growth", gw.growthClient != nil, gw.handleGetGrowthSummary))
@@ -3889,6 +3891,70 @@ func (gw *Gateway) handleAdjustPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"plan_id": planID, "status": "adjusted"})
 }
 
+// handlePreviewAdjustPlan 生成调整计划预览，不直接落库，供前端展示差异确认。
+func (gw *Gateway) handlePreviewAdjustPlan(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resp, err := gw.planClient.PreviewAdjustPlan(c.Request.Context(), &planv1.PreviewAdjustPlanRequest{
+		PlanId: planID,
+		Reason: strings.TrimSpace(req.Reason),
+		UserId: userID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleApplyAdjustPlan 根据预览令牌执行一次已确认的调整，并返回最新完整计划详情。
+func (gw *Gateway) handleApplyAdjustPlan(c *gin.Context) {
+	planID, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		PreviewToken string `json:"preview_token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, err := gw.planClient.ApplyAdjustPlan(c.Request.Context(), &planv1.ApplyAdjustPlanRequest{
+		PlanId:       planID,
+		PreviewToken: strings.TrimSpace(req.PreviewToken),
+		UserId:       userID,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	if detail, err := gw.planClient.GetPlan(c.Request.Context(), &planv1.GetPlanRequest{PlanId: planID, UserId: userID}); err == nil {
+		c.JSON(http.StatusOK, detail)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"plan_id": planID, "status": "adjusted"})
+}
+
 func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -4066,9 +4132,9 @@ func (gw *Gateway) handleAdminListASRConfigs(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"configs":            items,
-		"total":              len(items),
-		"default_config_id":  resp.GetDefaultConfigId(),
+		"configs":           items,
+		"total":             len(items),
+		"default_config_id": resp.GetDefaultConfigId(),
 		"providers": []gin.H{
 			{"key": "volcengine", "label": "火山引擎 (Volcengine)", "description": "字节跳动旗下语音识别服务"},
 			{"key": "xiaomi_mimo", "label": "小米 MiMo ASR", "description": "小米 MiMo-V2.5-ASR，支持中英双语及方言"},
@@ -5733,7 +5799,7 @@ func (gw *Gateway) handleAdminImportLive2DPackage(c *gin.Context) {
 }
 
 func (gw *Gateway) handleAdminImportLive2DBackground(c *gin.Context) {
-	file, _, err := c.Request.FormFile("file")
+	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
@@ -5744,9 +5810,16 @@ func (gw *Gateway) handleAdminImportLive2DBackground(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read file"})
 		return
 	}
+
+	// 优先使用上传文件的原始文件名（含扩展名），允许前端通过 filename 字段覆盖
+	filename := header.Filename
+	if customName := strings.TrimSpace(c.PostForm("filename")); customName != "" {
+		filename = customName
+	}
+
 	resp, err := gw.adminClient.ImportLive2DBackground(c.Request.Context(), &adminv1.ImportLive2DBackgroundRequest{
 		FileContent: fileBytes,
-		Filename:    c.PostForm("filename"),
+		Filename:    filename,
 	})
 	if err != nil {
 		grpcErr(c, err)

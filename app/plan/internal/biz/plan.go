@@ -10,57 +10,62 @@ import (
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 var (
-	ErrPlanNotFound       = kratosErr.NotFound("PLAN_NOT_FOUND", "学习计划不存在")
-	ErrTaskNotFound       = kratosErr.NotFound("TASK_NOT_FOUND", "学习任务不存在")
-	ErrFeedbackNotFound   = kratosErr.NotFound("FEEDBACK_NOT_FOUND", "任务反馈不存在")
-	ErrNoActivePlan       = kratosErr.NotFound("NO_ACTIVE_PLAN", "当前没有进行中的学习计划")
-	ErrInvalidLevel       = kratosErr.BadRequest("INVALID_LEVEL", "无效的计划级别")
-	ErrInvalidDuration    = kratosErr.BadRequest("INVALID_DURATION", "无效的时长参数")
-	ErrIndustryRequired   = kratosErr.BadRequest("INDUSTRY_REQUIRED", "行业不能为空")
-	ErrGoalRequired       = kratosErr.BadRequest("GOAL_REQUIRED", "学习目标不能为空")
-	ErrInvalidStatus      = kratosErr.BadRequest("INVALID_STATUS", "无效的任务状态")
-	ErrStatusTransition   = kratosErr.BadRequest("STATUS_TRANSITION", "非法的状态转换")
-	ErrPlanAccessDenied   = kratosErr.Forbidden("PLAN_ACCESS_DENIED", "无权访问该计划")
-	ErrTaskNotBelong      = kratosErr.BadRequest("TASK_NOT_BELONG", "任务不属于该计划")
-	ErrFeedbackTaskStatus = kratosErr.BadRequest("FEEDBACK_TASK_STATUS", "仅已完成任务允许提交反馈")
-	ErrPlanCompleted      = kratosErr.BadRequest("PLAN_COMPLETED", "计划已完成，无法调整")
-	ErrAdjustFailed       = kratosErr.InternalServer("ADJUST_FAILED", "调整计划失败")
-	ErrFeedbackPublish    = kratosErr.InternalServer("FEEDBACK_PUBLISH_FAILED", "发布诊断消息失败")
-	ErrPlanGenerateFailed = kratosErr.InternalServer("PLAN_GENERATE_FAILED", "生成学习计划失败")
-	ErrDiagnosisFailed    = kratosErr.InternalServer("DIAGNOSIS_FAILED", "诊断分析失败")
+	ErrPlanNotFound          = kratosErr.NotFound("PLAN_NOT_FOUND", "学习计划不存在")
+	ErrTaskNotFound          = kratosErr.NotFound("TASK_NOT_FOUND", "学习任务不存在")
+	ErrFeedbackNotFound      = kratosErr.NotFound("FEEDBACK_NOT_FOUND", "任务反馈不存在")
+	ErrNoActivePlan          = kratosErr.NotFound("NO_ACTIVE_PLAN", "当前没有进行中的学习计划")
+	ErrInvalidLevel          = kratosErr.BadRequest("INVALID_LEVEL", "无效的计划级别")
+	ErrInvalidDuration       = kratosErr.BadRequest("INVALID_DURATION", "无效的时长参数")
+	ErrIndustryRequired      = kratosErr.BadRequest("INDUSTRY_REQUIRED", "行业不能为空")
+	ErrGoalRequired          = kratosErr.BadRequest("GOAL_REQUIRED", "学习目标不能为空")
+	ErrInvalidStatus         = kratosErr.BadRequest("INVALID_STATUS", "无效的任务状态")
+	ErrStatusTransition      = kratosErr.BadRequest("STATUS_TRANSITION", "非法的状态转换")
+	ErrPlanAccessDenied      = kratosErr.Forbidden("PLAN_ACCESS_DENIED", "无权访问该计划")
+	ErrTaskNotBelong         = kratosErr.BadRequest("TASK_NOT_BELONG", "任务不属于该计划")
+	ErrFeedbackTaskStatus    = kratosErr.BadRequest("FEEDBACK_TASK_STATUS", "仅已完成任务允许提交反馈")
+	ErrPlanCompleted         = kratosErr.BadRequest("PLAN_COMPLETED", "计划已完成，无法调整")
+	ErrAdjustFailed          = kratosErr.InternalServer("ADJUST_FAILED", "调整计划失败")
+	ErrAdjustPreviewNotFound = kratosErr.NotFound("ADJUST_PREVIEW_NOT_FOUND", "调整预览不存在")
+	ErrAdjustPreviewExpired  = kratosErr.BadRequest("ADJUST_PREVIEW_EXPIRED", "调整预览已过期，请重新生成")
+	ErrAdjustPreviewApplied  = kratosErr.BadRequest("ADJUST_PREVIEW_APPLIED", "该调整预览已应用，请勿重复提交")
+	ErrAdjustPreviewMismatch = kratosErr.Forbidden("ADJUST_PREVIEW_MISMATCH", "调整预览与当前计划不匹配")
+	ErrFeedbackPublish       = kratosErr.InternalServer("FEEDBACK_PUBLISH_FAILED", "发布诊断消息失败")
+	ErrPlanGenerateFailed    = kratosErr.InternalServer("PLAN_GENERATE_FAILED", "生成学习计划失败")
+	ErrDiagnosisFailed       = kratosErr.InternalServer("DIAGNOSIS_FAILED", "诊断分析失败")
 )
 
 // LearningPlan 学习计划实体（FIX P2: 添加 DeletedAt 支持软删除）
 // 对齐单体 learning_plans 表结构：非持久化字段标记 gorm:"-"
 type LearningPlan struct {
-	ID         uint64         `gorm:"primaryKey;autoIncrement"`
-	UserID     uint64         `gorm:"index;not null"`
-	IndustryID uint64         `gorm:"column:industry_id;index;not null"`
-	Title      string         `gorm:"size:200;not null"`
-	Description string        `gorm:"size:1000"`
-	PlanJSON   string         `gorm:"column:plan_json;type:text"`
-	Status     string         `gorm:"size:20;not null;default:'generating'"`
-	TotalTasks int32          `gorm:"not null;default:0"`
-	CompletedTasks int32      `gorm:"not null;default:0"`
-	StartDate  *time.Time     `gorm:"column:start_date"`
-	EndDate    *time.Time     `gorm:"column:end_date"`
-	Phase      string         `gorm:"size:50"`
-	PhaseGoal  string         `gorm:"size:500"`
-	CreatedAt  time.Time      `gorm:"not null;autoCreateTime"`
-	UpdatedAt  time.Time      `gorm:"not null;autoUpdateTime"`
-	DeletedAt  gorm.DeletedAt `gorm:"index"`
+	ID             uint64         `gorm:"primaryKey;autoIncrement"`
+	UserID         uint64         `gorm:"index;not null"`
+	IndustryID     uint64         `gorm:"column:industry_id;index;not null"`
+	Title          string         `gorm:"size:200;not null"`
+	Description    string         `gorm:"size:1000"`
+	PlanJSON       string         `gorm:"column:plan_json;type:text"`
+	Status         string         `gorm:"size:20;not null;default:'generating'"`
+	TotalTasks     int32          `gorm:"not null;default:0"`
+	CompletedTasks int32          `gorm:"not null;default:0"`
+	StartDate      *time.Time     `gorm:"column:start_date"`
+	EndDate        *time.Time     `gorm:"column:end_date"`
+	Phase          string         `gorm:"size:50"`
+	PhaseGoal      string         `gorm:"size:500"`
+	CreatedAt      time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt      time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
 
 	// 运行期字段，仅内存流转，不落库
-	Level                    string `gorm:"-"`
-	DurationDays             int32  `gorm:"-"`
-	DailyStudyMinutes        int32  `gorm:"-"`
-	Industry                 string `gorm:"-"`
-	EntryPhase               string `gorm:"-"`
-	AdjustmentSummariesJSON  string `gorm:"-"`
+	Level                     string `gorm:"-"`
+	DurationDays              int32  `gorm:"-"`
+	DailyStudyMinutes         int32  `gorm:"-"`
+	Industry                  string `gorm:"-"`
+	EntryPhase                string `gorm:"-"`
+	AdjustmentSummariesJSON   string `gorm:"-"`
 	AdjustmentReasonCodesJSON string `gorm:"-"`
 	PhaseBlueprintSummaryJSON string `gorm:"-"`
 }
@@ -132,21 +137,21 @@ func buildTaskReason(title, phase string) string {
 // LearningTask 学习任务实体
 // 对齐单体 learning_tasks 表结构：非持久化字段标记 gorm:"-"
 type LearningTask struct {
-	ID           uint64         `gorm:"primaryKey;autoIncrement"`
-	PlanID       uint64         `gorm:"index;not null"`
-	Title        string         `gorm:"size:200;not null"`
-	Description  string         `gorm:"size:1000"`
-	TaskType     string         `gorm:"size:20;not null"`
-	Phase        string         `gorm:"size:50"`
-	PhaseGoal    string         `gorm:"column:phase_goal;size:500"`
-	TargetID     *uint64        `gorm:"column:target_id"`
-	Status       string         `gorm:"size:20;not null;default:'pending'"`
-	DueDate      *time.Time     `gorm:"column:due_date"`
-	CompletedAt  *time.Time     `gorm:"default:null"`
-	SortOrder    int32          `gorm:"not null;default:0"`
-	CreatedAt    time.Time      `gorm:"not null;autoCreateTime"`
-	UpdatedAt    time.Time      `gorm:"not null;autoUpdateTime"`
-	DeletedAt    gorm.DeletedAt `gorm:"index"`
+	ID          uint64         `gorm:"primaryKey;autoIncrement"`
+	PlanID      uint64         `gorm:"index;not null"`
+	Title       string         `gorm:"size:200;not null"`
+	Description string         `gorm:"size:1000"`
+	TaskType    string         `gorm:"size:20;not null"`
+	Phase       string         `gorm:"size:50"`
+	PhaseGoal   string         `gorm:"column:phase_goal;size:500"`
+	TargetID    *uint64        `gorm:"column:target_id"`
+	Status      string         `gorm:"size:20;not null;default:'pending'"`
+	DueDate     *time.Time     `gorm:"column:due_date"`
+	CompletedAt *time.Time     `gorm:"default:null"`
+	SortOrder   int32          `gorm:"not null;default:0"`
+	CreatedAt   time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt   time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt   gorm.DeletedAt `gorm:"index"`
 
 	// 运行期字段，仅内存流转，不落库
 	DayNumber           int32  `gorm:"-"`
@@ -204,6 +209,7 @@ type PlanAgentTask struct {
 	Description     string
 	TaskType        string
 	Phase           string
+	PhaseGoal       string
 	DayNumber       int32
 	DurationMinutes int32
 	Priority        string
@@ -225,6 +231,69 @@ type PlanAgentAdjustResponse struct {
 	Remove  []uint64
 	Reorder map[uint64]int32
 	Summary string
+}
+
+// PlanAdjustmentPreviewTask 调整预览中的任务快照，供前端确认新增与最终顺序。
+type PlanAdjustmentPreviewTask struct {
+	TaskID          uint64 `json:"task_id"`
+	Title           string `json:"title"`
+	Description     string `json:"description"`
+	TaskType        string `json:"task_type"`
+	Phase           string `json:"phase"`
+	PhaseGoal       string `json:"phase_goal"`
+	DurationMinutes int32  `json:"duration_minutes"`
+	Priority        string `json:"priority"`
+	Status          string `json:"status"`
+	SortOrder       int32  `json:"sort_order"`
+	Source          string `json:"source"`
+	SourceLabel     string `json:"source_label"`
+	Reason          string `json:"reason"`
+	IsNew           bool   `json:"is_new"`
+}
+
+// PlanAdjustmentPreviewRemoval 调整预览中的待删除任务摘要。
+type PlanAdjustmentPreviewRemoval struct {
+	TaskID    uint64 `json:"task_id"`
+	Title     string `json:"title"`
+	Phase     string `json:"phase"`
+	SortOrder int32  `json:"sort_order"`
+}
+
+// PlanAdjustmentPreviewReorder 调整预览中的重排任务摘要。
+type PlanAdjustmentPreviewReorder struct {
+	TaskID        uint64 `json:"task_id"`
+	Title         string `json:"title"`
+	Phase         string `json:"phase"`
+	FromSortOrder int32  `json:"from_sort_order"`
+	ToSortOrder   int32  `json:"to_sort_order"`
+}
+
+// PlanAdjustmentPreviewDetails 保存一次预览生成的结构化 diff 与预览后任务快照。
+type PlanAdjustmentPreviewDetails struct {
+	Summary      string                         `json:"summary"`
+	Add          []*PlanAgentTask               `json:"add"`
+	Remove       []PlanAdjustmentPreviewRemoval `json:"remove"`
+	Reorder      []PlanAdjustmentPreviewReorder `json:"reorder"`
+	PreviewTasks []PlanAdjustmentPreviewTask    `json:"preview_tasks"`
+}
+
+// PlanAdjustmentPreviewResult 是预览阶段返回给前端的完整结果。
+type PlanAdjustmentPreviewResult struct {
+	PreviewToken   string
+	AddedCount     int32
+	RemovedCount   int32
+	ReorderedCount int32
+	Summary        string
+	Add            []PlanAdjustmentPreviewTask
+	Remove         []PlanAdjustmentPreviewRemoval
+	Reorder        []PlanAdjustmentPreviewReorder
+	PreviewTasks   []PlanAdjustmentPreviewTask
+}
+
+// PlanAdjustmentApplyResult 是确认应用后返回的执行结果。
+type PlanAdjustmentApplyResult struct {
+	Adjustment *PlanAdjustment
+	Tasks      []*LearningTask
 }
 
 // PlanRepo 学习计划仓库接口，data 层必须实现
@@ -319,6 +388,13 @@ type PlanAdjustmentRepo interface {
 	Create(ctx context.Context, adjustment *PlanAdjustment) error
 }
 
+// PlanAdjustmentPreviewRepo 调整预览仓库接口。
+type PlanAdjustmentPreviewRepo interface {
+	Create(ctx context.Context, preview *PlanAdjustmentPreview) error
+	GetByToken(ctx context.Context, token string) (*PlanAdjustmentPreview, error)
+	MarkApplied(ctx context.Context, previewID uint64) error
+}
+
 // PlanAdjustment 计划调整记录实体
 type PlanAdjustment struct {
 	ID             uint64    `gorm:"primaryKey;autoIncrement"`
@@ -337,6 +413,28 @@ func (PlanAdjustment) TableName() string {
 	return "plan_adjustments"
 }
 
+// PlanAdjustmentPreview 调整预览持久化实体，保存待确认的 AI 调整方案。
+type PlanAdjustmentPreview struct {
+	ID          uint64    `gorm:"primaryKey;autoIncrement"`
+	Token       string    `gorm:"size:64;uniqueIndex;not null"`
+	UserID      uint64    `gorm:"index;not null"`
+	PlanID      uint64    `gorm:"index;not null"`
+	Reason      string    `gorm:"size:500"`
+	Status      string    `gorm:"size:20;not null;default:'pending'"`
+	Summary     string    `gorm:"size:1000"`
+	DetailsJSON string    `gorm:"type:text;not null"`
+	ExpiresAt   time.Time `gorm:"index;not null"`
+	AppliedAt   *time.Time
+	CreatedAt   time.Time      `gorm:"not null;autoCreateTime"`
+	UpdatedAt   time.Time      `gorm:"not null;autoUpdateTime"`
+	DeletedAt   gorm.DeletedAt `gorm:"index"`
+}
+
+// TableName 指定调整预览表名。
+func (PlanAdjustmentPreview) TableName() string {
+	return "plan_adjustment_previews"
+}
+
 // SubmitFeedbackBizRequest 提交反馈的业务请求
 type SubmitFeedbackBizRequest struct {
 	DifficultyFeeling     string
@@ -353,16 +451,17 @@ type DiagnosisClient interface {
 
 // PlanUseCase 学习计划业务用例
 type PlanUseCase struct {
-	repo           PlanRepo
-	taskRepo       TaskRepo
-	feedbackRepo   TaskFeedbackRepo
-	adjustmentRepo PlanAdjustmentRepo
-	industryRepo   IndustryRepo
-	aiClient       PlanAgentClient
-	diagClient     DiagnosisClient
-	publisher      MQPublisher
-	archiveClient  LearningArchiveClient
-	logger         *log.Helper
+	repo                  PlanRepo
+	taskRepo              TaskRepo
+	feedbackRepo          TaskFeedbackRepo
+	adjustmentRepo        PlanAdjustmentRepo
+	adjustmentPreviewRepo PlanAdjustmentPreviewRepo
+	industryRepo          IndustryRepo
+	aiClient              PlanAgentClient
+	diagClient            DiagnosisClient
+	publisher             MQPublisher
+	archiveClient         LearningArchiveClient
+	logger                *log.Helper
 }
 
 // LearningArchiveClient 学习档案 gRPC 客户端接口。
@@ -374,19 +473,19 @@ type LearningArchiveClient interface {
 
 // PlanFeedbackArchiveEntry 计划反馈诊断写入学习档案的参数。
 type PlanFeedbackArchiveEntry struct {
-	UserID        uint64
-	FeedbackID    uint64
-	IndustryCode  string
-	PlanPhase     string
-	PlanPhaseGoal string
-	EntryPhase    string
-	TaskPhase     string
-	TaskPhaseGoal string
-	Language      string
-	MistakeTags   []string
-	Suggestions   []string
+	UserID          uint64
+	FeedbackID      uint64
+	IndustryCode    string
+	PlanPhase       string
+	PlanPhaseGoal   string
+	EntryPhase      string
+	TaskPhase       string
+	TaskPhaseGoal   string
+	Language        string
+	MistakeTags     []string
+	Suggestions     []string
 	EvidenceSummary string
-	OccurredAt    time.Time
+	OccurredAt      time.Time
 }
 
 // IndustryRepo 行业仓储接口，用于 code→id 解析
@@ -395,18 +494,19 @@ type IndustryRepo interface {
 }
 
 // NewPlanUseCase 创建学习计划业务用例
-func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, industryRepo IndustryRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, archiveClient LearningArchiveClient, logger log.Logger) *PlanUseCase {
+func NewPlanUseCase(repo PlanRepo, taskRepo TaskRepo, feedbackRepo TaskFeedbackRepo, adjustmentRepo PlanAdjustmentRepo, adjustmentPreviewRepo PlanAdjustmentPreviewRepo, industryRepo IndustryRepo, aiClient PlanAgentClient, diagClient DiagnosisClient, publisher MQPublisher, archiveClient LearningArchiveClient, logger log.Logger) *PlanUseCase {
 	return &PlanUseCase{
-		repo:           repo,
-		taskRepo:       taskRepo,
-		feedbackRepo:   feedbackRepo,
-		adjustmentRepo: adjustmentRepo,
-		industryRepo:   industryRepo,
-		aiClient:       aiClient,
-		diagClient:     diagClient,
-		publisher:      publisher,
-		archiveClient:  archiveClient,
-		logger:         log.NewHelper(logger),
+		repo:                  repo,
+		taskRepo:              taskRepo,
+		feedbackRepo:          feedbackRepo,
+		adjustmentRepo:        adjustmentRepo,
+		adjustmentPreviewRepo: adjustmentPreviewRepo,
+		industryRepo:          industryRepo,
+		aiClient:              aiClient,
+		diagClient:            diagClient,
+		publisher:             publisher,
+		archiveClient:         archiveClient,
+		logger:                log.NewHelper(logger),
 	}
 }
 
@@ -456,11 +556,11 @@ func (uc *PlanUseCase) CreatePlan(ctx context.Context, req *CreatePlanRequest) (
 	}
 
 	plan := &LearningPlan{
-		UserID:            req.UserID,
-		IndustryID:        industryID,
-		Title:             fmt.Sprintf("%s 学习计划", req.IndustryCode),
-		Description:       req.Goal,
-		Status:            "generating",
+		UserID:      req.UserID,
+		IndustryID:  industryID,
+		Title:       fmt.Sprintf("%s 学习计划", req.IndustryCode),
+		Description: req.Goal,
+		Status:      "generating",
 		// 运行期字段保留，用于 AI 生成
 		Level:             req.Level,
 		DurationDays:      req.DurationDays,
@@ -917,6 +1017,24 @@ func appendUniqueStr(existing []string, s string) []string {
 	return append(existing, s)
 }
 
+// isMissingTaskFeedbackTableError 判断是否为 task_feedbacks 表未创建导致的可降级查询错误。
+func isMissingTaskFeedbackTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "task_feedbacks") && strings.Contains(message, "SQLSTATE 42P01")
+}
+
+// isPlanAdjustParseFailure 判断调整计划是否因 AI 结构化输出解析失败而触发可降级错误。
+func isPlanAdjustParseFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "结果解析失败") || strings.Contains(message, "PARSE_FAILED")
+}
+
 // MarkFeedbackDiagnosisFailed 在消息最终失败后将反馈诊断标记为失败。
 func (uc *PlanUseCase) MarkFeedbackDiagnosisFailed(ctx context.Context, feedbackID uint64) error {
 	feedback, err := uc.feedbackRepo.GetByID(ctx, feedbackID)
@@ -930,8 +1048,37 @@ func (uc *PlanUseCase) MarkFeedbackDiagnosisFailed(ctx context.Context, feedback
 	return uc.feedbackRepo.Update(ctx, feedback)
 }
 
-// AdjustPlan 根据当前任务和反馈诊断生成计划调整方案并事务落库。
-func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, reason string) (*PlanAdjustment, error) {
+// PreviewAdjustPlan 生成待确认的调整预览，并冻结结构化 diff 供前端确认。
+func (uc *PlanUseCase) PreviewAdjustPlan(ctx context.Context, userID, planID uint64, reason string) (*PlanAdjustmentPreviewResult, error) {
+	return uc.previewAdjustPlan(ctx, userID, planID, reason, false)
+}
+
+// ApplyAdjustPlan 根据预览令牌执行一次已冻结的调整方案并落库。
+func (uc *PlanUseCase) ApplyAdjustPlan(ctx context.Context, userID, planID uint64, previewToken string) (*PlanAdjustmentApplyResult, error) {
+	if strings.TrimSpace(previewToken) == "" {
+		return nil, ErrAdjustPreviewNotFound
+	}
+	if uc.adjustmentPreviewRepo == nil {
+		return nil, ErrAdjustFailed.WithCause(fmt.Errorf("adjustment preview repo is nil"))
+	}
+
+	preview, err := uc.adjustmentPreviewRepo.GetByToken(ctx, strings.TrimSpace(previewToken))
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrAdjustPreviewNotFound
+		}
+		return nil, ErrAdjustFailed.WithCause(err)
+	}
+	if preview.UserID != userID || preview.PlanID != planID {
+		return nil, ErrAdjustPreviewMismatch
+	}
+	if preview.Status == "applied" {
+		return nil, ErrAdjustPreviewApplied
+	}
+	if preview.ExpiresAt.Before(time.Now()) {
+		return nil, ErrAdjustPreviewExpired
+	}
+
 	plan, err := uc.repo.GetByID(ctx, planID)
 	if err != nil {
 		return nil, ErrPlanNotFound
@@ -943,85 +1090,38 @@ func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, re
 		return nil, ErrPlanCompleted
 	}
 
-	tasks, err := uc.taskRepo.ListByPlanID(ctx, planID)
-	if err != nil {
-		return nil, kratosErr.InternalServer("LIST_TASKS_FAILED", "获取任务列表失败").WithCause(err)
-	}
-	feedbacks, err := uc.feedbackRepo.ListByPlanID(ctx, planID)
-	if err != nil {
-		return nil, kratosErr.InternalServer("LIST_FEEDBACKS_FAILED", "获取反馈列表失败").WithCause(err)
-	}
-
-	// 读取学习档案高频薄弱主题，让计划调整基于真实画像（降级：失败则只用本地反馈弱项）。
-	var extraWeakTopics []string
-	if uc.archiveClient != nil {
-		if topics, archErr := uc.archiveClient.GetWeakTopics(ctx, userID); archErr == nil {
-			extraWeakTopics = topics
-		} else {
-			uc.logger.Warnf("读取档案弱项失败，回退本地反馈: plan_id=%d err=%v", planID, archErr)
-		}
-	}
-
-	aiResp, err := uc.aiClient.AdjustPlan(ctx, &PlanAgentAdjustRequest{
-		Plan:            plan,
-		CurrentTasks:    tasks,
-		Feedbacks:       feedbacks,
-		Reason:          reason,
-		ExtraWeakTopics: extraWeakTopics,
-	})
-	if err != nil {
+	var details PlanAdjustmentPreviewDetails
+	if err := json.Unmarshal([]byte(preview.DetailsJSON), &details); err != nil {
 		return nil, ErrAdjustFailed.WithCause(err)
-	}
-
-	addedTasks := make([]*LearningTask, 0, len(aiResp.Add))
-	for _, task := range aiResp.Add {
-		taskType := task.TaskType
-		if taskType == "" {
-			taskType = "study"
-		}
-		priority := task.Priority
-		if priority == "" {
-			priority = "medium"
-		}
-		durationMinutes := task.DurationMinutes
-		if durationMinutes <= 0 {
-			durationMinutes = 30
-		}
-		addedTasks = append(addedTasks, &LearningTask{
-			PlanID:          planID,
-			Title:           task.Title,
-			Description:     task.Description,
-			TaskType:        taskType,
-			Phase:           task.Phase,
-			DayNumber:       task.DayNumber,
-			DurationMinutes: durationMinutes,
-			Priority:        priority,
-			Status:          "pending",
-			SortOrder:       task.SortOrder,
-			Source:          "plan_adjustment",
-			SourceLabel:     "计划调整",
-			Reason:          reason,
-		})
 	}
 
 	adjustment := &PlanAdjustment{
 		PlanID:  planID,
-		Reason:  reason,
-		Summary: aiResp.Summary,
+		Reason:  preview.Reason,
+		Summary: details.Summary,
 	}
 	err = uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+		addedTasks := buildAdjustmentAddedTasks(planID, preview.Reason, details.Add)
 		if len(addedTasks) > 0 {
 			if txErr := uc.taskRepo.BatchCreate(txCtx, addedTasks); txErr != nil {
 				return txErr
 			}
 		}
 
-		removedCount, txErr := uc.taskRepo.BatchDelete(txCtx, planID, aiResp.Remove)
+		removeIDs := make([]uint64, 0, len(details.Remove))
+		for _, item := range details.Remove {
+			removeIDs = append(removeIDs, item.TaskID)
+		}
+		removedCount, txErr := uc.taskRepo.BatchDelete(txCtx, planID, removeIDs)
 		if txErr != nil {
 			return txErr
 		}
 
-		reorderedCount, txErr := uc.taskRepo.BatchUpdateSortOrder(txCtx, planID, aiResp.Reorder)
+		reorderMap := make(map[uint64]int32, len(details.Reorder))
+		for _, item := range details.Reorder {
+			reorderMap[item.TaskID] = item.ToSortOrder
+		}
+		reorderedCount, txErr := uc.taskRepo.BatchUpdateSortOrder(txCtx, planID, reorderMap)
 		if txErr != nil {
 			return txErr
 		}
@@ -1046,29 +1146,284 @@ func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, re
 			return txErr
 		}
 
-		detailsPayload := map[string]any{
-			"summary": aiResp.Summary,
-			"add":     aiResp.Add,
-			"remove":  aiResp.Remove,
-			"reorder": aiResp.Reorder,
-		}
-		detailsBytes, txErr := json.Marshal(detailsPayload)
+		detailsBytes, txErr := json.Marshal(details)
 		if txErr != nil {
 			return txErr
 		}
-
 		adjustment.AddedCount = int32(len(addedTasks))
 		adjustment.RemovedCount = int32(removedCount)
 		adjustment.ReorderedCount = int32(reorderedCount)
 		adjustment.DetailsJSON = string(detailsBytes)
-		return uc.adjustmentRepo.Create(txCtx, adjustment)
+		if txErr := uc.adjustmentRepo.Create(txCtx, adjustment); txErr != nil {
+			return txErr
+		}
+		return uc.adjustmentPreviewRepo.MarkApplied(txCtx, preview.ID)
 	})
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrAdjustPreviewApplied
+		}
+		return nil, ErrAdjustFailed.WithCause(err)
+	}
+
+	_, tasks, err := uc.GetPlanWithTasks(ctx, userID, planID)
+	if err != nil {
+		return nil, err
+	}
+	uc.logger.Infof("计划调整应用完成: plan_id=%d preview_token=%s added=%d removed=%d reordered=%d", planID, preview.Token, adjustment.AddedCount, adjustment.RemovedCount, adjustment.ReorderedCount)
+	return &PlanAdjustmentApplyResult{Adjustment: adjustment, Tasks: tasks}, nil
+}
+
+// previewAdjustPlan 生成调整预览，兼容旧直通接口时可选择对解析失败做空调整降级。
+func (uc *PlanUseCase) previewAdjustPlan(ctx context.Context, userID, planID uint64, reason string, allowParseFailure bool) (*PlanAdjustmentPreviewResult, error) {
+	if uc.adjustmentPreviewRepo == nil {
+		return nil, ErrAdjustFailed.WithCause(fmt.Errorf("adjustment preview repo is nil"))
+	}
+
+	plan, err := uc.repo.GetByID(ctx, planID)
+	if err != nil {
+		return nil, ErrPlanNotFound
+	}
+	if plan.UserID != userID {
+		return nil, ErrPlanAccessDenied
+	}
+	if plan.Status == "completed" {
+		return nil, ErrPlanCompleted
+	}
+
+	tasks, err := uc.taskRepo.ListByPlanID(ctx, planID)
+	if err != nil {
+		return nil, kratosErr.InternalServer("LIST_TASKS_FAILED", "获取任务列表失败").WithCause(err)
+	}
+	feedbacks, err := uc.feedbackRepo.ListByPlanID(ctx, planID)
+	if err != nil {
+		if isMissingTaskFeedbackTableError(err) {
+			uc.logger.Warnf("task_feedbacks 表缺失，AdjustPlan 降级为空反馈继续执行: plan_id=%d err=%v", planID, err)
+			feedbacks = []*TaskFeedback{}
+		} else {
+			return nil, kratosErr.InternalServer("LIST_FEEDBACKS_FAILED", "获取反馈列表失败").WithCause(err)
+		}
+	}
+
+	// 读取学习档案高频薄弱主题，让计划调整基于真实画像（降级：失败则只用本地反馈弱项）。
+	var extraWeakTopics []string
+	if uc.archiveClient != nil {
+		if topics, archErr := uc.archiveClient.GetWeakTopics(ctx, userID); archErr == nil {
+			extraWeakTopics = topics
+		} else {
+			uc.logger.Warnf("读取档案弱项失败，回退本地反馈: plan_id=%d err=%v", planID, archErr)
+		}
+	}
+
+	aiResp, err := uc.aiClient.AdjustPlan(ctx, &PlanAgentAdjustRequest{
+		Plan:            plan,
+		CurrentTasks:    tasks,
+		Feedbacks:       feedbacks,
+		Reason:          reason,
+		ExtraWeakTopics: extraWeakTopics,
+	})
+	if err != nil {
+		if allowParseFailure && isPlanAdjustParseFailure(err) {
+			uc.logger.Warnf("AI 调整计划解析失败，降级为保留原计划: plan_id=%d err=%v", planID, err)
+			aiResp = &PlanAgentAdjustResponse{
+				Add:     []*PlanAgentTask{},
+				Remove:  []uint64{},
+				Reorder: map[uint64]int32{},
+				Summary: "本次未生成稳定的调整结果，已暂时保留原计划内容，请稍后重试。",
+			}
+		} else {
+			return nil, ErrAdjustFailed.WithCause(err)
+		}
+	}
+
+	details := buildAdjustmentPreviewDetails(reason, tasks, aiResp)
+	detailsBytes, err := json.Marshal(details)
 	if err != nil {
 		return nil, ErrAdjustFailed.WithCause(err)
 	}
 
-	uc.logger.Infof("计划调整完成: plan_id=%d added=%d removed=%d reordered=%d", planID, adjustment.AddedCount, adjustment.RemovedCount, adjustment.ReorderedCount)
-	return adjustment, nil
+	preview := &PlanAdjustmentPreview{
+		Token:       uuid.NewString(),
+		UserID:      userID,
+		PlanID:      planID,
+		Reason:      reason,
+		Status:      "pending",
+		Summary:     details.Summary,
+		DetailsJSON: string(detailsBytes),
+		ExpiresAt:   time.Now().Add(15 * time.Minute),
+	}
+	if err := uc.adjustmentPreviewRepo.Create(ctx, preview); err != nil {
+		return nil, ErrAdjustFailed.WithCause(err)
+	}
+
+	return &PlanAdjustmentPreviewResult{
+		PreviewToken:   preview.Token,
+		AddedCount:     int32(len(details.Add)),
+		RemovedCount:   int32(len(details.Remove)),
+		ReorderedCount: int32(len(details.Reorder)),
+		Summary:        details.Summary,
+		Add:            buildPreviewTaskList(reason, details.Add),
+		Remove:         details.Remove,
+		Reorder:        details.Reorder,
+		PreviewTasks:   details.PreviewTasks,
+	}, nil
+}
+
+// AdjustPlan 兼容旧入口：内部先生成预览，再立即按同一份预览执行落库。
+func (uc *PlanUseCase) AdjustPlan(ctx context.Context, userID, planID uint64, reason string) (*PlanAdjustment, error) {
+	preview, err := uc.previewAdjustPlan(ctx, userID, planID, reason, true)
+	if err != nil {
+		return nil, err
+	}
+	applied, err := uc.ApplyAdjustPlan(ctx, userID, planID, preview.PreviewToken)
+	if err != nil {
+		return nil, err
+	}
+	return applied.Adjustment, nil
+}
+
+// buildAdjustmentAddedTasks 将预览中的新增任务还原为待落库任务实体。
+func buildAdjustmentAddedTasks(planID uint64, reason string, add []*PlanAgentTask) []*LearningTask {
+	addedTasks := make([]*LearningTask, 0, len(add))
+	for _, task := range add {
+		taskType := task.TaskType
+		if taskType == "" {
+			taskType = "study"
+		}
+		priority := task.Priority
+		if priority == "" {
+			priority = "medium"
+		}
+		durationMinutes := task.DurationMinutes
+		if durationMinutes <= 0 {
+			durationMinutes = 30
+		}
+		addedTasks = append(addedTasks, &LearningTask{
+			PlanID:          planID,
+			Title:           task.Title,
+			Description:     task.Description,
+			TaskType:        taskType,
+			Phase:           task.Phase,
+			PhaseGoal:       task.PhaseGoal,
+			DayNumber:       task.DayNumber,
+			DurationMinutes: durationMinutes,
+			Priority:        priority,
+			Status:          "pending",
+			SortOrder:       task.SortOrder,
+			Source:          "plan_adjustment",
+			SourceLabel:     "计划调整",
+			Reason:          reason,
+		})
+	}
+	return addedTasks
+}
+
+// buildAdjustmentPreviewDetails 组装预览摘要、diff 和应用后任务快照。
+func buildAdjustmentPreviewDetails(reason string, currentTasks []*LearningTask, aiResp *PlanAgentAdjustResponse) PlanAdjustmentPreviewDetails {
+	taskByID := make(map[uint64]*LearningTask, len(currentTasks))
+	reorderMap := make(map[uint64]int32, len(aiResp.Reorder))
+	for taskID, sortOrder := range aiResp.Reorder {
+		reorderMap[taskID] = sortOrder
+	}
+
+	removeSet := make(map[uint64]struct{}, len(aiResp.Remove))
+	removeItems := make([]PlanAdjustmentPreviewRemoval, 0, len(aiResp.Remove))
+	reorderItems := make([]PlanAdjustmentPreviewReorder, 0, len(aiResp.Reorder))
+	previewTasks := make([]PlanAdjustmentPreviewTask, 0, len(currentTasks)+len(aiResp.Add))
+
+	for _, task := range currentTasks {
+		taskByID[task.ID] = task
+	}
+	for _, taskID := range aiResp.Remove {
+		removeSet[taskID] = struct{}{}
+		if task, ok := taskByID[taskID]; ok {
+			removeItems = append(removeItems, PlanAdjustmentPreviewRemoval{
+				TaskID:    task.ID,
+				Title:     task.Title,
+				Phase:     task.Phase,
+				SortOrder: task.SortOrder,
+			})
+		}
+	}
+	for taskID, toSortOrder := range reorderMap {
+		if task, ok := taskByID[taskID]; ok && task.SortOrder != toSortOrder {
+			reorderItems = append(reorderItems, PlanAdjustmentPreviewReorder{
+				TaskID:        task.ID,
+				Title:         task.Title,
+				Phase:         task.Phase,
+				FromSortOrder: task.SortOrder,
+				ToSortOrder:   toSortOrder,
+			})
+		}
+	}
+
+	for _, task := range currentTasks {
+		if _, removed := removeSet[task.ID]; removed {
+			continue
+		}
+		sortOrder := task.SortOrder
+		if nextSortOrder, ok := reorderMap[task.ID]; ok {
+			sortOrder = nextSortOrder
+		}
+		previewTasks = append(previewTasks, PlanAdjustmentPreviewTask{
+			TaskID:          task.ID,
+			Title:           task.Title,
+			Description:     task.Description,
+			TaskType:        task.TaskType,
+			Phase:           task.Phase,
+			PhaseGoal:       task.PhaseGoal,
+			DurationMinutes: task.DurationMinutes,
+			Priority:        task.Priority,
+			Status:          task.Status,
+			SortOrder:       sortOrder,
+			Source:          task.Source,
+			SourceLabel:     task.SourceLabel,
+			Reason:          task.Reason,
+			IsNew:           false,
+		})
+	}
+
+	addItems := buildPreviewTaskList(reason, aiResp.Add)
+	previewTasks = append(previewTasks, addItems...)
+	for i := 0; i < len(previewTasks); i++ {
+		for j := i + 1; j < len(previewTasks); j++ {
+			if previewTasks[j].SortOrder < previewTasks[i].SortOrder || (previewTasks[j].SortOrder == previewTasks[i].SortOrder && previewTasks[j].TaskID < previewTasks[i].TaskID) {
+				previewTasks[i], previewTasks[j] = previewTasks[j], previewTasks[i]
+			}
+		}
+	}
+
+	return PlanAdjustmentPreviewDetails{
+		Summary:      aiResp.Summary,
+		Add:          aiResp.Add,
+		Remove:       removeItems,
+		Reorder:      reorderItems,
+		PreviewTasks: previewTasks,
+	}
+}
+
+// buildPreviewTaskList 将新增任务转换为前端可直接渲染的预览列表。
+func buildPreviewTaskList(reason string, add []*PlanAgentTask) []PlanAdjustmentPreviewTask {
+	items := make([]PlanAdjustmentPreviewTask, 0, len(add))
+	for _, task := range add {
+		items = append(items, PlanAdjustmentPreviewTask{
+			TaskID:          0,
+			Title:           task.Title,
+			Description:     task.Description,
+			TaskType:        task.TaskType,
+			Phase:           task.Phase,
+			PhaseGoal:       task.PhaseGoal,
+			DurationMinutes: task.DurationMinutes,
+			Priority:        task.Priority,
+			Status:          "pending",
+			SortOrder:       task.SortOrder,
+			Source:          "plan_adjustment",
+			SourceLabel:     "计划调整",
+			Reason:          reason,
+			IsNew:           true,
+		})
+	}
+	return items
 }
 
 // --- 进度统计 ---

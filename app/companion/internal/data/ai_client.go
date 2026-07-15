@@ -41,11 +41,12 @@ func (c *companionAIClient) Close() error {
 // CompanionAgent 调用 AI Gateway 的 CompanionAgent RPC
 func (c *companionAIClient) CompanionAgent(ctx context.Context, req *biz.CompanionAgentRequest) (*biz.CompanionAgentResponse, error) {
 	resp, err := c.client.CompanionAgent(ctx, &aiv1.CompanionAgentRequest{
-		UserId:       req.UserID,
-		Message:      req.Message,
-		ContextType:  req.ContextType,
-		Username:     req.Username,
-		RecentTopics: req.RecentTopics,
+		UserId:                req.UserID,
+		Message:               req.Message,
+		ContextType:           req.ContextType,
+		Username:              req.Username,
+		RecentTopics:          req.RecentTopics,
+		ConversationStateJson: req.ConversationStateJSON,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("CompanionAgent gRPC call failed: %w", err)
@@ -58,12 +59,16 @@ func (c *companionAIClient) CompanionAgent(ctx context.Context, req *biz.Compani
 	}
 
 	return &biz.CompanionAgentResponse{
-		Reply:            resp.GetReply(),
-		Emotion:          resp.GetEmotion(),
-		Suggestions:      resp.GetSuggestions(),
-		Action:           resp.GetAction(),
-		SuggestedActions: toBizSuggestedActions(resp.GetSuggestedActions()),
-		Live2DDirective:  live2dDirective,
+		Reply:             resp.GetReply(),
+		Emotion:           resp.GetEmotion(),
+		Suggestions:       resp.GetSuggestions(),
+		Action:            resp.GetAction(),
+		SuggestedActions:  toBizSuggestedActions(resp.GetSuggestedActions()),
+		Live2DDirective:   live2dDirective,
+		InlineTriggers:    toBizInlineTriggers(resp.GetInlineTriggers()),
+		Intent:            toBizIntentInfo(resp.GetIntent()),
+		PendingAction:     toBizPendingAction(resp.GetPendingAction()),
+		ConversationState: toBizConversationState(resp.GetConversationState()),
 	}, nil
 }
 
@@ -81,6 +86,59 @@ func toBizSuggestedActions(actions []*aiv1.SuggestedAction) []biz.SuggestedActio
 		})
 	}
 	return result
+}
+
+// toBizInlineTriggers 将 proto InlineTrigger 列表转换为 biz InlineTriggerItem 列表。
+func toBizInlineTriggers(items []*aiv1.InlineTrigger) []biz.InlineTriggerItem {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]biz.InlineTriggerItem, 0, len(items))
+	for _, it := range items {
+		result = append(result, biz.InlineTriggerItem{
+			Keyword:      it.GetKeyword(),
+			ActionType:   it.GetActionType(),
+			Target:       it.GetTarget(),
+			PositionHint: it.GetPositionHint(),
+		})
+	}
+	return result
+}
+
+// toBizIntentInfo 将 proto IntentInfo 转换为 biz IntentInfo 指针（nullable）。
+func toBizIntentInfo(info *aiv1.IntentInfo) *biz.IntentInfo {
+	if info == nil {
+		return nil
+	}
+	return &biz.IntentInfo{
+		Type:       info.GetType(),
+		Confidence: info.GetConfidence(),
+		Stage:      info.GetStage(),
+	}
+}
+
+// toBizPendingAction 将 proto PendingAction 转换为 biz PendingAction 指针（nullable）。
+func toBizPendingAction(action *aiv1.PendingAction) *biz.PendingAction {
+	if action == nil {
+		return nil
+	}
+	return &biz.PendingAction{
+		Type:        action.GetType(),
+		Ready:       action.GetReady(),
+		Params:      action.GetParams(),
+		MissingInfo: action.GetMissingInfo(),
+	}
+}
+
+// toBizConversationState 将 proto ConversationState 转换为 biz ConversationState 指针（nullable）。
+func toBizConversationState(state *aiv1.ConversationState) *biz.ConversationState {
+	if state == nil {
+		return nil
+	}
+	return &biz.ConversationState{
+		Phase:           state.GetPhase(),
+		CollectedParams: state.GetCollectedParams(),
+	}
 }
 
 // GetGreeting 调用 AI Gateway 的 GetGreeting RPC

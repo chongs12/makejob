@@ -24,6 +24,7 @@ message CompanionChatRequest {
   repeated CompanionChatMessage messages = 4;
   string live2d_model_key = 5;
   CompanionChatContext context = 6;
+  string conversation_state_json = 7; // JSON-serialized ConversationState from previous turn
 }
 
 message CompanionChatMessage {
@@ -56,6 +57,10 @@ message CompanionChatResponse {
   int32 audio_sample_rate = 10;
   Live2DDirective live2d_directive = 11;
   repeated SuggestedAction suggested_actions = 12;
+  repeated InlineTrigger inline_triggers = 13;
+  IntentInfo intent = 14;
+  PendingAction pending_action = 15;
+  ConversationState conversation_state = 16;
 }
 
 // SuggestedAction 结构化引导动作，供前端渲染跳转 chip。
@@ -63,6 +68,35 @@ message SuggestedAction {
   string type = 1;    // practice | interview | adjust_plan | chat
   string target = 2;  // 题集编码 / 面试类型 / 空
   string params = 3;  // 额外参数 JSON 字符串
+}
+
+// InlineTrigger 字幕行内可点击关键词。
+message InlineTrigger {
+  string keyword = 1;
+  string action_type = 2;
+  string target = 3;
+  string position_hint = 4;
+}
+
+// IntentInfo LLM 意图识别结果。
+message IntentInfo {
+  string type = 1;
+  double confidence = 2;
+  string stage = 3;
+}
+
+// PendingAction 待执行动作。
+message PendingAction {
+  string type = 1;
+  bool ready = 2;
+  map<string, string> params = 3;
+  repeated string missing_info = 4;
+}
+
+// ConversationState 多轮对话状态。
+message ConversationState {
+  string phase = 1;
+  map<string, string> collected_params = 2;
 }
 
 message Live2DDirective {

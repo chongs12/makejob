@@ -289,14 +289,49 @@ type SuggestedActionItem struct {
 	Params string `json:"params"`
 }
 
+// InlineTriggerItem 表示回复文本中的可点击关键词及其关联动作（字幕行内关键词）。
+type InlineTriggerItem struct {
+	Keyword      string `json:"keyword"`       // 在 reply 中出现的可点击关键词
+	ActionType   string `json:"action_type"`   // practice | interview | adjust_plan
+	Target       string `json:"target"`        // 导航目标标识（题集编码等）
+	PositionHint string `json:"position_hint"` // 关键词在 reply 中的位置提示（head|middle|tail），供前端定位
+}
+
+// IntentInfo LLM 意图识别结果，驱动多轮对话状态。
+type IntentInfo struct {
+	Type       string  `json:"type"`       // practice | adjust_plan | interview | chat
+	Confidence float64 `json:"confidence"` // 0-1
+	Stage      string  `json:"stage"`      // collecting_info | ready_to_execute | none
+}
+
+// PendingAction 当 LLM 判定信息收集完毕时可自动触发的待执行动作。
+type PendingAction struct {
+	Type        string            `json:"type"`         // adjust_plan | practice 等
+	Ready       bool              `json:"ready"`        // 是否已收集完信息，前端可自动触发
+	Params      map[string]string `json:"params"`       // 已收集的参数
+	MissingInfo []string          `json:"missing_info"` // 还缺哪些信息（ready=false 时）
+}
+
+// ConversationState 多轮对话状态跟踪，跨轮次传入模板保持上下文。
+type ConversationState struct {
+	Phase           string            `json:"phase"`            // greeting | collecting | ready | executing
+	CollectedParams map[string]string `json:"collected_params"` // 已收集的参数（如 goal, time, direction）
+}
+
 // CompanionPayload 陪伴聊天结构化输出合同解析结果。
 type CompanionPayload struct {
-	Reply            string                `json:"reply"`
-	SuggestedActions []SuggestedActionItem `json:"suggested_actions"`
+	Reply             string                `json:"reply"`
+	SuggestedActions  []SuggestedActionItem `json:"suggested_actions"`
+	InlineTriggers    []InlineTriggerItem   `json:"inline_triggers,omitempty"`
+	Intent            *IntentInfo           `json:"intent,omitempty"`
+	PendingAction     *PendingAction        `json:"pending_action,omitempty"`
+	ConversationState *ConversationState    `json:"conversation_state,omitempty"`
 }
 
 // companionResultSchema 陪伴聊天结构化输出合同。
 // reply 保持陪伴口吻；suggested_actions 由 LLM 基于上下文里的题集/弱项产出引导动作。
+// inline_triggers / intent / pending_action / conversation_state 为选填字段，
+// LLM 根据对话阶段按需产出。
 func companionResultSchema() string {
 	return `{
   "reply": "给用户的自然语言回复，保持陪伴口吻",
@@ -305,7 +340,13 @@ func companionResultSchema() string {
     {"type": "interview", "target": "", "params": ""},
     {"type": "adjust_plan", "target": "", "params": ""},
     {"type": "chat", "target": "", "params": "可让用户直接发送的追问"}
-  ]
+  ],
+  "inline_triggers": [
+    {"keyword": "回复文本中出现的关键词", "action_type": "practice", "target": "题集编码", "position_hint": "head|middle|tail"}
+  ],
+  "intent": {"type": "practice|adjust_plan|interview|chat", "confidence": 0.9, "stage": "collecting_info|ready_to_execute|none"},
+  "pending_action": {"type": "adjust_plan|practice", "ready": false, "params": {}, "missing_info": ["还缺的信息"]},
+  "conversation_state": {"phase": "greeting|collecting|ready|executing", "collected_params": {"goal": "目标值"}}
 }`
 }
 

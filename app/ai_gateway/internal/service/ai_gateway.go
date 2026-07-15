@@ -323,6 +323,7 @@ func (s *AIGatewayService) CompanionAgent(ctx context.Context, req *aiv1.Compani
 		req.ContextType,
 		req.GetUsername(),
 		req.RecentTopics,
+		req.GetConversationStateJson(),
 	)
 	if err != nil {
 		return nil, err
@@ -335,12 +336,16 @@ func (s *AIGatewayService) CompanionAgent(ctx context.Context, req *aiv1.Compani
 	}
 
 	return &aiv1.CompanionAgentResponse{
-		Reply:            result.Reply,
-		Emotion:          result.Emotion,
-		Suggestions:      result.Suggestions,
-		Action:           result.Action,
-		SuggestedActions: toProtoSuggestedActions(result.SuggestedActions),
-		Live2DDirective:  live2dDirective,
+		Reply:             result.Reply,
+		Emotion:           result.Emotion,
+		Suggestions:       result.Suggestions,
+		Action:            result.Action,
+		SuggestedActions:  toProtoSuggestedActions(result.SuggestedActions),
+		Live2DDirective:   live2dDirective,
+		InlineTriggers:    toProtoInlineTriggers(result.InlineTriggers),
+		Intent:            toProtoIntentInfo(result.Intent),
+		PendingAction:     toProtoPendingAction(result.PendingAction),
+		ConversationState: toProtoConversationState(result.ConversationState),
 	}, nil
 }
 
@@ -358,6 +363,59 @@ func toProtoSuggestedActions(actions []biz.SuggestedActionItem) []*aiv1.Suggeste
 		})
 	}
 	return protos
+}
+
+// toProtoInlineTriggers 将 biz InlineTriggerItem 列表转换为 proto InlineTrigger 列表。
+func toProtoInlineTriggers(items []biz.InlineTriggerItem) []*aiv1.InlineTrigger {
+	if len(items) == 0 {
+		return nil
+	}
+	protos := make([]*aiv1.InlineTrigger, 0, len(items))
+	for _, it := range items {
+		protos = append(protos, &aiv1.InlineTrigger{
+			Keyword:      it.Keyword,
+			ActionType:   it.ActionType,
+			Target:       it.Target,
+			PositionHint: it.PositionHint,
+		})
+	}
+	return protos
+}
+
+// toProtoIntentInfo 将 biz IntentInfo 指针转换为 proto IntentInfo（nullable）。
+func toProtoIntentInfo(info *biz.IntentInfo) *aiv1.IntentInfo {
+	if info == nil {
+		return nil
+	}
+	return &aiv1.IntentInfo{
+		Type:       info.Type,
+		Confidence: info.Confidence,
+		Stage:      info.Stage,
+	}
+}
+
+// toProtoPendingAction 将 biz PendingAction 指针转换为 proto PendingAction（nullable）。
+func toProtoPendingAction(action *biz.PendingAction) *aiv1.PendingAction {
+	if action == nil {
+		return nil
+	}
+	return &aiv1.PendingAction{
+		Type:        action.Type,
+		Ready:       action.Ready,
+		Params:      action.Params,
+		MissingInfo: action.MissingInfo,
+	}
+}
+
+// toProtoConversationState 将 biz ConversationState 指针转换为 proto ConversationState（nullable）。
+func toProtoConversationState(state *biz.ConversationState) *aiv1.ConversationState {
+	if state == nil {
+		return nil
+	}
+	return &aiv1.ConversationState{
+		Phase:           state.Phase,
+		CollectedParams: state.CollectedParams,
+	}
 }
 
 // GetGreeting 本地欢迎语 handler（对齐单体 CompanionAgent.GetGreeting）

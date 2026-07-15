@@ -35,19 +35,23 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 	// 构建富上下文消息：将 plan/goal 信息注入到 message 中供 AI 参考
 	message := buildEnrichedMessage(req)
 
-	result, err := s.uc.Chat(ctx, userID, message, req.GetContextType(), req.GetLive2DModelKey())
+	result, err := s.uc.Chat(ctx, userID, message, req.GetContextType(), req.GetLive2DModelKey(), req.GetConversationStateJson())
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
 	return &companionv1.CompanionChatResponse{
-		Reply:            result.Reply,
-		Emotion:          result.Emotion,
-		Action:           result.Action,
-		Suggestions:      result.Suggestions,
-		SuggestedActions: toProtoCompanionSuggestedActions(result.SuggestedActions),
-		AudioUrl:         result.AudioURL,
-		Live2DDirective:  toProtoLive2DDirective(result.Live2DDirective),
+		Reply:             result.Reply,
+		Emotion:           result.Emotion,
+		Action:            result.Action,
+		Suggestions:       result.Suggestions,
+		SuggestedActions:  toProtoCompanionSuggestedActions(result.SuggestedActions),
+		AudioUrl:          result.AudioURL,
+		Live2DDirective:   toProtoLive2DDirective(result.Live2DDirective),
+		InlineTriggers:    toProtoCompanionInlineTriggers(result.InlineTriggers),
+		Intent:            toProtoCompanionIntentInfo(result.Intent),
+		PendingAction:     toProtoCompanionPendingAction(result.PendingAction),
+		ConversationState: toProtoCompanionConversationState(result.ConversationState),
 	}, nil
 }
 
@@ -65,6 +69,59 @@ func toProtoCompanionSuggestedActions(actions []biz.SuggestedAction) []*companio
 		})
 	}
 	return protos
+}
+
+// toProtoCompanionInlineTriggers 将 biz InlineTriggerItem 列表转换为 proto InlineTrigger 列表。
+func toProtoCompanionInlineTriggers(items []biz.InlineTriggerItem) []*companionv1.InlineTrigger {
+	if len(items) == 0 {
+		return nil
+	}
+	protos := make([]*companionv1.InlineTrigger, 0, len(items))
+	for _, it := range items {
+		protos = append(protos, &companionv1.InlineTrigger{
+			Keyword:      it.Keyword,
+			ActionType:   it.ActionType,
+			Target:       it.Target,
+			PositionHint: it.PositionHint,
+		})
+	}
+	return protos
+}
+
+// toProtoCompanionIntentInfo 将 biz IntentInfo 指针转换为 proto IntentInfo（nullable）。
+func toProtoCompanionIntentInfo(info *biz.IntentInfo) *companionv1.IntentInfo {
+	if info == nil {
+		return nil
+	}
+	return &companionv1.IntentInfo{
+		Type:       info.Type,
+		Confidence: info.Confidence,
+		Stage:      info.Stage,
+	}
+}
+
+// toProtoCompanionPendingAction 将 biz PendingAction 指针转换为 proto PendingAction（nullable）。
+func toProtoCompanionPendingAction(action *biz.PendingAction) *companionv1.PendingAction {
+	if action == nil {
+		return nil
+	}
+	return &companionv1.PendingAction{
+		Type:        action.Type,
+		Ready:       action.Ready,
+		Params:      action.Params,
+		MissingInfo: action.MissingInfo,
+	}
+}
+
+// toProtoCompanionConversationState 将 biz ConversationState 指针转换为 proto ConversationState（nullable）。
+func toProtoCompanionConversationState(state *biz.ConversationState) *companionv1.ConversationState {
+	if state == nil {
+		return nil
+	}
+	return &companionv1.ConversationState{
+		Phase:           state.Phase,
+		CollectedParams: state.CollectedParams,
+	}
 }
 
 // buildEnrichedMessage 将前端传入的 messages 数组和 context 对象合并为单个富文本消息。

@@ -142,7 +142,6 @@ const PrototypeUIPageRoute = createLazyRouteComponent(async () => ({ default: (a
 const InterviewSessionPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewSessionPage')).InterviewSessionPage }))
 const InterviewReportPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewReportPage')).InterviewReportPage }))
 const CompanionHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionHubPage')).CompanionHubPage }))
-const CompanionWorkspacePageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionWorkspacePage')).CompanionWorkspacePage }))
 const GrowthPageRoute = createLazyRouteComponent(() => import('./features/growth/GrowthPage'))
 
 /**
@@ -923,7 +922,7 @@ const companionRoomRoute = createRoute({
       })
     }
   },
-  component: CompanionWorkspacePageRoute,
+  component: PrototypeUIPageRoute,
 })
 
 const growthRoute = createRoute({

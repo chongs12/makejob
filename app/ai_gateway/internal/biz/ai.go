@@ -407,16 +407,20 @@ func NewCompanionAgentUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // CompanionResult 陪伴聊天返回结果
 type CompanionResult struct {
-	Reply            string                 `json:"reply"`
-	Emotion          string                 `json:"emotion"`
-	Suggestions      []string               `json:"suggestions"`
-	Action           string                 `json:"action"`
-	SuggestedActions []SuggestedActionItem  `json:"suggested_actions,omitempty"`
-	Live2DDirective  *Live2DDirectiveResult `json:"live2d_directive,omitempty"`
+	Reply             string                 `json:"reply"`
+	Emotion           string                 `json:"emotion"`
+	Suggestions       []string               `json:"suggestions"`
+	Action            string                 `json:"action"`
+	SuggestedActions  []SuggestedActionItem  `json:"suggested_actions,omitempty"`
+	Live2DDirective   *Live2DDirectiveResult `json:"live2d_directive,omitempty"`
+	InlineTriggers    []InlineTriggerItem    `json:"inline_triggers,omitempty"`
+	Intent            *IntentInfo            `json:"intent,omitempty"`
+	PendingAction     *PendingAction         `json:"pending_action,omitempty"`
+	ConversationState *ConversationState     `json:"conversation_state,omitempty"`
 }
 
-// Chat 生成陪伴聊天回复
-func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextType, username string, recentTopics []string) (*CompanionResult, error) {
+// Chat 生成陪伴聊天回复。conversationStateJSON 为上一轮对话状态的 JSON 序列化，首次对话传空串。
+func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextType, username string, recentTopics []string, conversationStateJSON string) (*CompanionResult, error) {
 	const scene = "companion_agent"
 	start := time.Now()
 
@@ -430,8 +434,8 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrPromptRenderFailed
 	}
 
-	// 渲染对话式 Prompt，再追加 JSON 合同，让 LLM 返回结构化回复（含 suggested_actions）。
-	promptText := renderCompanionPrompt(tpl.TemplateContent, userMessage, contextType, username, recentTopics)
+	// 渲染对话式 Prompt，再追加 JSON 合同，让 LLM 返回结构化回复（含 suggested_actions / inline_triggers / intent / pending_action / conversation_state）。
+	promptText := renderCompanionPrompt(tpl.TemplateContent, userMessage, contextType, username, recentTopics, conversationStateJSON)
 	schema := companionResultSchema()
 	contractPrompt := buildJSONContractPrompt(promptText, schema)
 
@@ -454,12 +458,20 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		if actions == nil {
 			actions = []SuggestedActionItem{}
 		}
+		inlineTriggers := payload.InlineTriggers
+		if inlineTriggers == nil {
+			inlineTriggers = []InlineTriggerItem{}
+		}
 		return &CompanionResult{
-			Reply:            strings.TrimSpace(payload.Reply),
-			Emotion:          emotion,
-			Suggestions:      []string{},
-			Action:           companionActionForEmotion(emotion),
-			SuggestedActions: actions,
+			Reply:             strings.TrimSpace(payload.Reply),
+			Emotion:           emotion,
+			Suggestions:       []string{},
+			Action:            companionActionForEmotion(emotion),
+			SuggestedActions:  actions,
+			InlineTriggers:    inlineTriggers,
+			Intent:            payload.Intent,
+			PendingAction:     payload.PendingAction,
+			ConversationState: payload.ConversationState,
 		}, nil
 	}
 
@@ -469,16 +481,18 @@ func (uc *CompanionAgentUseCase) Chat(ctx context.Context, userMessage, contextT
 		return nil, ErrParseFailed
 	}
 	return &CompanionResult{
-		Reply:            reply,
-		Emotion:          emotion,
-		Suggestions:      []string{},
-		Action:           companionActionForEmotion(emotion),
-		SuggestedActions: []SuggestedActionItem{},
+		Reply:             reply,
+		Emotion:           emotion,
+		Suggestions:       []string{},
+		Action:            companionActionForEmotion(emotion),
+		SuggestedActions:  []SuggestedActionItem{},
+		InlineTriggers:    []InlineTriggerItem{},
+		ConversationState: nil,
 	}, nil
 }
 
 // renderCompanionPrompt 渲染陪伴场景 Prompt 模板（对齐单体 renderPrompt）
-func renderCompanionPrompt(template, userMessage, contextType, username string, recentTopics []string) string {
+func renderCompanionPrompt(template, userMessage, contextType, username string, recentTopics []string, conversationStateJSON string) string {
 	rendered := strings.TrimSpace(template)
 	if rendered == "" {
 		return ""
@@ -486,10 +500,11 @@ func renderCompanionPrompt(template, userMessage, contextType, username string, 
 
 	// 对齐单体变量名
 	vars := map[string]string{
-		"user_emotion":        contextType,
-		"latest_user_message": userMessage,
-		"recent_topics":       joinStrings(recentTopics),
-		"username":            username,
+		"user_emotion":            contextType,
+		"latest_user_message":     userMessage,
+		"recent_topics":           joinStrings(recentTopics),
+		"username":                username,
+		"conversation_state_json": conversationStateJSON,
 	}
 
 	for key, value := range vars {

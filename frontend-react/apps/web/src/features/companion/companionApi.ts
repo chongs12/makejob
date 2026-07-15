@@ -3,6 +3,7 @@ import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import type {
   CompanionCategoryNode,
   CompanionChatReply,
+  CompanionAdjustmentPreview,
   CompanionDailyDigest,
   CompanionGeneratePlanPayload,
   CompanionHistoryItem,
@@ -13,9 +14,23 @@ import type {
   CompanionSelectableLive2DModel,
   CompanionStudyLogPayload,
   CompanionTaskStatus,
+  ConversationState,
 } from './companionTypes'
 
 const MAX_CHAT_HISTORY = 12
+
+/**
+ * 规范化计划调整预览响应，确保数组字段在后端省略时仍返回空数组，避免前端渲染阶段取 length 报错。
+ */
+function normalizeCompanionAdjustmentPreview(preview: CompanionAdjustmentPreview): CompanionAdjustmentPreview {
+  return {
+    ...preview,
+    add: Array.isArray(preview.add) ? preview.add : [],
+    remove: Array.isArray(preview.remove) ? preview.remove : [],
+    reorder: Array.isArray(preview.reorder) ? preview.reorder : [],
+    preview_tasks: Array.isArray(preview.preview_tasks) ? preview.preview_tasks : [],
+  }
+}
 
 /**
  * 获取陪伴页当前可切换的 Live2D 模型列表，并保留后端给出的推荐顺序。
@@ -179,6 +194,44 @@ export async function adjustCompanionPlan(token: string, planId: number): Promis
 }
 
 /**
+ * 生成学习计划调整预览，返回待确认的结构化 diff，不直接执行落库。
+ */
+export async function previewCompanionPlanAdjustment(token: string, planId: number, reason = ''): Promise<CompanionAdjustmentPreview> {
+  const response = await requestJson<ApiEnvelope<CompanionAdjustmentPreview>>(`/plans/${planId}/adjust-preview`, {
+    method: 'POST',
+    token,
+    body: {
+      reason,
+    },
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '生成计划调整预览失败')
+  }
+
+  return normalizeCompanionAdjustmentPreview(response.data)
+}
+
+/**
+ * 应用已经确认过的调整预览，并返回最新计划详情。
+ */
+export async function applyCompanionPlanAdjustment(token: string, planId: number, previewToken: string): Promise<CompanionPlanDetail> {
+  const response = await requestJson<ApiEnvelope<CompanionPlanDetail>>(`/plans/${planId}/adjust-apply`, {
+    method: 'POST',
+    token,
+    body: {
+      preview_token: previewToken,
+    },
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '应用计划调整失败')
+  }
+
+  return response.data
+}
+
+/**
  * 将当前对话历史压缩成后端陪伴接口可消费的消息列表，避免单次请求过大。
  */
 function buildChatPayload(history: CompanionHistoryItem[]) {
@@ -240,6 +293,7 @@ export async function sendCompanionChatRequest(
     deriveTodayGoals: (plan: CompanionPlanDetail | null) => CompanionPlanTask[]
     deriveActiveGoals: (plan: CompanionPlanDetail | null) => CompanionPlanTask[]
   },
+  conversationState?: ConversationState | null,
 ): Promise<CompanionChatReply> {
   const response = await requestJson<ApiEnvelope<CompanionChatReply>>('/companion/chat', {
     method: 'POST',
@@ -247,6 +301,7 @@ export async function sendCompanionChatRequest(
     body: {
       messages: buildChatPayload(history),
       live2d_model_key: live2DModelKey,
+      conversation_state_json: conversationState ? JSON.stringify(conversationState) : '',
       context: {
         current_plan_title: plan?.title || '',
         current_plan_progress: plan?.progress || 0,

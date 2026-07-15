@@ -273,6 +273,7 @@ message CompanionAgentRequest {
   string context_type = 3;
   repeated string recent_topics = 4;
   string username = 5;
+  string conversation_state_json = 6; // JSON-serialized ConversationState from previous turn
 }
 
 message CompanionAgentResponse {
@@ -282,6 +283,10 @@ message CompanionAgentResponse {
   string action = 4;
   Live2DDirective live2d_directive = 5;
   repeated SuggestedAction suggested_actions = 6;
+  repeated InlineTrigger inline_triggers = 7;
+  IntentInfo intent = 8;
+  PendingAction pending_action = 9;
+  ConversationState conversation_state = 10;
 }
 
 // SuggestedAction 结构化引导动作，供前端渲染跳转 chip。
@@ -289,6 +294,35 @@ message SuggestedAction {
   string type = 1;    // practice | interview | adjust_plan | chat
   string target = 2;  // 题集编码 / 面试类型 / 空
   string params = 3;  // 额外参数 JSON 字符串
+}
+
+// InlineTrigger 字幕行内可点击关键词，前端据此渲染高亮可点 span。
+message InlineTrigger {
+  string keyword = 1;       // 在 reply 中出现的可点击关键词
+  string action_type = 2;   // practice | interview | adjust_plan
+  string target = 3;        // 导航目标标识（题集编码等）
+  string position_hint = 4; // head | middle | tail
+}
+
+// IntentInfo LLM 意图识别结果。
+message IntentInfo {
+  string type = 1;       // practice | adjust_plan | interview | chat
+  double confidence = 2; // 0-1
+  string stage = 3;      // collecting_info | ready_to_execute | none
+}
+
+// PendingAction 待执行动作，ready=true 时前端自动触发。
+message PendingAction {
+  string type = 1;                    // adjust_plan | practice 等
+  bool ready = 2;                     // 是否可执行
+  map<string, string> params = 3;     // 已收集的参数
+  repeated string missing_info = 4;   // 还缺哪些信息
+}
+
+// ConversationState 多轮对话状态，跨轮次传入保持上下文。
+message ConversationState {
+  string phase = 1;                       // greeting | collecting | ready | executing
+  map<string, string> collected_params = 2; // 已收集参数
 }
 
 // GetGreeting 本地欢迎语请求（对齐单体 CompanionAgent.GetGreeting）

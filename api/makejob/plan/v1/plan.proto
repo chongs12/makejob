@@ -13,6 +13,8 @@ service PlanService {
   rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (UpdateTaskStatusResponse);
   rpc SubmitTaskFeedback(SubmitFeedbackRequest) returns (FeedbackResponse);
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
+  rpc PreviewAdjustPlan(PreviewAdjustPlanRequest) returns (PreviewAdjustPlanResponse);
+  rpc ApplyAdjustPlan(ApplyAdjustPlanRequest) returns (ApplyAdjustPlanResponse);
   rpc GetProgress(GetProgressRequest) returns (PlanProgressResponse);
 }
 
@@ -169,6 +171,70 @@ message AdjustPlanResponse {
   int32 tasks_reordered = 3;
   string adjustment_summary = 4;
   repeated TaskDetail updated_tasks = 5;
+}
+
+message PreviewAdjustPlanRequest {
+  uint64 plan_id = 1;
+  string reason = 2;
+  uint64 user_id = 3;
+}
+
+message PreviewAdjustPlanResponse {
+  string preview_token = 1;
+  int32 tasks_added = 2;
+  int32 tasks_removed = 3;
+  int32 tasks_reordered = 4;
+  string adjustment_summary = 5;
+  repeated AdjustmentPreviewTask add = 6;
+  repeated AdjustmentPreviewRemoval remove = 7;
+  repeated AdjustmentPreviewReorder reorder = 8;
+  repeated AdjustmentPreviewTask preview_tasks = 9;
+}
+
+message ApplyAdjustPlanRequest {
+  uint64 plan_id = 1;
+  string preview_token = 2;
+  uint64 user_id = 3;
+}
+
+message ApplyAdjustPlanResponse {
+  int32 tasks_added = 1;
+  int32 tasks_removed = 2;
+  int32 tasks_reordered = 3;
+  string adjustment_summary = 4;
+  repeated TaskDetail updated_tasks = 5;
+}
+
+message AdjustmentPreviewTask {
+  uint64 task_id = 1;
+  string title = 2;
+  string description = 3;
+  string task_type = 4;
+  string phase = 5;
+  string phase_goal = 6;
+  int32 duration_minutes = 7;
+  string priority = 8;
+  string status = 9;
+  int32 sort_order = 10;
+  string source = 11;
+  string source_label = 12;
+  string reason = 13;
+  bool is_new = 14;
+}
+
+message AdjustmentPreviewRemoval {
+  uint64 task_id = 1;
+  string title = 2;
+  string phase = 3;
+  int32 sort_order = 4;
+}
+
+message AdjustmentPreviewReorder {
+  uint64 task_id = 1;
+  string title = 2;
+  string phase = 3;
+  int32 from_sort_order = 4;
+  int32 to_sort_order = 5;
 }
 
 message GetProgressRequest {

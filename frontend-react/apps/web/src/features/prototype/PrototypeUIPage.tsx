@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect, useMemo, Component, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Spin } from 'antd'
+import { Modal, Spin } from 'antd'
 import {
   SettingOutlined,
   UsergroupAddOutlined,
@@ -27,7 +27,7 @@ import { useAuthStore } from '../../state/auth'
 import { useFrontendIndustriesQuery, usePracticeStatsQuery } from '../../shared/frontendQueries'
 import { DEFAULT_FRONTEND_INDUSTRY_CODE, readSelectedFrontendIndustryCode, resolvePreferredFrontendIndustry, persistSelectedFrontendIndustryCode } from '../../shared/industryContext'
 import { requestLoginPrompt } from '../../shared/loginPrompt'
-import { adjustCompanionPlan, fetchCurrentPlan, fetchCompanionPlanProgress, fetchSelectableCompanionLive2DModels, sendCompanionChatRequest, recognizeSpeech } from '../companion/companionApi'
+import { applyCompanionPlanAdjustment, fetchCurrentPlan, fetchCompanionPlanProgress, fetchSelectableCompanionLive2DModels, previewCompanionPlanAdjustment, sendCompanionChatRequest, recognizeSpeech } from '../companion/companionApi'
 import { buildCompanionCurrentPlanQueryKey, buildCompanionPlanProgressQueryKey, buildCompanionLive2DModelsQueryKey, invalidateCompanionPlanQueries } from '../../shared/queryKeys'
 import { deriveTodayGoals, deriveActiveGoals, resolveFocusedCompanionTask, buildCompanionWorkspaceResumeMessage } from '../companion/companionHelpers'
 import { readCompanionFocusTask, readCompanionDailyDigest, persistCompanionSessionSummary, readSelectedCompanionModelKey, persistSelectedCompanionModelKey } from '../companion/companionStorage'
@@ -35,7 +35,7 @@ import { buildCompanionSessionSummary } from '../companion/companionShared'
 import { useCompanionStudyLogSync } from '../companion/useCompanionStudyLogSync'
 import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
 import { buildPracticeRouteSearch } from '../../shared/practiceRoute'
-import type { CompanionPlanDetail, CompanionPlanTask, CompanionHistoryItem, CompanionChatReply, CompanionDailyDigest, SuggestedAction } from '../companion/companionTypes'
+import type { CompanionPlanDetail, CompanionPlanTask, CompanionHistoryItem, CompanionChatReply, CompanionDailyDigest, CompanionAdjustmentPreview, SuggestedAction, InlineTrigger, PendingAction, ConversationState } from '../companion/companionTypes'
 
 /* ========== Public demo model fallback ========== */
 const DEMO_MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@v0.4.0/test/assets/haru/haru_greeter_t03.model3.json'
@@ -884,10 +884,80 @@ function Footer({ collapsed, onToggle, composer, setComposer, sending, onSend, i
  * 舞台字幕：直接展示 useLive2DDialoguePlayback 推进的当前文本，
  * 与 TTS 音频进度同步，避免独立计时器与音频脱节。
  */
-function TypewriterSubtitle({ text, typing }: { text: string; typing: boolean }) {
+function TypewriterSubtitle({ text, typing, inlineTriggers, onKeywordClick }: {
+  text: string
+  typing: boolean
+  inlineTriggers: InlineTrigger[]
+  onKeywordClick: (trigger: InlineTrigger) => void
+}) {
   if (!text && !typing) {
     return null
   }
+
+  // 将 text 按 inlineTriggers 中的 keyword 拆分为可点击/纯文本片段
+  const segments = useMemo(() => {
+    if (!text || inlineTriggers.length === 0) {
+      return [{ text, isKeyword: false, trigger: null as InlineTrigger | null }]
+    }
+
+    // 收集所有关键词在 text 中的出现位置（大小写不敏感）
+    interface Match {
+      start: number
+      end: number
+      trigger: InlineTrigger
+    }
+    const matches: Match[] = []
+    const lowerText = text.toLowerCase()
+
+    for (const trigger of inlineTriggers) {
+      const keyword = (trigger.keyword || '').trim()
+      if (!keyword) continue
+      const lowerKW = keyword.toLowerCase()
+      let searchFrom = 0
+      while (searchFrom < lowerText.length) {
+        const idx = lowerText.indexOf(lowerKW, searchFrom)
+        if (idx < 0) break
+        matches.push({ start: idx, end: idx + keyword.length, trigger })
+        searchFrom = idx + keyword.length
+      }
+    }
+
+    if (matches.length === 0) {
+      return [{ text, isKeyword: false, trigger: null as InlineTrigger | null }]
+    }
+
+    // 排序，处理重叠：长匹配优先；重叠时跳过短的那个
+    matches.sort((a, b) => a.start - b.start || b.end - a.end)
+
+    const deduped: Match[] = []
+    for (const m of matches) {
+      const last = deduped[deduped.length - 1]
+      if (last && m.start < last.end) {
+        // 重叠 — 保留更长的
+        if (m.end - m.start > last.end - last.start) {
+          deduped[deduped.length - 1] = m
+        }
+        continue
+      }
+      deduped.push(m)
+    }
+
+    // 按 start 排序，构建 segments
+    deduped.sort((a, b) => a.start - b.start)
+    const segs: Array<{ text: string; isKeyword: boolean; trigger: InlineTrigger | null }> = []
+    let cursor = 0
+    for (const m of deduped) {
+      if (m.start > cursor) {
+        segs.push({ text: text.slice(cursor, m.start), isKeyword: false, trigger: null })
+      }
+      segs.push({ text: text.slice(m.start, m.end), isKeyword: true, trigger: m.trigger })
+      cursor = m.end
+    }
+    if (cursor < text.length) {
+      segs.push({ text: text.slice(cursor), isKeyword: false, trigger: null })
+    }
+    return segs
+  }, [text, inlineTriggers])
 
   return (
     <div style={{
@@ -907,7 +977,25 @@ function TypewriterSubtitle({ text, typing }: { text: string; typing: boolean })
           {typing && <span style={{ fontSize: 11, color: '#9ca3af' }}>输入中...</span>}
         </div>
         <p style={{ margin: 0, fontSize: 15, color: '#fff', lineHeight: 1.6, minHeight: 24 }}>
-          {text}
+          {segments.map((seg, i) =>
+            seg.isKeyword && seg.trigger ? (
+              <span
+                key={`kw-${i}`}
+                onClick={() => onKeywordClick(seg.trigger!)}
+                title={`点击前往「${seg.trigger.keyword}」相关练习`}
+                style={{
+                  color: '#60a5fa', cursor: 'pointer', textDecoration: 'underline',
+                  textUnderlineOffset: 3, fontWeight: 600, transition: 'color 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#93c5fd' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#60a5fa' }}
+              >
+                {seg.text}
+              </span>
+            ) : (
+              <span key={`t-${i}`}>{seg.text}</span>
+            )
+          )}
           {typing && <span style={{ opacity: 0.5 }}>|</span>}
         </p>
       </div>
@@ -940,13 +1028,21 @@ export function PrototypeUIPage() {
   const [composer, setComposer] = useState('')
   const [sending, setSending] = useState(false)
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([])
-  const [adjustingPlan, setAdjustingPlan] = useState(false)
+  const [adjustPreview, setAdjustPreview] = useState<CompanionAdjustmentPreview | null>(null)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [applyingAdjustPreview, setApplyingAdjustPreview] = useState(false)
   const [planActionMessage, setPlanActionMessage] = useState('')
   const [dailyDigest] = useState<CompanionDailyDigest | null>(() => readCompanionDailyDigest())
   const hasInjectedResumeMessageRef = useRef(false)
   const [selectedModelKey, setSelectedModelKey] = useState(() => readSelectedCompanionModelKey(selectedIndustryCode))
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
+
+  // 多轮对话状态机 + 字幕行内关键词
+  const [conversationState, setConversationState] = useState<ConversationState | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [inlineTriggers, setInlineTriggers] = useState<InlineTrigger[]>([])
 
   // 统一管理 TTS 播放、字幕打字与嘴型同步，复用 companion/room 同一套播放链路。
   const {
@@ -1038,6 +1134,7 @@ export function PrototypeUIPage() {
     () => [...history].reverse().find((item) => item.role === 'assistant')?.live2dDirective || null,
     [history],
   )
+  const adjustingPlan = previewLoading || applyingAdjustPreview
 
   // 每日执行摘要与学习日志同步：房内 digest 为只读快照，更新交由主站刷题页回写。
   useCompanionStudyLogSync(accessToken, currentPlanQuery.data || null, dailyDigest, focusedTask)
@@ -1065,19 +1162,40 @@ export function PrototypeUIPage() {
     }
   }, [history, currentPlanQuery.data])
 
+  // 当 pendingAction.ready 变为 true 时自动触发对应动作。
+  // 仅 adjust_plan 自动触发（handleAdjustPlan 会弹出预览 Modal 让用户确认）；
+  // practice / interview 必须由用户主动点击关键词或 chip 触发，不能静默跳转。
+  useEffect(() => {
+    if (!pendingAction?.ready) return
+    if (pendingAction.type === 'adjust_plan') {
+      void handleAdjustPlan()
+    }
+    // 无论什么类型，执行一次后立即清除，防止重复触发
+    setPendingAction(null)
+  }, [pendingAction])
+
   // 应用结构化引导动作：按 type 跳转刷题/面试页，或触发计划调整，或填入输入框。
   function handleApplyAction(action: SuggestedAction) {
     switch (action.type) {
-      case 'practice':
-        navigate({
-          to: '/practice',
-          search: buildPracticeRouteSearch({
-            questionSetSlug: action.target || '',
-            source: 'companion_suggested_action',
-            title: action.target || '',
-          }),
-        })
+      case 'practice': {
+        const target = (action.target || '').trim()
+        if (target) {
+          // 有明确 target 时带参数跳转（如关键词），但 target 可能是不存在的题单名，
+          // 题库页会自行降级展示
+          navigate({
+            to: '/practice',
+            search: buildPracticeRouteSearch({
+              keyword: target,
+              source: 'companion_suggested_action',
+              title: target,
+            }),
+          })
+        } else {
+          // target 为空时直接去题库首页，用户可以浏览所有可用题单
+          navigate({ to: '/practice' })
+        }
         return
+      }
       case 'interview':
         navigate({ to: '/interview' })
         return
@@ -1088,6 +1206,30 @@ export function PrototypeUIPage() {
       default:
         setComposer(action.params || action.target || '')
     }
+  }
+
+  // 字幕关键词点击：弹出确认弹窗，确认后跳转刷题页
+  function handleKeywordClick(trigger: InlineTrigger) {
+    const keyword = trigger.keyword || ''
+    const target = (trigger.target || '').trim()
+    Modal.confirm({
+      title: '确认前往刷题',
+      icon: null,
+      content: `确定要前往「${keyword}」相关的练习页面吗？`,
+      okText: '去刷题',
+      cancelText: '再想想',
+      onOk: () => {
+        // 用 keyword 作为搜索关键词，不依赖可能不存在的题单 target
+        navigate({
+          to: '/practice',
+          search: buildPracticeRouteSearch({
+            keyword: keyword || target,
+            source: 'companion_inline_trigger',
+            title: keyword,
+          }),
+        })
+      },
+    })
   }
 
   // 真实聊天发送：组装用户消息，调用陪伴 API，追加助手回复
@@ -1110,6 +1252,8 @@ export function PrototypeUIPage() {
     setHistory((prev) => [...prev, userMessage])
     setComposer('')
     setSuggestedActions([])
+    setInlineTriggers([])
+    setPendingAction(null)
     setSending(true)
 
     try {
@@ -1121,6 +1265,7 @@ export function PrototypeUIPage() {
         dailyDigest,
         selectedModelKey,
         { deriveTodayGoals, deriveActiveGoals },
+        conversationState,
       )
 
       const assistantMessage: CompanionHistoryItem = {
@@ -1135,6 +1280,9 @@ export function PrototypeUIPage() {
 
       setHistory((prev) => [...prev, assistantMessage])
       setSuggestedActions(reply.suggested_actions || [])
+      setInlineTriggers(reply.inline_triggers || [])
+      setConversationState(reply.conversation_state || null)
+      setPendingAction(reply.pending_action || null)
 
       // 有 TTS 音频则播放并驱动嘴型/字幕；否则回退到纯打字机字幕。
       if (reply.audio_url) {
@@ -1157,7 +1305,7 @@ export function PrototypeUIPage() {
   }
 
   /**
-   * 触发后端重新调整当前学习计划，作为"计划-执行模式"的人机交互入口。
+   * 先生成计划调整预览，再由用户确认是否应用，避免一键落库后难以感知差异。
    */
   async function handleAdjustPlan() {
     if (!accessToken) {
@@ -1175,16 +1323,48 @@ export function PrototypeUIPage() {
       return
     }
 
-    setAdjustingPlan(true)
-    setPlanActionMessage('陪伴助手正在重新整理你的计划节奏...')
+    setAdjustPreview(null)
+    setPreviewModalOpen(false)
+    setPreviewLoading(true)
+    setPlanActionMessage('陪伴助手正在生成调整预览...')
     try {
-      await adjustCompanionPlan(accessToken, planId)
-      await invalidateCompanionPlanQueries(queryClient)
-      setPlanActionMessage('计划已重新调整。')
+      const preview = await previewCompanionPlanAdjustment(accessToken, planId)
+      setAdjustPreview(preview)
+      setPreviewModalOpen(true)
+      setPlanActionMessage(preview.adjustment_summary || '已生成调整预览，请确认后应用。')
     } catch (error) {
       setPlanActionMessage(`调整失败：${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
-      setAdjustingPlan(false)
+      setPreviewLoading(false)
+    }
+  }
+
+  /**
+   * 应用已经确认过的计划调整预览，成功后刷新当前计划详情。
+   */
+  async function handleApplyAdjustPreview() {
+    if (!accessToken || !adjustPreview) {
+      return
+    }
+
+    const planId = currentPlanQuery.data?.id
+    if (!planId) {
+      setPlanActionMessage('当前没有可应用的学习计划。')
+      return
+    }
+
+    setApplyingAdjustPreview(true)
+    setPlanActionMessage('正在应用计划调整...')
+    try {
+      await applyCompanionPlanAdjustment(accessToken, planId, adjustPreview.preview_token)
+      await invalidateCompanionPlanQueries(queryClient)
+      setPreviewModalOpen(false)
+      setAdjustPreview(null)
+      setPlanActionMessage('计划已重新调整。')
+    } catch (error) {
+      setPlanActionMessage(`应用调整失败：${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setApplyingAdjustPreview(false)
     }
   }
 
@@ -1273,110 +1453,209 @@ export function PrototypeUIPage() {
   }
 
   return (
-    <div style={{
-      width: '100vw', height: '100vh', overflow: 'hidden',
-      background: C.gray900, color: '#fff', display: 'flex', flexDirection: 'row',
-    }}>
-      <SectionErrorBoundary
-        title="侧栏区域加载失败"
-        description="计划进度、目标或对话记录在渲染时出现异常。你可以重试当前区域，右侧舞台仍可继续使用。"
-        resetKeys={[currentPlanQuery.data?.id, history.length, focusedTask?.id, accessToken]}
-      >
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        plan={currentPlanQuery.data || null}
-        planStats={planStats ? {
-          completed_tasks: planStats.completed_tasks,
-          total_tasks: planStats.total_tasks,
-          progress: planStats.progress,
-        } : null}
-        focusedTask={focusedTask}
-        accessToken={accessToken}
-        todayGoals={todayGoals}
-        activeGoals={activeGoals}
-        currentPlanQuery={currentPlanQuery}
-        modelOptions={modelOptions}
-        selectedModelKey={selectedModelKey}
-        setSelectedModelKey={setSelectedModelKey}
-        modelOptionsQuery={modelOptionsQuery}
-        history={history}
-        onAdjustPlan={() => void handleAdjustPlan()}
-        adjustingPlan={adjustingPlan}
-        planActionMessage={planActionMessage}
-      />
-      </SectionErrorBoundary>
-
+    <>
       <div style={{
-        flex: 1, height: '100%', position: 'relative',
-        display: 'flex', flexDirection: 'column',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden',
+        width: '100vw', height: '100vh', overflow: 'hidden',
+        background: C.gray900, color: '#fff', display: 'flex', flexDirection: 'row',
       }}>
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          <ErrorBoundary>
-            <SimpleLive2DCanvas
-              modelUrl={currentModel?.model_url || DEMO_MODEL_URL}
-              backgroundImageUrl={currentModel ? resolveSelectableLive2DBackgroundImageUrl(currentModel) : undefined}
-              mouthOpen={mouthOpen}
-              motions={currentModel?.motions || []}
-              directive={latestDirective}
-            />
-          </ErrorBoundary>
-
-          {/* Back button */}
-          <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
-            <Link
-              to="/companion"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '8px 16px', borderRadius: 20, fontSize: 14, fontWeight: 500,
-                color: '#fff', background: 'rgba(0,0,0,0.4)',
-                backdropFilter: 'blur(8px)', textDecoration: 'none',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)' }}
-            >
-              <ArrowLeftOutlined /> 返回陪伴入口
-            </Link>
-          </div>
-
-          {/* Stats badge */}
-          <div style={{ position: 'absolute', top: 20, left: 180, zIndex: 10 }}>
-            <div style={{
-              padding: '8px 16px', borderRadius: 20, fontSize: 13, fontWeight: 500,
-              color: '#fff', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
-              display: 'flex', alignItems: 'center', gap: 12,
-            }}>
-              <span>🔥 连续 {practiceStatsQuery.data?.streak_days ?? 0} 天</span>
-              <span>📊 进度 {Math.round(currentPlanQuery.data?.progress ?? 0)}%</span>
-            </div>
-          </div>
-
-          {/* Dialogue subtitle — text advanced by useLive2DDialoguePlayback, synced with TTS audio */}
-          <TypewriterSubtitle text={liveDialogue} typing={isDialogueTyping} />
-        </div>
+        <SectionErrorBoundary
+          title="侧栏区域加载失败"
+          description="计划进度、目标或对话记录在渲染时出现异常。你可以重试当前区域，右侧舞台仍可继续使用。"
+          resetKeys={[currentPlanQuery.data?.id, history.length, focusedTask?.id, accessToken]}
+        >
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          plan={currentPlanQuery.data || null}
+          planStats={planStats ? {
+            completed_tasks: planStats.completed_tasks,
+            total_tasks: planStats.total_tasks,
+            progress: planStats.progress,
+          } : null}
+          focusedTask={focusedTask}
+          accessToken={accessToken}
+          todayGoals={todayGoals}
+          activeGoals={activeGoals}
+          currentPlanQuery={currentPlanQuery}
+          modelOptions={modelOptions}
+          selectedModelKey={selectedModelKey}
+          setSelectedModelKey={setSelectedModelKey}
+          modelOptionsQuery={modelOptionsQuery}
+          history={history}
+          onAdjustPlan={() => void handleAdjustPlan()}
+          adjustingPlan={adjustingPlan}
+          planActionMessage={planActionMessage}
+        />
+        </SectionErrorBoundary>
 
         <div style={{
-          width: '100%', height: footerCollapsed ? 24 : (suggestedActions.length > 0 ? 168 : 135),
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          willChange: 'transform', position: 'relative', zIndex: 1,
+          flex: 1, height: '100%', position: 'relative',
+          display: 'flex', flexDirection: 'column',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden',
         }}>
-          <Footer
-            collapsed={footerCollapsed}
-            onToggle={() => setFooterCollapsed(!footerCollapsed)}
-            composer={composer}
-            setComposer={setComposer}
-            sending={sending}
-            onSend={handleSend}
-            isRecording={isRecording}
-            isRecognizing={isRecognizing}
-            onToggleRecording={() => void handleToggleRecording()}
-            suggestedActions={suggestedActions}
-            onApplyAction={handleApplyAction}
-          />
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <ErrorBoundary>
+              {/* 等待模型列表查询落定后再挂载 canvas，避免先用兜底 DEMO 模型渲染 -> 查询返回后切换 -> 用户看到闪烁 */}
+              {modelOptionsQuery.isLoading ? (
+                <div style={{
+                  position: 'absolute', inset: 0, zIndex: 1,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+                  background: 'radial-gradient(ellipse at 50% 60%, #1e3a5f 0%, #0f1b2d 70%)',
+                }}>
+                  <Spin size="large" />
+                  <p style={{ color: C.white500, fontSize: 14, margin: 0 }}>正在加载模型列表...</p>
+                </div>
+              ) : (
+                <SimpleLive2DCanvas
+                  modelUrl={currentModel?.model_url || DEMO_MODEL_URL}
+                  backgroundImageUrl={currentModel ? resolveSelectableLive2DBackgroundImageUrl(currentModel) : undefined}
+                  mouthOpen={mouthOpen}
+                  motions={currentModel?.motions || []}
+                  directive={latestDirective}
+                />
+              )}
+            </ErrorBoundary>
+
+            {/* Back button */}
+            <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
+              <Link
+                to="/companion"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 16px', borderRadius: 20, fontSize: 14, fontWeight: 500,
+                  color: '#fff', background: 'rgba(0,0,0,0.4)',
+                  backdropFilter: 'blur(8px)', textDecoration: 'none',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)' }}
+              >
+                <ArrowLeftOutlined /> 返回陪伴入口
+              </Link>
+            </div>
+
+            {/* Stats badge */}
+            <div style={{ position: 'absolute', top: 20, left: 180, zIndex: 10 }}>
+              <div style={{
+                padding: '8px 16px', borderRadius: 20, fontSize: 13, fontWeight: 500,
+                color: '#fff', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <span>🔥 连续 {practiceStatsQuery.data?.streak_days ?? 0} 天</span>
+                <span>📊 进度 {Math.round(currentPlanQuery.data?.progress ?? 0)}%</span>
+              </div>
+            </div>
+
+            {/* Dialogue subtitle — text advanced by useLive2DDialoguePlayback, synced with TTS audio */}
+            <TypewriterSubtitle text={liveDialogue} typing={isDialogueTyping} inlineTriggers={inlineTriggers} onKeywordClick={handleKeywordClick} />
+          </div>
+
+          <div style={{
+            width: '100%', height: footerCollapsed ? 24 : (suggestedActions.length > 0 ? 168 : 135),
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            willChange: 'transform', position: 'relative', zIndex: 1,
+          }}>
+            <Footer
+              collapsed={footerCollapsed}
+              onToggle={() => setFooterCollapsed(!footerCollapsed)}
+              composer={composer}
+              setComposer={setComposer}
+              sending={sending}
+              onSend={handleSend}
+              isRecording={isRecording}
+              isRecognizing={isRecognizing}
+              onToggleRecording={() => void handleToggleRecording()}
+              suggestedActions={suggestedActions}
+              onApplyAction={handleApplyAction}
+            />
+          </div>
         </div>
       </div>
-    </div>
+
+      <Modal
+        open={previewModalOpen}
+        title="计划调整预览"
+        onCancel={() => {
+          if (applyingAdjustPreview) return
+          setPreviewModalOpen(false)
+          setAdjustPreview(null)
+        }}
+        onOk={() => void handleApplyAdjustPreview()}
+        okText="确认应用"
+        cancelText="取消"
+        confirmLoading={applyingAdjustPreview}
+        okButtonProps={{ disabled: !adjustPreview }}
+        width={760}
+        maskClosable={!applyingAdjustPreview}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ padding: 12, borderRadius: 10, background: '#f5f7fb' }}>
+            <div style={{ fontSize: 13, color: '#334155', marginBottom: 8 }}>调整摘要</div>
+            <div style={{ color: '#0f172a', lineHeight: 1.7 }}>{adjustPreview?.adjustment_summary || '暂无预览摘要'}</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+            <div style={{ padding: 12, borderRadius: 10, background: '#ecfeff', color: '#155e75' }}>新增任务 {adjustPreview?.tasks_added ?? 0}</div>
+            <div style={{ padding: 12, borderRadius: 10, background: '#fff7ed', color: '#9a3412' }}>删除任务 {adjustPreview?.tasks_removed ?? 0}</div>
+            <div style={{ padding: 12, borderRadius: 10, background: '#eef2ff', color: '#3730a3' }}>重排任务 {adjustPreview?.tasks_reordered ?? 0}</div>
+          </div>
+
+          {adjustPreview?.add.length ? (
+            <div>
+              <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>新增任务</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {adjustPreview.add.map((task) => (
+                  <div key={`add-${task.title}-${task.sort_order}`} style={{ padding: 12, borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontWeight: 600, color: '#0f172a' }}>{task.sort_order}. {task.title}</div>
+                    <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>阶段：{task.phase || '未分配'} · 时长：{task.duration_minutes || 0} 分钟</div>
+                    {task.reason ? <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{task.reason}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {adjustPreview?.remove.length ? (
+            <div>
+              <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>删除任务</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {adjustPreview.remove.map((task) => (
+                  <div key={`remove-${task.task_id}`} style={{ padding: 12, borderRadius: 10, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412' }}>
+                    {task.sort_order}. {task.title} · {task.phase || '未分配'}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {adjustPreview?.reorder.length ? (
+            <div>
+              <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>重排任务</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {adjustPreview.reorder.map((task) => (
+                  <div key={`reorder-${task.task_id}`} style={{ padding: 12, borderRadius: 10, background: '#eef2ff', border: '1px solid #c7d2fe', color: '#3730a3' }}>
+                    {task.title} · {task.phase || '未分配'} · {task.from_sort_order} → {task.to_sort_order}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {adjustPreview?.preview_tasks.length ? (
+            <div>
+              <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>应用后任务顺序预览</div>
+              <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {adjustPreview.preview_tasks.map((task) => (
+                  <div key={`preview-${task.task_id}-${task.sort_order}-${task.title}`} style={{ padding: 12, borderRadius: 10, background: task.is_new ? '#ecfeff' : '#f8fafc', border: `1px solid ${task.is_new ? '#a5f3fc' : '#e2e8f0'}` }}>
+                    <div style={{ fontWeight: 600, color: '#0f172a' }}>{task.sort_order}. {task.title}</div>
+                    <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>状态：{task.status || 'pending'} · 阶段：{task.phase || '未分配'} · 时长：{task.duration_minutes || 0} 分钟</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+    </>
   )
 }

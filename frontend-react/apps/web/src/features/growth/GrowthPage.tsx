@@ -466,7 +466,7 @@ function TrendSignalsPanel({ signals, mistakeTopicMap, onFollowUp }: {
             </p>
           </div>
 
-          {item.recommended_actions.length > 0 ? (
+          {item.recommended_actions?.length > 0 ? (
             <ul style={{ margin: '0 0 12px', paddingLeft: 18, color: THEME.textSecondary, fontSize: 13, lineHeight: 1.8 }}>
               {item.recommended_actions.map((action) => (
                 <li key={action}>{action}</li>

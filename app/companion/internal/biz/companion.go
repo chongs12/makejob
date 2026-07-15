@@ -89,6 +89,35 @@ type SuggestedAction struct {
 	Params string
 }
 
+// InlineTriggerItem 字幕行内可点击关键词。
+type InlineTriggerItem struct {
+	Keyword      string
+	ActionType   string
+	Target       string
+	PositionHint string
+}
+
+// IntentInfo LLM 意图识别结果。
+type IntentInfo struct {
+	Type       string
+	Confidence float64
+	Stage      string
+}
+
+// PendingAction 待执行动作。
+type PendingAction struct {
+	Type        string
+	Ready       bool
+	Params      map[string]string
+	MissingInfo []string
+}
+
+// ConversationState 多轮对话状态。
+type ConversationState struct {
+	Phase           string
+	CollectedParams map[string]string
+}
+
 // InterviewBrief 面试摘要
 type InterviewBrief struct {
 	ID     uint64
@@ -164,21 +193,26 @@ type ChatMessage struct {
 
 // CompanionAgentRequest AI Gateway CompanionAgent 请求
 type CompanionAgentRequest struct {
-	UserID       uint64
-	Message      string
-	ContextType  string
-	Username     string
-	RecentTopics []string
+	UserID                uint64
+	Message               string
+	ContextType           string
+	Username              string
+	RecentTopics          []string
+	ConversationStateJSON string
 }
 
 // CompanionAgentResponse AI Gateway CompanionAgent 响应
 type CompanionAgentResponse struct {
-	Reply            string
-	Emotion          string
-	Suggestions      []string
-	Action           string
-	SuggestedActions []SuggestedAction
-	Live2DDirective  *Live2DDirectiveResponse
+	Reply             string
+	Emotion           string
+	Suggestions       []string
+	Action            string
+	SuggestedActions  []SuggestedAction
+	Live2DDirective   *Live2DDirectiveResponse
+	InlineTriggers    []InlineTriggerItem
+	Intent            *IntentInfo
+	PendingAction     *PendingAction
+	ConversationState *ConversationState
 }
 
 // Live2DDirectorRequest AI Gateway Live2DDirector 请求
@@ -219,13 +253,17 @@ type ParameterOverride struct {
 
 // ChatResult 完整对话结果
 type ChatResult struct {
-	Reply            string
-	Emotion          string
-	Action           string
-	Suggestions      []string
-	SuggestedActions []SuggestedAction
-	AudioURL         string
-	Live2DDirective  *Live2DDirectiveResponse
+	Reply             string
+	Emotion           string
+	Action            string
+	Suggestions       []string
+	SuggestedActions  []SuggestedAction
+	AudioURL          string
+	Live2DDirective   *Live2DDirectiveResponse
+	InlineTriggers    []InlineTriggerItem
+	Intent            *IntentInfo
+	PendingAction     *PendingAction
+	ConversationState *ConversationState
 }
 
 // TTSAudio 表示语音合成结果，兼容二进制音频和过渡 URL 两种返回形式
@@ -309,8 +347,8 @@ func WithAdminConfigRepo(r AdminConfigRepo) CompanionOption {
 	return func(uc *CompanionUseCase) { uc.adminConfigRepo = r }
 }
 
-// Chat 处理陪伴对话的完整流程
-func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, contextType, live2DModelKey string) (*ChatResult, error) {
+// Chat 处理陪伴对话的完整流程。conversationStateJSON 为上一轮对话状态的 JSON 序列化。
+func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, contextType, live2DModelKey string, conversationStateJSON string) (*ChatResult, error) {
 	// 1. 加载或创建 companion_session
 	session, err := uc.repo.GetSession(ctx, userID)
 	if err != nil {
@@ -338,11 +376,12 @@ func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, co
 
 	// 4. 调用 AI Gateway.CompanionAgent
 	aiResp, err := uc.aiClient.CompanionAgent(ctx, &CompanionAgentRequest{
-		UserID:       userID,
-		Message:      enrichedMessage,
-		ContextType:  contextType,
-		Username:     "", // TODO: 从用户服务获取用户名
-		RecentTopics: recentTopics,
+		UserID:                userID,
+		Message:               enrichedMessage,
+		ContextType:           contextType,
+		Username:              "", // TODO: 从用户服务获取用户名
+		RecentTopics:          recentTopics,
+		ConversationStateJSON: conversationStateJSON,
 	})
 	if err != nil {
 		return nil, kratosErr.InternalServer("COMPANION_AGENT_FAILED", "陪伴对话 AI 调用失败").WithCause(err)
@@ -406,13 +445,17 @@ func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, co
 		suggestions = []string{}
 	}
 	return &ChatResult{
-		Reply:            replyContent,
-		Emotion:          live2dEmotion,
-		Action:           live2dAction,
-		Suggestions:      suggestions,
-		SuggestedActions: aiResp.SuggestedActions,
-		AudioURL:         audioURL,
-		Live2DDirective:  live2dResp,
+		Reply:             replyContent,
+		Emotion:           live2dEmotion,
+		Action:            live2dAction,
+		Suggestions:       suggestions,
+		SuggestedActions:  aiResp.SuggestedActions,
+		AudioURL:          audioURL,
+		Live2DDirective:   live2dResp,
+		InlineTriggers:    aiResp.InlineTriggers,
+		Intent:            aiResp.Intent,
+		PendingAction:     aiResp.PendingAction,
+		ConversationState: aiResp.ConversationState,
 	}, nil
 }
 
