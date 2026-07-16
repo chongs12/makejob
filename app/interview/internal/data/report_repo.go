@@ -32,6 +32,8 @@ func (r *reportRepo) Create(ctx context.Context, report *biz.InterviewReport) er
 	m := &model.InterviewReport{
 		InterviewID:           report.InterviewID,
 		OverallScore:          report.OverallScore,
+		ReportTemplate:        report.ReportTemplate,
+		ReportDataJSON:        report.ReportDataJSON,
 		DimensionScoresJSON:   report.DimensionScoresJSON,
 		StrengthsJSON:         report.StrengthsJSON,
 		WeaknessesJSON:        report.WeaknessesJSON,
@@ -43,6 +45,8 @@ func (r *reportRepo) Create(ctx context.Context, report *biz.InterviewReport) er
 		Columns: []clause.Column{{Name: "interview_id"}},
 		DoUpdates: clause.Assignments(map[string]interface{}{
 			"overall_score":           m.OverallScore,
+			"report_template":         m.ReportTemplate,
+			"report_data_json":        m.ReportDataJSON,
 			"dimension_scores_json":   m.DimensionScoresJSON,
 			"strengths_json":          m.StrengthsJSON,
 			"weaknesses_json":         m.WeaknessesJSON,
@@ -63,6 +67,8 @@ func (r *reportRepo) GetByInterviewID(ctx context.Context, interviewID uint64) (
 		ID:                    m.ID,
 		InterviewID:           m.InterviewID,
 		OverallScore:          m.OverallScore,
+		ReportTemplate:        m.ReportTemplate,
+		ReportDataJSON:        m.ReportDataJSON,
 		DimensionScoresJSON:   m.DimensionScoresJSON,
 		StrengthsJSON:         m.StrengthsJSON,
 		WeaknessesJSON:        m.WeaknessesJSON,

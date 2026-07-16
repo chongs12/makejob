@@ -3279,6 +3279,7 @@ func (gw *Gateway) handleCreateInterview(c *gin.Context) {
 		Difficulty     string   `json:"difficulty"`
 		Topics         []string `json:"topics"`
 		QuestionCount  int32    `json:"question_count"`
+		InterviewType  string   `json:"interview_type"`
 		InterviewMode  string   `json:"interview_mode"`
 		ResumeText     string   `json:"resume_text"`
 		JobDescription string   `json:"job_description"`
@@ -3290,7 +3291,8 @@ func (gw *Gateway) handleCreateInterview(c *gin.Context) {
 	}
 	resp, err := gw.interviewClient.CreateInterview(c.Request.Context(), &interviewv1.CreateInterviewRequest{
 		UserId: userID, IndustryCode: req.IndustryCode, Difficulty: req.Difficulty,
-		Topics: req.Topics, QuestionCount: req.QuestionCount, InterviewMode: req.InterviewMode,
+		Topics: req.Topics, QuestionCount: req.QuestionCount, InterviewType: req.InterviewType,
+		InterviewMode: req.InterviewMode,
 		ResumeText: req.ResumeText, JobDescription: req.JobDescription,
 		Live2DModelKey: req.Live2DModelKey,
 	})
