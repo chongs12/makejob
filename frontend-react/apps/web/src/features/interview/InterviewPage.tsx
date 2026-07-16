@@ -94,6 +94,7 @@ export function InterviewHubPage() {
   const queryClient = useQueryClient()
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
+  const membershipLevel = useAuthStore((state) => state.membershipLevel)
   const [form, setForm] = useState<InterviewConfigForm>(() => buildInitialInterviewForm())
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
   const [channelChoice, setChannelChoice] = useState<'voice' | 'text'>('voice')
@@ -120,7 +121,8 @@ export function InterviewHubPage() {
   const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
 
   // 实时语音面试为会员专属：免费用户固定文字模式，付费用户可在语音/文字间选择（默认语音）。
-  const isPaidMember = Boolean(user?.membershipLevel) && user.membershipLevel !== 'free'
+  // 会员等级以 membership 服务为权威来源（升级后即时反映）。
+  const isPaidMember = Boolean(membershipLevel) && membershipLevel !== 'free'
   const deliveryChannel: 'voice' | 'text' = isPaidMember ? channelChoice : 'text'
 
   const createMutation = useMutation({

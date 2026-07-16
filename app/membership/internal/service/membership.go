@@ -143,7 +143,7 @@ func toProtoOrder(o *biz.MembershipOrder) *membershipv1.OrderResponse {
 	resp := &membershipv1.OrderResponse{
 		Id:        uint64(o.ID),
 		OrderNo:   o.OrderNo,
-		PlanType:  o.PlanID,
+		PlanType:  o.PlanType,
 		Amount:    o.Amount,
 		Status:    o.Status,
 		CreatedAt: toProtoTimestamp(o.CreatedAt),

@@ -23,10 +23,10 @@ type MembershipOrder struct {
 	BaseModel
 	UserID        uint64  `gorm:"index;not null"`
 	OrderNo       string  `gorm:"size:32;uniqueIndex;not null"`
-	PlanID        string  `gorm:"size:20;not null"`
+	PlanType      string  `gorm:"size:20;not null"` // monthly/quarterly/yearly
 	Amount        float64 `gorm:"not null"`
-	PaymentMethod string  `gorm:"size:20"`
-	TransactionID string  `gorm:"size:100"`
+	PaymentMethod string  `gorm:"size:20"` // 真实支付时填充
+	TransactionID string  `gorm:"size:100"` // 真实支付方交易号
 	Status        string  `gorm:"size:20;not null;default:'pending'"`
 	PaidAt        *time.Time
 	ExpiresAt     time.Time
@@ -39,7 +39,7 @@ func (MembershipOrder) TableName() string { return "membership_orders" }
 type UserMembership struct {
 	BaseModel
 	UserID    uint64 `gorm:"uniqueIndex;not null"`
-	Level     string `gorm:"size:20;default:'free'"`
+	Level     string `gorm:"size:20;default:'free'"` // free | monthly | quarterly | yearly
 	ExpiresAt time.Time
 }
 
@@ -172,7 +172,7 @@ func (uc *MembershipUseCase) CreateOrder(ctx context.Context, userID uint64, pla
 	order := &MembershipOrder{
 		UserID:    userID,
 		OrderNo:   orderNo,
-		PlanID:    planType,
+		PlanType:  planType,
 		Amount:    price,
 		Status:    "pending",
 		ExpiresAt: time.Now().AddDate(0, 0, days),
@@ -200,7 +200,7 @@ func (uc *MembershipUseCase) HandlePaymentCallback(ctx context.Context, orderNo 
 	}
 
 	now := time.Now()
-	days := uc.daysMap[order.PlanID]
+	days := uc.daysMap[order.PlanType]
 	expiresAt := now.AddDate(0, 0, days)
 
 	// FIX M1: 在事务中完成订单状态更新和会员信息更新
@@ -210,7 +210,7 @@ func (uc *MembershipUseCase) HandlePaymentCallback(ctx context.Context, orderNo 
 		}
 		membership := &UserMembership{
 			UserID:    order.UserID,
-			Level:     order.PlanID,
+			Level:     order.PlanType,
 			ExpiresAt: expiresAt,
 		}
 		if err := uc.membershipRepo.Upsert(txCtx, membership); err != nil {
