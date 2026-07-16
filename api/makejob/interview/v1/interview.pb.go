@@ -2213,6 +2213,7 @@ type RealtimeInterviewContext struct {
 	DialogId       string                 `protobuf:"bytes,12,opt,name=dialog_id,json=dialogId,proto3" json:"dialog_id,omitempty"`
 	HasStarted     bool                   `protobuf:"varint,13,opt,name=has_started,json=hasStarted,proto3" json:"has_started,omitempty"`
 	ResumeProfile  *ResumeProfile         `protobuf:"bytes,14,opt,name=resume_profile,json=resumeProfile,proto3" json:"resume_profile,omitempty"`
+	JobDescription string                 `protobuf:"bytes,15,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"` // 目标岗位 JD，实战面试提示词依据
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2343,6 +2344,13 @@ func (x *RealtimeInterviewContext) GetResumeProfile() *ResumeProfile {
 		return x.ResumeProfile
 	}
 	return nil
+}
+
+func (x *RealtimeInterviewContext) GetJobDescription() string {
+	if x != nil {
+		return x.JobDescription
+	}
+	return ""
 }
 
 type ResumeProfile struct {
@@ -2943,7 +2951,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"isRealtime\"P\n" +
 	"\x12GetRealtimeRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xcd\x04\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xf6\x04\n" +
 	"\x18RealtimeInterviewContext\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -2963,7 +2971,8 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\tdialog_id\x18\f \x01(\tR\bdialogId\x12\x1f\n" +
 	"\vhas_started\x18\r \x01(\bR\n" +
 	"hasStarted\x12J\n" +
-	"\x0eresume_profile\x18\x0e \x01(\v2#.makejob.interview.v1.ResumeProfileR\rresumeProfile\"\x9e\x01\n" +
+	"\x0eresume_profile\x18\x0e \x01(\v2#.makejob.interview.v1.ResumeProfileR\rresumeProfile\x12'\n" +
+	"\x0fjob_description\x18\x0f \x01(\tR\x0ejobDescription\"\x9e\x01\n" +
 	"\rResumeProfile\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12\x16\n" +
 	"\x06skills\x18\x02 \x03(\tR\x06skills\x12\x1a\n" +

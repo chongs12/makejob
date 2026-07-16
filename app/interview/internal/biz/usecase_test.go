@@ -111,9 +111,9 @@ func (r *interviewRepoStub) BindRealtimeDialog(context.Context, uint64, string) 
 	return errors.New("not implemented")
 }
 
-// AppendMessageAndBumpIndex 返回未实现错误，当前测试不会走到这里。
-func (r *interviewRepoStub) AppendMessageAndBumpIndex(context.Context, *InterviewMessage) error {
-	return errors.New("not implemented")
+// IncrementCurrentIndex 测试桩：递增已回答题数，默认成功。
+func (r *interviewRepoStub) IncrementCurrentIndex(context.Context, uint64) error {
+	return nil
 }
 
 // Transaction 用于检测事务闭包执行期间的状态。

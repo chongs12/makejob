@@ -64,6 +64,7 @@ func (c *interviewClient) GetRealtimeContext(ctx context.Context, interviewID ui
 	rtCtx := &biz.RealtimeContext{
 		InterviewID:    resp.InterviewId,
 		IndustryCode:   resp.IndustryCode,
+		JobDescription: resp.JobDescription,
 		Live2DModelKey: resp.Live2DModelKey,
 		TotalQuestions: int(resp.TotalQuestions),
 		Difficulty:     resp.Difficulty,

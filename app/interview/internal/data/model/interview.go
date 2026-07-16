@@ -19,6 +19,7 @@ type MockInterview struct {
 	ResumeParsedJSON    string    `gorm:"column:resume_parsed_json;type:text"` // 简历解析画像 JSON
 	Score               float64   `gorm:"column:score"`
 	TotalQuestions     int32      `gorm:"column:total_questions"`
+	CurrentIndex       int32      `gorm:"column:current_index;default:0"` // 实时面试已回答题数，用户每答一题递增，用于自动结束判定
 	AIFeedback         string     `gorm:"column:ai_feedback;type:text"`
 	AISessionID        string     `gorm:"column:ai_session_id;type:text"`
 	ReportJSON         string     `gorm:"column:report_json;type:text"`

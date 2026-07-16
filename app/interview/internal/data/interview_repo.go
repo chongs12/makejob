@@ -218,16 +218,12 @@ func (r *interviewRepo) BindRealtimeDialog(ctx context.Context, interviewID uint
 		Update("ai_session_id", dialogID).Error
 }
 
-// AppendMessageAndBumpIndex 追加消息（表无 current_index 列，不再递增）
-func (r *interviewRepo) AppendMessageAndBumpIndex(ctx context.Context, msg *biz.InterviewMessage) error {
-	m := &model.InterviewMessage{
-		InterviewID:   msg.InterviewID,
-		Role:          msg.Role,
-		Content:       msg.Content,
-		MessageType:   msg.MessageType,
-		QuestionIndex: msg.QuestionIndex,
-	}
-	return r.getDB(ctx).WithContext(ctx).Create(m).Error
+// IncrementCurrentIndex 递增实时面试已回答题数（current_index），用于知识点面试题数达标自动结束判定。
+// 用户每答一题调用一次；实时面试为单会话串行，无并发竞争。
+func (r *interviewRepo) IncrementCurrentIndex(ctx context.Context, interviewID uint64) error {
+	return r.getDB(ctx).WithContext(ctx).Model(&model.MockInterview{}).
+		Where("id = ?", interviewID).
+		UpdateColumn("current_index", gorm.Expr("current_index + 1")).Error
 }
 
 // --- Model ↔ Biz 转换 ---
@@ -244,6 +240,7 @@ func toModel(iv *biz.Interview) *model.MockInterview {
 		ResumeParsedJSON:    iv.ResumeParsedJSON,
 		Score:               iv.OverallScore,
 		TotalQuestions:      iv.QuestionCount,
+		CurrentIndex:        iv.CurrentIndex,
 		AIFeedback:          iv.AIFeedback,
 		AISessionID:         iv.AISessionID,
 		ReportJSON:          iv.ReportJSON,
@@ -273,6 +270,7 @@ func toBiz(m *model.MockInterview) *biz.Interview {
 		ResumeParsedJSON: m.ResumeParsedJSON,
 		OverallScore:    m.Score,
 		QuestionCount:   m.TotalQuestions,
+		CurrentIndex:    m.CurrentIndex,
 		AIFeedback:      m.AIFeedback,
 		AISessionID:     m.AISessionID,
 		ReportJSON:      m.ReportJSON,

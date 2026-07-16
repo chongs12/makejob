@@ -291,6 +291,7 @@ message RealtimeInterviewContext {
   string dialog_id = 12;
   bool has_started = 13;
   ResumeProfile resume_profile = 14;
+  string job_description = 15;  // 目标岗位 JD，实战面试提示词依据
 }
 
 message ResumeProfile {

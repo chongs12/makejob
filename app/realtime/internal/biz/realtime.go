@@ -51,6 +51,7 @@ type RealtimeContext struct {
 	DialogID              string
 	HasStarted            bool
 	CurrentTopic          string
+	JobDescription        string
 }
 
 // ResumeProfile 简历画像（对齐单体 ai.ResumeProfile）
@@ -857,7 +858,7 @@ func (uc *RealtimeUseCase) handleVolcEvent(ctx context.Context, session *Realtim
 // buildRealtimeSystemRole 构造实时模型整场面试要遵守的固定系统提示词（对齐单体）
 func (uc *RealtimeUseCase) buildRealtimeSystemRole(ctx *RealtimeContext, cfg *conf.Volcengine) string {
 	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
-		return buildResumeDrivenSystemPrompt(ctx.ResumeProfile, safeStr(ctx.IndustryCode))
+		return buildResumeDrivenSystemPrompt(ctx.ResumeProfile, safeStr(ctx.IndustryCode), ctx.JobDescription)
 	}
 
 	topics := "通用技术能力"
@@ -876,14 +877,14 @@ func (uc *RealtimeUseCase) buildRealtimeSystemRole(ctx *RealtimeContext, cfg *co
 	}
 	lines = append(lines,
 		"你必须一次只问一个问题，用户回答后先给一句简短反馈，再自然进入下一题。",
-		"到最后一题回答完成后，请只给简短总结，不要继续追问。",
+		"当用户已回答完全部题目后，你的下一轮回复应是一句自然的结束语（简短总结与感谢），并以固定短语「本次面试到此结束。」收尾，之后不再继续提问。",
 		"请始终使用自然口语中文，不要输出 Markdown、列表标题或代码块。",
 	)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 // buildResumeDrivenSystemPrompt 根据简历画像生成简历驱动面试模式的完整系统提示词（对齐单体）
-func buildResumeDrivenSystemPrompt(profile *ResumeProfile, industryCode string) string {
+func buildResumeDrivenSystemPrompt(profile *ResumeProfile, industryCode string, jobDescription string) string {
 	industryLabel := firstNonEmpty(industryCode, "通用方向")
 
 	var sb strings.Builder
@@ -915,7 +916,8 @@ func buildResumeDrivenSystemPrompt(profile *ResumeProfile, industryCode string) 
 	sb.WriteString("- 问一个开放性问题，考察候选人的工程思维和学习能力。\n")
 	sb.WriteString("- 例如：\"如果让你重新做这个项目，你会在架构上做哪些改变？\"或\"你最近关注的技术趋势是什么？\"\n\n")
 	sb.WriteString("### 阶段 5：结束与候选人提问（1 轮）\n")
-	sb.WriteString("- 简要总结面试亮点，然后问候选人：\"你有什么想问我的吗？\"\n\n")
+	sb.WriteString("- 简要总结面试亮点，然后问候选人：\"你有什么想问我的吗？\"\n")
+	sb.WriteString("- 当候选人表示没有更多问题后，给出告别与总结，并以固定短语「本次面试到此结束。」收尾，结束本场面试。\n\n")
 
 	sb.WriteString("## 追问决策引擎\n")
 	sb.WriteString("- 回答具体且有深度 → 给予肯定，快速进入下一个话题\n")
@@ -931,6 +933,13 @@ func buildResumeDrivenSystemPrompt(profile *ResumeProfile, industryCode string) 
 	sb.WriteString("- 禁止忽略简历内容而问泛泛的八股文\n")
 	sb.WriteString("- 禁止在候选人回答后不给任何反馈就直接问下一个问题\n")
 	sb.WriteString("- 禁止使用 Markdown、列表标题或代码块格式\n\n")
+
+	if jd := strings.TrimSpace(jobDescription); jd != "" {
+		sb.WriteString("## 目标岗位\n")
+		sb.WriteString("候选人目标岗位描述如下。你的出题与追问应围绕该岗位核心要求展开，验证候选人简历经历与岗位的匹配度：\n")
+		sb.WriteString(jd)
+		sb.WriteString("\n\n")
+	}
 
 	if profile != nil {
 		sb.WriteString("## 简历数据\n")

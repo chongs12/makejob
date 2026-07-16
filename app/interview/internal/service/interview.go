@@ -364,6 +364,7 @@ func (s *InterviewService) GetRealtimeContext(ctx context.Context, req *intervie
 	resp := &interviewv1.RealtimeInterviewContext{
 		InterviewId:   result.InterviewID,
 		IndustryCode:  result.IndustryCode,
+		JobDescription: result.JobDescription,
 		Difficulty:    result.Difficulty,
 		History:       msgs,
 		CurrentTopic:  result.CurrentTopic,

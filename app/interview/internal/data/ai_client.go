@@ -168,6 +168,7 @@ func (c *aiServiceClient) ResumeParser(ctx context.Context, req *biz.ResumeParse
 		Education:   resp.Education,
 		Projects:    resp.Projects,
 		Summary:     resp.Summary,
+		Strengths:   resp.Strengths,
 		WeakSignals: resp.WeakSignals,
 	}, nil
 }

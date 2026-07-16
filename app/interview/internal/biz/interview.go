@@ -18,7 +18,8 @@ type InterviewRepo interface {
 	UpdateCodingAttempt(ctx context.Context, attempt *CodingAttempt) error
 	ListCodingAttempts(ctx context.Context, interviewID uint64) ([]*CodingAttempt, error)
 	BindRealtimeDialog(ctx context.Context, interviewID uint64, dialogID string) error
-	AppendMessageAndBumpIndex(ctx context.Context, msg *InterviewMessage) error
+	// IncrementCurrentIndex 递增实时面试已回答题数（current_index），供知识点面试题数达标自动结束判定。
+	IncrementCurrentIndex(ctx context.Context, interviewID uint64) error
 	// Transaction 在事务中执行操作（FIX I1）
 	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 	// GetStats SQL 聚合查询面试统计（FIX I3）
@@ -110,7 +111,7 @@ type Interview struct {
 	InterviewType    string     // 落库：knowledge | job，决定出题与报告模板
 	KnowledgeTopics  []string   `gorm:"-"` // 运行期，落库为 knowledge_topics JSON
 	QuestionCount    int32      // 对应表 total_questions
-	CurrentIndex     int32      `gorm:"-"` // 运行期字段，由消息计数推导
+	CurrentIndex     int32      // 对应表 current_index，实时面试用户每答一题递增
 	OverallScore     float64    // 对应表 score
 	AIFeedback       string     // 对应表 ai_feedback
 	AISessionID      string     // 对应表 ai_session_id
@@ -248,6 +249,7 @@ type ResumeParserResponse struct {
 	Education   []string
 	Projects    []string
 	Summary     string
+	Strengths   []string
 	WeakSignals []string
 }
 

@@ -1139,6 +1139,7 @@ type RealtimeContextResult struct {
 	History               []*InterviewMessage
 	CurrentTopic          string
 	QuestionIndex         int32
+	JobDescription        string
 }
 
 // ResumeProfileData 简历画像数据
@@ -1196,6 +1197,7 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 	return &RealtimeContextResult{
 		InterviewID:    interview.ID,
 		IndustryCode:   interview.IndustryCode,
+		JobDescription: interview.JobDescription,
 		Live2DModelKey: interview.Live2DModelKey,
 		TotalQuestions: int(interview.QuestionCount),
 		Difficulty:     interview.Difficulty,
@@ -1251,10 +1253,17 @@ func (uc *InterviewUseCase) AppendRealtimeUserAnswer(ctx context.Context, interv
 		MessageType:   "text",
 		QuestionIndex: interview.CurrentIndex,
 	}
-	return uc.repo.CreateMessage(ctx, msg)
+	if err := uc.repo.CreateMessage(ctx, msg); err != nil {
+		return kratosErr.InternalServer("APPEND_FAILED", "保存用户回答失败").WithCause(err)
+	}
+	// 用户回答计入已答题数，供知识点面试题数达标时自动结束判定（在 AppendRealtimeAssistantReply 中消费）。
+	if err := uc.repo.IncrementCurrentIndex(ctx, interviewID); err != nil {
+		log.Warnf("递增已答题数失败: interview_id=%d err=%v", interviewID, err)
+	}
+	return nil
 }
 
-// AppendRealtimeAssistantReply 追加实时面试中的 AI 回复，同时递增题目索引
+// AppendRealtimeAssistantReply 追加实时面试中的 AI 回复，并判定本场面试是否应当结束。
 func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, interviewID, userID uint64, replyText string) (bool, *InterviewQuestion, error) {
 	interview, err := uc.repo.GetByID(ctx, interviewID)
 	if err != nil {
@@ -1277,18 +1286,43 @@ func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, in
 		MessageType:   "text",
 		QuestionIndex: interview.CurrentIndex,
 	}
-
-	// 追加消息并递增 current_question_index（事务操作）
-	if err := uc.repo.AppendMessageAndBumpIndex(ctx, msg); err != nil {
+	if err := uc.repo.CreateMessage(ctx, msg); err != nil {
 		return false, nil, kratosErr.InternalServer("APPEND_FAILED", "追加 AI 回复失败").WithCause(err)
 	}
 
-	updatedInterview, err := uc.repo.GetByID(ctx, interviewID)
-	if err != nil {
-		return false, nil, ErrInterviewNotFound
+	// 结束判定（知识点 / 实战两类面试统一）：
+	// 1) 结束语短语检测（主路径）：LLM 被提示在结束面试时以「本次面试到此结束。」收尾，命中即结束。
+	//    实战面试无固定题数，主要靠此路径收尾。
+	// 2) 题数兜底（知识点面试）：已回答题数(CurrentIndex) >= 目标题数(QuestionCount) 时结束。
+	//    CurrentIndex 在用户每次回答时递增（见 AppendRealtimeUserAnswer），本轮加载的值已包含最近一次回答，
+	//    故该判定在本轮（通常是结束语）触发，不会切断尚未回答的题目。
+	shouldEnd := detectRealtimeInterviewEnd(replyText)
+	if !shouldEnd && interview.QuestionCount > 0 && interview.CurrentIndex >= interview.QuestionCount {
+		shouldEnd = true
 	}
-	shouldEnd := updatedInterview.CurrentIndex >= updatedInterview.QuestionCount
 	return shouldEnd, nil, nil
+}
+
+// realtimeEndPhrases 实时面试结束语约定短语。LLM 被提示在结束面试时以这些短语收尾，
+// 服务端据此识别结束意图，不依赖题数计数，对实战面试同样生效。
+var realtimeEndPhrases = []string{
+	"本次面试到此结束",
+	"今天的面试就到这里",
+	"面试就到这里",
+}
+
+// detectRealtimeInterviewEnd 检测 AI 回复是否包含结束面试的约定短语。
+func detectRealtimeInterviewEnd(replyText string) bool {
+	text := strings.TrimSpace(replyText)
+	if text == "" {
+		return false
+	}
+	for _, phrase := range realtimeEndPhrases {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // CodingDiagnosisBiz 编程诊断业务实体

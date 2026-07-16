@@ -1044,6 +1044,8 @@ export function InterviewSessionPage() {
               status: 'finished',
               message: payload.content || '本场题目已全部完成。',
             })
+            // 后端已自动结束面试并开始生成报告，直接跳转报告页（页面会自动轮询直到报告就绪）。
+            navigate({ to: '/interview/$interviewId/report', params: { interviewId } })
             break
           case 'error':
             setSessionState({
