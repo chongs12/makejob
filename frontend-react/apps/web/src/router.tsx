@@ -236,7 +236,6 @@ function RootLayout() {
   })
   const accessToken = useAuthStore((state) => state.accessToken)
   const user = useAuthStore((state) => state.user)
-  const membershipLevel = useAuthStore((state) => state.membershipLevel)
   const logout = useAuthStore((state) => state.logout)
   const [headerKeyword, setHeaderKeyword] = useState('')
   const [loginPromptState, setLoginPromptState] = useState<{
@@ -370,7 +369,7 @@ function RootLayout() {
     { to: '/growth', label: '成长档案', match: pathname.startsWith('/growth') || pathname.startsWith('/workspace') },
   ]
   const accountLabel = accessToken ? (user?.username || '成长档案') : '登录'
-  const isPaidMember = Boolean(membershipLevel) && membershipLevel !== 'free'
+  const isPaidMember = Boolean(user?.membershipLevel) && user.membershipLevel !== 'free'
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
   const isStandaloneEditor = pathname.startsWith('/practice/editor')
   const isPrototypeUI = pathname.startsWith('/prototype-ui')

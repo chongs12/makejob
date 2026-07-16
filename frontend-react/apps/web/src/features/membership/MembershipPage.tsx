@@ -58,7 +58,7 @@ function formatExpire(value?: string): string {
  */
 export function MembershipPage() {
   const accessToken = useAuthStore((state) => state.accessToken)
-  const fetchMembership = useAuthStore((state) => state.fetchMembership)
+  const fetchProfile = useAuthStore((state) => state.fetchProfile)
   const queryClient = useQueryClient()
   const [busyPlan, setBusyPlan] = useState<string>('')
 
@@ -92,7 +92,7 @@ export function MembershipPage() {
       antdMessage.success('开通成功，会员已生效')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['membership'] }),
-        fetchMembership(),
+        fetchProfile(),
       ])
       setBusyPlan('')
     },

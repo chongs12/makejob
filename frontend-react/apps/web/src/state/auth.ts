@@ -5,7 +5,6 @@ import {
   normalizeUserProfile,
   type ApiEnvelope,
   type LoginResult,
-  type MembershipTier,
   type RawUserProfile,
   type UserProfile,
 } from '@makejob/shared-types'
@@ -37,7 +36,6 @@ interface AuthState {
   accessToken: string | null
   refreshToken: string | null
   user: UserProfile | null
-  membershipLevel: MembershipTier | null
   loading: boolean
   initialized: boolean
   profileLoaded: boolean
@@ -45,7 +43,6 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ ok: boolean; message: string }>
   register: (username: string, email: string, password: string) => Promise<{ ok: boolean; message: string }>
   fetchProfile: () => Promise<boolean>
-  fetchMembership: () => Promise<boolean>
   ensureProfile: () => Promise<boolean>
   refreshSession: () => Promise<boolean>
   clearSession: () => void
@@ -188,7 +185,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   refreshToken: null,
   user: null,
-  membershipLevel: null,
   loading: false,
   initialized: false,
   profileLoaded: false,
@@ -407,9 +403,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           profileLoaded: true,
         })
 
-        // 会员等级以 membership 服务为权威来源，资料加载后异步拉取一次供前端门禁使用。
-        void get().fetchMembership()
-
         return Boolean(user)
       } catch {
         return false
@@ -419,27 +412,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     })()
 
     return profilePromise
-  },
-
-  /**
-   * 拉取当前用户会员等级（来自 membership 服务，升级后即时反映）。
-   */
-  async fetchMembership() {
-    const accessToken = get().accessToken
-    if (!accessToken) {
-      return false
-    }
-    try {
-      const response = await requestJson<ApiEnvelope<{ level: string }>>('/membership/info', { token: accessToken })
-      if (!isSuccessCode(response.code) || !response.data) {
-        return false
-      }
-      const level = (response.data.level || 'free') as MembershipTier
-      set({ membershipLevel: level })
-      return true
-    } catch {
-      return false
-    }
   },
 
   /**
@@ -535,7 +507,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       accessToken: null,
       refreshToken: null,
       user: null,
-      membershipLevel: null,
       loading: false,
       initialized: true,
       profileLoaded: false,

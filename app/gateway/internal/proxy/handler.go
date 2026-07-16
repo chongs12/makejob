@@ -2366,6 +2366,14 @@ func (gw *Gateway) handleGetProfile(c *gin.Context) {
 		grpcErr(c, err)
 		return
 	}
+	// 会员等级以 membership 服务为权威来源，覆盖 user 服务遗留的 membership_level 字段，
+	// 避免 /user/profile 返回未同步的旧值。调用失败时降级保留 user 服务的值。
+	if gw.membershipClient != nil {
+		if ms, mErr := gw.membershipClient.GetMembershipStatus(c.Request.Context(), &membershipv1.UserIDRequest{UserId: userID}); mErr == nil && ms != nil {
+			resp.MembershipLevel = ms.Level
+			resp.MembershipExpireAt = ms.ExpireAt
+		}
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
