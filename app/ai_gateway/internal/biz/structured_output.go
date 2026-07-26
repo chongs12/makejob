@@ -109,6 +109,18 @@ func interviewResultSchema() string {
 }`
 }
 
+// interviewEvaluateSchema 答案评估结构化输出合同，明确要求 0-100 打分 + 关键点 + 建议，
+// 供 EvaluateAnswer 使用，避免与出题合同混用导致 LLM 漏返回评分。
+func interviewEvaluateSchema() string {
+	return `{
+  "score": 75,
+  "is_correct": true,
+  "feedback": "对回答的总体评价，先肯定亮点再指出不足",
+  "key_points": ["关键知识点1", "关键知识点2"],
+  "suggestions": "针对性的改进建议"
+}`
+}
+
 // planResultSchema 学习计划结构化输出合同。
 func planResultSchema() string {
 	return `{

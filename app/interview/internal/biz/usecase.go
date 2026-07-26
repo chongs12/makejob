@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
@@ -78,14 +79,15 @@ func NewInterviewUseCase(
 
 // CreateInterview 创建面试会话
 func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInterviewRequest) (*Interview, *InterviewQuestion, error) {
-	// 知识点专项模式跳过 industry 校验（支持任意自定义知识点），其他模式仍校验行业代码
-	var industryID uint64
+	// 知识点专项模式跳过 industry 校验（支持任意自定义知识点），industry_id 落库为 NULL；
+	// 其他模式仍校验行业代码并解析出 industry_id。
+	var industryID *uint64
 	if strings.TrimSpace(req.InterviewType) != "knowledge" {
 		ind, err := uc.industry.GetIndustry(ctx, req.IndustryCode)
 		if err != nil {
 			return nil, nil, kratosErr.New(400, "INVALID_INDUSTRY", fmt.Sprintf("行业代码 %s 无效: %v", req.IndustryCode, err))
 		}
-		industryID = ind.ID
+		industryID = &ind.ID
 	}
 
 	// 补充默认值：resume_driven 模式下前端可能不传 difficulty 和 question_count
@@ -131,32 +133,38 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 
 	var firstQuestion *InterviewQuestion
 	if !IsRealtimeInterview(interview) {
-		// 调用 AI Gateway 的 StartInterview 获取 sessionID 和首题（对齐单体 InterviewAgent.StartInterview）
-		aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
-			InterviewID:    interview.ID,
-			IndustryCode:   req.IndustryCode,
-			Difficulty:     difficulty,
-			QuestionCount:  questionCount,
-			ResumeText:     req.ResumeText,
-			JobDescription: req.JobDescription,
-			InterviewMode:  req.InterviewMode,
-			Topics:         req.Topics,
-			InterviewType:  req.InterviewType,
-		})
-		if err != nil {
-			return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
-		}
-
-		// 保存 sessionID 到 AISessionID 字段
-		interview.AISessionID = aiResp.SessionID
-
-		if aiResp.Question != "" {
-			firstQuestion = &InterviewQuestion{
-				Question:   aiResp.Question,
-				Topic:      aiResp.Topic,
-				Difficulty: aiResp.Difficulty,
-				Type:       aiResp.Type,
-				Hints:      aiResp.Hints,
+		if strings.TrimSpace(req.InterviewType) == "knowledge" {
+			// 知识点专项：一次性并发生成全部题目存 questions_json，答题时 GetNextQuestion 秒出下一题，免逐题调 LLM。
+			questions := uc.generateKnowledgeQuestionsBatch(ctx, req.Topics, difficulty, questionCount)
+			interview.Questions = questions
+			if len(questions) > 0 && strings.TrimSpace(questions[0].Question) != "" {
+				firstQuestion = &questions[0]
+			}
+		} else {
+			// job/其他：沿用 StartInterview 单题 + session
+			aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
+				InterviewID:    interview.ID,
+				IndustryCode:   req.IndustryCode,
+				Difficulty:     difficulty,
+				QuestionCount:  questionCount,
+				ResumeText:     req.ResumeText,
+				JobDescription: req.JobDescription,
+				InterviewMode:  req.InterviewMode,
+				Topics:         req.Topics,
+				InterviewType:  req.InterviewType,
+			})
+			if err != nil {
+				return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
+			}
+			interview.AISessionID = aiResp.SessionID
+			if aiResp.Question != "" {
+				firstQuestion = &InterviewQuestion{
+					Question:   aiResp.Question,
+					Topic:      aiResp.Topic,
+					Difficulty: aiResp.Difficulty,
+					Type:       aiResp.Type,
+					Hints:      aiResp.Hints,
+				}
 			}
 		}
 	}
@@ -185,6 +193,57 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	return interview, firstQuestion, nil
 }
 
+// generateKnowledgeQuestionsBatch 并发调用 InterviewAgent 一次性生成全部知识点题目。
+// 每次按题号区分考察方向；单题失败用本地兜底题补上，保证凑齐 count 题。总耗时 ≈ 单次 LLM 调用。
+func (uc *InterviewUseCase) generateKnowledgeQuestionsBatch(ctx context.Context, topics []string, difficulty string, count int32) []InterviewQuestion {
+	questions := make([]InterviewQuestion, count)
+	var wg sync.WaitGroup
+	for i := int32(0); i < count; i++ {
+		wg.Add(1)
+		go func(idx int32) {
+			defer wg.Done()
+			aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
+				QuestionIndex: idx,
+				Topics:        topics,
+				Difficulty:    difficulty,
+				InterviewType: "knowledge",
+				Mode:          "question",
+			})
+			if err == nil && aiResp != nil && aiResp.Question != nil && strings.TrimSpace(aiResp.Question.Question) != "" {
+				questions[idx] = *aiResp.Question
+				return
+			}
+			if err != nil {
+				log.Warnf("批量出题 idx=%d 失败，用兜底题: %v", idx, err)
+			}
+			questions[idx] = localFallbackQuestion(topics, idx)
+		}(i)
+	}
+	wg.Wait()
+	return questions
+}
+
+// localFallbackQuestion 出题失败时的本地兜底题，按 topics 与题号轮换模板。
+func localFallbackQuestion(topics []string, idx int32) InterviewQuestion {
+	topic := "基础概念"
+	if len(topics) > 0 {
+		topic = topics[int(idx)%len(topics)]
+	}
+	templates := []string{
+		"请解释 %s 的核心概念、常见使用场景以及容易踩坑的地方。",
+		"如果你要向初级同学讲清楚 %s，你会怎样从原理、实现和实践三个层面展开？",
+		"请结合一个真实项目场景，说明 %s 为什么重要，以及你会如何落地。",
+		"针对 %s，请先给出结论，再补充边界情况、性能影响和调试思路。",
+	}
+	tpl := templates[int(idx)%len(templates)]
+	return InterviewQuestion{
+		Question:   fmt.Sprintf(tpl, topic),
+		Topic:      topic,
+		Difficulty: "medium",
+		Type:       "technical",
+	}
+}
+
 // SubmitAnswer 提交答案并获取 AI 反馈（评估答案，不获取下一题；下一题由 GetNextQuestion 按需生成）
 func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userID uint64, index int32, answer string) (*AnswerFeedback, error) {
 	// 1. 获取面试会话
@@ -206,6 +265,26 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		Content:       answer,
 		MessageType:   "text",
 		QuestionIndex: index,
+	}
+
+	// knowledge 分支：跳过逐题 LLM 评估，分析延后到报告；只存回答 + 推进题号，秒回。
+	// 注意：前端不传 question_index，必须用服务端 interview.CurrentIndex 推进，否则题号永远卡在 1、第三题及以后不出。
+	if strings.TrimSpace(interview.InterviewType) == "knowledge" {
+		answeringIndex := interview.CurrentIndex
+		msg.QuestionIndex = answeringIndex
+		if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
+			if err := uc.repo.CreateMessage(txCtx, msg); err != nil {
+				return kratosErr.InternalServer("SAVE_FAILED", "保存答案失败").WithCause(err)
+			}
+			interview.CurrentIndex = answeringIndex + 1
+			if err := uc.repo.Update(txCtx, interview); err != nil {
+				return kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		return &AnswerFeedback{Feedback: "回答已提交，下一题已就绪。"}, nil
 	}
 
 	// 3. RAG 检索增强（降级处理，失败不影响主流程）
@@ -374,6 +453,20 @@ func (uc *InterviewUseCase) GetNextQuestion(ctx context.Context, interviewID, us
 	if question := ExtractQuestionByIndex(recentMessages, interview.CurrentIndex); question != nil {
 		return interview, question, nil
 	}
+
+	// 优先：预生成题目（CreateInterview 时一次性生成存 questions_json），直接返回并落消息，免调 LLM、秒出。
+	if len(interview.Questions) > 0 && int(interview.CurrentIndex) < len(interview.Questions) {
+		preGen := interview.Questions[interview.CurrentIndex]
+		if strings.TrimSpace(preGen.Question) != "" {
+			if questionMsg := BuildQuestionMessage(interviewID, interview.CurrentIndex, &preGen); questionMsg != nil {
+				if err := uc.repo.CreateMessage(ctx, questionMsg); err != nil {
+					return nil, nil, kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 题目消息失败").WithCause(err)
+				}
+			}
+			return interview, &preGen, nil
+		}
+	}
+
 	history := NormalizeHistoryMessages(recentMessages)
 
 	// 调用 RAG 检索增强（降级处理，失败不影响主流程）

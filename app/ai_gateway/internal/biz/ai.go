@@ -123,6 +123,16 @@ type InterviewResult struct {
 	Live2DAction  string  `json:"live2d_action"`
 }
 
+// InterviewEvaluateResult 答案评估的结构化输出，专用于 EvaluateAnswer，
+// 明确包含 score/is_correct/feedback/key_points/suggestions，避免 LLM 漏返回评分。
+type InterviewEvaluateResult struct {
+	Score       float64  `json:"score"`
+	IsCorrect   bool     `json:"is_correct"`
+	Feedback    string   `json:"feedback"`
+	KeyPoints   []string `json:"key_points"`
+	Suggestions string   `json:"suggestions"`
+}
+
 // GenerateQuestion 生成面试题目或对用户回答进行反馈
 func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryCode, difficulty, userAnswer, resumeText, jobDescription string, history []Message, questionIndex int32, topics []string, interviewType string) (*InterviewResult, error) {
 	const scene = "interview_agent"
@@ -162,12 +172,19 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
 	if err != nil {
-		return nil, ErrLLMCallFailed
+		log.Warnf("GenerateQuestion LLM 调用失败，使用本地兜底: interview_type=%s topics=%v index=%d err=%v", interviewType, topics, questionIndex, err)
+		return buildLocalQuestionResult(topics, industryCode, questionIndex), nil
 	}
 
 	result, err := parseStructuredJSON[InterviewResult](ctx, uc.llm, cfg, resp.Content, schema)
 	if err != nil {
-		return nil, err
+		log.Warnf("GenerateQuestion LLM 响应解析失败，使用本地兜底: interview_type=%s index=%d err=%v", interviewType, questionIndex, err)
+		return buildLocalQuestionResult(topics, industryCode, questionIndex), nil
+	}
+	// LLM 可能返回合法 JSON 但 question 为空/缺失，导致“下一题为空、流程误判无题”。降级到本地兜底题。
+	if strings.TrimSpace(result.Question) == "" {
+		log.Warnf("GenerateQuestion LLM 返回空题目，使用本地兜底: interview_type=%s topics=%v index=%d", interviewType, topics, questionIndex)
+		return buildLocalQuestionResult(topics, industryCode, questionIndex), nil
 	}
 	return &result, nil
 }

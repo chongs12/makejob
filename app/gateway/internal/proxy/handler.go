@@ -813,6 +813,9 @@ func normalizeInterviewReportPayload(value interface{}) interface{} {
 
 // normalizeInterviewAnswerPayload 将扁平的 AnswerFeedback 重组为前端 InterviewAnswerResponse 结构，
 // 即 { feedback: {...}, next_question, is_finished }。
+// 注意：interview 服务 SubmitAnswer 不在 AnswerFeedback 里填充 next_question（下一题由 GetNextQuestion 单独获取），
+// 因此不能用 next_question==nil 判定 is_finished，否则会永远为 true、前端提交后不再自动出下一题。
+// 这里固定为 false，完成态由前端调用 GetNextQuestion 返回的 is_last 判定。
 func normalizeInterviewAnswerPayload(value interface{}) interface{} {
 	flat, ok := value.(map[string]interface{})
 	if !ok {
@@ -830,7 +833,7 @@ func normalizeInterviewAnswerPayload(value interface{}) interface{} {
 	return map[string]interface{}{
 		"feedback":      feedback,
 		"next_question": nextQuestion,
-		"is_finished":   nextQuestion == nil,
+		"is_finished":   false,
 	}
 }
 

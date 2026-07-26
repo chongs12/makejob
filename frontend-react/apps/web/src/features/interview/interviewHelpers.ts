@@ -283,6 +283,55 @@ export function countInterviewAnswers(messages: InterviewMessage[]): number {
 }
 
 /**
+ * 判断消息内容是否为后端落库的结构化题目 payload（BuildQuestionMessage 产出 JSON）。
+ * 用于把“真题目”与“AI 反馈/旁白”（纯文本）区分开。
+ */
+export function isQuestionPayload(content: string): boolean {
+  const text = (content || '').trim()
+  if (!text.startsWith('{')) {
+    return false
+  }
+  try {
+    const parsed = JSON.parse(text) as { question?: unknown }
+    return Boolean(parsed) && typeof parsed.question === 'string' && parsed.question.trim() !== ''
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 判断一条消息是否为“待答题目”（而非 AI 反馈）。
+ * - HTTP 落库题目：content 为 JSON 题目 payload；
+ * - WS 实时追加题目：content 为纯文本，但携带结构化 question 且 type 非空。
+ * AI 反馈消息（纯文本、question.type 为空）会被排除。
+ */
+export function isInterviewQuestionMessage(item: InterviewMessage): boolean {
+  if (!item || item.role !== 'ai' || item.message_type !== 'text') {
+    return false
+  }
+  if (isQuestionPayload(item.content)) {
+    return true
+  }
+  return Boolean(item.question?.type)
+}
+
+/**
+ * 从消息列表中找出“最近一条尚未被回答的题目”。
+ * 最近一条题目若已有用户回答跟随，说明下一题尚未生成，返回 null（等待出题/恢复下一题）。
+ */
+function findAwaitingAnswerQuestion(messages: InterviewMessage[]): InterviewMessage | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const item = messages[index]
+    if (!isInterviewQuestionMessage(item)) {
+      continue
+    }
+    const answeredAfter = messages.slice(index + 1).some((message) => message.role === 'user')
+    return answeredAfter ? null : item
+  }
+  return null
+}
+
+/**
  * 从后端返回的面试详情中恢复当前待答题目，兼容刷新页面后的状态恢复。
  */
 export function resolveCurrentInterviewQuestion(detail: InterviewDetailResponse | undefined): InterviewQuestion | null {
@@ -290,30 +339,7 @@ export function resolveCurrentInterviewQuestion(detail: InterviewDetailResponse 
     return null
   }
 
-  if (detail.current_question) {
-    return detail.current_question
-  }
-
-  const answeredCount = countInterviewAnswers(detail.messages)
-  if (answeredCount >= detail.total_questions) {
-    return null
-  }
-
-  const latestQuestionMessage = [...detail.messages]
-    .reverse()
-    .find((item) => item.role === 'ai' && item.message_type === 'text')
-
-  if (!latestQuestionMessage) {
-    return null
-  }
-
-  return latestQuestionMessage.question || {
-    question: latestQuestionMessage.content,
-    topic: '',
-    difficulty: '',
-    type: 'technical',
-    hints: '',
-  }
+  return resolveCurrentInterviewQuestionFromMessages(detail.messages, detail.status, detail.total_questions)
 }
 
 /**
@@ -328,21 +354,14 @@ export function resolveCurrentInterviewQuestionFromMessages(
     return null
   }
 
-  const answeredCount = countInterviewAnswers(messages)
-  if (answeredCount >= totalQuestions) {
+  void totalQuestions
+  const awaitingQuestion = findAwaitingAnswerQuestion(messages)
+  if (!awaitingQuestion) {
     return null
   }
 
-  const latestQuestionMessage = [...messages]
-    .reverse()
-    .find((item) => item.role === 'ai' && item.message_type === 'text')
-
-  if (!latestQuestionMessage) {
-    return null
-  }
-
-  return latestQuestionMessage.question || {
-    question: latestQuestionMessage.content,
+  return awaitingQuestion.question || {
+    question: awaitingQuestion.content,
     topic: '',
     difficulty: '',
     type: 'technical',

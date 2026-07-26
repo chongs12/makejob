@@ -10,10 +10,14 @@ import (
 type MockInterview struct {
 	gorm.Model
 	UserID             uint64     `gorm:"index;not null"`
-	IndustryID         uint64     `gorm:"column:industry_id;index;not null"`
+	// industry_id 允许 NULL：知识点专项面试（interview_type=knowledge）无所属行业，
+	// 落库为 NULL。外键 fk_mock_interviews_industry 保留，Postgres 外键允许 NULL 值。
+	IndustryID         *uint64    `gorm:"column:industry_id;index"`
 	Status             string     `gorm:"size:20;default:created;index"` // created, in_progress, ongoing, report_generating, report_failed, completed
 	InterviewType      string     `gorm:"size:20;default:'';index"` // knowledge | job，决定出题与报告模板
 	KnowledgeTopicsJSON string    `gorm:"column:knowledge_topics;type:text"` // 知识点专项面试的自定义知识点 JSON 数组
+	// 预生成题目 JSON 数组：CreateInterview 时一次性生成全部题目存此列，GetNextQuestion 直接取用，免逐题调 LLM。
+	QuestionsJSON       string    `gorm:"column:questions_json;type:text"`
 	ResumeText          string    `gorm:"column:resume_text;type:text"` // 简历原文，岗位求职报告依赖
 	JobDescription      string    `gorm:"column:job_description;type:text"` // 目标岗位 JD
 	ResumeParsedJSON    string    `gorm:"column:resume_parsed_json;type:text"` // 简历解析画像 JSON

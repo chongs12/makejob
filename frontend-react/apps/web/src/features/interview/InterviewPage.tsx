@@ -96,7 +96,8 @@ export function InterviewHubPage() {
   const user = useAuthStore((state) => state.user)
   const [form, setForm] = useState<InterviewConfigForm>(() => buildInitialInterviewForm())
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
-  const [channelChoice, setChannelChoice] = useState<'voice' | 'text'>('voice')
+  // 默认走标准语音（非实时，省成本、无需火山实时链路）；付费会员需要实时语音时手动切到“实时语音面试”。
+  const [channelChoice, setChannelChoice] = useState<'voice' | 'text'>('text')
   const [message, setMessage] = useState('')
   const [pdfFileName, setPdfFileName] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
@@ -119,7 +120,7 @@ export function InterviewHubPage() {
   const effectiveIndustryCode = selectedIndustry?.code || selectedIndustryCode.trim() || INTERVIEW_DEFAULT_INDUSTRY_CODE
   const effectiveIndustryLabel = formatFrontendIndustryLabel(selectedIndustry, effectiveIndustryCode)
 
-  // 实时语音面试为会员专属：免费用户固定文字模式，付费用户可在语音/文字间选择（默认语音）。
+  // 实时语音面试为会员专属：免费用户固定标准语音模式，付费用户可在实时语音/标准语音间选择（默认实时语音）。
   // 会员等级经 /user/profile 由 membership 服务回源，升级后即时反映。
   const isPaidMember = Boolean(user?.membershipLevel) && user.membershipLevel !== 'free'
   const deliveryChannel: 'voice' | 'text' = isPaidMember ? channelChoice : 'text'
@@ -420,7 +421,7 @@ export function InterviewHubPage() {
             </button>
           </div>
 
-          {/* 交付通道：语音面试（会员专属）/ 文字面试 */}
+          {/* 交付通道：实时语音面试（会员专属）/ 标准语音面试 */}
           <div style={{ marginBottom: 8 }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: THEME.textMain, marginBottom: 8 }}>
               面试方式
@@ -451,7 +452,7 @@ export function InterviewHubPage() {
                   transition: 'all 0.2s ease',
                 }}
               >
-                语音面试{isPaidMember ? '' : '（会员）'}
+                实时语音面试{isPaidMember ? '' : '（会员）'}
               </button>
               <button
                 type="button"
@@ -470,7 +471,7 @@ export function InterviewHubPage() {
                   transition: 'all 0.2s ease',
                 }}
               >
-                文字面试
+                标准语音面试
               </button>
             </div>
           </div>

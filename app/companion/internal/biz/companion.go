@@ -668,8 +668,23 @@ func (uc *CompanionUseCase) GetCompanionState(ctx context.Context, userID uint64
 	return session, nil
 }
 
-// SynthesizeSpeech 执行语音合成并返回结构化音频结果
+// SynthesizeSpeech 执行语音合成并返回结构化音频结果。
+// /companion/tts 当前仅面试标准语音链路调用，优先走场景级 TTS（admin 配置：
+// live2d 模型绑定 -> 面试场景默认 -> 全局），失败再回退到 config.yaml 的 ttsClient。
 func (uc *CompanionUseCase) SynthesizeSpeech(ctx context.Context, text, voice string) (*TTSAudio, error) {
+	if uc.sceneTTSService != nil {
+		result, err := uc.sceneTTSService.SynthesizeForScene(ctx, SceneTTSRequest{
+			Scene: Live2DSceneInterview,
+			Text:  text,
+		})
+		if err == nil && result != nil {
+			return &TTSAudio{AudioURL: result.AudioURL, AudioData: result.AudioData}, nil
+		}
+		if err != nil {
+			log.Context(ctx).Warnf("scene tts failed, fallback to ttsClient: %v", err)
+		}
+	}
+
 	if uc.ttsClient == nil {
 		return nil, kratosErr.InternalServer("TTS_NOT_CONFIGURED", "语音合成服务未配置")
 	}

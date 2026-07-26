@@ -17,7 +17,7 @@ data:
 
 ai:
   service_addr: "localhost:9011"
-  timeout_ms: 30000
+  timeout_ms: 90000  # 并发生成全部题目时单次 LLM 调用可能 25s+，30s 会 DeadlineExceeded 致兜底
 
 rag:
   service_addr: "localhost:9012"

@@ -66,8 +66,10 @@ type AdminConfig struct {
 
 func (AdminConfig) TableName() string { return "admin_configs" }
 
-// 场景默认 TTS 配置键
+// 场景默认 TTS 配置键。必须与 admin 服务写入 admin_configs 的键一致
+// （admin 服务用 "tts_default_" + scene，即 tts_default_interview / tts_default_companion）。
+// 历史上这里误写成 *_config_id 后缀，导致后台设置的场景默认 TTS 永远查不到。
 const (
-	TTSDefaultConfigKeyInterview = "tts_default_interview_config_id"
-	TTSDefaultConfigKeyCompanion = "tts_default_companion_config_id"
+	TTSDefaultConfigKeyInterview = "tts_default_interview"
+	TTSDefaultConfigKeyCompanion = "tts_default_companion"
 )

@@ -55,7 +55,37 @@ export async function fetchInterviewDetail(token: string, interviewId: string): 
     token,
   })
 
-  return unwrapInterviewResponseData(response, '获取面试详情失败')
+  const detail = unwrapInterviewResponseData(response, '获取面试详情失败')
+  // 后端消息 role 为 'assistant'/'user'，前端约定统一用 'ai'/'user'，在此映射收口，
+  // 避免 helpers（resolveCurrentInterviewQuestion*、历史抽屉、replay）逐处判断角色。
+  if (detail?.messages) {
+    detail.messages = detail.messages.map((message) => ({
+      ...message,
+      role: message.role === 'assistant' ? 'ai' : message.role,
+    }))
+  }
+  return detail
+}
+
+/**
+ * 调用陪伴 TTS 合成接口，把文本转成可直链播放的音频 URL，供非实时面试逐题播报复用。
+ */
+export async function synthesizeInterviewSpeech(
+  token: string,
+  text: string,
+  voice?: string,
+): Promise<string> {
+  const response = await requestJson<ApiEnvelope<{ audio_url?: string; audio_data?: string }>>('/companion/tts', {
+    method: 'POST',
+    token,
+    body: { text, voice: voice || '' },
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '语音合成失败')
+  }
+
+  return response.data.audio_url || ''
 }
 
 export interface SubmitInterviewAnswerPayload {

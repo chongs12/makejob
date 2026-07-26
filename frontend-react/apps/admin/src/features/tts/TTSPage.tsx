@@ -35,8 +35,9 @@ interface TTSProviderDescriptor {
   support_message: string
   auth_template: string
   params_template: string
-  auth_fields: TTSProviderFieldDefinition[]
-  param_fields: TTSProviderFieldDefinition[]
+  // 后端 proto auth_fields/param_fields 为 []string（字段名）；保留对象形态以兼容历史/未来富字段。
+  auth_fields: Array<string | TTSProviderFieldDefinition>
+  param_fields: Array<string | TTSProviderFieldDefinition>
 }
 
 interface TTSConfig {
@@ -396,15 +397,20 @@ function shortenVoiceId(value: string): string {
 }
 
 /**
- * 把字段定义列表拼成简洁的说明文本。
+ * 把字段定义列表拼成简洁的说明文本。兼容字符串（字段名）与对象（富字段）两种形态。
  */
-function formatFieldDefinitions(fields: TTSProviderFieldDefinition[]): string {
-  if (fields.length === 0) {
+function formatFieldDefinitions(fields: Array<string | TTSProviderFieldDefinition>): string {
+  if (!fields || fields.length === 0) {
     return '当前没有额外字段说明。'
   }
 
   return fields
-    .map((field) => `${field.required ? '必填' : '可选'} ${field.label} (${field.key})：${field.description}`)
+    .map((field) => {
+      if (typeof field === 'string') {
+        return `- ${field}`
+      }
+      return `${field.required ? '必填' : '可选'} ${field.label} (${field.key})：${field.description}`
+    })
     .join('\n')
 }
 

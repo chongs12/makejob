@@ -22,8 +22,10 @@ import {
   fetchNextInterviewQuestion,
   finishInterviewRequest,
   submitInterviewAnswer,
+  synthesizeInterviewSpeech,
   type SubmitInterviewAnswerPayload,
 } from './interviewApi'
+import { recognizeSpeech } from '../companion/companionApi'
 import {
   appendInterviewMessage,
   buildInterviewWebSocketUrl,
@@ -84,6 +86,7 @@ export function InterviewSessionPage() {
   const [hasRequestedMicrophonePermission, setHasRequestedMicrophonePermission] = useState(false)
   const [hasGrantedMicrophonePermission, setHasGrantedMicrophonePermission] = useState(false)
   const [assistantTurnCount, setAssistantTurnCount] = useState(0)
+  const [isAdvancing, setIsAdvancing] = useState(false)
   const [selectedLive2DModelKey, setSelectedLive2DModelKey] = useState(() => readSelectedLive2DModelKey('interview', readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE))
   const {
     liveDialogue,
@@ -116,6 +119,10 @@ export function InterviewSessionPage() {
   const recordSpeechDetectedRef = useRef(false)
   const recordStopRequestedRef = useRef(false)
   const recordPendingPCMRef = useRef<number[]>([])
+  // 非实时 ASR：累积 PCM16 采样，停止录音后打成 Blob 送 /companion/asr
+  const nonRealtimePcmBufferRef = useRef<number[]>([])
+  // 非实时 TTS 去重：记录已播报的文本，避免同一题/反馈重复播报
+  const lastSpokenContentRef = useRef('')
   const recordFrameQueueRef = useRef<string[]>([])
   const recordFrameTimerRef = useRef<number | null>(null)
   const recordFrameDrainTimerRef = useRef<number | null>(null)
@@ -151,11 +158,32 @@ export function InterviewSessionPage() {
       setRecognitionFinal('')
       setRecognitionPartial('')
       setCodingRunMessage('本题提交完成，正在等待下一题或生成报告。')
-      setMessage(data.is_finished ? '本场面试题目已完成，建议现在生成报告。' : '答案已提交，下一题已准备好。')
-      await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
       await queryClient.invalidateQueries({ queryKey: ['interview-history'] })
+      if (data.is_finished) {
+        setMessage('本场面试题目已完成，建议现在生成报告。')
+        await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
+        return
+      }
+      // 非实时（标准语音）链路：提交后自动出下一题，TTS effect 会自动播报新题；
+      // 实时链路答题走 WS，不会进入此分支的自动推进。
+      if (!isRealtime) {
+        setIsAdvancing(true)
+        setMessage('答案已提交，AI 正在出下一题…')
+        setSessionState({ status: 'thinking', message: 'AI 正在出下一题…' })
+        await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
+        try {
+          await nextQuestionMutation.mutateAsync()
+        } catch {
+          setIsAdvancing(false)
+          setMessage('获取下一题失败，可点击“恢复下一题”重试。')
+        }
+      } else {
+        setMessage('答案已提交，下一题已准备好。')
+        await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
+      }
     },
     onError: (error) => {
+      setIsAdvancing(false)
       setMessage(extractErrorMessage(error, '提交回答失败，请稍后重试'))
     },
   })
@@ -163,12 +191,19 @@ export function InterviewSessionPage() {
   const nextQuestionMutation = useMutation({
     mutationFn: () => fetchNextInterviewQuestion(accessToken as string, interviewId),
     onSuccess: async (data) => {
-      setMessage(data.question ? `已恢复到第 ${data.question_no} 题。` : '当前没有更多题目，可直接结束面试生成报告。')
+      setIsAdvancing(false)
       setRecognitionFinal('')
       setRecognitionPartial('')
+      if (data.question) {
+        setMessage(`已恢复到第 ${data.question_no} 题。`)
+      } else {
+        setMessage('当前没有更多题目，可直接结束面试生成报告。')
+        setSessionState({ status: 'ready', message: '题目已全部完成，可结束面试生成报告。' })
+      }
       await queryClient.invalidateQueries({ queryKey: ['interview-detail', accessToken, interviewId] })
     },
     onError: (error) => {
+      setIsAdvancing(false)
       setMessage(extractErrorMessage(error, '获取下一题失败，请稍后重试'))
     },
   })
@@ -197,6 +232,7 @@ export function InterviewSessionPage() {
   const isPreparing = effectiveStatus === 'preparing'
   const isReportGenerating = effectiveStatus === 'report_generating'
   const isInterviewOngoing = effectiveStatus === 'ongoing'
+  const isRealtime = Boolean(detailQuery.data?.is_realtime)
   const currentQuestion = useMemo(
     () => resolveCurrentInterviewQuestionFromMessages(effectiveMessages, effectiveStatus, detailQuery.data?.total_questions || 0),
     [detailQuery.data?.total_questions, effectiveMessages, effectiveStatus],
@@ -231,9 +267,65 @@ export function InterviewSessionPage() {
       assistantTranscriptRef.current = restoredQuestion.question
       setStageDirective(restoredQuestion.live2d_directive || null)
       setStageEmotion(restoredQuestion.live2d_directive?.emotion || 'neutral')
-      stopDialogueTyping(restoredQuestion.question)
+      // 实时链路由 WS 事件驱动 TTS/字幕，这里先把题目文本铺到舞台；
+      // 非实时链路由下方 TTS effect 负责播报并驱动字幕，避免重复抢占。
+      if (isRealtime) {
+        stopDialogueTyping(restoredQuestion.question)
+      } else {
+        setSessionState({ status: 'idle', message: '正在准备题目播报…' })
+      }
+    } else if (!isRealtime && isInterviewOngoing) {
+      // 非实时且当前无待答题（已答完等下一题）：进入可作答/可恢复状态，不再卡“正在准备实时面试链路”。
+      setSessionState({ status: 'ready', message: '可点击“恢复下一题”继续，或直接结束面试生成报告。' })
     }
-  }, [detailQuery.data])
+  }, [detailQuery.data, isInterviewOngoing, isRealtime])
+
+  /**
+   * 非实时（标准语音）面试：每出现一条新的 AI 消息（题目或反馈）就调 /companion/tts 播报，
+   * 用 Live2D 字幕+嘴型同步模拟火山实时体验；TTS 失败降级为纯字幕。播报结束后进入 ready 可作答。
+   */
+  useEffect(() => {
+    if (isRealtime || !isInterviewOngoing) {
+      return
+    }
+
+    const latestAI = [...effectiveMessages]
+      .reverse()
+      .find((item) => item.role === 'ai' && item.message_type === 'text')
+    if (!latestAI) {
+      return
+    }
+
+    const speakableText = (latestAI.question?.question || latestAI.content || '').trim()
+    if (!speakableText || lastSpokenContentRef.current === speakableText) {
+      return
+    }
+    lastSpokenContentRef.current = speakableText
+    assistantTranscriptRef.current = speakableText
+    setSessionState({ status: 'speaking', message: '面试官正在播报，播报结束后可作答。' })
+
+    // 注意：不在此处用 cancelled cleanup——effect 依赖的 playTTSAudio/startDialogueTyping
+    // 每次渲染都是新引用，cleanup 会在渲染间误杀进行中的 TTS。改由 lastSpokenContentRef 去重，
+    // 同一文本只播报一次；切到新文本时 playTTSAudio 内部会先 stopCurrentPlayback 再播新音频。
+    void (async () => {
+      try {
+        const audioUrl = await synthesizeInterviewSpeech(accessToken as string, speakableText)
+        if (audioUrl) {
+          await playTTSAudio(audioUrl, speakableText)
+        } else {
+          startDialogueTyping(speakableText)
+          setSessionState((current) => (current.status === 'speaking'
+            ? { status: 'ready', message: '可以作答：可直接输入文字，或点击麦克风语音回答。' }
+            : current))
+        }
+      } catch {
+        startDialogueTyping(speakableText)
+        setSessionState((current) => (current.status === 'speaking'
+          ? { status: 'ready', message: '语音播报失败，已回退文本模式，可继续作答。' }
+          : current))
+      }
+    })()
+  }, [effectiveMessages, isInterviewOngoing, isRealtime, accessToken, playTTSAudio, startDialogueTyping])
 
   /**
    * 面试页挂载后尽快预热 Live2D 运行时，减少首次渲染面试官舞台时的额外等待。
@@ -630,7 +722,8 @@ export function InterviewSessionPage() {
   }
 
   /**
-   * 启动浏览器麦克风采集，并将 16k PCM 音频实时推送到后端 WebSocket。
+   * 启动浏览器麦克风采集：实时链路把 16k PCM 帧实时推送到后端 WebSocket；
+   * 非实时（标准语音）链路累积 PCM16 采样，停止后打成 Blob 送 /companion/asr 识别。
    */
   async function startVoiceCapture(): Promise<void> {
     if (!canRecord) {
@@ -638,7 +731,7 @@ export function InterviewSessionPage() {
       return
     }
 
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (isRealtime && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
       setMessage('实时链路尚未连接，暂时无法启动语音识别。')
       return
     }
@@ -658,29 +751,34 @@ export function InterviewSessionPage() {
       const source = recordContext.createMediaStreamSource(stream)
       const processor = recordContext.createScriptProcessor(4096, 1, 1)
 
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'audio_start',
-          data: {
-            language: 'zh-CN',
-          },
-        }),
-      )
+      if (isRealtime) {
+        wsRef.current?.send(
+          JSON.stringify({
+            type: 'audio_start',
+            data: {
+              language: 'zh-CN',
+            },
+          }),
+        )
+      }
 
       recordStopRequestedRef.current = false
       recordSpeechDetectedRef.current = false
       recordPendingPCMRef.current = []
       recordFrameQueueRef.current = []
+      nonRealtimePcmBufferRef.current = []
       if (recordFrameDrainTimerRef.current !== null) {
         window.clearInterval(recordFrameDrainTimerRef.current)
         recordFrameDrainTimerRef.current = null
       }
       clearRecordSilenceTimer()
-      ensureQueuedAudioFramesSending()
+      if (isRealtime) {
+        ensureQueuedAudioFramesSending()
+      }
       source.connect(processor)
       processor.connect(recordContext.destination)
       processor.onaudioprocess = (event) => {
-        if (recordStopRequestedRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        if (recordStopRequestedRef.current || (isRealtime && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN))) {
           return
         }
 
@@ -709,15 +807,19 @@ export function InterviewSessionPage() {
           return
         }
 
-        recordPendingPCMRef.current.push(...pcmChunk)
-        while (recordPendingPCMRef.current.length >= 320) {
-          const frame = new Int16Array(recordPendingPCMRef.current.slice(0, 320))
-          recordPendingPCMRef.current = recordPendingPCMRef.current.slice(320)
-          const audioBase64 = encodePCM16Base64FromInt16(frame)
-          if (!audioBase64) {
-            continue
+        if (isRealtime) {
+          recordPendingPCMRef.current.push(...pcmChunk)
+          while (recordPendingPCMRef.current.length >= 320) {
+            const frame = new Int16Array(recordPendingPCMRef.current.slice(0, 320))
+            recordPendingPCMRef.current = recordPendingPCMRef.current.slice(320)
+            const audioBase64 = encodePCM16Base64FromInt16(frame)
+            if (!audioBase64) {
+              continue
+            }
+            recordFrameQueueRef.current.push(audioBase64)
           }
-          recordFrameQueueRef.current.push(audioBase64)
+        } else {
+          nonRealtimePcmBufferRef.current.push(...pcmChunk)
         }
       }
 
@@ -729,7 +831,9 @@ export function InterviewSessionPage() {
       setRecognitionPartial('')
       setRecognitionFinal('')
       setIsRecording(true)
-      setMessage('正在实时识别你的回答，请继续说；停顿后会自动提交。')
+      setMessage(isRealtime
+        ? '正在实时识别你的回答，请继续说；停顿后会自动提交。'
+        : '正在录音，停顿后会自动识别并填入回答框；也可手动停止。')
       if (recordMaxDurationTimerRef.current !== null) {
         window.clearTimeout(recordMaxDurationTimerRef.current)
       }
@@ -744,7 +848,8 @@ export function InterviewSessionPage() {
   }
 
   /**
-   * 停止当前麦克风采集，并按来源决定是否通知后端结束并自动提交本轮 ASR。
+   * 停止当前麦克风采集：实时链路按既定节奏把剩余 PCM 帧发完并通知后端结束；
+   * 非实时链路把累积的 PCM16 打成 Blob 送 /companion/asr 识别后回填回答框。
    */
   function stopVoiceCapture(reason: 'manual' | 'auto' | 'cleanup' = 'manual'): void {
     const hasActiveRecording = Boolean(
@@ -780,26 +885,62 @@ export function InterviewSessionPage() {
       void recordAudioContextRef.current.close()
       recordAudioContextRef.current = null
     }
-    if (reason !== 'cleanup' && recordPendingPCMRef.current.length > 0) {
-      const finalFrame = new Int16Array(recordPendingPCMRef.current)
-      const audioBase64 = encodePCM16Base64FromInt16(finalFrame)
-      if (audioBase64) {
-        recordFrameQueueRef.current.push(audioBase64)
-      }
-    }
-    recordPendingPCMRef.current = []
-    if (reason === 'cleanup') {
-      recordFrameQueueRef.current = []
-      stopQueuedAudioFramesSending()
-      if (recordFrameDrainTimerRef.current !== null) {
-        window.clearInterval(recordFrameDrainTimerRef.current)
-        recordFrameDrainTimerRef.current = null
-      }
-    } else {
-      finishQueuedAudioFrames(reason)
-    }
+
     setIsRecording(false)
     recordStopRequestedRef.current = false
+
+    if (isRealtime) {
+      if (reason !== 'cleanup' && recordPendingPCMRef.current.length > 0) {
+        const finalFrame = new Int16Array(recordPendingPCMRef.current)
+        const audioBase64 = encodePCM16Base64FromInt16(finalFrame)
+        if (audioBase64) {
+          recordFrameQueueRef.current.push(audioBase64)
+        }
+      }
+      recordPendingPCMRef.current = []
+      if (reason === 'cleanup') {
+        recordFrameQueueRef.current = []
+        stopQueuedAudioFramesSending()
+        if (recordFrameDrainTimerRef.current !== null) {
+          window.clearInterval(recordFrameDrainTimerRef.current)
+          recordFrameDrainTimerRef.current = null
+        }
+      } else {
+        finishQueuedAudioFrames(reason)
+      }
+    } else {
+      const capturedSamples = nonRealtimePcmBufferRef.current
+      nonRealtimePcmBufferRef.current = []
+      if (reason !== 'cleanup' && capturedSamples.length > 0) {
+        void finishNonRealtimeASR(capturedSamples, reason === 'auto' ? 'auto' : 'manual')
+      }
+    }
+  }
+
+  /**
+   * 非实时 ASR：把累积的 PCM16 采样编码为 Blob，POST /companion/asr 识别后回填回答框。
+   */
+  async function finishNonRealtimeASR(samples: number[], reason: 'manual' | 'auto'): Promise<void> {
+    setMessage(reason === 'auto' ? '检测到你已停顿，正在识别你的语音回答。' : '录音已结束，正在识别你的语音回答。')
+    setSessionState({ status: 'thinking', message: '正在识别语音…' })
+    try {
+      const int16 = new Int16Array(samples)
+      const blob = new Blob([int16.buffer], { type: 'application/octet-stream' })
+      const result = await recognizeSpeech(accessToken as string, blob, 'pcm', 16000, 'zh-CN')
+      const text = (result.text || '').trim()
+      if (text) {
+        setRecognitionFinal(text)
+        setAnswer(text)
+        setMessage('已识别语音回答，可直接提交或修改后提交。')
+        setSessionState({ status: 'ready', message: '语音已识别，可提交回答。' })
+      } else {
+        setMessage('未识别到有效内容，请直接输入文字或重新语音回答。')
+        setSessionState({ status: 'ready', message: '未识别到内容，可继续作答。' })
+      }
+    } catch (error) {
+      setMessage(extractErrorMessage(error, '语音识别失败，请直接输入文字作答。'))
+      setSessionState({ status: 'ready', message: '语音识别失败，可继续作答。' })
+    }
   }
 
   /**
@@ -1237,7 +1378,9 @@ export function InterviewSessionPage() {
       return
     }
 
-    setMessage('当前实时链路未连接，本次将走 HTTP 回退模式；该模式只返回文本，不会触发 TTS 语音。')
+    setMessage(isRealtime
+      ? '当前实时链路未连接，本次将走 HTTP 回退模式；该模式只返回文本，不会触发 TTS 语音。'
+      : '正在提交回答，AI 评估后将自动出下一题。')
     await submitMutation.mutateAsync({
       answer: content,
     })
@@ -1271,8 +1414,10 @@ export function InterviewSessionPage() {
               </div>
                 <span className="companion-card-note">
                 {isRecording ? '麦克风采集中，停顿后自动提交...' : (sessionState.status === 'error'
-                  ? '实时链路错误'
-                  : (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式'))}
+                  ? (isRealtime ? '实时链路错误' : '语音链路错误')
+                  : (isRealtime
+                      ? (wsConnected ? '实时链路优先' : '当前为 HTTP 回退模式')
+                      : '标准语音模式'))}
               </span>
             </div>
 
@@ -1337,7 +1482,7 @@ export function InterviewSessionPage() {
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
                 placeholder={isCodingQuestion ? '可选：补充你的解题思路、复杂度权衡或边界条件说明。' : '直接输入你的回答。建议先说思路，再补关键点、权衡和落地细节。'}
-                disabled={!isInterviewOngoing}
+                disabled={!isInterviewOngoing || isAdvancing}
               />
               <div className="interview-answer-actions">
                 <div className="page-actions">
@@ -1351,7 +1496,7 @@ export function InterviewSessionPage() {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={!canRecord || isCodingQuestion || !isInterviewOngoing || sessionState.status === 'speaking' || sessionState.status === 'thinking'}
+                    disabled={!canRecord || isCodingQuestion || !isInterviewOngoing || isAdvancing || sessionState.status === 'speaking' || sessionState.status === 'thinking'}
                     onClick={() => {
                       if (isRecording) {
                         stopVoiceCapture()
@@ -1381,9 +1526,9 @@ export function InterviewSessionPage() {
                   <button
                     className="primary-button"
                     type="submit"
-                    disabled={isRecording || submitMutation.isPending || !isInterviewOngoing}
+                    disabled={isRecording || submitMutation.isPending || isAdvancing || !isInterviewOngoing}
                   >
-                    {submitMutation.isPending ? '提交中...' : (isCodingQuestion ? '提交代码与过程数据' : '手动提交答案')}
+                    {isAdvancing ? '出题中...' : (submitMutation.isPending ? '提交中...' : (isCodingQuestion ? '提交代码与过程数据' : '手动提交答案'))}
                   </button>
                 </div>
               </div>

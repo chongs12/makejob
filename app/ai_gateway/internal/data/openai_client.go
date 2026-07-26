@@ -128,8 +128,17 @@ func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, conf
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "调用备用模型 API 未返回内容")
 	}
 
+	// 推理模型可能把输出放在 reasoning_content 而 content 为空：优先 content，空则回退 reasoning_content。
+	content := chatResp.Choices[0].Message.Content
+	if strings.TrimSpace(content) == "" {
+		content = chatResp.Choices[0].Message.ReasoningContent
+	}
+	if strings.TrimSpace(content) == "" {
+		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "备用模型返回空内容（content 与 reasoning_content 均为空），请检查模型配置/额度/max_tokens")
+	}
+
 	return &biz.LLMResponse{
-		Content:      chatResp.Choices[0].Message.Content,
+		Content:      content,
 		InputTokens:  chatResp.Usage.PromptTokens,
 		OutputTokens: chatResp.Usage.CompletionTokens,
 	}, nil

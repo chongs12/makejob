@@ -235,6 +235,7 @@ func toModel(iv *biz.Interview) *model.MockInterview {
 		Status:              iv.Status,
 		InterviewType:       iv.InterviewType,
 		KnowledgeTopicsJSON: marshalKnowledgeTopics(iv.KnowledgeTopics),
+		QuestionsJSON:       marshalQuestions(iv.Questions),
 		ResumeText:          iv.ResumeText,
 		JobDescription:      iv.JobDescription,
 		ResumeParsedJSON:    iv.ResumeParsedJSON,
@@ -265,6 +266,7 @@ func toBiz(m *model.MockInterview) *biz.Interview {
 		Status:          m.Status,
 		InterviewType:   m.InterviewType,
 		KnowledgeTopics: unmarshalKnowledgeTopics(m.KnowledgeTopicsJSON),
+		Questions:        unmarshalQuestions(m.QuestionsJSON),
 		ResumeText:      m.ResumeText,
 		JobDescription:  m.JobDescription,
 		ResumeParsedJSON: m.ResumeParsedJSON,
@@ -304,6 +306,30 @@ func unmarshalKnowledgeTopics(raw string) []string {
 		return nil
 	}
 	return topics
+}
+
+// marshalQuestions 序列化预生成题目列表为 JSON 字符串，空切片返回 "[]"。
+func marshalQuestions(questions []biz.InterviewQuestion) string {
+	if questions == nil {
+		return "[]"
+	}
+	data, err := json.Marshal(questions)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+// unmarshalQuestions 反序列化预生成题目 JSON，失败或为空返回 nil。
+func unmarshalQuestions(raw string) []biz.InterviewQuestion {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var questions []biz.InterviewQuestion
+	if err := json.Unmarshal([]byte(raw), &questions); err != nil {
+		return nil
+	}
+	return questions
 }
 
 // GetStats SQL 聚合查询面试统计（FIX I3: 避免全量加载）

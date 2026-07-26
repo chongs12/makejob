@@ -116,7 +116,15 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 
 	result, err := parseStructuredJSON[InterviewResult](llmCtx, uc.llm, cfg, resp.Content, schema)
 	if err != nil {
-		return nil, err
+		uc.logger.Warnf("StartInterview LLM 响应解析失败，使用本地兜底: interview_id=%d err=%v", req.InterviewID, err)
+		return buildLocalStartResponse(req), nil
+	}
+
+	// LLM 可能返回合法 JSON 但 question 字段为空/缺失，此时首题为空、不会落库，面试会卡在“无题可答”状态。
+	// 降级到本地兜底题，保证非实时面试始终有首题（实时面试不走 StartInterview，不受影响）。
+	if strings.TrimSpace(result.Question) == "" {
+		uc.logger.Warnf("StartInterview LLM 返回空题目，使用本地兜底: interview_id=%d type=%s topics=%v", req.InterviewID, req.InterviewType, req.Topics)
+		return buildLocalStartResponse(req), nil
 	}
 
 	// 创建会话
@@ -179,32 +187,19 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 		return nil, ErrAIConfigNotFound
 	}
 
-	tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene)
-	if err != nil {
-		return nil, ErrPromptRenderFailed
-	}
-
 	// 添加用户答案到历史
 	session.History = append(session.History, Message{
 		Role:    "user",
 		Content: req.Answer,
 	})
 
-	// 构造评估 prompt
-	vars := map[string]string{
-		"industry_code":   session.IndustryCode,
-		"difficulty":      session.Difficulty,
-		"user_answer":     req.Answer,
-		"resume_text":     session.ResumeText,
-		"job_description": session.JobDescription,
-		"question_index":  fmt.Sprintf("%d", req.QuestionIndex),
-	}
+	// 构造评估 prompt（专用：明确要求 0-100 打分 + 关键点 + 建议），不再依赖通用出题模板，
+	// 避免出题合同里 score 无描述、无 key_points/suggestions 字段导致 LLM 漏返回评分。
+	promptText := buildEvaluatePrompt(req.Answer, session.Difficulty)
 	if req.RAGContext != "" {
-		vars["rag_context"] = req.RAGContext
+		promptText += "\n参考资料（评估时可参考）：\n" + req.RAGContext
 	}
-	promptText := RenderPrompt(tpl.TemplateContent, vars)
-
-	schema := interviewResultSchema()
+	schema := interviewEvaluateSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
 	messages = append(messages, session.History...)
 
@@ -218,9 +213,25 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 		return buildLocalEvaluateResponse(req.Answer), nil
 	}
 
-	result, err := parseStructuredJSON[InterviewResult](llmCtx, uc.llm, cfg, resp.Content, schema)
+	result, err := parseStructuredJSON[InterviewEvaluateResult](llmCtx, uc.llm, cfg, resp.Content, schema)
 	if err != nil {
-		return nil, err
+		uc.logger.Warnf("EvaluateAnswer LLM 响应解析失败，使用本地兜底: err=%v", err)
+		return buildLocalEvaluateResponse(req.Answer), nil
+	}
+
+	// LLM 可能不打分（score=0）或漏字段，用本地兜底补齐，保证前端总能拿到完整结构化反馈
+	fallback := buildLocalEvaluateResponse(req.Answer)
+	if result.Score <= 0 {
+		result.Score = fallback.Score
+	}
+	if strings.TrimSpace(result.Feedback) == "" {
+		result.Feedback = fallback.Feedback
+	}
+	if len(result.KeyPoints) == 0 {
+		result.KeyPoints = fallback.KeyPoints
+	}
+	if strings.TrimSpace(result.Suggestions) == "" {
+		result.Suggestions = fallback.Suggestions
 	}
 
 	// 记录反馈
@@ -239,12 +250,12 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 	}
 
 	return &EvaluateAnswerResponse{
-		Score:      result.Score,
-		IsCorrect:  result.Score > 0.6,
-		Feedback:   result.Feedback,
-		KeyPoints:  nil,
-		Suggestions: "",
-		FollowUp:   "",
+		Score:       result.Score,
+		IsCorrect:   result.Score >= 60,
+		Feedback:    result.Feedback,
+		KeyPoints:   result.KeyPoints,
+		Suggestions: result.Suggestions,
+		FollowUp:    "",
 	}, nil
 }
 
@@ -619,7 +630,7 @@ func (uc *InterviewSessionUseCase) saveLog(ctx context.Context, scene, model str
 }
 
 // GenerateKnowledgeReport 知识点专项面试报告生成（不依赖 session，基于完整对话历史）。
-// 学习型报告必须由 LLM 生成，失败直接返回错误，不做字数兜底降级。
+// 推理模型偶发返回空内容，故最多重试 3 次；全部失败时用本地兜底报告，保证不落 report_failed。
 func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, req *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error) {
 	if len(req.History) == 0 {
 		return nil, kratosErr.BadRequest("EMPTY_HISTORY", "对话历史不能为空")
@@ -633,23 +644,36 @@ func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, 
 		return nil, ErrAIConfigNotFound
 	}
 
-	prompt := uc.buildKnowledgeReportPrompt(req.History, req.KnowledgeTopics, req.Difficulty, req.TotalQuestions)
+	prompt := uc.buildKnowledgeReportPrompt(req.KnowledgeTopics, req.Difficulty, req.TotalQuestions)
 	schema := knowledgeReportSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
 	messages = append(messages, req.History...)
 
-	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
-	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
-	if err != nil {
-		return nil, err
+	var result KnowledgeReportResult
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		resp, chatErr := uc.llm.Chat(llmCtx, messages, cfg)
+		uc.saveLog(ctx, scene, cfg.Model, resp, chatErr, time.Since(start).Milliseconds())
+		if chatErr == nil && resp != nil {
+			parsed, perr := parseStructuredJSON[KnowledgeReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
+			cancel()
+			if perr == nil && parsed.OverallScore > 0 {
+				result = parsed
+				lastErr = nil
+				break
+			}
+			lastErr = perr
+		} else {
+			cancel()
+			lastErr = chatErr
+		}
+		uc.logger.Warnf("GenerateKnowledgeReport attempt %d 失败，重试: %v", attempt+1, lastErr)
 	}
 
-	result, err := parseStructuredJSON[KnowledgeReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
-	if err != nil {
-		return nil, err
+	if lastErr != nil {
+		uc.logger.Warnf("GenerateKnowledgeReport LLM 全部失败，使用本地兜底报告: %v", lastErr)
+		result = buildLocalKnowledgeReport(req.History, req.KnowledgeTopics, req.TotalQuestions)
 	}
 
 	// 后端定级，确保评级规则一致，不依赖 LLM 自由发挥
@@ -669,19 +693,12 @@ func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, 
 }
 
 // buildKnowledgeReportPrompt 构造知识点专项报告生成 prompt。
-func (uc *InterviewSessionUseCase) buildKnowledgeReportPrompt(history []Message, topics []string, difficulty string, totalQuestions int32) string {
+// 对话历史作为 messages 传入（标准做法），不再嵌进 system prompt，避免重复占 token、干扰模型。
+func (uc *InterviewSessionUseCase) buildKnowledgeReportPrompt(topics []string, difficulty string, totalQuestions int32) string {
 	var sb strings.Builder
-	sb.WriteString("你是一位严谨的知识点考核评估专家。请根据以下完整面试对话记录，围绕候选人自定义的知识点生成一份学习型评估报告。\n\n")
+	sb.WriteString("你是一位严谨的知识点考核评估专家。请根据对话历史中候选人围绕自定义知识点的问答表现，生成一份学习型评估报告。\n\n")
 	sb.WriteString(fmt.Sprintf("考核知识点：%s\n目标难度：%s\n题目数量：%d\n\n", strings.Join(topics, "、"), difficulty, totalQuestions))
-	sb.WriteString("完整面试对话记录：\n")
-	for _, msg := range history {
-		role := "候选人"
-		if msg.Role == "assistant" {
-			role = "面试官"
-		}
-		sb.WriteString(fmt.Sprintf("[%s] %s\n", role, msg.Content))
-	}
-	sb.WriteString("\n请严格按 JSON 合同输出报告，要求：\n")
+	sb.WriteString("请严格按 JSON 合同输出报告，要求：\n")
 	sb.WriteString("1. overall_score: 总体评分 0-100；rating: 优秀(>=85)/良好(>=70)/合格(>=60)/薄弱(<60)。\n")
 	sb.WriteString("2. conclusion: 一句话总结该知识点掌握现状。\n")
 	sb.WriteString("3. question_reviews: 逐题复盘，含用户作答原文、得分、错误点/遗漏点/亮点、标准答案、核心得分点。\n")
@@ -703,6 +720,19 @@ func buildKnowledgeQuestionPrompt(topics []string, difficulty, questionIndex str
 		"3. 由浅入深，覆盖基础概念、应用场景、进阶边界与易错点。\n"+
 		"4. topic 字段必须填写本题对应的具体知识点名称。\n",
 		strings.Join(topics, "、"), difficulty, questionIndex)
+}
+
+// buildEvaluatePrompt 构造答案评估 prompt，明确要求 0-100 打分、关键点与改进建议。
+func buildEvaluatePrompt(answer, difficulty string) string {
+	return fmt.Sprintf("你是一位严谨的技术面试官，现在需要对候选人刚才的回答进行评估打分。\n\n"+
+		"候选人回答：%s\n难度：%s\n\n"+
+		"评估要求：\n"+
+		"1. 根据回答的准确性、完整性、技术深度给出 0-100 的整数评分（<60 不合格，60-75 合格，76-85 良好，86-100 优秀）。\n"+
+		"2. is_correct 表示回答是否基本正确（评分 >=60 时为 true）。\n"+
+		"3. feedback 给出具体评价，先肯定亮点，再指出不足。\n"+
+		"4. key_points 列出回答中涉及或应当涉及的关键知识点（2-5 条）。\n"+
+		"5. suggestions 给出可执行的改进建议。\n",
+		answer, difficulty)
 }
 
 // classifyKnowledgeRating 按总分映射评级，保证一致性。

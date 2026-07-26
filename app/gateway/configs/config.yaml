@@ -1,7 +1,7 @@
 server:
   http:
     addr: 0.0.0.0:8082
-    timeout: 10s
+    timeout: 120s  # 创建面试需并发生成全部题目（多次 LLM 调用），10s 会 DeadlineExceeded 致兜底
 
 services:
   user:

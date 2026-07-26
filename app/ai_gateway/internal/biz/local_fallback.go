@@ -15,17 +15,36 @@ var localInterviewQuestionTemplates = []string{
 	"针对 %s，请先给出结论，再补充边界情况、性能影响和调试思路。",
 }
 
-// buildLocalStartResponse 在 LLM 出题失败时返回模板题目。
-func buildLocalStartResponse(req *StartInterviewRequest) *StartInterviewResponse {
-	topics := defaultTopicsByIndustry(req.IndustryCode)
-	topic := topics[0]
-	return &StartInterviewResponse{
-		SessionID:  uuid.NewString(),
-		Question:   fmt.Sprintf(localInterviewQuestionTemplates[0], topic),
+// buildLocalQuestionResult 构造本地兜底题目（LLM 不可用或返回空题目时使用）。
+// 优先用用户自定义知识点，否则按行业取默认主题；按题号轮换模板，避免连续多题重复。
+func buildLocalQuestionResult(topics []string, industryCode string, questionIndex int32) *InterviewResult {
+	topic := ""
+	if len(topics) > 0 {
+		topic = strings.TrimSpace(topics[0])
+	}
+	if topic == "" {
+		topic = defaultTopicsByIndustry(industryCode)[0]
+	}
+	tpl := localInterviewQuestionTemplates[int(questionIndex)%len(localInterviewQuestionTemplates)]
+	return &InterviewResult{
+		Question:   fmt.Sprintf(tpl, topic),
 		Topic:      topic,
 		Difficulty: "medium",
 		Type:       "technical",
 		Hints:      "请从定义、原理、使用场景和常见问题四个角度组织回答。",
+	}
+}
+
+// buildLocalStartResponse 在 LLM 出题失败时返回模板题目。
+func buildLocalStartResponse(req *StartInterviewRequest) *StartInterviewResponse {
+	r := buildLocalQuestionResult(req.Topics, req.IndustryCode, 0)
+	return &StartInterviewResponse{
+		SessionID:  uuid.NewString(),
+		Question:   r.Question,
+		Topic:      r.Topic,
+		Difficulty: r.Difficulty,
+		Type:       r.Type,
+		Hints:      r.Hints,
 	}
 }
 
@@ -58,6 +77,64 @@ func buildLocalEvaluateResponse(answer string) *EvaluateAnswerResponse {
 		Feedback:   "基于回答完整度的兜底评估。回答覆盖了相关内容，但还需要进一步突出核心原理和工程场景。",
 		KeyPoints:  []string{"核心概念", "原理说明", "使用场景", "边界情况"},
 		Suggestions: "建议按「概念定义 → 实现原理 → 使用场景 → 常见坑点」的顺序组织答案。",
+	}
+}
+
+// buildLocalKnowledgeReport 在 LLM 报告生成全部失败时，基于对话历史生成一份基础结构化报告，
+// 保证不落 report_failed。报告内容偏模板化，仅作兜底。
+func buildLocalKnowledgeReport(history []Message, topics []string, totalQuestions int32) KnowledgeReportResult {
+	type qaPair struct{ question, answer string }
+	var pairs []qaPair
+	var currentQuestion string
+	for _, msg := range history {
+		if msg.Role == "assistant" {
+			currentQuestion = msg.Content
+		} else if msg.Role == "user" && currentQuestion != "" {
+			pairs = append(pairs, qaPair{currentQuestion, msg.Content})
+			currentQuestion = ""
+		}
+	}
+
+	answered := int32(len(pairs))
+	var reviews []KnowledgeQuestionReview
+	for i, pair := range pairs {
+		reviews = append(reviews, KnowledgeQuestionReview{
+			QuestionIndex:  int32(i),
+			Question:       pair.question,
+			UserAnswer:     pair.answer,
+			Score:          70,
+			MaxScore:       100,
+			Errors:         []string{},
+			Omissions:      []string{},
+			Highlights:     []string{},
+			StandardAnswer: "",
+			KeyPoints:      []string{},
+		})
+	}
+
+	return KnowledgeReportResult{
+		OverallScore: 70,
+		Rating:       "合格",
+		Conclusion:   fmt.Sprintf("本场面试共回答 %d 题（LLM 报告生成不可用，此为本地兜底报告，建议稍后重试生成）。", answered),
+		BasicInfo: KnowledgeReportBasicInfo{
+			KnowledgeTopics: topics,
+			QuestionType:    "问答",
+			DurationSeconds: 0,
+			TotalQuestions:  totalQuestions,
+			CorrectCount:    0,
+			Accuracy:        0,
+		},
+		QuestionReviews: reviews,
+		DimensionScores: []KnowledgeDimensionScore{
+			{Dimension: "知识点基础掌握度", Score: 70, Comment: "本地兜底评估，未深入分析。"},
+			{Dimension: "知识点应用落地能力", Score: 70, Comment: "本地兜底评估，未深入分析。"},
+			{Dimension: "知识延伸与深度", Score: 70, Comment: "本地兜底评估，未深入分析。"},
+			{Dimension: "答题精准度与严谨度", Score: 70, Comment: "本地兜底评估，未深入分析。"},
+		},
+		MasteredPoints:   []string{},
+		BlindSpots:       []KnowledgeBlindSpot{},
+		StudySuggestions: []KnowledgeStudySuggestion{{Focus: "巩固基础", Detail: "建议针对本场涉及的知识点重新梳理。"}},
+		NextQuizTopics:   []KnowledgeNextQuizTopic{},
 	}
 }
 

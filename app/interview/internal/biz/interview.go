@@ -103,13 +103,14 @@ type RAGDocument struct {
 type Interview struct {
 	ID               uint64
 	UserID           uint64
-	IndustryID       uint64     // 对齐表 industry_id 外键
+	IndustryID       *uint64    // 对齐表 industry_id 外键，知识点面试无行业时为 nil（DB NULL）
 	IndustryCode     string     `gorm:"-"` // 运行期字段，不落库
 	Difficulty       string     `gorm:"-"` // 运行期字段，不落库
 	Status           string     // created, in_progress, ongoing, report_generating, report_failed, completed
 	InterviewMode    string     `gorm:"-"` // 运行期字段，不落库
 	InterviewType    string     // 落库：knowledge | job，决定出题与报告模板
 	KnowledgeTopics  []string   `gorm:"-"` // 运行期，落库为 knowledge_topics JSON
+	Questions        []InterviewQuestion `gorm:"-"` // 运行期，预生成题目，落库为 questions_json JSON
 	QuestionCount    int32      // 对应表 total_questions
 	CurrentIndex     int32      // 对应表 current_index，实时面试用户每答一题递增
 	OverallScore     float64    // 对应表 score
