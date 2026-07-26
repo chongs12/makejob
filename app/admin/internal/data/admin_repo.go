@@ -761,6 +761,43 @@ func (r *adminRepo) batchUpsertAdminConfigs(ctx context.Context, db *gorm.DB, co
 	return nil
 }
 
+// BatchUpsertConfigsSyncActivePreset 写入运行时配置，并将同一份改动合并同步到当前激活预设的快照。
+// 用于"保存 AI 配置"路径：避免保存后再次"应用所选预设"时用旧快照覆盖刚写入的运行时值。
+// 采用合并而非替换：预设快照中表单未覆盖的字段（如 ai_rag_*）保持原值不被清空。
+func (r *adminRepo) BatchUpsertConfigsSyncActivePreset(ctx context.Context, configs map[string]string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := r.batchUpsertAdminConfigs(ctx, tx, configs); err != nil {
+			return err
+		}
+		return r.mergeActivePresetConfigs(ctx, tx, configs)
+	})
+}
+
+// mergeActivePresetConfigs 把 configs 合并进当前激活预设的 config_json；无激活预设时静默跳过。
+func (r *adminRepo) mergeActivePresetConfigs(ctx context.Context, tx *gorm.DB, configs map[string]string) error {
+	var preset model.AIPreset
+	err := tx.WithContext(ctx).Where("is_active = ?", true).First(&preset).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	merged := decodeAIPresetConfigs(preset)
+	for key, value := range configs {
+		merged[key] = value
+	}
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return err
+	}
+	return tx.WithContext(ctx).Model(&model.AIPreset{}).Where("id = ?", preset.ID).
+		Updates(map[string]interface{}{
+			"config_json": string(encoded),
+			"updated_at":  time.Now(),
+		}).Error
+}
+
 // upsertAdminConfig 以“先更新、后插入”的方式写入后台配置，兼容历史库表缺少唯一约束的场景。
 func (r *adminRepo) upsertAdminConfig(ctx context.Context, db *gorm.DB, key, value string) error {
 	columns, err := r.loadAdminConfigColumns(ctx, db)

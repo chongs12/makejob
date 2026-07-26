@@ -809,7 +809,7 @@ func (s *AdminService) UpdateAIConfigs(ctx context.Context, req *adminv1.UpdateA
 	if err != nil {
 		return nil, err
 	}
-	if err := s.uc.BatchUpsertConfigs(ctx, normalized); err != nil {
+	if err := s.uc.BatchUpsertConfigsSyncActivePreset(ctx, normalized); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil

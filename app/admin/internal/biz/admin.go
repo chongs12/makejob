@@ -48,6 +48,7 @@ type AdminRepo interface {
 	SetAdminConfig(ctx context.Context, key, value string) error
 	ListAdminConfigs(ctx context.Context) ([]*AdminConfigItem, error)
 	BatchUpsertConfigs(ctx context.Context, configs map[string]string) error
+	BatchUpsertConfigsSyncActivePreset(ctx context.Context, configs map[string]string) error
 
 	// AI 调用日志
 	ListAICallLogs(ctx context.Context, filter AICallLogListFilter) ([]*AICallLog, int64, error)
@@ -781,6 +782,12 @@ func (uc *AdminUseCase) ListAdminConfigs(ctx context.Context) ([]*AdminConfigIte
 
 func (uc *AdminUseCase) BatchUpsertConfigs(ctx context.Context, configs map[string]string) error {
 	return uc.repo.BatchUpsertConfigs(ctx, configs)
+}
+
+// BatchUpsertConfigsSyncActivePreset 写入运行时配置并同步当前激活预设快照，供"保存 AI 配置"使用，
+// 保证保存后再次应用预设不会把刚保存的值还原成旧快照。
+func (uc *AdminUseCase) BatchUpsertConfigsSyncActivePreset(ctx context.Context, configs map[string]string) error {
+	return uc.repo.BatchUpsertConfigsSyncActivePreset(ctx, configs)
 }
 
 // --- AI 调用日志 ---
