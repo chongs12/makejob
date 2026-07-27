@@ -142,7 +142,7 @@ func TestCompanionAgentUseCase_Chat_Success(t *testing.T) {
 	uc := NewCompanionAgentUseCase(configRepo, promptRepo, callLogRepo, llmClient, log.DefaultLogger)
 
 	// 陪伴回复为纯文本，直接作为 reply；emotion 由 contextType 本地推导。
-	result, err := uc.Chat(context.Background(), "你好", "happy", "", nil)
+	result, err := uc.Chat(context.Background(), "你好", "happy", "", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

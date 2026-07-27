@@ -34,12 +34,12 @@ type interviewSessionState struct {
 
 // InterviewSessionQuestion 会话中的题目记录
 type InterviewSessionQuestion struct {
-	Index    int32
-	Question string
-	Topic    string
+	Index      int32
+	Question   string
+	Topic      string
 	Difficulty string
-	Type     string
-	Hints    string
+	Type       string
+	Hints      string
 }
 
 // InterviewSessionFeedback 会话中的反馈记录
@@ -130,28 +130,28 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 	// 创建会话
 	sessionID := uuid.NewString()
 	session := &interviewSessionState{
-		SessionID:      sessionID,
-		InterviewID:    req.InterviewID,
-		IndustryCode:   req.IndustryCode,
-		Difficulty:     req.Difficulty,
-		QuestionCount:  req.QuestionCount,
-		ResumeText:     req.ResumeText,
-		JobDescription: req.JobDescription,
-		InterviewMode:  req.InterviewMode,
+		SessionID:       sessionID,
+		InterviewID:     req.InterviewID,
+		IndustryCode:    req.IndustryCode,
+		Difficulty:      req.Difficulty,
+		QuestionCount:   req.QuestionCount,
+		ResumeText:      req.ResumeText,
+		JobDescription:  req.JobDescription,
+		InterviewMode:   req.InterviewMode,
 		KnowledgeTopics: req.Topics,
-		CurrentIndex:   0,
-		HasStarted:     true,
-		CreatedAt:      time.Now(),
+		CurrentIndex:    0,
+		HasStarted:      true,
+		CreatedAt:       time.Now(),
 	}
 
 	// 记录首题
 	session.Questions = append(session.Questions, InterviewSessionQuestion{
-		Index:    0,
-		Question: result.Question,
-		Topic:    result.Topic,
+		Index:      0,
+		Question:   result.Question,
+		Topic:      result.Topic,
 		Difficulty: result.Difficulty,
-		Type:     result.Type,
-		Hints:    result.Hints,
+		Type:       result.Type,
+		Hints:      result.Hints,
 	})
 
 	// 添加首题到历史
@@ -315,12 +315,12 @@ func (uc *InterviewSessionUseCase) GetNextQuestion(ctx context.Context, req *Get
 	// 更新会话状态
 	session.CurrentIndex = nextIndex
 	session.Questions = append(session.Questions, InterviewSessionQuestion{
-		Index:    nextIndex,
-		Question: result.Question,
-		Topic:    result.Topic,
+		Index:      nextIndex,
+		Question:   result.Question,
+		Topic:      result.Topic,
 		Difficulty: result.Difficulty,
-		Type:     result.Type,
-		Hints:    result.Hints,
+		Type:       result.Type,
+		Hints:      result.Hints,
 	})
 	session.History = append(session.History, Message{
 		Role:    "assistant",
@@ -359,6 +359,8 @@ func (uc *InterviewSessionUseCase) GenerateReport(ctx context.Context, req *Gene
 	schema := interviewReportSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(reportPrompt, schema)}}
 	messages = append(messages, session.History...)
+	// 手动结束面试时历史常以"未作答的题目(assistant)"结尾，推理模型会因此返回空内容，必须补 user 轮驱动生成。
+	messages = ensureTrailingUserTurn(messages, "请根据以上完整对话历史，生成最终的面试报告。")
 
 	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -473,6 +475,8 @@ func (uc *InterviewSessionUseCase) GenerateReportFromHistory(ctx context.Context
 	schema := interviewReportSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
 	messages = append(messages, req.History...)
+	// 手动结束面试时历史常以"未作答的题目(assistant)"结尾，推理模型会因此返回空内容，必须补 user 轮驱动生成。
+	messages = ensureTrailingUserTurn(messages, "请根据以上完整对话历史，生成最终的面试报告。")
 
 	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -522,15 +526,15 @@ func (uc *InterviewSessionUseCase) buildReportPromptFromHistory(req *GenerateRep
 
 // StartInterviewRequest 开始面试请求
 type StartInterviewRequest struct {
-	InterviewID   uint64
-	IndustryCode  string
-	Difficulty    string
-	QuestionCount int32
-	ResumeText    string
+	InterviewID    uint64
+	IndustryCode   string
+	Difficulty     string
+	QuestionCount  int32
+	ResumeText     string
 	JobDescription string
-	InterviewMode string
-	Topics        []string // 知识点专项面试的自定义知识点列表
-	InterviewType string   // knowledge | job，决定出题 prompt 分支
+	InterviewMode  string
+	Topics         []string // 知识点专项面试的自定义知识点列表
+	InterviewType  string   // knowledge | job，决定出题 prompt 分支
 }
 
 // StartInterviewResponse 开始面试响应
@@ -553,12 +557,12 @@ type EvaluateAnswerRequest struct {
 
 // EvaluateAnswerResponse 评估答案响应
 type EvaluateAnswerResponse struct {
-	Score      float64
-	IsCorrect  bool
-	Feedback   string
-	KeyPoints  []string
+	Score       float64
+	IsCorrect   bool
+	Feedback    string
+	KeyPoints   []string
 	Suggestions string
-	FollowUp   string
+	FollowUp    string
 }
 
 // GetNextQuestionSessionRequest 获取下一题请求
@@ -624,7 +628,9 @@ func (uc *InterviewSessionUseCase) saveLog(ctx context.Context, scene, model str
 	} else {
 		logEntry.Status = "success"
 	}
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		uc.logger.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -648,6 +654,8 @@ func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, 
 	schema := knowledgeReportSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
 	messages = append(messages, req.History...)
+	// 手动结束面试时历史常以"未作答的题目(assistant)"结尾，推理模型会因此返回空内容，必须补 user 轮驱动生成。
+	messages = ensureTrailingUserTurn(messages, "请根据以上完整对话历史，生成最终的知识点考核评估报告。")
 
 	var result KnowledgeReportResult
 	var lastErr error
@@ -658,12 +666,17 @@ func (uc *InterviewSessionUseCase) GenerateKnowledgeReport(ctx context.Context, 
 		if chatErr == nil && resp != nil {
 			parsed, perr := parseStructuredJSON[KnowledgeReportResult](llmCtx, uc.llm, cfg, resp.Content, schema)
 			cancel()
-			if perr == nil && parsed.OverallScore > 0 {
-				result = parsed
-				lastErr = nil
-				break
+			if perr == nil {
+				if hasKnowledgeReportSubstance(parsed) {
+					result = parsed
+					lastErr = nil
+					break
+				}
+				// 解析成功但内容空（如模型返回 {}），视为未产出有效报告，重试。
+				lastErr = ErrParseFailed
+			} else {
+				lastErr = perr
 			}
-			lastErr = perr
 		} else {
 			cancel()
 			lastErr = chatErr
@@ -747,6 +760,16 @@ func classifyKnowledgeRating(score float64) string {
 	default:
 		return "薄弱"
 	}
+}
+
+// hasKnowledgeReportSubstance 判断解析结果是否包含实质内容。
+// 旧的判定 OverallScore>0 会误伤合法的 0 分报告（候选人完全不会，但报告本身有结论和逐题复盘），
+// 同时还会在模型返回空 JSON {} 时把 lastErr 置空，导致既不重试也不兜底、最终落出一份空报告。
+// 改为按"有结论或逐题复盘或维度评分"判定：既能接纳合法 0 分，又能拦截空壳。
+func hasKnowledgeReportSubstance(r KnowledgeReportResult) bool {
+	return strings.TrimSpace(r.Conclusion) != "" ||
+		len(r.QuestionReviews) > 0 ||
+		len(r.DimensionScores) > 0
 }
 
 // GenerateKnowledgeReportRequest 知识点专项报告生成请求
@@ -847,6 +870,8 @@ func (uc *InterviewSessionUseCase) GenerateJobReport(ctx context.Context, req *G
 	schema := jobReportSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(prompt, schema)}}
 	messages = append(messages, req.History...)
+	// 手动结束面试时历史常以"未作答的题目(assistant)"结尾，推理模型会因此返回空内容，必须补 user 轮驱动生成。
+	messages = ensureTrailingUserTurn(messages, "请根据以上完整对话历史，生成最终的岗位求职面试报告。")
 
 	llmCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()

@@ -101,3 +101,37 @@ func TestParseStructuredJSON_RepairAlsoFails(t *testing.T) {
 		t.Fatalf("expected ErrParseFailed, got %v", err)
 	}
 }
+
+func TestEnsureTrailingUserTurn(t *testing.T) {
+	instr := "请生成报告"
+	cases := []struct {
+		name             string
+		input            []Message
+		wantLen          int
+		wantLastRole     string
+		wantAppendContent bool // 末尾是否应为新追加的 instruction
+	}{
+		{"empty_appends_user", nil, 1, "user", true},
+		{"only_system_appends_user", []Message{{Role: "system", Content: "s"}}, 2, "user", true},
+		{"ends_with_assistant_appends_user", []Message{{Role: "system", Content: "s"}, {Role: "assistant", Content: "q"}}, 3, "user", true},
+		{"ends_with_user_unchanged", []Message{{Role: "system", Content: "s"}, {Role: "user", Content: "a"}}, 2, "user", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ensureTrailingUserTurn(c.input, instr)
+			if len(got) != c.wantLen {
+				t.Fatalf("len = %d, want %d (input=%v)", len(got), c.wantLen, c.input)
+			}
+			last := got[len(got)-1]
+			if last.Role != c.wantLastRole {
+				t.Errorf("last role = %q, want %q", last.Role, c.wantLastRole)
+			}
+			if c.wantAppendContent && last.Content != instr {
+				t.Errorf("appended content = %q, want %q", last.Content, instr)
+			}
+			if !c.wantAppendContent && last.Content != "a" {
+				t.Errorf("last content = %q, want original %q", last.Content, "a")
+			}
+		})
+	}
+}

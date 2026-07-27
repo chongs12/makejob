@@ -1,10 +1,10 @@
 server:
   http:
     addr: 0.0.0.0:8011
-    timeout: 60s
+    timeout: 3m
   grpc:
     addr: 0.0.0.0:9011
-    timeout: 60s
+    timeout: 3m
 
 data:
   database:

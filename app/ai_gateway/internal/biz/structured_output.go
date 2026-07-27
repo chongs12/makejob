@@ -16,6 +16,26 @@ func buildJSONContractPrompt(basePrompt, schema string) string {
 		"JSON 结构如下：\n" + strings.TrimSpace(schema)
 }
 
+// ensureTrailingUserTurn 保证消息序列以 user 轮结尾，驱动推理模型真正产出内容。
+//
+// 根因：doubao-seed-2-1-pro 等推理模型在消息序列以 assistant 结尾时，会返回空内容
+// （finish_reason=stop、completion_tokens=0、content 与 reasoning_content 均空），
+// 相当于认为"该轮已结束、无需再生成"。手动结束面试时，候选人往往在面试官刚问完一题、
+// 尚未作答就点击"结束面试"，于是 interview_messages 末尾恰好是 assistant（未作答的题目），
+// 报告生成把 system+history 原样发给模型，命中空响应，3 次重试同样为空，最终落到本地兜底报告。
+//
+// 修复：报告类调用统一在此兜底——末尾非 user 则补一条显式生成指令。
+// 这同时是 chat 接口的正确用法（以 user 轮触发模型回答），不只是绕过某个模型的怪癖。
+func ensureTrailingUserTurn(messages []Message, instruction string) []Message {
+	if len(messages) == 0 {
+		return append(messages, Message{Role: "user", Content: instruction})
+	}
+	if messages[len(messages)-1].Role == "user" {
+		return messages
+	}
+	return append(messages, Message{Role: "user", Content: instruction})
+}
+
 // extractJSONObject 从模型输出中提取 JSON 对象主体，兼容 ```json 围栏与前后说明文字。
 // 直接移植单体 runtime.extractJSONObject。
 func extractJSONObject(raw string) string {

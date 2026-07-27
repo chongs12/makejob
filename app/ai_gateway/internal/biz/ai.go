@@ -15,6 +15,12 @@ import (
 
 // ==================== 实体定义 ====================
 
+// newCallLogContext 为 AI 调用日志写入创建独立超时上下文：不继承请求 ctx 的取消/超时，
+// 避免 LLM 调用耗尽请求时限后日志写入必然失败（context deadline exceeded）。
+func newCallLogContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+}
+
 // AIConfig AI 场景运行配置实体
 type AIConfig struct {
 	model.BaseModel
@@ -97,11 +103,11 @@ type CallLogRepo interface {
 
 // InterviewAgentUseCase 面试出题用例
 type InterviewAgentUseCase struct {
-	configRepo AIConfigRepo
-	promptRepo PromptRepo
+	configRepo  AIConfigRepo
+	promptRepo  PromptRepo
 	callLogRepo CallLogRepo
-	llm        LLMClient
-	logger     log.Logger
+	llm         LLMClient
+	logger      log.Logger
 }
 
 // NewInterviewAgentUseCase 创建面试出题用例
@@ -203,7 +209,9 @@ func (uc *InterviewAgentUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -234,16 +242,16 @@ type PlanResult struct {
 
 // PlanTask 计划任务项
 type PlanTask struct {
-	Title          string `json:"title"`
-	Description    string `json:"description"`
-	Phase          string `json:"phase"`
-	OrderIndex     int32  `json:"order_index"`
-	EstimatedHours int32  `json:"estimated_hours"`
-	TaskType       string `json:"task_type"`
-	PhaseGoal      string `json:"phase_goal"`
-	DayNumber      int32  `json:"day_number"`
-	DurationMinutes int32 `json:"duration_minutes"`
-	Priority       string `json:"priority"`
+	Title           string `json:"title"`
+	Description     string `json:"description"`
+	Phase           string `json:"phase"`
+	OrderIndex      int32  `json:"order_index"`
+	EstimatedHours  int32  `json:"estimated_hours"`
+	TaskType        string `json:"task_type"`
+	PhaseGoal       string `json:"phase_goal"`
+	DayNumber       int32  `json:"day_number"`
+	DurationMinutes int32  `json:"duration_minutes"`
+	Priority        string `json:"priority"`
 }
 
 // GeneratePlan 生成个性化学习计划
@@ -262,11 +270,11 @@ func (uc *PlanAgentUseCase) GeneratePlan(ctx context.Context, industryCode, goal
 	}
 
 	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"industry_code":      industryCode,
-		"goal":               goal,
-		"daily_hours":        fmt.Sprintf("%d", dailyHours),
-		"weak_topics":        joinStrings(weakTopics),
-		"recent_activities":  joinStrings(recentActivities),
+		"industry_code":     industryCode,
+		"goal":              goal,
+		"daily_hours":       fmt.Sprintf("%d", dailyHours),
+		"weak_topics":       joinStrings(weakTopics),
+		"recent_activities": joinStrings(recentActivities),
 	})
 
 	schema := planResultSchema()
@@ -403,7 +411,9 @@ func (uc *PlanAgentUseCase) saveLog(ctx context.Context, scene, model string, re
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -626,7 +636,9 @@ func (uc *CompanionAgentUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -786,11 +798,11 @@ func (uc *QuizAnalyzerUseCase) DiagnoseInterviewCoding(ctx context.Context, ques
 	}
 
 	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"question":          question,
-		"language":          language,
-		"final_code":        finalCode,
-		"final_answer":      finalAnswer,
-		"process_events":    processEventsJSON,
+		"question":       question,
+		"language":       language,
+		"final_code":     finalCode,
+		"final_answer":   finalAnswer,
+		"process_events": processEventsJSON,
 	})
 
 	schema := codingDiagnosisSchema()
@@ -903,7 +915,9 @@ func (uc *QuizAnalyzerUseCase) saveLog(ctx context.Context, scene, model string,
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -949,8 +963,8 @@ func (uc *ResumeParserUseCase) Parse(ctx context.Context, resumeText, jobDescrip
 	}
 
 	promptText := RenderPrompt(tpl.TemplateContent, map[string]string{
-		"resume_text":      resumeText,
-		"job_description":  jobDescription,
+		"resume_text":     resumeText,
+		"job_description": jobDescription,
 	})
 
 	systemPrompt := "你是一位资深的技术招聘专家。请从候选人简历中提取结构化画像。输出严格 JSON。"
@@ -990,7 +1004,9 @@ func (uc *ResumeParserUseCase) saveLog(ctx context.Context, scene, model string,
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }
@@ -1011,19 +1027,19 @@ func NewLive2DDirectorUseCase(configRepo AIConfigRepo, promptRepo PromptRepo, ca
 
 // Live2DDirectiveResult Live2D 指令返回结果
 type Live2DDirectiveResult struct {
-	Emotion            string               `json:"emotion"`
-	Action             string               `json:"action"`
-	Reply              string               `json:"reply"`
-	MotionKey          string               `json:"motion_key"`
-	MotionGroup        string               `json:"motion_group"`
-	MotionPriority     string               `json:"motion_priority"`
-	MotionDurationMS   int                  `json:"motion_duration_ms"`
-	Intensity          float64              `json:"intensity"`
-	DurationMS         int                  `json:"duration_ms"`
-	MouthOpen          *float64             `json:"mouth_open"`
-	Source             string               `json:"source"`
-	ExpressionMix      []ExpressionLayer    `json:"expression_mix"`
-	ParameterOverrides []ParameterOverride  `json:"parameter_overrides"`
+	Emotion            string              `json:"emotion"`
+	Action             string              `json:"action"`
+	Reply              string              `json:"reply"`
+	MotionKey          string              `json:"motion_key"`
+	MotionGroup        string              `json:"motion_group"`
+	MotionPriority     string              `json:"motion_priority"`
+	MotionDurationMS   int                 `json:"motion_duration_ms"`
+	Intensity          float64             `json:"intensity"`
+	DurationMS         int                 `json:"duration_ms"`
+	MouthOpen          *float64            `json:"mouth_open"`
+	Source             string              `json:"source"`
+	ExpressionMix      []ExpressionLayer   `json:"expression_mix"`
+	ParameterOverrides []ParameterOverride `json:"parameter_overrides"`
 }
 
 // ExpressionLayer Live2D 表情混合层
@@ -1088,7 +1104,9 @@ func (uc *Live2DDirectorUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }

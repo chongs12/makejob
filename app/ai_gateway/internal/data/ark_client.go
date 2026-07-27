@@ -46,6 +46,12 @@ type chatRequest struct {
 	Messages    []chatMessage `json:"messages"`
 	Temperature *float64      `json:"temperature,omitempty"`
 	MaxTokens   *int          `json:"max_tokens,omitempty"`
+	Thinking    *chatThinking `json:"thinking,omitempty"`
+}
+
+// chatThinking 表示 ARK 深度思考开关，type 取值 enabled/disabled/auto。
+type chatThinking struct {
+	Type string `json:"type"`
 }
 
 // chatMessage 表示 ARK Chat Completions 单条消息。
@@ -61,6 +67,7 @@ type chatResponse struct {
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -96,6 +103,7 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 	}
 
 	reqBody := chatRequest{Model: model, Messages: reqMessages}
+	reqBody.Thinking = resolveThinkingOverride(config)
 	if config != nil {
 		if config.Temperature > 0 {
 			temperature := config.Temperature
@@ -157,7 +165,11 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 		content = chatResp.Choices[0].Message.ReasoningContent
 	}
 	if strings.TrimSpace(content) == "" {
-		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "模型返回空内容（content 与 reasoning_content 均为空），请检查模型配置/额度/max_tokens")
+		finishReason := chatResp.Choices[0].FinishReason
+		// finish_reason=stop 且 0 token：常见于消息序列以 assistant 结尾时推理模型认为"该轮已结束、无需生成"；
+		// finish_reason=length：max_tokens 不足，推理阶段就把预算耗尽、content 未产出。
+		// 一并带出，便于定位是消息结尾角色问题还是 max_tokens 配置问题。
+		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", fmt.Sprintf("模型返回空内容（content 与 reasoning_content 均为空，finish_reason=%s），请检查消息结尾角色/模型配置/max_tokens", finishReason))
 	}
 
 	return &biz.LLMResponse{
@@ -165,6 +177,19 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 		InputTokens:  chatResp.Usage.PromptTokens,
 		OutputTokens: chatResp.Usage.CompletionTokens,
 	}, nil
+}
+
+// resolveThinkingOverride 将抽象的 ai_thinking_mode 配置翻译为 ARK thinking 字段：
+// disabled/enabled 时显式下发，default 或未知取值时不发任何字段（跟随厂商默认，对不支持的模型零风险）。
+func resolveThinkingOverride(config *biz.AIConfig) *chatThinking {
+	switch strings.ToLower(resolveAIConfigRuntimeValue(config, "ai_thinking_mode")) {
+	case "disabled":
+		return &chatThinking{Type: "disabled"}
+	case "enabled":
+		return &chatThinking{Type: "enabled"}
+	default:
+		return nil
+	}
 }
 
 // resolveAIConfigRuntimeValue 从 ExtraParamsJSON 提取运行时配置。
