@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
@@ -42,6 +41,12 @@ type InterviewUseCase struct {
 	publisher        MQPublisher
 	logger           log.Logger
 	interviewTimeout time.Duration
+	ttsPrewarm       TTSPrewarmClient // 可选：预热 companion TTS，缺省为 nil 时不预热
+}
+
+// SetTTSPrewarmClient 注入 TTS 预热客户端（用 setter 避免构造函数签名变更影响现有测试）。
+func (uc *InterviewUseCase) SetTTSPrewarmClient(c TTSPrewarmClient) {
+	uc.ttsPrewarm = c
 }
 
 // NewInterviewUseCase 由 Wire 调用，所有依赖通过接口注入
@@ -133,15 +138,17 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 
 	var firstQuestion *InterviewQuestion
 	if !IsRealtimeInterview(interview) {
-		if strings.TrimSpace(req.InterviewType) == "knowledge" {
-			// 知识点专项：一次性并发生成全部题目存 questions_json，答题时 GetNextQuestion 秒出下一题，免逐题调 LLM。
-			questions := uc.generateKnowledgeQuestionsBatch(ctx, req.Topics, difficulty, questionCount)
+		itype := strings.TrimSpace(req.InterviewType)
+		if itype == "knowledge" || itype == "job" {
+			// 知识点专项与岗位求职：创建时一次性并发预生成全部题目存 questions_json，
+			// 答题时 GetNextQuestion 秒出下一题、SubmitAnswer 秒回，免逐题调 LLM，保证标准语音面试流程流畅。
+			questions := uc.generateQuestionsBatch(ctx, itype, req.Topics, difficulty, req.ResumeText, req.JobDescription, questionCount)
 			interview.Questions = questions
 			if len(questions) > 0 && strings.TrimSpace(questions[0].Question) != "" {
 				firstQuestion = &questions[0]
 			}
 		} else {
-			// job/其他：沿用 StartInterview 单题 + session
+			// 其他类型：沿用 StartInterview 单题 + session 兜底
 			aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
 				InterviewID:    interview.ID,
 				IndustryCode:   req.IndustryCode,
@@ -190,36 +197,44 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 		}
 	}
 
+	// 预热首题与第二题的 TTS，前端播报首题、提交后取第二题时直接命中缓存。
+	if firstQuestion != nil {
+		uc.prewarmQuestionTTS(firstQuestion.Question)
+	}
+	if len(interview.Questions) > 1 {
+		uc.prewarmQuestionTTS(interview.Questions[1].Question)
+	}
+
 	return interview, firstQuestion, nil
 }
 
-// generateKnowledgeQuestionsBatch 并发调用 InterviewAgent 一次性生成全部知识点题目。
-// 每次按题号区分考察方向；单题失败用本地兜底题补上，保证凑齐 count 题。总耗时 ≈ 单次 LLM 调用。
-func (uc *InterviewUseCase) generateKnowledgeQuestionsBatch(ctx context.Context, topics []string, difficulty string, count int32) []InterviewQuestion {
-	questions := make([]InterviewQuestion, count)
-	var wg sync.WaitGroup
-	for i := int32(0); i < count; i++ {
-		wg.Add(1)
-		go func(idx int32) {
-			defer wg.Done()
-			aiResp, err := uc.ai.InterviewAgent(ctx, &InterviewAgentRequest{
-				QuestionIndex: idx,
-				Topics:        topics,
-				Difficulty:    difficulty,
-				InterviewType: "knowledge",
-				Mode:          "question",
-			})
-			if err == nil && aiResp != nil && aiResp.Question != nil && strings.TrimSpace(aiResp.Question.Question) != "" {
-				questions[idx] = *aiResp.Question
-				return
-			}
-			if err != nil {
-				log.Warnf("批量出题 idx=%d 失败，用兜底题: %v", idx, err)
-			}
-			questions[idx] = localFallbackQuestion(topics, idx)
-		}(i)
+// generateQuestionsBatch 单次调用 AI Gateway 一次性全局预生成全部面试题目（知识点/岗位求职通用）。
+// 单次 LLM 调用全局编排去重；整体失败或返回不足 count 题时，用本地兜底题补齐到 count 题，保障韧性。
+func (uc *InterviewUseCase) generateQuestionsBatch(ctx context.Context, interviewType string, topics []string, difficulty, resumeText, jobDesc string, count int32) []InterviewQuestion {
+	if count <= 0 {
+		return nil
 	}
-	wg.Wait()
+	questions := make([]InterviewQuestion, count)
+
+	generated, err := uc.ai.GenerateQuestions(ctx, &GenerateQuestionsRequest{
+		Difficulty:     difficulty,
+		ResumeText:     resumeText,
+		JobDescription: jobDesc,
+		Topics:         topics,
+		InterviewType:  interviewType,
+		QuestionCount:  count,
+	})
+	if err != nil {
+		log.Warnf("批量出题整体失败，全部用兜底题: interview_type=%s count=%d err=%v", interviewType, count, err)
+	}
+	// 按位填充：命中的题目直接采用，不足或缺失的位置用本地兜底题补齐。
+	for i := int32(0); i < count; i++ {
+		if int(i) < len(generated) && strings.TrimSpace(generated[i].Question) != "" {
+			questions[i] = generated[i]
+			continue
+		}
+		questions[i] = localFallbackQuestion(topics, i)
+	}
 	return questions
 }
 
@@ -242,6 +257,20 @@ func localFallbackQuestion(topics []string, idx int32) InterviewQuestion {
 		Difficulty: "medium",
 		Type:       "technical",
 	}
+}
+
+// prewarmQuestionTTS 异步预热指定题目文本的 TTS（失败不影响主流程），前端播报时直接命中 companion 缓存。
+func (uc *InterviewUseCase) prewarmQuestionTTS(text string) {
+	if uc.ttsPrewarm == nil || strings.TrimSpace(text) == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := uc.ttsPrewarm.PrewarmTTS(ctx, text); err != nil {
+			log.Warnf("TTS 预热失败（不影响面试）: %v", err)
+		}
+	}()
 }
 
 // SubmitAnswer 提交答案并获取 AI 反馈（评估答案，不获取下一题；下一题由 GetNextQuestion 按需生成）
@@ -267,9 +296,9 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		QuestionIndex: index,
 	}
 
-	// knowledge 分支：跳过逐题 LLM 评估，分析延后到报告；只存回答 + 推进题号，秒回。
+	// knowledge/job 分支：题目已在创建时预生成，提交答案时跳过逐题 LLM 评估（分析延后到报告），只存回答 + 推进题号，秒回。
 	// 注意：前端不传 question_index，必须用服务端 interview.CurrentIndex 推进，否则题号永远卡在 1、第三题及以后不出。
-	if strings.TrimSpace(interview.InterviewType) == "knowledge" {
+	if itype := strings.TrimSpace(interview.InterviewType); itype == "knowledge" || itype == "job" {
 		answeringIndex := interview.CurrentIndex
 		msg.QuestionIndex = answeringIndex
 		if err := uc.repo.Transaction(ctx, func(txCtx context.Context) error {
@@ -462,6 +491,10 @@ func (uc *InterviewUseCase) GetNextQuestion(ctx context.Context, interviewID, us
 				if err := uc.repo.CreateMessage(ctx, questionMsg); err != nil {
 					return nil, nil, kratosErr.InternalServer("SAVE_AI_MSG_FAILED", "保存 AI 题目消息失败").WithCause(err)
 				}
+			}
+			// 预热下一题 TTS，用户作答本题期间提前合成，下次取题播报时直接命中缓存。
+			if next := int(interview.CurrentIndex) + 1; next < len(interview.Questions) {
+				uc.prewarmQuestionTTS(interview.Questions[next].Question)
 			}
 			return interview, &preGen, nil
 		}

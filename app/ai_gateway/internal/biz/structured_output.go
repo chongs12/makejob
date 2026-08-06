@@ -129,6 +129,21 @@ func interviewResultSchema() string {
 }`
 }
 
+// interviewQuestionsBatchSchema 标准语音面试单次全局批量出题结构化输出合同。
+// 一次性返回全部题目：每题单问、口语化可朗读、禁代码块，type 仅 technical|behavioral。
+func interviewQuestionsBatchSchema() string {
+	return `{
+  "questions": [
+    {
+      "question": "口语化、可直接朗读的单个问题，20-60字，不含代码/命令/公式",
+      "topic": "本题考察的知识点或维度",
+      "difficulty": "easy|medium|hard",
+      "type": "technical|behavioral"
+    }
+  ]
+}`
+}
+
 // interviewEvaluateSchema 答案评估结构化输出合同，明确要求 0-100 打分 + 关键点 + 建议，
 // 供 EvaluateAnswer 使用，避免与出题合同混用导致 LLM 漏返回评分。
 func interviewEvaluateSchema() string {

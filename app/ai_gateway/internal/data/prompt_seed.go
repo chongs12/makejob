@@ -130,6 +130,37 @@ func seedDefaultPrompts(db *gorm.DB) error {
 				"请结合岗位要求，重点分析候选人与该岗位的匹配度和潜在薄弱点。",
 			Variables: `{"resume_text": "候选人简历原文", "job_description": "目标岗位描述"}`,
 		},
+		{
+			Name:     "知识点专项出题（语音面试）",
+			Scene:    "interview_question_knowledge",
+			IsActive: true,
+			TemplateContent: "你是一位严谨的技术考核官，正在对候选人进行知识点专项考核。请一次性设计好整场面试的全部题目。\n\n" +
+				"考核知识点：{{topics}}\n难度：{{difficulty}}\n题目数量：{{count}}\n\n" +
+				"出题要求（语音面试，务必遵守）：\n" +
+				"1. 一共只生成 {{count}} 道题，全部放进 questions 数组；每道题只包含一个问题，禁止用“并/以及/还有/分号”在一道题里堆多个小问或追问。\n" +
+				"2. 题目必须口语化、适合直接朗读，长度控制在 20-60 字；禁止出现代码块、代码片段、伪代码、命令行、公式或任何需要看屏幕才能理解的内容。\n" +
+				"3. type 只能是 technical 或 behavioral，禁止 coding；若知识点偏编码，也要改成让候选人“口头描述思路或原理”的问答题。\n" +
+				"4. {{count}} 道题之间考察角度和难度层次必须各不相同，整体按 基础概念→应用场景→进阶边界→易错点 递进，禁止重复或高度相似。\n" +
+				"5. 每道题的 topic 填写本题对应的具体知识点或考察维度。\n",
+			Variables: `{"topics": "考核知识点（、分隔）", "difficulty": "难度", "count": "题目数量"}`,
+		},
+		{
+			Name:     "岗位求职出题（语音面试）",
+			Scene:    "interview_question_job",
+			IsActive: true,
+			TemplateContent: "你是一位资深的企业面试官，正在对候选人进行岗位求职面试。请结合候选人简历与目标岗位要求，一次性设计好整场面试的全部题目。\n\n" +
+				"难度：{{difficulty}}\n题目数量：{{count}}\n\n" +
+				"目标岗位 JD：\n{{job_description}}\n\n" +
+				"候选人简历：\n{{resume_text}}\n\n" +
+				"出题要求（语音面试，务必遵守）：\n" +
+				"1. 一共只生成 {{count}} 道题，全部放进 questions 数组；每道题只包含一个问题，禁止用“并/以及/还有/分号”在一道题里堆多个小问或追问。\n" +
+				"2. 题目必须口语化、适合直接朗读，长度控制在 20-60 字；禁止出现代码块、代码片段、伪代码、命令行、公式或任何需要看屏幕才能理解的内容。\n" +
+				"3. type 只能是 technical 或 behavioral，禁止 coding；若涉及编码，也要改成让候选人“口头描述思路或原理”的问答题。\n" +
+				"4. {{count}} 道题之间考察角度和难度层次必须各不相同，禁止重复或高度相似。\n" +
+				"5. 每道题的 topic 填写本题对应的具体考察维度。\n" +
+				"6. 结合简历与 JD，让各道题分别覆盖 岗位硬技能匹配度 / 简历项目真实性与含金量 / 逻辑思维与表达 / 求职动机与岗位认知 / 职业素养与稳定性 / 综合面试印象 等不同维度，每道题聚焦其中一个维度，避免重复。\n",
+			Variables: `{"resume_text": "候选人简历原文", "job_description": "目标岗位 JD", "difficulty": "难度", "count": "题目数量"}`,
+		},
 	}
 
 	for _, tpl := range templates {

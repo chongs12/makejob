@@ -11,7 +11,7 @@ type PromptTemplate struct {
 	ID              uint           `gorm:"primaryKey;autoIncrement"`
 	IndustryID      *uint          `gorm:"index"`
 	Name            string         `gorm:"size:100;not null"`
-	Scene           string         `gorm:"size:20;not null;index"`
+	Scene           string         `gorm:"size:64;not null;index"`
 	TemplateContent string         `gorm:"type:text;not null"`
 	Variables       string         `gorm:"type:text"`
 	IsActive        bool           `gorm:"not null;default:true"`

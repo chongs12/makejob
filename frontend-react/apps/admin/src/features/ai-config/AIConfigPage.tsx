@@ -208,6 +208,18 @@ const DEFAULT_AI_CONFIG_FIELDS: AIConfigFieldMeta[] = [
     group: 'runtime',
   },
   {
+    key: 'ai_thinking_mode',
+    label: '深度思考模式',
+    description: '控制推理模型是否开启深度思考。默认不干预（跟随模型默认行为）；关闭思考可显著降低耗时与 token 消耗。',
+    type: 'string',
+    group: 'runtime',
+    options: [
+      { value: 'default', label: '默认（跟随模型）' },
+      { value: 'disabled', label: '关闭思考' },
+      { value: 'enabled', label: '开启思考' },
+    ],
+  },
+  {
     key: 'ai_scene_interview_model',
     label: '面试场景模型',
     description: '题卡流水线使用面试场景模型；为空时继承默认模型。',
@@ -1183,7 +1195,16 @@ export function AIConfigPage() {
                         }
                         style={{ marginBottom: 0 }}
                       >
-                        {field.type === 'boolean' ? (
+                        {field.options ? (
+                          <Select
+                            value={draft[field.key] || (field.options[0]?.value ?? '')}
+                            onChange={(value) => updateDraftValue(field.key, value)}
+                            options={field.options}
+                            style={{ width: '100%' }}
+                            size="large"
+                            dropdownStyle={{ borderRadius: 14 }}
+                          />
+                        ) : field.type === 'boolean' ? (
                           <Switch
                             checked={String(draft[field.key]).trim().toLowerCase() === 'true'}
                             onChange={(checked) => updateDraftValue(field.key, String(checked))}

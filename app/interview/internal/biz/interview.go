@@ -45,6 +45,8 @@ type AIServiceClient interface {
 	GenerateKnowledgeReport(ctx context.Context, req *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error)
 	// GenerateJobReport 岗位求职面试报告生成（基于完整对话历史 + 简历画像 + JD）
 	GenerateJobReport(ctx context.Context, req *GenerateJobReportRequest) (*GenerateJobReportResponse, error)
+	// GenerateQuestions 标准语音面试单次全局批量出题：一次 gRPC 调用返回全部题目，全局编排去重。
+	GenerateQuestions(ctx context.Context, req *GenerateQuestionsRequest) ([]InterviewQuestion, error)
 }
 
 // LearningArchiveClient 学习档案服务的 gRPC 客户端接口
@@ -63,6 +65,12 @@ type IndustryClient interface {
 // MembershipClient 会员服务的 gRPC 客户端接口（用于实时语音面试门禁校验）
 type MembershipClient interface {
 	CheckFeatureAccess(ctx context.Context, userID uint64, feature string) (bool, string, error)
+}
+
+// TTSPrewarmClient 预热 companion TTS 的客户端接口。
+// 创建面试与取题时提前将题目文本提交给 companion 合成并缓存，前端真正播报时直接命中缓存，消除卡顿。
+type TTSPrewarmClient interface {
+	PrewarmTTS(ctx context.Context, text string) error
 }
 
 // RAGClient RAG 检索服务的 gRPC 客户端接口
@@ -103,24 +111,24 @@ type RAGDocument struct {
 type Interview struct {
 	ID               uint64
 	UserID           uint64
-	IndustryID       *uint64    // 对齐表 industry_id 外键，知识点面试无行业时为 nil（DB NULL）
-	IndustryCode     string     `gorm:"-"` // 运行期字段，不落库
-	Difficulty       string     `gorm:"-"` // 运行期字段，不落库
-	Status           string     // created, in_progress, ongoing, report_generating, report_failed, completed
-	InterviewMode    string     `gorm:"-"` // 运行期字段，不落库
-	InterviewType    string     // 落库：knowledge | job，决定出题与报告模板
-	KnowledgeTopics  []string   `gorm:"-"` // 运行期，落库为 knowledge_topics JSON
+	IndustryID       *uint64             // 对齐表 industry_id 外键，知识点面试无行业时为 nil（DB NULL）
+	IndustryCode     string              `gorm:"-"` // 运行期字段，不落库
+	Difficulty       string              `gorm:"-"` // 运行期字段，不落库
+	Status           string              // created, in_progress, ongoing, report_generating, report_failed, completed
+	InterviewMode    string              `gorm:"-"` // 运行期字段，不落库
+	InterviewType    string              // 落库：knowledge | job，决定出题与报告模板
+	KnowledgeTopics  []string            `gorm:"-"` // 运行期，落库为 knowledge_topics JSON
 	Questions        []InterviewQuestion `gorm:"-"` // 运行期，预生成题目，落库为 questions_json JSON
-	QuestionCount    int32      // 对应表 total_questions
-	CurrentIndex     int32      // 对应表 current_index，实时面试用户每答一题递增
-	OverallScore     float64    // 对应表 score
-	AIFeedback       string     // 对应表 ai_feedback
-	AISessionID      string     // 对应表 ai_session_id
-	ReportJSON       string     // 对应表 report_json
-	StartedAt        *time.Time // 对应表 started_at
-	ResumeText       string     // 落库：简历原文，岗位求职报告依赖
-	ResumeParsedJSON string     // 落库：简历解析画像 JSON
-	JobDescription   string     // 落库：目标岗位 JD
+	QuestionCount    int32               // 对应表 total_questions
+	CurrentIndex     int32               // 对应表 current_index，实时面试用户每答一题递增
+	OverallScore     float64             // 对应表 score
+	AIFeedback       string              // 对应表 ai_feedback
+	AISessionID      string              // 对应表 ai_session_id
+	ReportJSON       string              // 对应表 report_json
+	StartedAt        *time.Time          // 对应表 started_at
+	ResumeText       string              // 落库：简历原文，岗位求职报告依赖
+	ResumeParsedJSON string              // 落库：简历解析画像 JSON
+	JobDescription   string              // 落库：目标岗位 JD
 	Live2DModelKey   string
 	FinishedAt       *time.Time // 对应表 ended_at
 	CreatedAt        time.Time
@@ -166,7 +174,7 @@ type InterviewAgentRequest struct {
 	JobDesc       string
 	Topics        []string // 知识点专项面试的自定义知识点
 	InterviewType string   // knowledge | job，决定出题 prompt 分支
-	Mode          string // "question", "report", "evaluate"
+	Mode          string   // "question", "report", "evaluate"
 }
 
 type InterviewAgentResponse struct {
@@ -174,6 +182,17 @@ type InterviewAgentResponse struct {
 	Feedback        *AnswerFeedback
 	ShouldEnd       bool
 	Live2DDirective *Live2DDirective
+}
+
+// GenerateQuestionsRequest 标准语音面试单次全局批量出题请求。
+type GenerateQuestionsRequest struct {
+	IndustryCode   string
+	Difficulty     string
+	ResumeText     string
+	JobDescription string
+	Topics         []string // 知识点专项面试的自定义知识点
+	InterviewType  string   // knowledge | job，决定出题 prompt 分支
+	QuestionCount  int32    // 需要一次性生成的题目总数
 }
 
 type InterviewQuestion struct {
@@ -257,15 +276,15 @@ type ResumeParserResponse struct {
 // --- 会话式面试 DTO（对齐单体 InterviewAgent 接口）---
 
 type StartInterviewRequest struct {
-	InterviewID   uint64
-	IndustryCode  string
-	Difficulty    string
-	QuestionCount int32
-	ResumeText    string
+	InterviewID    uint64
+	IndustryCode   string
+	Difficulty     string
+	QuestionCount  int32
+	ResumeText     string
 	JobDescription string
-	InterviewMode string
-	Topics        []string // 知识点专项面试的自定义知识点
-	InterviewType string   // knowledge | job，决定出题 prompt 分支
+	InterviewMode  string
+	Topics         []string // 知识点专项面试的自定义知识点
+	InterviewType  string   // knowledge | job，决定出题 prompt 分支
 }
 
 type StartInterviewResponse struct {
@@ -285,12 +304,12 @@ type EvaluateAnswerRequest struct {
 }
 
 type EvaluateAnswerResponse struct {
-	Score      float64
-	IsCorrect  bool
-	Feedback   string
-	KeyPoints  []string
+	Score       float64
+	IsCorrect   bool
+	Feedback    string
+	KeyPoints   []string
 	Suggestions string
-	FollowUp   string
+	FollowUp    string
 }
 
 type GetNextQuestionSessionRequest struct {

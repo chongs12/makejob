@@ -140,6 +140,7 @@ const InterviewHubPageRoute = createLazyRouteComponent(async () => ({ default: (
 const InterviewHistoryPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewHistoryPage')).InterviewHistoryPage }))
 const PrototypeUIPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/prototype/PrototypeUIPage')).PrototypeUIPage }))
 const InterviewSessionPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewSessionPage')).InterviewSessionPage }))
+const InterviewStagePrototypePageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewStagePrototypePage')).InterviewStagePrototypePage }))
 const InterviewReportPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/interview/InterviewReportPage')).InterviewReportPage }))
 const CompanionHubPageRoute = createLazyRouteComponent(async () => ({ default: (await import('./features/companion/CompanionHubPage')).CompanionHubPage }))
 const GrowthPageRoute = createLazyRouteComponent(() => import('./features/growth/GrowthPage'))
@@ -373,6 +374,8 @@ function RootLayout() {
   const isStandaloneCompanionRoom = pathname.startsWith('/companion/room')
   const isStandaloneEditor = pathname.startsWith('/practice/editor')
   const isPrototypeUI = pathname.startsWith('/prototype-ui')
+  // 面试舞台原型页与陪伴房间一样走沉浸式独立 shell，隐藏顶部导航。
+  const isStandaloneInterviewStageProto = pathname.startsWith('/interview/') && pathname.endsWith('/stage-proto')
   const loginPromptDialog = (
     <LoginRequiredDialog
       open={loginPromptState.open}
@@ -382,7 +385,7 @@ function RootLayout() {
     />
   )
 
-  if (isStandaloneCompanionRoom || isStandaloneEditor || isPrototypeUI) {
+  if (isStandaloneCompanionRoom || isStandaloneEditor || isPrototypeUI || isStandaloneInterviewStageProto) {
     return (
       <div className="app-shell companion-room-shell">
         <AuthBootstrap />
@@ -1083,6 +1086,20 @@ const interviewSessionRoute = createRoute({
   component: InterviewSessionPageRoute,
 })
 
+const interviewStagePrototypeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'interview/$interviewId/stage-proto',
+  beforeLoad: async ({ location }) => {
+    if (!await getLatestAccessToken()) {
+      throw redirect({
+        to: '/auth/login',
+        search: buildLoginRedirectSearch(buildCurrentLocationPath(location.pathname, location.searchStr || '')),
+      })
+    }
+  },
+  component: InterviewStagePrototypePageRoute,
+})
+
 const interviewReportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'interview/$interviewId/report',
@@ -1226,6 +1243,7 @@ const routeTree = rootRoute.addChildren([
   interviewRoute,
   interviewHistoryRoute,
   interviewSessionRoute,
+  interviewStagePrototypeRoute,
   interviewReportRoute,
   companionRoute,
   companionRoomRoute,

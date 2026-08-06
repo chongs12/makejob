@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -103,6 +104,9 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
+	// 首题无 history，messages 仅含 system；部分模型（如 minimax-m3 经火山方舟 /api/coding/v3）会拒绝无 user 轮的请求，
+	// 必须补一个 user 轮驱动生成，与报告路径保持一致。
+	messages = ensureTrailingUserTurn(messages, "请根据以上要求生成第一道面试题，只返回 JSON 对象。")
 
 	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -951,11 +955,65 @@ func buildJobQuestionPrompt(resumeText, jobDescription, difficulty, questionInde
 	if strings.TrimSpace(resumeText) != "" {
 		sb.WriteString(fmt.Sprintf("候选人简历：\n%s\n\n", resumeText))
 	}
+	// 批量预生成时各题号并发独立成题，需按题号轮换考察维度，避免生成重复或高度相似的题目。
+	sb.WriteString(fmt.Sprintf("本题重点考察维度：%s\n\n", jobDimensionByIndex(questionIndex)))
 	sb.WriteString("出题要求：\n")
 	sb.WriteString("1. 围绕岗位 JD 的核心能力要求与简历经历出题，模拟真实企业面试（技术面/HR面/综合面）。\n")
 	sb.WriteString("2. 追问简历项目的真实性、个人贡献、成果量化，挖掘注水与含金量。\n")
-	sb.WriteString("3. 由浅入深，覆盖硬技能、项目经历、逻辑表达、求职动机、职业素养等维度。\n")
+	sb.WriteString("3. 严格围绕上方“本题重点考察维度”出题，只出一道题，不要与其他题号重复。\n")
 	sb.WriteString("4. topic 字段填写本题考察的维度（如'岗位硬技能匹配度'、'项目含金量'、'逻辑表达'）。\n")
+	return sb.String()
+}
+
+// jobDimensionByIndex 按题号轮换岗位面试考察维度，保证批量预生成的题目覆盖不同能力面且不重复。
+func jobDimensionByIndex(questionIndex string) string {
+	dimensions := []string{
+		"岗位硬技能匹配度（结合 JD 核心技术要求深挖）",
+		"简历项目真实性与含金量（追问个人贡献、成果量化、技术细节）",
+		"逻辑思维与表达能力（考察结构化表达与问题拆解）",
+		"求职动机与岗位认知（考察对岗位、行业与公司的理解）",
+		"职业素养与稳定性（考察协作、抗压、职业规划）",
+		"综合面试印象与临场应变（开放式追问或压力测试）",
+	}
+	idx := 0
+	if n, err := strconv.Atoi(strings.TrimSpace(questionIndex)); err == nil && n >= 0 {
+		idx = n % len(dimensions)
+	}
+	return dimensions[idx]
+}
+
+// buildQuestionsBatchGuidelines 返回标准语音面试批量出题的通用语音友好约束（单问/口语化/禁代码/去重递进）。
+func buildQuestionsBatchGuidelines(count int32) string {
+	return fmt.Sprintf("出题要求（语音面试，务必遵守）：\n"+
+		"1. 一共只生成 %d 道题，全部放进 questions 数组；每道题只包含一个问题，禁止用“并/以及/还有/分号”在一道题里堆多个小问或追问。\n"+
+		"2. 题目必须口语化、适合直接朗读，长度控制在 20-60 字；禁止出现代码块、代码片段、伪代码、命令行、公式或任何需要看屏幕才能理解的内容。\n"+
+		"3. type 只能是 technical 或 behavioral，禁止 coding；若知识点偏编码，也要改成让候选人“口头描述思路或原理”的问答题。\n"+
+		"4. %d 道题之间考察角度和难度层次必须各不相同，整体按 基础概念→应用场景→进阶边界→易错点 递进，禁止重复或高度相似。\n"+
+		"5. 每道题的 topic 填写本题对应的具体知识点或考察维度。\n", count, count)
+}
+
+// buildKnowledgeQuestionsBatchPrompt 构造知识点专项【单次全局批量出题】的内联回退 prompt（后台无模板时使用）。
+func buildKnowledgeQuestionsBatchPrompt(topics []string, difficulty string, count int32) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位严谨的技术考核官，正在对候选人进行知识点专项考核。请一次性设计好整场面试的全部题目。\n\n")
+	sb.WriteString(fmt.Sprintf("考核知识点：%s\n难度：%s\n题目数量：%d\n\n", strings.Join(topics, "、"), difficulty, count))
+	sb.WriteString(buildQuestionsBatchGuidelines(count))
+	return sb.String()
+}
+
+// buildJobQuestionsBatchPrompt 构造岗位求职【单次全局批量出题】的内联回退 prompt（后台无模板时使用）。
+func buildJobQuestionsBatchPrompt(resumeText, jobDescription, difficulty string, count int32) string {
+	var sb strings.Builder
+	sb.WriteString("你是一位资深的企业面试官，正在对候选人进行岗位求职面试。请结合候选人简历与目标岗位要求，一次性设计好整场面试的全部题目。\n\n")
+	sb.WriteString(fmt.Sprintf("难度：%s\n题目数量：%d\n\n", difficulty, count))
+	if strings.TrimSpace(jobDescription) != "" {
+		sb.WriteString(fmt.Sprintf("目标岗位 JD：\n%s\n\n", jobDescription))
+	}
+	if strings.TrimSpace(resumeText) != "" {
+		sb.WriteString(fmt.Sprintf("候选人简历：\n%s\n\n", resumeText))
+	}
+	sb.WriteString(buildQuestionsBatchGuidelines(count))
+	sb.WriteString("6. 结合简历与 JD，让各道题分别覆盖 岗位硬技能匹配度 / 简历项目真实性与含金量 / 逻辑思维与表达 / 求职动机与岗位认知 / 职业素养与稳定性 / 综合面试印象 等不同维度，每道题聚焦其中一个维度，避免重复。\n")
 	return sb.String()
 }
 

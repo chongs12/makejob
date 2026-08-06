@@ -25,6 +25,8 @@ service AIService {
   rpc GenerateReportFromHistory(GenerateReportFromHistoryRequest) returns (GenerateInterviewReportResponse);
   rpc GenerateKnowledgeReport(GenerateKnowledgeReportRequest) returns (GenerateKnowledgeReportResponse);
   rpc GenerateJobReport(GenerateJobReportRequest) returns (GenerateJobReportResponse);
+  // 标准语音面试：单次 LLM 调用一次性生成全部题目（全局编排去重）
+  rpc GenerateInterviewQuestions(GenerateInterviewQuestionsRequest) returns (GenerateInterviewQuestionsResponse);
 
   // === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
   rpc AdjustPlan(AdjustPlanRequest) returns (AdjustPlanResponse);
@@ -72,6 +74,22 @@ message InterviewAgentResponse {
   bool should_end = 8;
   string live2d_emotion = 9;
   string live2d_action = 10;
+}
+
+// GenerateInterviewQuestionsRequest 标准语音面试单次全局批量出题请求
+message GenerateInterviewQuestionsRequest {
+  string industry_code = 1;
+  string difficulty = 2;
+  string resume_text = 3;
+  string job_description = 4;
+  repeated string topics = 5;   // 知识点专项面试的自定义知识点
+  string interview_type = 6;    // knowledge | job，决定出题 prompt 分支
+  int32 question_count = 7;     // 需要一次性生成的题目总数
+}
+
+// GenerateInterviewQuestionsResponse 批量出题响应，一次性返回全部题目
+message GenerateInterviewQuestionsResponse {
+  repeated InterviewAgentResponse questions = 1;  // 复用单题结构
 }
 
 // ============================================================

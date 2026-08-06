@@ -79,6 +79,40 @@ func (s *AIGatewayService) InterviewAgent(ctx context.Context, req *aiv1.Intervi
 	}, nil
 }
 
+// GenerateInterviewQuestions 标准语音面试单次全局批量出题 handler：一次调用返回全部题目。
+func (s *AIGatewayService) GenerateInterviewQuestions(ctx context.Context, req *aiv1.GenerateInterviewQuestionsRequest) (*aiv1.GenerateInterviewQuestionsResponse, error) {
+	results, err := s.interviewUC.GenerateQuestions(
+		ctx,
+		req.IndustryCode,
+		req.Difficulty,
+		req.ResumeText,
+		req.JobDescription,
+		req.Topics,
+		req.InterviewType,
+		req.QuestionCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	questions := make([]*aiv1.InterviewAgentResponse, 0, len(results))
+	for i := range results {
+		r := results[i]
+		questions = append(questions, &aiv1.InterviewAgentResponse{
+			Question:      r.Question,
+			Topic:         r.Topic,
+			Difficulty:    r.Difficulty,
+			Type:          r.Type,
+			Hints:         r.Hints,
+			Feedback:      r.Feedback,
+			Score:         r.Score,
+			ShouldEnd:     r.ShouldEnd,
+			Live2DEmotion: r.Live2DEmotion,
+			Live2DAction:  r.Live2DAction,
+		})
+	}
+	return &aiv1.GenerateInterviewQuestionsResponse{Questions: questions}, nil
+}
+
 // StartInterview 开始面试会话（对齐单体 InterviewAgent.StartInterview）
 func (s *AIGatewayService) StartInterview(ctx context.Context, req *aiv1.StartInterviewRequest) (*aiv1.StartInterviewResponse, error) {
 	result, err := s.interviewSessionUC.StartInterview(ctx, &biz.StartInterviewRequest{

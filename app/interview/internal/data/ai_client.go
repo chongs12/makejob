@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -123,6 +124,40 @@ func (c *aiServiceClient) InterviewAgent(ctx context.Context, req *biz.Interview
 		}
 	}
 	return result, nil
+}
+
+// GenerateQuestions 调用 AI Gateway 单次全局批量出题，一次 gRPC 返回全部题目。
+func (c *aiServiceClient) GenerateQuestions(ctx context.Context, req *biz.GenerateQuestionsRequest) ([]biz.InterviewQuestion, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	resp, err := c.client.GenerateInterviewQuestions(ctx, &aiv1.GenerateInterviewQuestionsRequest{
+		IndustryCode:   req.IndustryCode,
+		Difficulty:     req.Difficulty,
+		ResumeText:     req.ResumeText,
+		JobDescription: req.JobDescription,
+		Topics:         req.Topics,
+		InterviewType:  req.InterviewType,
+		QuestionCount:  req.QuestionCount,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GenerateInterviewQuestions gRPC call failed: %w", err)
+	}
+
+	questions := make([]biz.InterviewQuestion, 0, len(resp.Questions))
+	for _, q := range resp.Questions {
+		if q == nil || strings.TrimSpace(q.Question) == "" {
+			continue
+		}
+		questions = append(questions, biz.InterviewQuestion{
+			Question:   q.Question,
+			Topic:      q.Topic,
+			Difficulty: q.Difficulty,
+			Type:       q.Type,
+			Hints:      q.Hints,
+		})
+	}
+	return questions, nil
 }
 
 // QuizAnalyzer 调用 AI Gateway 评估问答或代码答案。

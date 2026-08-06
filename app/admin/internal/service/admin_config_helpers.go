@@ -21,6 +21,7 @@ var aiDefaultConfigValues = map[string]string{
 	"ai_max_tokens":            "2048",
 	"ai_timeout_seconds":       "30",
 	"ai_enable_stream":         "false",
+	"ai_thinking_mode":         "default",
 	"ai_scene_interview_model": "",
 	"ai_scene_plan_model":      "",
 	"ai_scene_companion_model": "",
@@ -77,6 +78,10 @@ func normalizeAIConfigInput(input map[string]string) (map[string]string, error) 
 	normalized["ai_provider"] = strings.ToLower(normalized["ai_provider"])
 	normalized["ai_fallback_provider"] = strings.ToLower(normalized["ai_fallback_provider"])
 	normalized["ai_enable_stream"] = strings.ToLower(normalized["ai_enable_stream"])
+	normalized["ai_thinking_mode"] = strings.ToLower(normalized["ai_thinking_mode"])
+	if normalized["ai_thinking_mode"] == "" {
+		normalized["ai_thinking_mode"] = "default"
+	}
 
 	if _, ok := aiSupportedPrimaryProviders[normalized["ai_provider"]]; !ok {
 		return nil, kratoserr.BadRequest("INVALID_AI_PROVIDER", "当前仅支持 ai_provider=eino")
@@ -104,6 +109,9 @@ func normalizeAIConfigInput(input map[string]string) (map[string]string, error) 
 	}
 	if normalized["ai_enable_stream"] != "true" && normalized["ai_enable_stream"] != "false" {
 		return nil, kratoserr.BadRequest("INVALID_AI_ENABLE_STREAM", "ai_enable_stream 仅支持 true 或 false")
+	}
+	if err := validateThinkingMode(normalized["ai_thinking_mode"]); err != nil {
+		return nil, err
 	}
 
 	return normalized, nil
@@ -134,4 +142,14 @@ func validatePositiveInt(key, raw string) error {
 		return kratoserr.BadRequest("INVALID_AI_CONFIG", fmt.Sprintf("%s 必须是正整数", key))
 	}
 	return nil
+}
+
+// validateThinkingMode 校验深度思考模式取值：default（不干预，跟随厂商默认）/ disabled（关闭思考）/ enabled（开启思考）。
+func validateThinkingMode(raw string) error {
+	switch raw {
+	case "default", "disabled", "enabled":
+		return nil
+	default:
+		return kratoserr.BadRequest("INVALID_AI_THINKING_MODE", "ai_thinking_mode 仅支持 default、disabled 或 enabled")
+	}
 }

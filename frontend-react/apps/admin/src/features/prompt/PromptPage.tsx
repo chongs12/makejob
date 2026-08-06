@@ -16,7 +16,7 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAdminAuthStore } from '../../state/auth'
 
-type PromptScene = 'interview' | 'companion' | 'quiz' | 'quiz_analyzer' | 'plan' | 'plan_adjust' | 'study_suggestion' | 'resume_parser'
+type PromptScene = 'interview' | 'companion' | 'quiz' | 'quiz_analyzer' | 'plan' | 'plan_adjust' | 'study_suggestion' | 'resume_parser' | 'interview_question_knowledge' | 'interview_question_job'
 
 interface Industry {
   id: number
@@ -93,6 +93,8 @@ const SCENE_CONFIG: Record<PromptScene, { label: string; color: string }> = {
   plan_adjust: { label: '计划调整', color: '#06b6d4' },
   study_suggestion: { label: '学习建议', color: '#14b8a6' },
   resume_parser: { label: '简历解析', color: '#8b5cf6' },
+  interview_question_knowledge: { label: '知识点出题', color: '#a855f7' },
+  interview_question_job: { label: '岗位出题', color: '#ec4899' },
 }
 
 const PROMPT_SCENE_OPTIONS: Array<{ value: PromptScene; label: string }> = [
@@ -104,6 +106,8 @@ const PROMPT_SCENE_OPTIONS: Array<{ value: PromptScene; label: string }> = [
   { value: 'plan_adjust', label: '计划调整' },
   { value: 'study_suggestion', label: '学习建议' },
   { value: 'resume_parser', label: '简历解析' },
+  { value: 'interview_question_knowledge', label: '知识点出题' },
+  { value: 'interview_question_job', label: '岗位出题' },
 ]
 
 /**

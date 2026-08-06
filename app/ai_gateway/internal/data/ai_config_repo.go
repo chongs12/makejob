@@ -59,6 +59,7 @@ func (r *aiConfigRepo) buildConfigFromAdminConfigs(ctx context.Context, scene st
 		"ai_top_p",
 		"ai_timeout_seconds",
 		"ai_enable_stream",
+		"ai_thinking_mode",
 		"ai_api_key",
 		"ai_base_url",
 		"ai_fallback_provider",
@@ -97,6 +98,7 @@ func (r *aiConfigRepo) buildConfigFromAdminConfigs(ctx context.Context, scene st
 		"ai_top_p":           "0.9",
 		"ai_timeout_seconds": "30",
 		"ai_enable_stream":   "false",
+		"ai_thinking_mode":   "default",
 	}
 	for _, row := range rows {
 		if strings.TrimSpace(row.Key) == "" {
@@ -114,6 +116,7 @@ func (r *aiConfigRepo) buildConfigFromAdminConfigs(ctx context.Context, scene st
 		"ai_top_p":             strings.TrimSpace(configs["ai_top_p"]),
 		"ai_timeout_seconds":   strings.TrimSpace(configs["ai_timeout_seconds"]),
 		"ai_enable_stream":     strings.TrimSpace(configs["ai_enable_stream"]),
+		"ai_thinking_mode":     strings.TrimSpace(configs["ai_thinking_mode"]),
 		"ai_api_key":           strings.TrimSpace(configs["ai_api_key"]),
 		"ai_base_url":          strings.TrimSpace(configs["ai_base_url"]),
 		"ai_fallback_provider": strings.TrimSpace(configs["ai_fallback_provider"]),

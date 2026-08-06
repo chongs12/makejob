@@ -121,6 +121,17 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		timeoutMinutes,
 	)
 
+	// companion 客户端（TTS 预热）：配置存在时装配并注入用例，缺省则不预热，不影响主流程。
+	var companionClient biz.TTSPrewarmClient
+	if bc.Companion != nil && bc.Companion.ServiceAddr != "" {
+		cc, err := data.NewCompanionClient(bc.Companion, archiveServiceToken)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create Companion client: %w", err)
+		}
+		companionClient = cc
+		interviewUseCase.SetTTSPrewarmClient(cc)
+	}
+
 	// service 层：gRPC 服务实现
 	interviewService := service.NewInterviewService(interviewUseCase)
 
@@ -154,6 +165,9 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		closers = append(closers, c)
 	}
 	if c, ok := membershipClient.(closer); ok {
+		closers = append(closers, c)
+	}
+	if c, ok := companionClient.(closer); ok {
 		closers = append(closers, c)
 	}
 	if c, ok := ragClient.(closer); ok {

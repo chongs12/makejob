@@ -158,7 +158,7 @@ type QuestionCandidate struct {
 	SourceType  string   `json:"source_type"`
 	Confidence  float64  `json:"confidence"`
 	Solution    string   `json:"solution,omitempty"`
-	JudgeConfig any      `json:"judge_config,omitempty"`  // 使用 any 类型，序列化时会作为对象
+	JudgeConfig any      `json:"judge_config,omitempty"` // 使用 any 类型，序列化时会作为对象
 	SourceLabel string   `json:"source_label,omitempty"`
 	SourceTitle string   `json:"source_title,omitempty"`
 	SourceURL   string   `json:"source_url,omitempty"`
@@ -199,7 +199,9 @@ func (uc *AdminUseCase) saveLog(ctx context.Context, scene, model string, resp *
 		logEntry.Status = "error"
 		logEntry.ErrorMsg = callErr.Error()
 	}
-	if err := uc.callLogRepo.Create(ctx, logEntry); err != nil {
+	logCtx, cancel := newCallLogContext(ctx)
+	defer cancel()
+	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
 		log.Warnf("写入AI调用日志失败: %v", err)
 	}
 }

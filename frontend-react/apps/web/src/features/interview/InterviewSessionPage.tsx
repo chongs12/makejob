@@ -1393,6 +1393,15 @@ export function InterviewSessionPage() {
           <Link className="ghost-button interview-stage-floating-back" to="/interview">
             返回面试入口
           </Link>
+          {/* 原型预览入口：跳转到陪伴风格的新版舞台原型页，验收后将替换本页。 */}
+          <Link
+            className="ghost-button interview-stage-floating-back"
+            style={{ top: 56 }}
+            to="/interview/$interviewId/stage-proto"
+            params={{ interviewId }}
+          >
+            预览新版舞台（原型）
+          </Link>
           <InterviewLive2DStage
             industryCode={sessionIndustryCode}
             dialogue={liveDialogue}

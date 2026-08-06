@@ -37,6 +37,7 @@ const (
 	AIService_GenerateReportFromHistory_FullMethodName        = "/makejob.ai.v1.AIService/GenerateReportFromHistory"
 	AIService_GenerateKnowledgeReport_FullMethodName          = "/makejob.ai.v1.AIService/GenerateKnowledgeReport"
 	AIService_GenerateJobReport_FullMethodName                = "/makejob.ai.v1.AIService/GenerateJobReport"
+	AIService_GenerateInterviewQuestions_FullMethodName       = "/makejob.ai.v1.AIService/GenerateInterviewQuestions"
 	AIService_AdjustPlan_FullMethodName                       = "/makejob.ai.v1.AIService/AdjustPlan"
 	AIService_GetStudySuggestion_FullMethodName               = "/makejob.ai.v1.AIService/GetStudySuggestion"
 	AIService_GetGreeting_FullMethodName                      = "/makejob.ai.v1.AIService/GetGreeting"
@@ -70,6 +71,8 @@ type AIServiceClient interface {
 	GenerateReportFromHistory(ctx context.Context, in *GenerateReportFromHistoryRequest, opts ...grpc.CallOption) (*GenerateInterviewReportResponse, error)
 	GenerateKnowledgeReport(ctx context.Context, in *GenerateKnowledgeReportRequest, opts ...grpc.CallOption) (*GenerateKnowledgeReportResponse, error)
 	GenerateJobReport(ctx context.Context, in *GenerateJobReportRequest, opts ...grpc.CallOption) (*GenerateJobReportResponse, error)
+	// 标准语音面试：单次 LLM 调用一次性生成全部题目（全局编排去重）
+	GenerateInterviewQuestions(ctx context.Context, in *GenerateInterviewQuestionsRequest, opts ...grpc.CallOption) (*GenerateInterviewQuestionsResponse, error)
 	// === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
 	AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error)
 	GetStudySuggestion(ctx context.Context, in *GetStudySuggestionRequest, opts ...grpc.CallOption) (*GetStudySuggestionResponse, error)
@@ -272,6 +275,16 @@ func (c *aIServiceClient) GenerateJobReport(ctx context.Context, in *GenerateJob
 	return out, nil
 }
 
+func (c *aIServiceClient) GenerateInterviewQuestions(ctx context.Context, in *GenerateInterviewQuestionsRequest, opts ...grpc.CallOption) (*GenerateInterviewQuestionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateInterviewQuestionsResponse)
+	err := c.cc.Invoke(ctx, AIService_GenerateInterviewQuestions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *aIServiceClient) AdjustPlan(ctx context.Context, in *AdjustPlanRequest, opts ...grpc.CallOption) (*AdjustPlanResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AdjustPlanResponse)
@@ -384,6 +397,8 @@ type AIServiceServer interface {
 	GenerateReportFromHistory(context.Context, *GenerateReportFromHistoryRequest) (*GenerateInterviewReportResponse, error)
 	GenerateKnowledgeReport(context.Context, *GenerateKnowledgeReportRequest) (*GenerateKnowledgeReportResponse, error)
 	GenerateJobReport(context.Context, *GenerateJobReportRequest) (*GenerateJobReportResponse, error)
+	// 标准语音面试：单次 LLM 调用一次性生成全部题目（全局编排去重）
+	GenerateInterviewQuestions(context.Context, *GenerateInterviewQuestionsRequest) (*GenerateInterviewQuestionsResponse, error)
 	// === Plan 扩展 RPC（对齐单体 PlanAgent 接口）===
 	AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error)
 	GetStudySuggestion(context.Context, *GetStudySuggestionRequest) (*GetStudySuggestionResponse, error)
@@ -459,6 +474,9 @@ func (UnimplementedAIServiceServer) GenerateKnowledgeReport(context.Context, *Ge
 }
 func (UnimplementedAIServiceServer) GenerateJobReport(context.Context, *GenerateJobReportRequest) (*GenerateJobReportResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateJobReport not implemented")
+}
+func (UnimplementedAIServiceServer) GenerateInterviewQuestions(context.Context, *GenerateInterviewQuestionsRequest) (*GenerateInterviewQuestionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateInterviewQuestions not implemented")
 }
 func (UnimplementedAIServiceServer) AdjustPlan(context.Context, *AdjustPlanRequest) (*AdjustPlanResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdjustPlan not implemented")
@@ -829,6 +847,24 @@ func _AIService_GenerateJobReport_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AIService_GenerateInterviewQuestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateInterviewQuestionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AIServiceServer).GenerateInterviewQuestions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AIService_GenerateInterviewQuestions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AIServiceServer).GenerateInterviewQuestions(ctx, req.(*GenerateInterviewQuestionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AIService_AdjustPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AdjustPlanRequest)
 	if err := dec(in); err != nil {
@@ -1044,6 +1080,10 @@ var AIService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GenerateJobReport",
 			Handler:    _AIService_GenerateJobReport_Handler,
+		},
+		{
+			MethodName: "GenerateInterviewQuestions",
+			Handler:    _AIService_GenerateInterviewQuestions_Handler,
 		},
 		{
 			MethodName: "AdjustPlan",

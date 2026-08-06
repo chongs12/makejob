@@ -18,6 +18,12 @@ type Bootstrap struct {
 	RAG        *RAG        `yaml:"rag"`
 	CodeRunner *CodeRunner `yaml:"code_runner"`
 	Interview  *Interview  `yaml:"interview"`
+	Companion  *Companion  `yaml:"companion"`
+}
+
+// Companion 面试服务调用 companion 服务（TTS 预热）的配置
+type Companion struct {
+	ServiceAddr string `yaml:"service_addr"`
 }
 
 type Server struct {

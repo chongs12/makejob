@@ -2,13 +2,17 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
@@ -276,18 +280,31 @@ type TTSAudio struct {
 
 // CompanionUseCase 陪伴助手业务用例
 type CompanionUseCase struct {
-	repo              CompanionRepo
-	aiClient          CompanionClient
-	ttsClient         TTSClient
-	ttsVoice          string
-	asrConfigRepo     ASRConfigRepo
-	adminConfigRepo   AdminConfigRepo
+	repo               CompanionRepo
+	aiClient           CompanionClient
+	ttsClient          TTSClient
+	ttsVoice           string
+	asrConfigRepo      ASRConfigRepo
+	adminConfigRepo    AdminConfigRepo
 	asrProviderFactory func(*ASRConfig) (ASRProvider, error)
-	growthClient      GrowthClient
-	interviewClient   InterviewClient
-	planClient        PlanClient
-	sceneTTSService   SceneTTSService
+	growthClient       GrowthClient
+	interviewClient    InterviewClient
+	planClient         PlanClient
+	sceneTTSService    SceneTTSService
+	// TTS 结果进程内缓存 + singleflight：相同文本重复合成（前端播报与服务端预热共享）直接命中，避免重复调用火山引擎。
+	ttsSF      singleflight.Group
+	ttsCacheMu sync.RWMutex
+	ttsCache   map[string]ttsCacheEntry
 }
+
+// ttsCacheEntry TTS 结果缓存条目，含音频数据与过期时间。
+type ttsCacheEntry struct {
+	audio     *TTSAudio
+	expiresAt time.Time
+}
+
+// ttsCacheTTL TTS 缓存有效期，面试单场时长内命中即可。
+const ttsCacheTTL = 10 * time.Minute
 
 // NewCompanionUseCase 创建陪伴助手业务用例
 func NewCompanionUseCase(
@@ -302,6 +319,7 @@ func NewCompanionUseCase(
 		aiClient:  aiClient,
 		ttsClient: ttsClient,
 		ttsVoice:  ttsVoice,
+		ttsCache:  make(map[string]ttsCacheEntry),
 	}
 	for _, opt := range opts {
 		opt(uc)
@@ -668,10 +686,68 @@ func (uc *CompanionUseCase) GetCompanionState(ctx context.Context, userID uint64
 	return session, nil
 }
 
-// SynthesizeSpeech 执行语音合成并返回结构化音频结果。
-// /companion/tts 当前仅面试标准语音链路调用，优先走场景级 TTS（admin 配置：
-// live2d 模型绑定 -> 面试场景默认 -> 全局），失败再回退到 config.yaml 的 ttsClient。
+// SynthesizeSpeech 执行语音合成，带进程内缓存与 singleflight 合并并发请求。
+// 相同文本（+voice）的重复合成（前端播报与服务端预热共享此方法）直接命中缓存，避免重复调用火山引擎，消除提交后的 TTS 卡顿。
 func (uc *CompanionUseCase) SynthesizeSpeech(ctx context.Context, text, voice string) (*TTSAudio, error) {
+	// voice 统一归一化，保证预热（voice 为空）与前端播报命中同一缓存键。
+	if voice == "" {
+		voice = uc.ttsVoice
+	}
+	key := ttsCacheKey(voice, text)
+	if cached := uc.getTTSCache(key); cached != nil {
+		return cached, nil
+	}
+	// singleflight 合并同键并发请求，避免预热与前端同时打火山引擎。
+	v, err, _ := uc.ttsSF.Do(key, func() (interface{}, error) {
+		if cached := uc.getTTSCache(key); cached != nil {
+			return cached, nil
+		}
+		audio, synthErr := uc.synthesizeSpeechUncached(ctx, text, voice)
+		if synthErr != nil {
+			return nil, synthErr
+		}
+		uc.setTTSCache(key, audio)
+		return audio, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*TTSAudio), nil
+}
+
+// ttsCacheKey 以 voice+text 的 sha256 作为 TTS 缓存键。
+func ttsCacheKey(voice, text string) string {
+	sum := sha256.Sum256([]byte(voice + "\x00" + text))
+	return hex.EncodeToString(sum[:])
+}
+
+// getTTSCache 读取未过期的 TTS 缓存，命中返回音频，否则返回 nil。
+func (uc *CompanionUseCase) getTTSCache(key string) *TTSAudio {
+	uc.ttsCacheMu.RLock()
+	entry, ok := uc.ttsCache[key]
+	uc.ttsCacheMu.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil
+	}
+	return entry.audio
+}
+
+// setTTSCache 写入 TTS 缓存并设置 TTL，空结果不缓存。
+func (uc *CompanionUseCase) setTTSCache(key string, audio *TTSAudio) {
+	if audio == nil {
+		return
+	}
+	uc.ttsCacheMu.Lock()
+	if uc.ttsCache == nil {
+		uc.ttsCache = make(map[string]ttsCacheEntry)
+	}
+	uc.ttsCache[key] = ttsCacheEntry{audio: audio, expiresAt: time.Now().Add(ttsCacheTTL)}
+	uc.ttsCacheMu.Unlock()
+}
+
+// synthesizeSpeechUncached 实际执行语音合成（不经缓存）。
+// 优先走场景级 TTS（admin 配置：live2d 模型绑定 -> 面试场景默认 -> 全局），失败再回退到 config.yaml 的 ttsClient。
+func (uc *CompanionUseCase) synthesizeSpeechUncached(ctx context.Context, text, voice string) (*TTSAudio, error) {
 	if uc.sceneTTSService != nil {
 		result, err := uc.sceneTTSService.SynthesizeForScene(ctx, SceneTTSRequest{
 			Scene: Live2DSceneInterview,

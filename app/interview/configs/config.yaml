@@ -28,6 +28,9 @@ archive:
 membership:
   service_addr: "localhost:9002"
 
+companion:
+  service_addr: "localhost:9008"  # TTS 预热：创建面试/取题时提前合成并缓存题目语音
+
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.async"

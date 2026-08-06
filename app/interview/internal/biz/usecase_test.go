@@ -220,6 +220,25 @@ func (a *interviewAIStub) GenerateJobReport(context.Context, *GenerateJobReportR
 	return nil, errors.New("not implemented")
 }
 
+// GenerateQuestions 返回预置首题的 count 份拷贝，模拟单次全局批量出题。
+func (a *interviewAIStub) GenerateQuestions(_ context.Context, req *GenerateQuestionsRequest) ([]InterviewQuestion, error) {
+	a.interviewCall++
+	if a.repo != nil && a.repo.inTransaction {
+		return nil, errors.New("ai should not be called inside transaction")
+	}
+	if a.err != nil {
+		return nil, a.err
+	}
+	if a.question == nil {
+		return nil, nil
+	}
+	questions := make([]InterviewQuestion, 0, req.QuestionCount)
+	for i := int32(0); i < req.QuestionCount; i++ {
+		questions = append(questions, *a.question)
+	}
+	return questions, nil
+}
+
 // interviewIndustryStub 实现 IndustryClient 接口
 type interviewIndustryStub struct{}
 
@@ -307,6 +326,10 @@ func (q *quizAnalyzerStub) GenerateKnowledgeReport(_ context.Context, _ *Generat
 }
 
 func (q *quizAnalyzerStub) GenerateJobReport(_ context.Context, _ *GenerateJobReportRequest) (*GenerateJobReportResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (q *quizAnalyzerStub) GenerateQuestions(_ context.Context, _ *GenerateQuestionsRequest) ([]InterviewQuestion, error) {
 	return nil, errors.New("not implemented")
 }
 

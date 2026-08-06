@@ -40,7 +40,7 @@ type PromptTemplate struct {
 	model.BaseModel
 	IndustryID      *uint  `json:"industry_id" gorm:"index;comment:所属行业ID，NULL表示通用"`
 	Name            string `json:"name" gorm:"size:100;not null;comment:模板名称"`
-	Scene           string `json:"scene" gorm:"size:20;not null;index;comment:使用场景"`
+	Scene           string `json:"scene" gorm:"size:64;not null;index;comment:使用场景"`
 	TemplateContent string `json:"template_content" gorm:"type:text;not null;comment:模板内容"`
 	Variables       string `json:"variables" gorm:"type:text;comment:模板变量说明JSON"`
 	IsActive        bool   `json:"is_active" gorm:"not null;default:true;comment:是否启用"`
@@ -174,6 +174,9 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 	schema := interviewResultSchema()
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
 	messages = append(messages, history...)
+	// 部分模型（如 minimax-m3 经火山方舟 /api/coding/v3）会拒绝仅含 system、无 user 轮的请求（400 InvalidParameter）。
+	// history 为空时（知识点批量出题/首题）必须补一个 user 轮驱动生成，与报告路径保持一致。
+	messages = ensureTrailingUserTurn(messages, "请根据以上要求出题，只返回 JSON 对象。")
 
 	resp, err := uc.llm.Chat(ctx, messages, cfg)
 	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
@@ -193,6 +196,72 @@ func (uc *InterviewAgentUseCase) GenerateQuestion(ctx context.Context, industryC
 		return buildLocalQuestionResult(topics, industryCode, questionIndex), nil
 	}
 	return &result, nil
+}
+
+// InterviewQuestionsBatchResult 单次全局批量出题的结构化解析结果。
+type InterviewQuestionsBatchResult struct {
+	Questions []InterviewResult `json:"questions"`
+}
+
+// GenerateQuestions 标准语音面试单次全局批量出题：一次 LLM 调用生成全部题目，全局编排避免重复。
+// knowledge/job 出题 prompt 先查后台可编辑的 DB 模板，未命中回退内联默认；解析失败或调用失败返回错误，交由 interview 侧本地兜底补齐。
+func (uc *InterviewAgentUseCase) GenerateQuestions(ctx context.Context, industryCode, difficulty, resumeText, jobDescription string, topics []string, interviewType string, count int32) ([]InterviewResult, error) {
+	const scene = "interview_agent"
+	start := time.Now()
+
+	cfg, err := uc.configRepo.GetActiveConfig(ctx, scene)
+	if err != nil {
+		return nil, ErrAIConfigNotFound
+	}
+	if count <= 0 {
+		count = 1
+	}
+
+	promptText := uc.buildQuestionsBatchPrompt(ctx, interviewType, topics, difficulty, resumeText, jobDescription, count)
+	schema := interviewQuestionsBatchSchema()
+	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
+	messages = ensureTrailingUserTurn(messages, fmt.Sprintf("请一次性生成全部 %d 道题，只返回 JSON 对象。", count))
+
+	resp, err := uc.llm.Chat(ctx, messages, cfg)
+	uc.saveLog(ctx, scene, cfg.Model, resp, err, time.Since(start).Milliseconds())
+	if err != nil {
+		log.Warnf("GenerateQuestions LLM 调用失败: interview_type=%s count=%d err=%v", interviewType, count, err)
+		return nil, err
+	}
+
+	batch, err := parseStructuredJSON[InterviewQuestionsBatchResult](ctx, uc.llm, cfg, resp.Content, schema)
+	if err != nil {
+		log.Warnf("GenerateQuestions LLM 响应解析失败: interview_type=%s count=%d err=%v", interviewType, count, err)
+		return nil, ErrParseFailed
+	}
+	return batch.Questions, nil
+}
+
+// buildQuestionsBatchPrompt 选择批量出题 prompt：按面试类型先查后台 DB 模板，未命中回退内联默认构建器。
+func (uc *InterviewAgentUseCase) buildQuestionsBatchPrompt(ctx context.Context, interviewType string, topics []string, difficulty, resumeText, jobDescription string, count int32) string {
+	scene := ""
+	switch interviewType {
+	case "knowledge":
+		scene = "interview_question_knowledge"
+	case "job":
+		scene = "interview_question_job"
+	}
+	if scene != "" {
+		if tpl, err := uc.promptRepo.GetActiveTemplate(ctx, scene); err == nil && tpl != nil && strings.TrimSpace(tpl.TemplateContent) != "" {
+			return RenderPrompt(tpl.TemplateContent, map[string]string{
+				"topics":          strings.Join(topics, "、"),
+				"difficulty":      difficulty,
+				"count":           fmt.Sprintf("%d", count),
+				"resume_text":     resumeText,
+				"job_description": jobDescription,
+			})
+		}
+	}
+	// 后台无可用模板：回退内联默认。
+	if interviewType == "job" {
+		return buildJobQuestionsBatchPrompt(resumeText, jobDescription, difficulty, count)
+	}
+	return buildKnowledgeQuestionsBatchPrompt(topics, difficulty, count)
 }
 
 // saveLog 记录 LLM 调用日志
