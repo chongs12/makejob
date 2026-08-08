@@ -77,12 +77,17 @@ type InterviewArchivePersistPayload struct {
 }
 
 // InterviewFinishedPayload 面试完成事件负载（由 interview 服务发布，learning_archive 消费）
+// 携带面试快照数据，使成长档案能存储完整的面试画像供下游服务消费。
 type InterviewFinishedPayload struct {
-	InterviewID    uint64   `json:"interview_id"`
-	UserID         uint64   `json:"user_id"`
-	Score          float64  `json:"score"`
-	WeakTopics     []string `json:"weak_topics"`
-	StrengthTopics []string `json:"strength_topics"`
+	InterviewID       uint64   `json:"interview_id"`
+	UserID            uint64   `json:"user_id"`
+	Score             float64  `json:"score"`
+	InterviewType     string   `json:"interview_type"`       // knowledge | job | ""（标准面试）
+	WeakTopics        []string `json:"weak_topics"`
+	StrengthTopics    []string `json:"strength_topics"`
+	CodingMistakeTags []string `json:"coding_mistake_tags"`  // 编程题错因标签（从 CodingDiagnostics 提取）
+	Summary           string   `json:"summary"`              // 报告摘要文本
+	DurationSeconds   int32    `json:"duration_seconds"`     // 面试时长（秒）
 }
 
 // PlanGeneratePayload 计划生成负载

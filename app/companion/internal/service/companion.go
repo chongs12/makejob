@@ -55,6 +55,32 @@ func (s *CompanionService) Chat(ctx context.Context, req *companionv1.CompanionC
 	}, nil
 }
 
+// Greeting 生成上下文感知的打招呼消息
+func (s *CompanionService) Greeting(ctx context.Context, req *companionv1.GreetingRequest) (*companionv1.CompanionChatResponse, error) {
+	userID := resolveUserID(ctx, req.GetUserId())
+	if userID == 0 {
+		return nil, kratosErr.BadRequest("USER_ID_REQUIRED", "用户 ID 不能为空")
+	}
+
+	result, err := s.uc.Greeting(ctx, userID, req.GetLive2DModelKey())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &companionv1.CompanionChatResponse{
+		Reply:            result.Reply,
+		Emotion:          result.Emotion,
+		Action:           result.Action,
+		Suggestions:      result.Suggestions,
+		SuggestedActions: toProtoCompanionSuggestedActions(result.SuggestedActions),
+		AudioUrl:         result.AudioURL,
+		Live2DDirective:  toProtoLive2DDirective(result.Live2DDirective),
+		InlineTriggers:   toProtoCompanionInlineTriggers(result.InlineTriggers),
+		Intent:           toProtoCompanionIntentInfo(result.Intent),
+		PendingAction:    toProtoCompanionPendingAction(result.PendingAction),
+	}, nil
+}
+
 // toProtoCompanionSuggestedActions 将 biz SuggestedAction 列表转换为 proto SuggestedAction 列表。
 func toProtoCompanionSuggestedActions(actions []biz.SuggestedAction) []*companionv1.SuggestedAction {
 	if len(actions) == 0 {

@@ -457,9 +457,22 @@ type ReportRepo interface {
 	GetByInterviewID(ctx context.Context, interviewID uint64) (*InterviewReport, error)
 }
 
+// InterviewFinishedEvent 面试完成事件，携带面试快照数据发布到 MQ。
+type InterviewFinishedEvent struct {
+	InterviewID       uint64
+	UserID            uint64
+	Score             float64
+	InterviewType     string
+	WeakTopics        []string
+	StrengthTopics    []string
+	CodingMistakeTags []string
+	Summary           string
+	DurationSeconds   int32
+}
+
 // MQPublisher MQ 消息发布接口
 type MQPublisher interface {
 	PublishInterviewResumeParse(ctx context.Context, interviewID, userID uint64, resumeText string) error
 	PublishInterviewReportGenerate(ctx context.Context, interviewID, userID uint64) error
-	PublishInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error
+	PublishInterviewFinished(ctx context.Context, event InterviewFinishedEvent) error
 }

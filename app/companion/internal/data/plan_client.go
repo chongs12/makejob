@@ -9,6 +9,7 @@ import (
 
 	planv1 "makejob/api/makejob/plan/v1"
 	"makejob/app/companion/internal/biz"
+	"makejob/pkg/auth"
 )
 
 // planClient 实现 biz.PlanClient 接口，通过 gRPC 调用 Plan 服务
@@ -19,7 +20,10 @@ type planClient struct {
 
 // NewPlanClient 创建 Plan 服务客户端
 func NewPlanClient(serviceAddr string) (biz.PlanClient, error) {
-	conn, err := grpc.Dial(serviceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(serviceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial plan service at %s: %w", serviceAddr, err)
 	}

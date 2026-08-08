@@ -54,6 +54,23 @@ export async function fetchSelectableCompanionLive2DModels(industryCode: string)
 }
 
 /**
+ * 请求后端生成上下文感知的打招呼消息，返回包含面试上下文的 AI 问候。
+ */
+export async function fetchCompanionGreeting(token: string, live2DModelKey: string): Promise<CompanionChatReply> {
+  const response = await requestJson<ApiEnvelope<CompanionChatReply>>('/companion/greeting', {
+    method: 'POST',
+    token,
+    body: { live2d_model_key: live2DModelKey },
+  })
+
+  if (!isSuccessCode(response.code) || !response.data) {
+    throw new Error(response.message || '打招呼失败')
+  }
+
+  return response.data
+}
+
+/**
  * 拉取当前用户的进行中学习计划，并为左侧目标卡片提供数据。
  */
 export async function fetchCurrentPlan(token: string): Promise<CompanionPlanDetail | null> {

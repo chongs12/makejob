@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -12,8 +13,23 @@ import (
 const (
 	// ArchiveSourceTypeInterviewFinishedMarker 用于标记 interview.finished 事件已完成处理。
 	ArchiveSourceTypeInterviewFinishedMarker = "interview_finished_marker"
+	// ArchiveSourceTypeInterviewCoding 编程题错因归档
+	ArchiveSourceTypeInterviewCoding = "interview_coding"
 	archiveSourceRefProcessed                = "done"
 )
+
+// InterviewFinishedContext 面试完成事件上下文，携带面试快照数据。
+type InterviewFinishedContext struct {
+	InterviewID       uint64
+	UserID            uint64
+	Score             float64
+	InterviewType     string
+	WeakTopics        []string
+	StrengthTopics    []string
+	CodingMistakeTags []string
+	Summary           string
+	DurationSeconds   int32
+}
 
 // ArchiveRepo data 层接口
 type ArchiveRepo interface {
@@ -207,51 +223,80 @@ func (uc *ArchiveUseCase) GetMistakeTopic(code string) (*MistakeTopicCard, bool)
 	return ResolveMistakeTopicByCode(code)
 }
 
-// HandleInterviewFinished 处理面试完成事件：将薄弱/优势知识点写入学习档案，并发布档案写入事件
-func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error {
-	if userID == 0 {
+// HandleInterviewFinished 处理面试完成事件：将面试快照、薄弱/优势知识点、编程错因写入学习档案，并发布档案写入事件
+func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, payload InterviewFinishedContext) error {
+	if payload.UserID == 0 {
 		uc.logger.Warn("interview.finished 事件 user_id 为 0，丢弃消息")
 		return nil
 	}
-	exists, err := uc.repo.HasInterviewFinishedMarker(ctx, interviewID, userID)
+	exists, err := uc.repo.HasInterviewFinishedMarker(ctx, payload.InterviewID, payload.UserID)
 	if err != nil {
 		return err
 	}
 	if exists {
-		uc.logger.Infof("面试完成事件已处理，跳过重复消费 interview_id=%d user_id=%d", interviewID, userID)
+		uc.logger.Infof("面试完成事件已处理，跳过重复消费 interview_id=%d user_id=%d", payload.InterviewID, payload.UserID)
 		return nil
 	}
 
 	now := time.Now()
+	// 标记条目同时携带面试快照数据（摘要存 EvidenceSummary，分数/类型/时长存 Suggestions）
+	snapshotMeta := []string{}
+	if payload.Score > 0 {
+		snapshotMeta = append(snapshotMeta, fmt.Sprintf("score:%.1f", payload.Score))
+	}
+	if payload.InterviewType != "" {
+		snapshotMeta = append(snapshotMeta, fmt.Sprintf("type:%s", payload.InterviewType))
+	}
+	if payload.DurationSeconds > 0 {
+		snapshotMeta = append(snapshotMeta, fmt.Sprintf("duration:%d", payload.DurationSeconds))
+	}
+
 	allEntries := []*ArchiveEntry{{
-		UserID:      userID,
-		SourceType:  ArchiveSourceTypeInterviewFinishedMarker,
-		SourceRef:   archiveSourceRefProcessed,
-		InterviewID: interviewID,
-		OccurredAt:  now,
+		UserID:          payload.UserID,
+		SourceType:      ArchiveSourceTypeInterviewFinishedMarker,
+		SourceRef:       archiveSourceRefProcessed,
+		InterviewID:     payload.InterviewID,
+		EvidenceSummary: payload.Summary,
+		Suggestions:     snapshotMeta,
+		OccurredAt:      now,
 	}}
 
-	for _, topic := range weakTopics {
+	// 薄弱知识点条目
+	for _, topic := range payload.WeakTopics {
 		allEntries = append(allEntries, &ArchiveEntry{
-			UserID:      userID,
+			UserID:      payload.UserID,
 			SourceType:  "interview_weak",
 			SourceRef:   topic,
-			InterviewID: interviewID,
+			InterviewID: payload.InterviewID,
 			MistakeTags: []string{topic},
 			TaskPhase:   "mock",
 			OccurredAt:  now,
 		})
 	}
 
-	for _, topic := range strengthTopics {
+	// 优势知识点条目
+	for _, topic := range payload.StrengthTopics {
 		allEntries = append(allEntries, &ArchiveEntry{
-			UserID:       userID,
+			UserID:       payload.UserID,
 			SourceType:   "interview_strength",
 			SourceRef:    topic,
-			InterviewID:  interviewID,
+			InterviewID:  payload.InterviewID,
 			StrengthTags: []string{topic},
 			TaskPhase:    "mock",
 			OccurredAt:   now,
+		})
+	}
+
+	// 编程错因标签条目
+	for _, tag := range payload.CodingMistakeTags {
+		allEntries = append(allEntries, &ArchiveEntry{
+			UserID:      payload.UserID,
+			SourceType:  ArchiveSourceTypeInterviewCoding,
+			SourceRef:   tag,
+			InterviewID: payload.InterviewID,
+			MistakeTags: []string{tag},
+			TaskPhase:   "mock",
+			OccurredAt:  now,
 		})
 	}
 
@@ -262,12 +307,17 @@ func (uc *ArchiveUseCase) HandleInterviewFinished(ctx context.Context, interview
 		return err
 	}
 
-	if len(weakTopics) == 0 && len(strengthTopics) == 0 {
+	// 仅当有弱项或编程错因时才发布 archive.written 事件
+	if len(payload.WeakTopics) == 0 && len(payload.CodingMistakeTags) == 0 {
 		return nil
 	}
 
+	allWeakTopics := make([]string, 0, len(payload.WeakTopics)+len(payload.CodingMistakeTags))
+	allWeakTopics = append(allWeakTopics, payload.WeakTopics...)
+	allWeakTopics = append(allWeakTopics, payload.CodingMistakeTags...)
+
 	if uc.publisher != nil {
-		if err := uc.publisher.PublishArchiveWritten(ctx, userID, "interview", interviewID, weakTopics, strengthTopics); err != nil {
+		if err := uc.publisher.PublishArchiveWritten(ctx, payload.UserID, "interview", payload.InterviewID, allWeakTopics, payload.StrengthTopics); err != nil {
 			uc.logger.Errorf("发布 archive.written 事件失败: %v", err)
 		}
 	}

@@ -375,7 +375,7 @@ function RootLayout() {
   const isStandaloneEditor = pathname.startsWith('/practice/editor')
   const isPrototypeUI = pathname.startsWith('/prototype-ui')
   // 面试舞台原型页与陪伴房间一样走沉浸式独立 shell，隐藏顶部导航。
-  const isStandaloneInterviewStageProto = pathname.startsWith('/interview/') && pathname.endsWith('/stage-proto')
+  const isStandaloneInterviewStage = /^\/interview\/\d+(\/legacy)?$/.test(pathname)
   const loginPromptDialog = (
     <LoginRequiredDialog
       open={loginPromptState.open}
@@ -385,7 +385,7 @@ function RootLayout() {
     />
   )
 
-  if (isStandaloneCompanionRoom || isStandaloneEditor || isPrototypeUI || isStandaloneInterviewStageProto) {
+  if (isStandaloneCompanionRoom || isStandaloneEditor || isPrototypeUI || isStandaloneInterviewStage) {
     return (
       <div className="app-shell companion-room-shell">
         <AuthBootstrap />
@@ -1083,12 +1083,12 @@ const interviewSessionRoute = createRoute({
       })
     }
   },
-  component: InterviewSessionPageRoute,
+  component: InterviewStagePrototypePageRoute,
 })
 
-const interviewStagePrototypeRoute = createRoute({
+const interviewLegacyRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: 'interview/$interviewId/stage-proto',
+  path: 'interview/$interviewId/legacy',
   beforeLoad: async ({ location }) => {
     if (!await getLatestAccessToken()) {
       throw redirect({
@@ -1097,7 +1097,7 @@ const interviewStagePrototypeRoute = createRoute({
       })
     }
   },
-  component: InterviewStagePrototypePageRoute,
+  component: InterviewSessionPageRoute,
 })
 
 const interviewReportRoute = createRoute({
@@ -1243,7 +1243,7 @@ const routeTree = rootRoute.addChildren([
   interviewRoute,
   interviewHistoryRoute,
   interviewSessionRoute,
-  interviewStagePrototypeRoute,
+  interviewLegacyRoute,
   interviewReportRoute,
   companionRoute,
   companionRoomRoute,

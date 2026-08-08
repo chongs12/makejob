@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	CompanionService_Chat_FullMethodName              = "/makejob.companion.v1.CompanionService/Chat"
+	CompanionService_Greeting_FullMethodName          = "/makejob.companion.v1.CompanionService/Greeting"
 	CompanionService_GetCompanionState_FullMethodName = "/makejob.companion.v1.CompanionService/GetCompanionState"
 	CompanionService_SynthesizeSpeech_FullMethodName  = "/makejob.companion.v1.CompanionService/SynthesizeSpeech"
 	CompanionService_RecognizeSpeech_FullMethodName   = "/makejob.companion.v1.CompanionService/RecognizeSpeech"
@@ -36,6 +37,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CompanionServiceClient interface {
 	Chat(ctx context.Context, in *CompanionChatRequest, opts ...grpc.CallOption) (*CompanionChatResponse, error)
+	Greeting(ctx context.Context, in *GreetingRequest, opts ...grpc.CallOption) (*CompanionChatResponse, error)
 	GetCompanionState(ctx context.Context, in *GetCompanionStateRequest, opts ...grpc.CallOption) (*CompanionState, error)
 	SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error)
 	RecognizeSpeech(ctx context.Context, in *RecognizeSpeechRequest, opts ...grpc.CallOption) (*RecognizeSpeechResponse, error)
@@ -58,6 +60,16 @@ func (c *companionServiceClient) Chat(ctx context.Context, in *CompanionChatRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CompanionChatResponse)
 	err := c.cc.Invoke(ctx, CompanionService_Chat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *companionServiceClient) Greeting(ctx context.Context, in *GreetingRequest, opts ...grpc.CallOption) (*CompanionChatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompanionChatResponse)
+	err := c.cc.Invoke(ctx, CompanionService_Greeting_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +161,7 @@ func (c *companionServiceClient) UpdateASRDefault(ctx context.Context, in *Updat
 // for forward compatibility.
 type CompanionServiceServer interface {
 	Chat(context.Context, *CompanionChatRequest) (*CompanionChatResponse, error)
+	Greeting(context.Context, *GreetingRequest) (*CompanionChatResponse, error)
 	GetCompanionState(context.Context, *GetCompanionStateRequest) (*CompanionState, error)
 	SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error)
 	RecognizeSpeech(context.Context, *RecognizeSpeechRequest) (*RecognizeSpeechResponse, error)
@@ -169,6 +182,9 @@ type UnimplementedCompanionServiceServer struct{}
 
 func (UnimplementedCompanionServiceServer) Chat(context.Context, *CompanionChatRequest) (*CompanionChatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Chat not implemented")
+}
+func (UnimplementedCompanionServiceServer) Greeting(context.Context, *GreetingRequest) (*CompanionChatResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Greeting not implemented")
 }
 func (UnimplementedCompanionServiceServer) GetCompanionState(context.Context, *GetCompanionStateRequest) (*CompanionState, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCompanionState not implemented")
@@ -229,6 +245,24 @@ func _CompanionService_Chat_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CompanionServiceServer).Chat(ctx, req.(*CompanionChatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CompanionService_Greeting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GreetingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CompanionServiceServer).Greeting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CompanionService_Greeting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CompanionServiceServer).Greeting(ctx, req.(*GreetingRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -387,6 +421,10 @@ var CompanionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Chat",
 			Handler:    _CompanionService_Chat_Handler,
+		},
+		{
+			MethodName: "Greeting",
+			Handler:    _CompanionService_Greeting_Handler,
 		},
 		{
 			MethodName: "GetCompanionState",

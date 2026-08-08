@@ -55,7 +55,7 @@ func (c *MQConsumer) handleInterviewFinished(ctx context.Context, msg mq.TaskMes
 		return fmt.Errorf("解析 interview.finished 事件负载失败: %w", err)
 	}
 
-	c.logger.Infof("处理面试完成事件: interview_id=%d, user_id=%d, score=%.1f", payload.InterviewID, payload.UserID, payload.Score)
+	c.logger.Infof("处理面试完成事件: interview_id=%d, user_id=%d, score=%.1f, type=%s", payload.InterviewID, payload.UserID, payload.Score, payload.InterviewType)
 
 	processed, err := c.uc.HasInterviewFinishedArchive(ctx, payload.InterviewID, payload.UserID)
 	if err == nil && processed {
@@ -65,5 +65,15 @@ func (c *MQConsumer) handleInterviewFinished(ctx context.Context, msg mq.TaskMes
 		return err
 	}
 
-	return c.uc.HandleInterviewFinished(ctx, payload.InterviewID, payload.UserID, payload.Score, payload.WeakTopics, payload.StrengthTopics)
+	return c.uc.HandleInterviewFinished(ctx, biz.InterviewFinishedContext{
+		InterviewID:       payload.InterviewID,
+		UserID:            payload.UserID,
+		Score:             payload.Score,
+		InterviewType:     payload.InterviewType,
+		WeakTopics:        payload.WeakTopics,
+		StrengthTopics:    payload.StrengthTopics,
+		CodingMistakeTags: payload.CodingMistakeTags,
+		Summary:           payload.Summary,
+		DurationSeconds:   payload.DurationSeconds,
+	})
 }

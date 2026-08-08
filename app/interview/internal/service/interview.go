@@ -215,7 +215,7 @@ func (s *InterviewService) FinishInterview(ctx context.Context, req *interviewv1
 
 	report := &interviewv1.InterviewReport{
 		InterviewId: req.InterviewId,
-		Status:      "generating",
+		Status:      "report_generating",
 	}
 
 	// 填充时长和完成时间
@@ -362,13 +362,13 @@ func (s *InterviewService) GetRealtimeContext(ctx context.Context, req *intervie
 	}
 
 	resp := &interviewv1.RealtimeInterviewContext{
-		InterviewId:   result.InterviewID,
-		IndustryCode:  result.IndustryCode,
+		InterviewId:    result.InterviewID,
+		IndustryCode:   result.IndustryCode,
 		JobDescription: result.JobDescription,
-		Difficulty:    result.Difficulty,
-		History:       msgs,
-		CurrentTopic:  result.CurrentTopic,
-		QuestionIndex: result.QuestionIndex,
+		Difficulty:     result.Difficulty,
+		History:        msgs,
+		CurrentTopic:   result.CurrentTopic,
+		QuestionIndex:  result.QuestionIndex,
 		Live2DModelKey: result.Live2DModelKey,
 		TotalQuestions: int32(result.TotalQuestions),
 		InterviewMode:  result.InterviewMode,
@@ -376,6 +376,7 @@ func (s *InterviewService) GetRealtimeContext(ctx context.Context, req *intervie
 		WeakTopics:     result.WeakTopics,
 		DialogId:       result.DialogID,
 		HasStarted:     result.HasStarted,
+		Questions:      toProtoQuestions(result.Questions),
 	}
 
 	// 填充简历画像
@@ -486,6 +487,18 @@ func toProtoQuestion(q *biz.InterviewQuestion) *interviewv1.InterviewQuestion {
 		}
 	}
 	return pq
+}
+
+// toProtoQuestions 批量转换 biz.InterviewQuestion 到 proto InterviewQuestion。
+func toProtoQuestions(questions []biz.InterviewQuestion) []*interviewv1.InterviewQuestion {
+	if len(questions) == 0 {
+		return nil
+	}
+	result := make([]*interviewv1.InterviewQuestion, len(questions))
+	for i := range questions {
+		result[i] = toProtoQuestion(&questions[i])
+	}
+	return result
 }
 
 // resolveUserID 优先使用认证上下文中的用户 ID，避免信任请求体透传字段。

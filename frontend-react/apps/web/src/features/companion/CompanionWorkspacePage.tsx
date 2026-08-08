@@ -30,6 +30,7 @@ import { SectionErrorBoundary } from '../../shared/SectionErrorBoundary'
 import { CompanionLive2DStage } from './CompanionLive2DStage'
 import {
   adjustCompanionPlan,
+  fetchCompanionGreeting,
   fetchCompanionPlanProgress,
   fetchCurrentPlan,
   fetchSelectableCompanionLive2DModels,
@@ -146,6 +147,7 @@ export function CompanionWorkspacePage() {
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
   const hasInjectedResumeMessageRef = useRef(false)
+  const greetingFetchedRef = useRef(false)
   const [history, setHistory] = useState<CompanionHistoryItem[]>(() => buildInitialHistory())
   const [composer, setComposer] = useState('')
   const [sending, setSending] = useState(false)
@@ -325,6 +327,44 @@ export function CompanionWorkspacePage() {
 
     persistCompanionSessionSummary(summary)
   }, [history, currentPlanQuery.data])
+
+  /**
+   * 页面加载时调用后端 greeting 接口，生成包含面试上下文的个性化打招呼。
+   * 失败时保留默认欢迎语，不影响页面正常使用。
+   */
+  useEffect(() => {
+    if (greetingFetchedRef.current || !accessToken) {
+      return
+    }
+    greetingFetchedRef.current = true
+
+    fetchCompanionGreeting(accessToken, selectedLive2DModelKey)
+      .then((reply) => {
+        const greetingText = reply.reply || reply.content || COMPANION_INITIAL_DIALOGUE
+        setHistory((current) =>
+          current.map((item) =>
+            item.id === 'assistant-welcome'
+              ? {
+                  id: 'assistant-greeting',
+                  role: 'assistant' as const,
+                  content: greetingText,
+                  emotion: reply.emotion || 'steady',
+                  action: reply.action || 'idle',
+                  live2dDirective: reply.live2d_directive || null,
+                  createdAt: Date.now(),
+                }
+              : item,
+          ),
+        )
+        syncDialogueImmediately(greetingText)
+        if (reply.audio_url) {
+          void playTTSAudio(reply.audio_url, greetingText)
+        }
+      })
+      .catch(() => {
+        // 打招呼失败时保留默认欢迎语
+      })
+  }, [accessToken, selectedLive2DModelKey, syncDialogueImmediately, playTTSAudio])
 
   /**
    * 当房间拿到当前计划后，自动注入一条续接提示，避免每次进入都像从零开始。

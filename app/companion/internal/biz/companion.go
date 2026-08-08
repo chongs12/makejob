@@ -477,6 +477,82 @@ func (uc *CompanionUseCase) Chat(ctx context.Context, userID uint64, message, co
 	}, nil
 }
 
+// Greeting 生成上下文感知的打招呼消息，复用 enrichContext 注入用户学习上下文。
+func (uc *CompanionUseCase) Greeting(ctx context.Context, userID uint64, live2DModelKey string) (*ChatResult, error) {
+	// 根据当前时间确定时段
+	hour := time.Now().Hour()
+	timeOfDay := "晚上好"
+	if hour >= 5 && hour < 12 {
+		timeOfDay = "早上好"
+	} else if hour >= 12 && hour < 18 {
+		timeOfDay = "下午好"
+	}
+
+	// 构造打招呼提示，由 enrichContext 注入用户学习上下文（最近面试、弱项、计划等）
+	greetingPrompt := fmt.Sprintf(
+		"请作为学习陪伴助手给用户打个招呼。现在是%s。要求：简短亲切（2-3句话），"+
+			"如果用户上下文中有最近面试结果，要自然地提到面试得分和薄弱项；"+
+			"如果有学习计划，要提到计划进度。不要使用 markdown 格式，直接输出对话文本。",
+		timeOfDay,
+	)
+	enrichedMessage := uc.enrichContext(ctx, userID, greetingPrompt)
+
+	// 调用 AI Gateway 生成打招呼
+	aiResp, err := uc.aiClient.CompanionAgent(ctx, &CompanionAgentRequest{
+		UserID:      userID,
+		Message:     enrichedMessage,
+		ContextType: "greeting",
+	})
+	if err != nil {
+		return nil, kratosErr.InternalServer("COMPANION_GREETING_FAILED", "打招呼 AI 调用失败").WithCause(err)
+	}
+
+	replyContent := sanitizeCompanionReply(aiResp.Reply)
+	if replyContent == "" {
+		replyContent = aiResp.Reply
+	}
+
+	// 可选 TTS 合成
+	var audioURL string
+	if uc.sceneTTSService != nil {
+		result, synthErr := uc.sceneTTSService.SynthesizeForScene(ctx, SceneTTSRequest{
+			Scene:          Live2DSceneCompanion,
+			Live2DModelKey: live2DModelKey,
+			Text:           replyContent,
+		})
+		if synthErr == nil && result != nil {
+			audioURL = result.AudioURL
+		}
+	} else if uc.ttsClient != nil {
+		voice := uc.ttsVoice
+		if voice == "" {
+			voice = "zh_female_shuangkuaisisi_moon_bigtts"
+		}
+		audioResult, synthErr := uc.ttsClient.Synthesize(ctx, replyContent, voice)
+		if synthErr == nil && audioResult != nil {
+			audioURL = audioResult.AudioURL
+		}
+	}
+
+	suggestions := aiResp.Suggestions
+	if suggestions == nil {
+		suggestions = []string{}
+	}
+
+	return &ChatResult{
+		Reply:           replyContent,
+		Emotion:         aiResp.Emotion,
+		Action:          aiResp.Action,
+		Suggestions:     suggestions,
+		SuggestedActions: aiResp.SuggestedActions,
+		AudioURL:        audioURL,
+		Live2DDirective: aiResp.Live2DDirective,
+		InlineTriggers:  aiResp.InlineTriggers,
+		Intent:          aiResp.Intent,
+		PendingAction:   aiResp.PendingAction,
+	}, nil
+}
+
 // enrichContext 服务端上下文注入，从 growth/interview/plan 服务查询用户学习状态。
 // 对齐单体 companionService.enrichRequestContext 实现。
 func (uc *CompanionUseCase) enrichContext(ctx context.Context, userID uint64, message string) string {
@@ -489,7 +565,9 @@ func (uc *CompanionUseCase) enrichContext(ctx context.Context, userID uint64, me
 	// 查询高频薄弱点与可推荐题集，供 LLM 生成导航建议
 	if uc.growthClient != nil {
 		signals, err := uc.growthClient.GetFocusSignals(ctx, userID)
-		if err == nil && len(signals) > 0 {
+		if err != nil {
+			log.Warnf("enrichContext: 查询 Growth 焦点信号失败 user_id=%d err=%v", userID, err)
+		} else if len(signals) > 0 {
 			top := signals
 			if len(top) > 3 {
 				top = top[:3]
@@ -516,16 +594,22 @@ func (uc *CompanionUseCase) enrichContext(ctx context.Context, userID uint64, me
 		}
 	}
 
-	// 查询最近面试
+	// 查询最近面试，提供得分和完成状态上下文
 	if uc.interviewClient != nil {
 		interviews, err := uc.interviewClient.ListRecent(ctx, userID, 3)
-		if err == nil && len(interviews) > 0 {
+		if err != nil {
+			log.Warnf("enrichContext: 查询最近面试失败 user_id=%d err=%v", userID, err)
+		} else if len(interviews) > 0 {
 			briefs := make([]string, 0, len(interviews))
 			for _, i := range interviews {
 				if i.Status == "completed" {
-					briefs = append(briefs, fmt.Sprintf("得分%d", i.Score))
+					briefs = append(briefs, fmt.Sprintf("得分%d（已完成）", i.Score))
+				} else if i.Status == "report_generating" {
+					briefs = append(briefs, "报告生成中")
+				} else if i.Status == "report_failed" {
+					briefs = append(briefs, "报告生成失败")
 				} else {
-					briefs = append(briefs, "进行中")
+					briefs = append(briefs, i.Status)
 				}
 			}
 			parts = append(parts, fmt.Sprintf("最近 %d 场面试：%s", len(interviews), strings.Join(briefs, "、")))
@@ -535,7 +619,9 @@ func (uc *CompanionUseCase) enrichContext(ctx context.Context, userID uint64, me
 	// 查询当前计划
 	if uc.planClient != nil {
 		plan, err := uc.planClient.GetCurrentPlan(ctx, userID)
-		if err == nil && plan != nil {
+		if err != nil {
+			log.Warnf("enrichContext: 查询当前计划失败 user_id=%d err=%v", userID, err)
+		} else if plan != nil {
 			progress := int(plan.Progress * 100)
 			parts = append(parts, fmt.Sprintf("当前计划：%s（进度 %d%%）", plan.Title, progress))
 		}

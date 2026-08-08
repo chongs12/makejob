@@ -292,6 +292,7 @@ message RealtimeInterviewContext {
   bool has_started = 13;
   ResumeProfile resume_profile = 14;
   string job_description = 15;  // 目标岗位 JD，实战面试提示词依据
+  repeated InterviewQuestion questions = 16;  // 服务端预生成的全部题目（realtime 逐题喂豆包用）
 }
 
 message ResumeProfile {

@@ -71,20 +71,18 @@ func (p *mqPublisher) PublishInterviewResumeParse(ctx context.Context, interview
 	return p.publisher.Publish(ctx, mq.RoutingKeyInterviewResumeParse, msg)
 }
 
-// PublishInterviewFinished 发布面试完成事件
-func (p *mqPublisher) PublishInterviewFinished(ctx context.Context, interviewID, userID uint64, score float64, weakTopics, strengthTopics []string) error {
-	payload := struct {
-		InterviewID    uint64   `json:"interview_id"`
-		UserID         uint64   `json:"user_id"`
-		Score          float64  `json:"score"`
-		WeakTopics     []string `json:"weak_topics"`
-		StrengthTopics []string `json:"strength_topics"`
-	}{
-		InterviewID:    interviewID,
-		UserID:         userID,
-		Score:          score,
-		WeakTopics:     weakTopics,
-		StrengthTopics: strengthTopics,
+// PublishInterviewFinished 发布面试完成事件（携带面试快照数据）
+func (p *mqPublisher) PublishInterviewFinished(ctx context.Context, event biz.InterviewFinishedEvent) error {
+	payload := mq.InterviewFinishedPayload{
+		InterviewID:       event.InterviewID,
+		UserID:            event.UserID,
+		Score:             event.Score,
+		InterviewType:     event.InterviewType,
+		WeakTopics:        event.WeakTopics,
+		StrengthTopics:    event.StrengthTopics,
+		CodingMistakeTags: event.CodingMistakeTags,
+		Summary:           event.Summary,
+		DurationSeconds:   event.DurationSeconds,
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -94,7 +92,7 @@ func (p *mqPublisher) PublishInterviewFinished(ctx context.Context, interviewID,
 	msg := mq.TaskMessage{
 		TaskType:   "interview.finished",
 		EntityType: "interview",
-		EntityID:   interviewID,
+		EntityID:   event.InterviewID,
 		Payload:    payloadBytes,
 		RetryCount: 3,
 		CreatedAt:  time.Now(),

@@ -9,6 +9,7 @@ import (
 
 	growthv1 "makejob/api/makejob/growth/v1"
 	"makejob/app/companion/internal/biz"
+	"makejob/pkg/auth"
 )
 
 // growthClient 实现 biz.GrowthClient 接口，通过 gRPC 调用 Growth 服务
@@ -19,7 +20,10 @@ type growthClient struct {
 
 // NewGrowthClient 创建 Growth 服务客户端
 func NewGrowthClient(serviceAddr string) (biz.GrowthClient, error) {
-	conn, err := grpc.Dial(serviceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(serviceAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial growth service at %s: %w", serviceAddr, err)
 	}

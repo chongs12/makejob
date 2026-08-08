@@ -74,6 +74,18 @@ func (c *interviewClient) GetRealtimeContext(ctx context.Context, interviewID ui
 		DialogID:       resp.DialogId,
 		HasStarted:     resp.HasStarted,
 		CurrentTopic:   resp.CurrentTopic,
+		CurrentIndex:   resp.QuestionIndex,
+	}
+
+	// 映射预生成题目（realtime 服务逐题喂豆包用）
+	if len(resp.Questions) > 0 {
+		rtCtx.Questions = make([]biz.RealtimeQuestion, len(resp.Questions))
+		for i, q := range resp.Questions {
+			rtCtx.Questions[i] = biz.RealtimeQuestion{
+				Question: q.Question,
+				Topic:    q.Topic,
+			}
+		}
 	}
 
 	// 解析简历画像
@@ -114,7 +126,8 @@ func (c *interviewClient) AppendRealtimeUserAnswer(ctx context.Context, intervie
 	return nil
 }
 
-// AppendRealtimeAssistantReply 追加助手回复，返回下一题元数据
+// AppendRealtimeAssistantReply 追加助手回复，返回下一题元数据。
+// shouldEnd=true（结束语）时返回 nil meta，避免 finalizeRealtimeAssistantTurn 把结束语当成新题。
 func (c *interviewClient) AppendRealtimeAssistantReply(ctx context.Context, interviewID uint64, content string) (*biz.NextQuestionMeta, error) {
 	resp, err := c.client.AppendRealtimeAssistantReply(withAuthContext(ctx), &interviewv1.AppendReplyRequest{
 		InterviewId: interviewID,
@@ -123,8 +136,11 @@ func (c *interviewClient) AppendRealtimeAssistantReply(ctx context.Context, inte
 	if err != nil {
 		return nil, fmt.Errorf("AppendRealtimeAssistantReply RPC 失败: %w", err)
 	}
+	if resp.ShouldEnd {
+		return nil, nil
+	}
 	return &biz.NextQuestionMeta{
-		IsLastQuestion: resp.ShouldEnd,
+		IsLastQuestion: false,
 	}, nil
 }
 

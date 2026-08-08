@@ -503,6 +503,20 @@ func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*
 	if interviewStats != nil {
 		summary.TotalInterviews = interviewStats.TotalInterviews
 		summary.AvgScore = interviewStats.AvgScore
+		summary.InterviewCount = int32(interviewStats.TotalInterviews)
+		summary.CompletedInterviewCount = interviewStats.CompletedInterviews
+		summary.AverageInterviewScore = interviewStats.AvgScore
+	}
+	// 从最近面试列表提取最近一场完成面试的分数
+	if len(recentInterviews) > 0 {
+		for _, ri := range recentInterviews {
+			if ri.Status == "completed" && ri.Score > 0 {
+				if interviewStats != nil {
+					interviewStats.LatestScore = float64(ri.Score)
+				}
+				break
+			}
+		}
 	}
 
 	// 弱项主题转换

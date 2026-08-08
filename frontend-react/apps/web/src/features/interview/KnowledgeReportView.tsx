@@ -95,7 +95,7 @@ export function KnowledgeReportView({ data }: { data: KnowledgeReportData }) {
             {data.question_reviews.map((r, i) => (
               <div key={i} style={{ padding: 14, borderRadius: THEME.radiusSm, background: '#fafaf9', border: `1px solid ${THEME.border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain }}>第 {(r.question_index ?? i) + 1} 题</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: THEME.textMain }}>第 {i + 1} 题</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: scoreColor(r.score) }}>{r.score}/{r.max_score || 100}</span>
                 </div>
                 <ReviewLine label="题目" value={r.question} />

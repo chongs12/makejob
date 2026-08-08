@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 
 service CompanionService {
   rpc Chat(CompanionChatRequest) returns (CompanionChatResponse);
+  rpc Greeting(GreetingRequest) returns (CompanionChatResponse);
   rpc GetCompanionState(GetCompanionStateRequest) returns (CompanionState);
   rpc SynthesizeSpeech(SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse);
   rpc RecognizeSpeech(RecognizeSpeechRequest) returns (RecognizeSpeechResponse);
@@ -61,6 +62,11 @@ message CompanionChatResponse {
   IntentInfo intent = 14;
   PendingAction pending_action = 15;
   ConversationState conversation_state = 16;
+}
+
+message GreetingRequest {
+  uint64 user_id = 1;
+  string live2d_model_key = 2;
 }
 
 // SuggestedAction 结构化引导动作，供前端渲染跳转 chip。

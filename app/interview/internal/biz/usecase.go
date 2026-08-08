@@ -137,41 +137,40 @@ func (uc *InterviewUseCase) CreateInterview(ctx context.Context, req *CreateInte
 	}
 
 	var firstQuestion *InterviewQuestion
-	if !IsRealtimeInterview(interview) {
-		itype := strings.TrimSpace(req.InterviewType)
-		if itype == "knowledge" || itype == "job" {
-			// 知识点专项与岗位求职：创建时一次性并发预生成全部题目存 questions_json，
-			// 答题时 GetNextQuestion 秒出下一题、SubmitAnswer 秒回，免逐题调 LLM，保证标准语音面试流程流畅。
-			questions := uc.generateQuestionsBatch(ctx, itype, req.Topics, difficulty, req.ResumeText, req.JobDescription, questionCount)
-			interview.Questions = questions
-			if len(questions) > 0 && strings.TrimSpace(questions[0].Question) != "" {
-				firstQuestion = &questions[0]
-			}
-		} else {
-			// 其他类型：沿用 StartInterview 单题 + session 兜底
-			aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
-				InterviewID:    interview.ID,
-				IndustryCode:   req.IndustryCode,
-				Difficulty:     difficulty,
-				QuestionCount:  questionCount,
-				ResumeText:     req.ResumeText,
-				JobDescription: req.JobDescription,
-				InterviewMode:  req.InterviewMode,
-				Topics:         req.Topics,
-				InterviewType:  req.InterviewType,
-			})
-			if err != nil {
-				return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
-			}
-			interview.AISessionID = aiResp.SessionID
-			if aiResp.Question != "" {
-				firstQuestion = &InterviewQuestion{
-					Question:   aiResp.Question,
-					Topic:      aiResp.Topic,
-					Difficulty: aiResp.Difficulty,
-					Type:       aiResp.Type,
-					Hints:      aiResp.Hints,
-				}
+	itype := strings.TrimSpace(req.InterviewType)
+	if itype == "knowledge" || itype == "job" {
+		// 知识点专项与岗位求职（含实时语音面试）：创建时一次性预生成全部题目存 questions_json。
+		// 标准语音面试答题时 GetNextQuestion 秒出下一题；实时语音面试由 realtime 服务逐题喂豆包。
+		questions := uc.generateQuestionsBatch(ctx, itype, req.Topics, difficulty, req.ResumeText, req.JobDescription, questionCount)
+		interview.Questions = questions
+		// 实时面试首题由 realtime 服务喂豆包，不返回 firstQuestion、不预落首题消息。
+		if !IsRealtimeInterview(interview) && len(questions) > 0 && strings.TrimSpace(questions[0].Question) != "" {
+			firstQuestion = &questions[0]
+		}
+	} else if !IsRealtimeInterview(interview) {
+		// 其他类型（非实时）：沿用 StartInterview 单题 + session 兜底
+		aiResp, err := uc.ai.StartInterview(ctx, &StartInterviewRequest{
+			InterviewID:    interview.ID,
+			IndustryCode:   req.IndustryCode,
+			Difficulty:     difficulty,
+			QuestionCount:  questionCount,
+			ResumeText:     req.ResumeText,
+			JobDescription: req.JobDescription,
+			InterviewMode:  req.InterviewMode,
+			Topics:         req.Topics,
+			InterviewType:  req.InterviewType,
+		})
+		if err != nil {
+			return nil, nil, kratosErr.InternalServer("AI_FIRST_QUESTION_FAILED", "生成第一道题失败").WithCause(err)
+		}
+		interview.AISessionID = aiResp.SessionID
+		if aiResp.Question != "" {
+			firstQuestion = &InterviewQuestion{
+				Question:   aiResp.Question,
+				Topic:      aiResp.Topic,
+				Difficulty: aiResp.Difficulty,
+				Type:       aiResp.Type,
+				Hints:      aiResp.Hints,
 			}
 		}
 	}
@@ -668,7 +667,7 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 			log.Warnf("[ReportGen] GenerateReportFromHistory failed, falling back to local: interview_id=%d err=%v", interviewID, reportErr)
 			return uc.generateReportLocally(ctx, interviewID, userID, interview)
 		}
-		return uc.saveReport(ctx, interviewID, interview, reportResp)
+		return uc.saveReport(ctx, interviewID, interview, reportResp, nil)
 	}
 
 	// 标准面试：调用 AI Gateway 的 GenerateInterviewReport
@@ -718,7 +717,7 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 	reportResp.Weaknesses = weaknesses
 	reportResp.Suggestions = suggestions
 
-	return uc.saveReport(ctx, interviewID, interview, reportResp)
+	return uc.saveReport(ctx, interviewID, interview, reportResp, extractCodingMistakeTags(codingDiagnostics))
 }
 
 // generateKnowledgeReport 知识点专项面试报告生成（不依赖 session，基于完整对话历史）。
@@ -729,8 +728,12 @@ func (uc *InterviewUseCase) generateKnowledgeReport(ctx context.Context, intervi
 		return err
 	}
 
+	// 构造结构化历史：用预生成题目（编号正确）+ 按 QI 配对的用户答案，避免 LLM 自行猜题号导致 off-by-one。
+	// 过滤 QI=-1（结束语）。无预生成题目时回退到原始 messages。
+	history := buildStructuredReportHistory(messages, interview.Questions)
+
 	reportResp, err := uc.ai.GenerateKnowledgeReport(ctx, &GenerateKnowledgeReportRequest{
-		History:         messages,
+		History:         history,
 		KnowledgeTopics: interview.KnowledgeTopics,
 		Difficulty:      interview.Difficulty,
 		TotalQuestions:  interview.QuestionCount,
@@ -767,9 +770,58 @@ func (uc *InterviewUseCase) generateKnowledgeReport(ctx context.Context, intervi
 	log.Infof("[ReportGen] knowledge report saved: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
 
 	if uc.publisher != nil {
-		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, nil, nil)
+		weakTopics := extractKnowledgeWeakTopics(reportResp.ReportJSON)
+		strengthTopics := extractKnowledgeStrengthTopics(reportResp.ReportJSON)
+		summary := extractKnowledgeSummary(reportResp.ReportJSON)
+		_ = uc.publisher.PublishInterviewFinished(ctx, buildInterviewFinishedEvent(
+			interviewID, userID, interview, reportResp.OverallScore, "knowledge",
+			weakTopics, strengthTopics, nil, summary,
+		))
 	}
 	return nil
+}
+
+// buildStructuredReportHistory 用预生成题目 + 按 QuestionIndex 配对的用户答案构造结构化对话历史。
+// 过滤 QI=-1（结束语），避免报告里多出一道"未作答"。无预生成题目时回退到原始 messages。
+func buildStructuredReportHistory(messages []*InterviewMessage, questions []InterviewQuestion) []*InterviewMessage {
+	if len(questions) == 0 {
+		return messages
+	}
+
+	// 按 QI 收集用户答案（取第一条非空）
+	answerByQI := make(map[int32]string)
+	for _, msg := range messages {
+		if msg == nil || msg.Role != "user" || msg.QuestionIndex < 0 {
+			continue
+		}
+		if _, exists := answerByQI[msg.QuestionIndex]; !exists && strings.TrimSpace(msg.Content) != "" {
+			answerByQI[msg.QuestionIndex] = msg.Content
+		}
+	}
+
+	history := make([]*InterviewMessage, 0, len(questions)*2)
+	for i, q := range questions {
+		qi := int32(i)
+		questionText := strings.TrimSpace(q.Question)
+		if questionText == "" {
+			continue
+		}
+		history = append(history, &InterviewMessage{
+			Role:          "assistant",
+			Content:       fmt.Sprintf("第 %d 题：%s", i+1, questionText),
+			QuestionIndex: qi,
+		})
+		answer := answerByQI[qi]
+		if strings.TrimSpace(answer) == "" {
+			answer = "未作答"
+		}
+		history = append(history, &InterviewMessage{
+			Role:          "user",
+			Content:       answer,
+			QuestionIndex: qi,
+		})
+	}
+	return history
 }
 
 // extractKnowledgeSummary 从知识点报告 JSON 中提取 conclusion 作为摘要，便于列表展示。
@@ -835,7 +887,13 @@ func (uc *InterviewUseCase) generateJobReport(ctx context.Context, interviewID, 
 	log.Infof("[ReportGen] job report saved: interview_id=%d overall_score=%.1f", interviewID, reportResp.OverallScore)
 
 	if uc.publisher != nil {
-		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, reportResp.OverallScore, nil, nil)
+		weakTopics := extractJobWeakTopics(reportResp.ReportJSON)
+		strengthTopics := extractJobStrengthTopics(reportResp.ReportJSON)
+		summary := extractJobSummary(reportResp.HireRecommendation)
+		_ = uc.publisher.PublishInterviewFinished(ctx, buildInterviewFinishedEvent(
+			interviewID, userID, interview, reportResp.OverallScore, "job",
+			weakTopics, strengthTopics, nil, summary,
+		))
 	}
 	return nil
 }
@@ -848,8 +906,113 @@ func extractJobSummary(hireRecommendation string) string {
 	return fmt.Sprintf("录用建议：%s", hireRecommendation)
 }
 
+// extractKnowledgeWeakTopics 从知识点报告 JSON 中提取薄弱主题（blind_spots[].topic）。
+func extractKnowledgeWeakTopics(reportJSON string) []string {
+	if strings.TrimSpace(reportJSON) == "" {
+		return nil
+	}
+	var partial struct {
+		BlindSpots []struct {
+			Topic string `json:"topic"`
+		} `json:"blind_spots"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &partial); err != nil {
+		return nil
+	}
+	topics := make([]string, 0, len(partial.BlindSpots))
+	for _, bs := range partial.BlindSpots {
+		if bs.Topic != "" {
+			topics = append(topics, bs.Topic)
+		}
+	}
+	return topics
+}
+
+// extractKnowledgeStrengthTopics 从知识点报告 JSON 中提取已掌握主题（mastered_points）。
+func extractKnowledgeStrengthTopics(reportJSON string) []string {
+	if strings.TrimSpace(reportJSON) == "" {
+		return nil
+	}
+	var partial struct {
+		MasteredPoints []string `json:"mastered_points"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &partial); err != nil {
+		return nil
+	}
+	return partial.MasteredPoints
+}
+
+// extractJobWeakTopics 从岗位报告 JSON 中提取薄弱项（weaknesses_risks[].item）。
+func extractJobWeakTopics(reportJSON string) []string {
+	if strings.TrimSpace(reportJSON) == "" {
+		return nil
+	}
+	var partial struct {
+		WeaknessesRisks []struct {
+			Item string `json:"item"`
+		} `json:"weaknesses_risks"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &partial); err != nil {
+		return nil
+	}
+	items := make([]string, 0, len(partial.WeaknessesRisks))
+	for _, wr := range partial.WeaknessesRisks {
+		if wr.Item != "" {
+			items = append(items, wr.Item)
+		}
+	}
+	return items
+}
+
+// extractJobStrengthTopics 从岗位报告 JSON 中提取核心优势（core_advantages）。
+func extractJobStrengthTopics(reportJSON string) []string {
+	if strings.TrimSpace(reportJSON) == "" {
+		return nil
+	}
+	var partial struct {
+		CoreAdvantages []string `json:"core_advantages"`
+	}
+	if err := json.Unmarshal([]byte(reportJSON), &partial); err != nil {
+		return nil
+	}
+	return partial.CoreAdvantages
+}
+
+// extractCodingMistakeTags 从编程诊断列表中提取去重的错因标签。
+func extractCodingMistakeTags(diagnostics []*CodingDiagnosisBiz) []string {
+	seen := make(map[string]bool)
+	tags := make([]string, 0)
+	for _, d := range diagnostics {
+		if d == nil {
+			continue
+		}
+		for _, tag := range d.MistakeTags {
+			if tag != "" && !seen[tag] {
+				seen[tag] = true
+				tags = append(tags, tag)
+			}
+		}
+	}
+	return tags
+}
+
+// buildInterviewFinishedEvent 根据面试和报告数据构造面试完成事件。
+func buildInterviewFinishedEvent(interviewID, userID uint64, interview *Interview, score float64, interviewType string, weakTopics, strengthTopics, codingMistakeTags []string, summary string) InterviewFinishedEvent {
+	return InterviewFinishedEvent{
+		InterviewID:       interviewID,
+		UserID:            userID,
+		Score:             score,
+		InterviewType:     interviewType,
+		WeakTopics:        weakTopics,
+		StrengthTopics:    strengthTopics,
+		CodingMistakeTags: codingMistakeTags,
+		Summary:           summary,
+		DurationSeconds:   calcDurationSeconds(interview.StartedAt, interview.FinishedAt),
+	}
+}
+
 // saveReport 将报告写入数据库并更新面试状态
-func (uc *InterviewUseCase) saveReport(ctx context.Context, interviewID uint64, interview *Interview, reportResp *GenerateInterviewReportResponse) error {
+func (uc *InterviewUseCase) saveReport(ctx context.Context, interviewID uint64, interview *Interview, reportResp *GenerateInterviewReportResponse, codingMistakeTags []string) error {
 	report := &InterviewReport{
 		InterviewID:         interviewID,
 		OverallScore:        reportResp.OverallScore,
@@ -885,7 +1048,10 @@ func (uc *InterviewUseCase) saveReport(ctx context.Context, interviewID uint64, 
 	}
 
 	if uc.publisher != nil {
-		_ = uc.publisher.PublishInterviewFinished(ctx, interviewID, interview.UserID, reportResp.OverallScore, reportResp.Weaknesses, reportResp.Strengths)
+		_ = uc.publisher.PublishInterviewFinished(ctx, buildInterviewFinishedEvent(
+			interviewID, interview.UserID, interview, reportResp.OverallScore, interview.InterviewType,
+			reportResp.Weaknesses, reportResp.Strengths, codingMistakeTags, reportResp.Summary,
+		))
 	}
 	return nil
 }
@@ -979,7 +1145,10 @@ func (uc *InterviewUseCase) generateReportLocally(ctx context.Context, interview
 	}
 
 	if uc.publisher != nil {
-		if err := uc.publisher.PublishInterviewFinished(ctx, interviewID, userID, overallScore, weaknesses, strengths); err != nil {
+		if err := uc.publisher.PublishInterviewFinished(ctx, buildInterviewFinishedEvent(
+			interviewID, userID, interview, overallScore, interview.InterviewType,
+			weaknesses, strengths, extractCodingMistakeTags(codingDiagnostics), summary,
+		)); err != nil {
 			return err
 		}
 	}
@@ -1014,8 +1183,8 @@ func (uc *InterviewUseCase) PersistCodingArchive(ctx context.Context, interviewI
 	})
 }
 
-// FinishInterview 结束面试并触发报告生成
 // FinishInterview 结束面试并触发报告生成，返回更新后的面试实体。
+// 当面试处于 report_failed 状态时，也允许再次调用以重新触发报告生成。
 func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, userID uint64) (*Interview, error) {
 	// 获取面试记录
 	interview, err := uc.repo.GetByID(ctx, interviewID)
@@ -1026,15 +1195,19 @@ func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, us
 	if interview.UserID != userID {
 		return nil, ErrUnauthorized
 	}
-	// 验证面试状态为进行中
-	if interview.Status != "ongoing" {
+	// 验证面试状态：ongoing 可正常结束，report_failed 可重新触发报告生成
+	isRetry := interview.Status == "report_failed"
+	if !isRetry && interview.Status != "ongoing" {
 		return nil, ErrInterviewNotOngoing
 	}
 
 	// 更新状态为报告生成中
-	now := time.Now()
 	interview.Status = "report_generating"
-	interview.FinishedAt = &now
+	if !isRetry {
+		// 首次结束面试时记录完成时间，重试时保留原始完成时间
+		now := time.Now()
+		interview.FinishedAt = &now
+	}
 	if err := uc.repo.Update(ctx, interview); err != nil {
 		return nil, kratosErr.InternalServer("UPDATE_FAILED", "更新面试状态失败").WithCause(err)
 	}
@@ -1043,6 +1216,11 @@ func (uc *InterviewUseCase) FinishInterview(ctx context.Context, interviewID, us
 	if uc.publisher != nil {
 		if err := uc.publisher.PublishInterviewReportGenerate(ctx, interviewID, userID); err != nil {
 			log.Errorf("发布报告生成消息失败: interview_id=%d err=%v", interviewID, err)
+			// MQ 发布失败，回滚状态让用户可以重试
+			interview.Status = "ongoing"
+			interview.FinishedAt = nil
+			_ = uc.repo.Update(ctx, interview)
+			return nil, kratosErr.InternalServer("MQ_PUBLISH_FAILED", "报告生成消息发布失败，请重试").WithCause(err)
 		}
 	}
 
@@ -1069,6 +1247,9 @@ func (uc *InterviewUseCase) autoFinishIfExpired(ctx context.Context, interview *
 	if uc.publisher != nil {
 		if err := uc.publisher.PublishInterviewReportGenerate(ctx, interview.ID, interview.UserID); err != nil {
 			log.Errorf("超时自动发布报告生成消息失败: interview_id=%d err=%v", interview.ID, err)
+			// MQ 发布失败，置为 report_failed 让用户可以在报告页手动重试
+			interview.Status = "report_failed"
+			_ = uc.repo.Update(ctx, interview)
 		}
 	}
 }
@@ -1266,6 +1447,7 @@ type RealtimeContextResult struct {
 	CurrentTopic          string
 	QuestionIndex         int32
 	JobDescription        string
+	Questions             []InterviewQuestion
 }
 
 // ResumeProfileData 简历画像数据
@@ -1336,6 +1518,7 @@ func (uc *InterviewUseCase) GetRealtimeContext(ctx context.Context, interviewID,
 		History:        recentMessages,
 		CurrentTopic:   ResolveCurrentTopic(recentMessages),
 		QuestionIndex:  interview.CurrentIndex,
+		Questions:      interview.Questions,
 	}, nil
 }
 
@@ -1405,17 +1588,6 @@ func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, in
 		return false, nil, ErrInterviewNotRealtime
 	}
 
-	msg := &InterviewMessage{
-		InterviewID:   interviewID,
-		Role:          "assistant",
-		Content:       replyText,
-		MessageType:   "text",
-		QuestionIndex: interview.CurrentIndex,
-	}
-	if err := uc.repo.CreateMessage(ctx, msg); err != nil {
-		return false, nil, kratosErr.InternalServer("APPEND_FAILED", "追加 AI 回复失败").WithCause(err)
-	}
-
 	// 结束判定（知识点 / 实战两类面试统一）：
 	// 1) 结束语短语检测（主路径）：LLM 被提示在结束面试时以「本次面试到此结束。」收尾，命中即结束。
 	//    实战面试无固定题数，主要靠此路径收尾。
@@ -1425,6 +1597,22 @@ func (uc *InterviewUseCase) AppendRealtimeAssistantReply(ctx context.Context, in
 	shouldEnd := detectRealtimeInterviewEnd(replyText)
 	if !shouldEnd && interview.QuestionCount > 0 && interview.CurrentIndex >= interview.QuestionCount {
 		shouldEnd = true
+	}
+
+	// 结束语不计为题目（QuestionIndex=-1），避免报告里多出一道"未作答"的题目。
+	qi := interview.CurrentIndex
+	if shouldEnd {
+		qi = -1
+	}
+	msg := &InterviewMessage{
+		InterviewID:   interviewID,
+		Role:          "assistant",
+		Content:       replyText,
+		MessageType:   "text",
+		QuestionIndex: qi,
+	}
+	if err := uc.repo.CreateMessage(ctx, msg); err != nil {
+		return false, nil, kratosErr.InternalServer("APPEND_FAILED", "追加 AI 回复失败").WithCause(err)
 	}
 	return shouldEnd, nil, nil
 }

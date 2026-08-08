@@ -35,6 +35,12 @@ type Session struct {
 	Status      string `gorm:"size:20;not null;default:'active'"`
 }
 
+// RealtimeQuestion 实时面试预生成题目（精简版，供逐题喂豆包）
+type RealtimeQuestion struct {
+	Question string
+	Topic    string
+}
+
 // RealtimeContext 实时面试上下文（对齐单体 RealtimeInterviewContext）
 type RealtimeContext struct {
 	InterviewID           uint64
@@ -52,6 +58,8 @@ type RealtimeContext struct {
 	HasStarted            bool
 	CurrentTopic          string
 	JobDescription        string
+	CurrentIndex          int32
+	Questions             []RealtimeQuestion
 }
 
 // ResumeProfile 简历画像（对齐单体 ai.ResumeProfile）
@@ -90,6 +98,8 @@ type RealtimeSession struct {
 	turnState    realtimeTurnState
 	sender       *wsSender
 	ctx          context.Context // 保存 HTTP 请求 context（含 token），供 gRPC 调用透传
+	questions    []RealtimeQuestion // 预生成题目副本（启动时从 rtCtx 复制）
+	currentQIdx  int                // 当前题目索引（用户每答完一题递增）
 }
 
 // ========== 仓库接口 ==========
@@ -217,6 +227,23 @@ func NewRealtimeUseCase(interview InterviewClient, rag RAGClient, smgr *SessionM
 	}
 }
 
+// feedQuestion 通过 SendTextQuery(501) 把题目文本喂给豆包，豆包只念题+反馈，不自由出题。
+// isFirst: 开场首题（只念题）；isLast: 所有题目答完后的结束语；其余: 先反馈上题再念下一题。
+func (uc *RealtimeUseCase) feedQuestion(session *RealtimeSession, questionText string, questionNo int, isFirst bool, isLast bool) error {
+	var prompt string
+	if isFirst {
+		prompt = fmt.Sprintf("现在开始面试。请提出第 %d 题，只朗读题目本身，不要自行展开或追加问题：\n%s", questionNo, questionText)
+	} else if isLast {
+		prompt = "请先简要反馈候选人对上一题的回答（指出对错、补充要点），然后结束面试，说「本次面试到此结束。」"
+	} else {
+		prompt = fmt.Sprintf("请先简要反馈候选人对上一题的回答（指出对错、补充要点），然后提出第 %d 题，只朗读题目本身：\n%s", questionNo, questionText)
+	}
+	if sc, ok := session.VolcConn.(VolcEngineSessionConn); ok {
+		return sc.SendTextQuery(prompt)
+	}
+	return nil
+}
+
 // InitSession 初始化实时面试会话（对齐单体：纯内存管理，不落库）
 func (uc *RealtimeUseCase) InitSession(_ context.Context, interviewID, userID uint64) (*Session, error) {
 	session := &Session{
@@ -309,7 +336,6 @@ func (uc *RealtimeUseCase) HandleSession(ctx context.Context, interviewID uint64
 
 	// 4. 构建系统提示词并连接火山引擎（对齐单体 bootstrapRealtime）
 	systemRole := uc.buildRealtimeSystemRole(rtCtx, uc.volcCfg)
-	kickoffPrompt := uc.buildRealtimeKickoffPrompt(rtCtx)
 
 	// 使用 session-based factory 启动火山引擎会话（含系统提示词注入）
 	volcSessionConn, err := uc.volcSessionFactory(ctx, VolcStartOptions{
@@ -365,6 +391,8 @@ func (uc *RealtimeUseCase) HandleSession(ctx context.Context, interviewID uint64
 		LastActivity: time.Now(),
 		sender:       sender,
 		ctx:          ctx,
+		questions:    rtCtx.Questions,
+		currentQIdx:  int(rtCtx.CurrentIndex),
 	}
 	uc.smgr.Store(session.ID, rtSession)
 	defer uc.smgr.Delete(session.ID)
@@ -383,16 +411,23 @@ func (uc *RealtimeUseCase) HandleSession(ctx context.Context, interviewID uint64
 		}
 	}()
 
-	// 9. 发送开场白（对齐单体 bootstrapRealtime）
+	// 9. 喂第一题（或断线恢复续喂当前题）。feedQuestion 接管开场，不再用 kickoffPrompt 自由出题。
 	if rtCtx.HasStarted {
 		_ = sender.sendState("ready", "已恢复当前实时面试，可直接继续作答。")
-	} else {
-		_ = sender.sendState("speaking", "面试官正在准备第一题。")
-		if sessionConn, ok := volcConn.(VolcEngineSessionConn); ok {
-			if err := sessionConn.SendTextQuery(kickoffPrompt); err != nil {
-				uc.log.Errorf("发送开场白失败: %v", err)
+		// 断线恢复：按 currentQIdx 续喂当前题
+		if rtSession.currentQIdx < len(rtSession.questions) {
+			q := rtSession.questions[rtSession.currentQIdx]
+			if err := uc.feedQuestion(rtSession, q.Question, rtSession.currentQIdx+1, false, false); err != nil {
+				uc.log.Errorf("断线恢复喂题失败: %v", err)
 			}
 		}
+	} else if len(rtSession.questions) > 0 {
+		_ = sender.sendState("speaking", "面试官正在准备第一题。")
+		if err := uc.feedQuestion(rtSession, rtSession.questions[0].Question, 1, true, false); err != nil {
+			uc.log.Errorf("发送第一题失败: %v", err)
+		}
+	} else {
+		_ = sender.sendState("ready", "面试已就绪，请开始作答。")
 	}
 
 	// 10. 启动客户端音频转发和 RAG 注入 goroutine
@@ -494,6 +529,10 @@ func (uc *RealtimeUseCase) injectRAGForSession(ctx context.Context, session *Rea
 	}
 }
 
+// realtimeTurnFinalizeTimeout audioEnded(359) 后等待 ChatEnded(559) 的兜底时长：
+// 超时仍未收到 559 则强制 finalize，保证 ready 一定发出，避免录音卡死。
+const realtimeTurnFinalizeTimeout = 5 * time.Second
+
 // realtimeTurnState 实时面试单轮状态
 type realtimeTurnState struct {
 	userFinalText string
@@ -503,6 +542,7 @@ type realtimeTurnState struct {
 	replyID       string
 	audioEnded    bool
 	textEnded     bool
+	finalizeTimer *time.Timer // audioEnded 后的兜底定时器：559 迟迟不来则强制 finalize
 }
 
 // handleASRResponseEvent 处理 ASR 识别文本片段（事件451）
@@ -564,6 +604,25 @@ func (uc *RealtimeUseCase) handleASREndedEvent(ctx context.Context, session *Rea
 	}()
 
 	_ = session.sender.sendState("thinking", "AI 面试官正在整理你的回答。")
+
+	// 用户答完一题，喂下一题（或结束语）。在 ASREnded 喂，不在 finalize 喂，避免无限递归。
+	// session.currentQIdx 跟踪当前题目索引（启动时从 rtCtx.CurrentIndex 初始化，每次 ASREnded 递增）。
+	session.mu.Lock()
+	session.currentQIdx++
+	idx := session.currentQIdx
+	nQuestions := len(session.questions)
+	session.mu.Unlock()
+	if nQuestions == 0 || idx >= nQuestions {
+		// 所有题目已答完，喂结束语
+		if err := uc.feedQuestion(session, "", 0, false, true); err != nil {
+			uc.log.Errorf("喂结束语失败: %v", err)
+		}
+	} else {
+		q := session.questions[idx]
+		if err := uc.feedQuestion(session, q.Question, idx+1, false, false); err != nil {
+			uc.log.Errorf("喂下一题失败: %v", err)
+		}
+	}
 }
 
 // handleTTSSentenceStartEvent 处理 TTS 字幕开始（事件350）
@@ -612,11 +671,8 @@ func (uc *RealtimeUseCase) handleTTSSentenceEndEvent(session *RealtimeSession, p
 		session.mu.Unlock()
 	}
 
-	session.mu.Lock()
-	if strings.TrimSpace(session.turnState.replyText) == "" && strings.TrimSpace(session.turnState.liveText) != "" {
-		session.turnState.textEnded = true
-	}
-	session.mu.Unlock()
+	// textEnded 只由 ChatEnded(559) 置位，不在 TTS 事件提前置位：
+	// 否则 359 先于 550 到达时会用 liveText 提前 finalize 并重置 turnState，导致后续 550/559 永远 finalize 不了、ready 不发。
 	uc.finalizeRealtimeAssistantTurn(session, false)
 }
 
@@ -637,8 +693,12 @@ func (uc *RealtimeUseCase) handleTTSAudioEvent(session *RealtimeSession, payload
 func (uc *RealtimeUseCase) handleTTSEndedEvent(ctx context.Context, session *RealtimeSession) {
 	session.mu.Lock()
 	session.turnState.audioEnded = true
-	if strings.TrimSpace(session.turnState.replyText) == "" && strings.TrimSpace(session.turnState.liveText) != "" {
-		session.turnState.textEnded = true
+	// textEnded 只由 ChatEnded(559) 置位。audioEnded 后若 559 未到，启动兜底定时器：
+	// 超时强制 finalize，防止 559 丢失/超时导致 turnState 永远 finalize 不了、ready 不发、录音卡死。
+	if !session.turnState.textEnded && session.turnState.finalizeTimer == nil {
+		session.turnState.finalizeTimer = time.AfterFunc(realtimeTurnFinalizeTimeout, func() {
+			uc.finalizeRealtimeAssistantTurn(session, true)
+		})
 	}
 	session.mu.Unlock()
 	uc.finalizeRealtimeAssistantTurn(session, false)
@@ -709,10 +769,20 @@ func (uc *RealtimeUseCase) finalizeRealtimeAssistantTurn(session *RealtimeSessio
 			session.mu.Unlock()
 			return
 		}
-		if strings.TrimSpace(session.turnState.replyText) != "" && !session.turnState.textEnded {
+		// 必须等 ChatEnded(559) 到达（textEnded）才 finalize：
+		// 否则 359 先于 550 到达、replyText 还空时会用 liveText 提前 finalize 并重置 turnState，
+		// 随后 550/559 到达却因 audioEnded 已重置而永远 finalize 不了，ready 不发、录音卡死。
+		// 559 丢失的情况由 handleTTSEndedEvent 启动的兜底定时器强制 finalize 兜底。
+		if !session.turnState.textEnded {
 			session.mu.Unlock()
 			return
 		}
+	}
+
+	// 取消兜底定时器（已进入 finalize 路径，无需再强制触发）
+	if session.turnState.finalizeTimer != nil {
+		session.turnState.finalizeTimer.Stop()
+		session.turnState.finalizeTimer = nil
 	}
 
 	finalText := strings.TrimSpace(session.turnState.replyText)
@@ -738,13 +808,14 @@ func (uc *RealtimeUseCase) finalizeRealtimeAssistantTurn(session *RealtimeSessio
 	// 推送最终字幕（对齐单体）
 	_ = session.sender.sendAssistantTranscriptFinal(finalText, questionID, replyID)
 
-	// 推送轮次完成（对齐单体）
+	// 推送轮次完成（对齐单体）。meta != nil 表示有新题/反馈（非结束语）。
 	_ = session.sender.sendAssistantTurnFinished(finalText, 0, meta != nil)
 
-	// 如果是最后一题，结束面试
-	if meta != nil && meta.IsLastQuestion {
+	// shouldEnd=true 时 client 返回 nil meta：结束语，结束面试。
+	if meta == nil {
 		_ = session.sender.sendFinished("面试已结束，正在生成报告。")
 		session.Cancel()
+		return
 	}
 
 	_ = session.sender.sendState("ready", "面试官播报完成，可继续作答。")
@@ -855,32 +926,35 @@ func (uc *RealtimeUseCase) handleVolcEvent(ctx context.Context, session *Realtim
 	}
 }
 
-// buildRealtimeSystemRole 构造实时模型整场面试要遵守的固定系统提示词（对齐单体）
+// buildRealtimeSystemRole 构造实时面试"念题人"系统提示词。
+// 题目由服务端预生成并逐题下发，豆包只朗读题目+给反馈，不自由出题/不自定题号/不自结束。
 func (uc *RealtimeUseCase) buildRealtimeSystemRole(ctx *RealtimeContext, cfg *conf.Volcengine) string {
-	if ctx != nil && ctx.InterviewMode == "resume_driven" && ctx.ResumeProfile != nil {
-		return buildResumeDrivenSystemPrompt(ctx.ResumeProfile, safeStr(ctx.IndustryCode), ctx.JobDescription)
-	}
-
-	topics := "通用技术能力"
-	if ctx != nil && len(ctx.Topics) > 0 {
-		topics = strings.Join(ctx.Topics, "、")
-	}
-
 	lines := []string{
-		cfg.SystemRole,
-		fmt.Sprintf("你正在进行一场中文技术模拟面试，目标方向是 %s。", firstNonEmpty(safeStr(ctx.IndustryCode), "通用方向")),
-		fmt.Sprintf("整场面试共 %d 题，目标难度为 %s，优先覆盖这些主题：%s。", safeQuestionCount(ctx), safeDifficulty(ctx), topics),
+		"你是一位中文技术面试官。题目会通过文本指令逐题下发给你，你只需：① 朗读收到的题目；② 听取候选人回答后给一句简短反馈（指出对错、补充要点）。",
+		"不要自行出题、不要自行决定题号、不要自行追加问题、不要自行结束面试，除非收到结束指令。收到「请提出第 N 题」指令时自然地把题目念出来。始终用口语中文，不要输出 Markdown。",
 	}
 
-	if ctx != nil && len(ctx.WeakTopics) > 0 {
-		lines = append(lines, fmt.Sprintf("用户近期高频薄弱点：%s。至少 1-2 道题目围绕这些薄弱点出题，帮助用户验证是否已克服。", strings.Join(ctx.WeakTopics, "、")))
+	// 附加上下文帮助给出更有针对性的反馈（不用于出题，出题已由服务端预生成）
+	if ctx != nil {
+		if industry := safeStr(ctx.IndustryCode); industry != "" {
+			lines = append(lines, fmt.Sprintf("目标方向：%s。", industry))
+		}
+		if difficulty := safeDifficulty(ctx); difficulty != "" {
+			lines = append(lines, fmt.Sprintf("目标难度：%s。", difficulty))
+		}
+		if len(ctx.Topics) > 0 {
+			lines = append(lines, fmt.Sprintf("覆盖主题：%s。", strings.Join(ctx.Topics, "、")))
+		}
+		if ctx.ResumeProfile != nil {
+			if s := strings.TrimSpace(ctx.ResumeProfile.Summary); s != "" {
+				lines = append(lines, fmt.Sprintf("候选人背景：%s", s))
+			}
+			if len(ctx.ResumeProfile.Skills) > 0 {
+				lines = append(lines, fmt.Sprintf("核心技术栈：%s", strings.Join(ctx.ResumeProfile.Skills, "、")))
+			}
+		}
 	}
-	lines = append(lines,
-		"你必须一次只问一个问题，用户回答后先给一句简短反馈，再自然进入下一题。",
-		"当用户已回答完全部题目后，你的下一轮回复应是一句自然的结束语（简短总结与感谢），并以固定短语「本次面试到此结束。」收尾，之后不再继续提问。",
-		"请始终使用自然口语中文，不要输出 Markdown、列表标题或代码块。",
-	)
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // buildResumeDrivenSystemPrompt 根据简历画像生成简历驱动面试模式的完整系统提示词（对齐单体）

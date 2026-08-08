@@ -60,6 +60,7 @@ func NewInterceptor(secret string, opts ...Option) *Interceptor {
 			"/makejob.ai.v1.AIService/DebugAI":                       true,
 			"/makejob.ai.v1.AIService/GenerateQuestionCandidates":    true,
 			"/makejob.ai.v1.AIService/GenerateQuestionCandidatesStream": true,
+			"/makejob.ai.v1.AIService/GenerateInterviewQuestions":       true,
 			// AI Gateway 代码分析 RPC（内部服务间调用）
 			"/makejob.ai.v1.AIService/AnalyzeCode":                  true,
 			"/makejob.ai.v1.AIService/DiagnoseInterviewCoding":      true,
@@ -155,10 +156,19 @@ func (i *Interceptor) UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// UnaryClientInterceptor 返回 gRPC 一元客户端拦截器（用于服务间调用）
+// ServiceAuthInterceptor 返回 gRPC 一元客户端拦截器（用于服务间调用）
 func ServiceAuthInterceptor(token string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// ForwardTokenClientInterceptor 返回 gRPC 客户端拦截器，自动将入站请求的用户 JWT 透传到出站 gRPC 调用。
+// 用于下游服务（如 companion）调用其他受保护服务（如 interview/growth/plan）时保持用户身份链路。
+func ForwardTokenClientInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx = ForwardAccessToken(ctx)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }

@@ -2214,6 +2214,7 @@ type RealtimeInterviewContext struct {
 	HasStarted     bool                   `protobuf:"varint,13,opt,name=has_started,json=hasStarted,proto3" json:"has_started,omitempty"`
 	ResumeProfile  *ResumeProfile         `protobuf:"bytes,14,opt,name=resume_profile,json=resumeProfile,proto3" json:"resume_profile,omitempty"`
 	JobDescription string                 `protobuf:"bytes,15,opt,name=job_description,json=jobDescription,proto3" json:"job_description,omitempty"` // 目标岗位 JD，实战面试提示词依据
+	Questions      []*InterviewQuestion   `protobuf:"bytes,16,rep,name=questions,proto3" json:"questions,omitempty"`                                 // 服务端预生成的全部题目（realtime 逐题喂豆包用）
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2351,6 +2352,13 @@ func (x *RealtimeInterviewContext) GetJobDescription() string {
 		return x.JobDescription
 	}
 	return ""
+}
+
+func (x *RealtimeInterviewContext) GetQuestions() []*InterviewQuestion {
+	if x != nil {
+		return x.Questions
+	}
+	return nil
 }
 
 type ResumeProfile struct {
@@ -2951,7 +2959,7 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"isRealtime\"P\n" +
 	"\x12GetRealtimeRequest\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xf6\x04\n" +
+	"\auser_id\x18\x02 \x01(\x04R\x06userId\"\xbd\x05\n" +
 	"\x18RealtimeInterviewContext\x12!\n" +
 	"\finterview_id\x18\x01 \x01(\x04R\vinterviewId\x12#\n" +
 	"\rindustry_code\x18\x02 \x01(\tR\findustryCode\x12\x1e\n" +
@@ -2972,7 +2980,8 @@ const file_makejob_interview_v1_interview_proto_rawDesc = "" +
 	"\vhas_started\x18\r \x01(\bR\n" +
 	"hasStarted\x12J\n" +
 	"\x0eresume_profile\x18\x0e \x01(\v2#.makejob.interview.v1.ResumeProfileR\rresumeProfile\x12'\n" +
-	"\x0fjob_description\x18\x0f \x01(\tR\x0ejobDescription\"\x9e\x01\n" +
+	"\x0fjob_description\x18\x0f \x01(\tR\x0ejobDescription\x12E\n" +
+	"\tquestions\x18\x10 \x03(\v2'.makejob.interview.v1.InterviewQuestionR\tquestions\"\x9e\x01\n" +
 	"\rResumeProfile\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12\x16\n" +
 	"\x06skills\x18\x02 \x03(\tR\x06skills\x12\x1a\n" +
@@ -3095,43 +3104,44 @@ var file_makejob_interview_v1_interview_proto_depIdxs = []int32{
 	37, // 22: makejob.interview.v1.ListInterviewsResponse.page_result:type_name -> makejob.shared.v1.PageResult
 	4,  // 23: makejob.interview.v1.RealtimeInterviewContext.history:type_name -> makejob.interview.v1.InterviewMessage
 	27, // 24: makejob.interview.v1.RealtimeInterviewContext.resume_profile:type_name -> makejob.interview.v1.ResumeProfile
-	6,  // 25: makejob.interview.v1.AppendReplyRequest.live2d_directive:type_name -> makejob.interview.v1.Live2DDirective
-	5,  // 26: makejob.interview.v1.AppendReplyResponse.next_question:type_name -> makejob.interview.v1.InterviewQuestion
-	1,  // 27: makejob.interview.v1.InterviewService.CreateInterview:input_type -> makejob.interview.v1.CreateInterviewRequest
-	18, // 28: makejob.interview.v1.InterviewService.GetInterview:input_type -> makejob.interview.v1.GetInterviewRequest
-	19, // 29: makejob.interview.v1.InterviewService.ListInterviews:input_type -> makejob.interview.v1.ListInterviewsRequest
-	13, // 30: makejob.interview.v1.InterviewService.FinishInterview:input_type -> makejob.interview.v1.FinishInterviewRequest
-	9,  // 31: makejob.interview.v1.InterviewService.SubmitAnswer:input_type -> makejob.interview.v1.SubmitAnswerRequest
-	11, // 32: makejob.interview.v1.InterviewService.GetNextQuestion:input_type -> makejob.interview.v1.GetNextQuestionRequest
-	23, // 33: makejob.interview.v1.InterviewService.IsRealtimeInterview:input_type -> makejob.interview.v1.IsRealtimeRequest
-	25, // 34: makejob.interview.v1.InterviewService.GetRealtimeContext:input_type -> makejob.interview.v1.GetRealtimeRequest
-	28, // 35: makejob.interview.v1.InterviewService.BindRealtimeDialog:input_type -> makejob.interview.v1.BindDialogRequest
-	29, // 36: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:input_type -> makejob.interview.v1.AppendAnswerRequest
-	30, // 37: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:input_type -> makejob.interview.v1.AppendReplyRequest
-	16, // 38: makejob.interview.v1.InterviewService.SubmitCodingAnswer:input_type -> makejob.interview.v1.SubmitCodingRequest
-	21, // 39: makejob.interview.v1.InterviewService.GetReport:input_type -> makejob.interview.v1.GetReportRequest
-	0,  // 40: makejob.interview.v1.InterviewService.GetInterviewStats:input_type -> makejob.interview.v1.UserIDRequest
-	32, // 41: makejob.interview.v1.InterviewService.GetAdminInterviewStats:input_type -> makejob.interview.v1.GetAdminInterviewStatsRequest
-	2,  // 42: makejob.interview.v1.InterviewService.CreateInterview:output_type -> makejob.interview.v1.InterviewResponse
-	3,  // 43: makejob.interview.v1.InterviewService.GetInterview:output_type -> makejob.interview.v1.InterviewDetail
-	20, // 44: makejob.interview.v1.InterviewService.ListInterviews:output_type -> makejob.interview.v1.ListInterviewsResponse
-	14, // 45: makejob.interview.v1.InterviewService.FinishInterview:output_type -> makejob.interview.v1.InterviewReport
-	10, // 46: makejob.interview.v1.InterviewService.SubmitAnswer:output_type -> makejob.interview.v1.AnswerFeedback
-	12, // 47: makejob.interview.v1.InterviewService.GetNextQuestion:output_type -> makejob.interview.v1.NextQuestionResponse
-	24, // 48: makejob.interview.v1.InterviewService.IsRealtimeInterview:output_type -> makejob.interview.v1.IsRealtimeResponse
-	26, // 49: makejob.interview.v1.InterviewService.GetRealtimeContext:output_type -> makejob.interview.v1.RealtimeInterviewContext
-	38, // 50: makejob.interview.v1.InterviewService.BindRealtimeDialog:output_type -> google.protobuf.Empty
-	38, // 51: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:output_type -> google.protobuf.Empty
-	31, // 52: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:output_type -> makejob.interview.v1.AppendReplyResponse
-	17, // 53: makejob.interview.v1.InterviewService.SubmitCodingAnswer:output_type -> makejob.interview.v1.CodingResult
-	14, // 54: makejob.interview.v1.InterviewService.GetReport:output_type -> makejob.interview.v1.InterviewReport
-	22, // 55: makejob.interview.v1.InterviewService.GetInterviewStats:output_type -> makejob.interview.v1.InterviewStats
-	33, // 56: makejob.interview.v1.InterviewService.GetAdminInterviewStats:output_type -> makejob.interview.v1.AdminInterviewStatsResponse
-	42, // [42:57] is the sub-list for method output_type
-	27, // [27:42] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	5,  // 25: makejob.interview.v1.RealtimeInterviewContext.questions:type_name -> makejob.interview.v1.InterviewQuestion
+	6,  // 26: makejob.interview.v1.AppendReplyRequest.live2d_directive:type_name -> makejob.interview.v1.Live2DDirective
+	5,  // 27: makejob.interview.v1.AppendReplyResponse.next_question:type_name -> makejob.interview.v1.InterviewQuestion
+	1,  // 28: makejob.interview.v1.InterviewService.CreateInterview:input_type -> makejob.interview.v1.CreateInterviewRequest
+	18, // 29: makejob.interview.v1.InterviewService.GetInterview:input_type -> makejob.interview.v1.GetInterviewRequest
+	19, // 30: makejob.interview.v1.InterviewService.ListInterviews:input_type -> makejob.interview.v1.ListInterviewsRequest
+	13, // 31: makejob.interview.v1.InterviewService.FinishInterview:input_type -> makejob.interview.v1.FinishInterviewRequest
+	9,  // 32: makejob.interview.v1.InterviewService.SubmitAnswer:input_type -> makejob.interview.v1.SubmitAnswerRequest
+	11, // 33: makejob.interview.v1.InterviewService.GetNextQuestion:input_type -> makejob.interview.v1.GetNextQuestionRequest
+	23, // 34: makejob.interview.v1.InterviewService.IsRealtimeInterview:input_type -> makejob.interview.v1.IsRealtimeRequest
+	25, // 35: makejob.interview.v1.InterviewService.GetRealtimeContext:input_type -> makejob.interview.v1.GetRealtimeRequest
+	28, // 36: makejob.interview.v1.InterviewService.BindRealtimeDialog:input_type -> makejob.interview.v1.BindDialogRequest
+	29, // 37: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:input_type -> makejob.interview.v1.AppendAnswerRequest
+	30, // 38: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:input_type -> makejob.interview.v1.AppendReplyRequest
+	16, // 39: makejob.interview.v1.InterviewService.SubmitCodingAnswer:input_type -> makejob.interview.v1.SubmitCodingRequest
+	21, // 40: makejob.interview.v1.InterviewService.GetReport:input_type -> makejob.interview.v1.GetReportRequest
+	0,  // 41: makejob.interview.v1.InterviewService.GetInterviewStats:input_type -> makejob.interview.v1.UserIDRequest
+	32, // 42: makejob.interview.v1.InterviewService.GetAdminInterviewStats:input_type -> makejob.interview.v1.GetAdminInterviewStatsRequest
+	2,  // 43: makejob.interview.v1.InterviewService.CreateInterview:output_type -> makejob.interview.v1.InterviewResponse
+	3,  // 44: makejob.interview.v1.InterviewService.GetInterview:output_type -> makejob.interview.v1.InterviewDetail
+	20, // 45: makejob.interview.v1.InterviewService.ListInterviews:output_type -> makejob.interview.v1.ListInterviewsResponse
+	14, // 46: makejob.interview.v1.InterviewService.FinishInterview:output_type -> makejob.interview.v1.InterviewReport
+	10, // 47: makejob.interview.v1.InterviewService.SubmitAnswer:output_type -> makejob.interview.v1.AnswerFeedback
+	12, // 48: makejob.interview.v1.InterviewService.GetNextQuestion:output_type -> makejob.interview.v1.NextQuestionResponse
+	24, // 49: makejob.interview.v1.InterviewService.IsRealtimeInterview:output_type -> makejob.interview.v1.IsRealtimeResponse
+	26, // 50: makejob.interview.v1.InterviewService.GetRealtimeContext:output_type -> makejob.interview.v1.RealtimeInterviewContext
+	38, // 51: makejob.interview.v1.InterviewService.BindRealtimeDialog:output_type -> google.protobuf.Empty
+	38, // 52: makejob.interview.v1.InterviewService.AppendRealtimeUserAnswer:output_type -> google.protobuf.Empty
+	31, // 53: makejob.interview.v1.InterviewService.AppendRealtimeAssistantReply:output_type -> makejob.interview.v1.AppendReplyResponse
+	17, // 54: makejob.interview.v1.InterviewService.SubmitCodingAnswer:output_type -> makejob.interview.v1.CodingResult
+	14, // 55: makejob.interview.v1.InterviewService.GetReport:output_type -> makejob.interview.v1.InterviewReport
+	22, // 56: makejob.interview.v1.InterviewService.GetInterviewStats:output_type -> makejob.interview.v1.InterviewStats
+	33, // 57: makejob.interview.v1.InterviewService.GetAdminInterviewStats:output_type -> makejob.interview.v1.AdminInterviewStatsResponse
+	43, // [43:58] is the sub-list for method output_type
+	28, // [28:43] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_makejob_interview_v1_interview_proto_init() }

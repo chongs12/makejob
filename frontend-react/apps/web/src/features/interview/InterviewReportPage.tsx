@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { Button, Spin, Tag, Empty } from 'antd'
 import {
@@ -15,6 +15,9 @@ import {
   RightOutlined,
   AimOutlined,
   FireOutlined,
+  ReloadOutlined,
+  CloseCircleOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons'
 import { extractErrorMessage } from '@makejob/api-client'
 import { useAuthStore } from '../../state/auth'
@@ -45,7 +48,7 @@ import {
   buildPracticeRecommendationRouteSearch,
   resolvePracticeQuestionSetTitle,
 } from '../../shared/practiceRoute'
-import { fetchInterviewDetail, fetchInterviewReport } from './interviewApi'
+import { fetchInterviewDetail, fetchInterviewReport, finishInterviewRequest } from './interviewApi'
 import {
   buildInterviewReadiness,
   buildInterviewReplayItems,
@@ -101,17 +104,20 @@ async function copyInterviewText(text: string): Promise<void> {
  */
 export function InterviewReportPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const accessToken = useAuthStore((state) => state.accessToken)
   const params = useParams({ strict: false })
   const interviewId = String(params.interviewId || '')
   const [selectedIndustryCode, setSelectedIndustryCode] = useState(() => readSelectedFrontendIndustryCode() || INTERVIEW_DEFAULT_INDUSTRY_CODE)
   const [reportMessage, setReportMessage] = useState('')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const generatingStartRef = useRef<number | null>(null)
 
   const reportQuery = useQuery({
     queryKey: ['interview-report', accessToken, interviewId],
     queryFn: () => fetchInterviewReport(accessToken as string, interviewId),
     enabled: Boolean(accessToken && interviewId),
-    retry: false,
+    retry: 3,
     refetchOnWindowFocus: false,
     refetchInterval: (query) => (query.state.data?.status === 'report_generating' ? 3000 : false),
   })
@@ -123,6 +129,21 @@ export function InterviewReportPage() {
     refetchOnWindowFocus: false,
   })
   const industriesQuery = useFrontendIndustriesQuery()
+
+  /** 重新触发报告生成（当状态为 report_failed 时用户可点击重试） */
+  const retryReportMutation = useMutation({
+    mutationFn: () => finishInterviewRequest(accessToken as string, interviewId),
+    onSuccess: () => {
+      generatingStartRef.current = Date.now()
+      setElapsedSeconds(0)
+      queryClient.invalidateQueries({ queryKey: ['interview-report', accessToken, interviewId] })
+    },
+    onError: (error) => {
+      setReportMessage(extractErrorMessage(error, '重新生成报告失败，请稍后重试'))
+    },
+  })
+
+  const reportStatus = reportQuery.data?.status || ''
   const reportIndustryCode = detailQuery.data?.industry_code || selectedIndustryCode || INTERVIEW_DEFAULT_INDUSTRY_CODE
   const reportIndustry = useMemo(
     () => resolvePreferredFrontendIndustry(industriesQuery.data || [], reportIndustryCode, INTERVIEW_DEFAULT_INDUSTRY_CODE),
@@ -181,6 +202,24 @@ export function InterviewReportPage() {
     persistSelectedFrontendIndustryCode(detailQuery.data.industry_code)
     setSelectedIndustryCode(detailQuery.data.industry_code)
   }, [detailQuery.data?.industry_code])
+
+  /** 报告生成中时启动已等待时长计时器，生成完成或失败时停止 */
+  useEffect(() => {
+    if (reportStatus === 'report_generating') {
+      if (generatingStartRef.current === null) {
+        generatingStartRef.current = Date.now()
+        setElapsedSeconds(0)
+      }
+      const timer = setInterval(() => {
+        if (generatingStartRef.current) {
+          setElapsedSeconds(Math.floor((Date.now() - generatingStartRef.current) / 1000))
+        }
+      }, 1000)
+      return () => clearInterval(timer)
+    }
+    generatingStartRef.current = null
+    setElapsedSeconds(0)
+  }, [reportStatus])
 
   function handlePracticeFollowUp(keyword: string): void {
     navigate({ to: '/practice', search: buildInterviewFollowUpPracticeRouteSearch(keyword, primaryFollowUpTopic) })
@@ -243,6 +282,7 @@ export function InterviewReportPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: THEME.bg }}>
+      <style>{`@keyframes reportFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes stepPulse { from { box-shadow: 0 0 0 0 ${THEME.primary}40; } to { box-shadow: 0 0 0 6px ${THEME.primary}00; } }`}</style>
       {/* 顶部工具栏 */}
       <div style={{ background: THEME.cardBg, borderBottom: `1px solid ${THEME.border}`, boxShadow: THEME.shadow }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -280,22 +320,41 @@ export function InterviewReportPage() {
             {accessToken && reportQuery.isLoading && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}><Spin /><p style={{ fontSize: 14, color: THEME.textMuted, marginTop: 12 }}>报告加载中...</p></div>
             )}
+            {/* 网络错误状态 */}
             {reportQuery.isError && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
                 <p style={{ fontSize: 14, color: THEME.danger, marginBottom: 16 }}>{reportQuery.error instanceof Error ? reportQuery.error.message : '面试报告加载失败'}</p>
-                <Link to="/interview/$interviewId" params={{ interviewId }}><Button style={{ borderRadius: 8 }}>返回面试页</Button></Link>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+                  <Button icon={<ReloadOutlined />} style={{ borderRadius: 8 }} onClick={() => reportQuery.refetch()}>重新加载</Button>
+                  <Link to="/interview/$interviewId" params={{ interviewId }}><Button style={{ borderRadius: 8 }}>返回面试页</Button></Link>
+                </div>
               </div>
             )}
-            {reportQuery.data?.status === 'report_generating' && !report && (
+            {/* 报告生成中：步骤指示器 + 已等待时长 + 预估时间 */}
+            {reportStatus === 'report_generating' && !report && (
+              <ReportGeneratingView elapsedSeconds={elapsedSeconds} errorMessage={reportQuery.data?.task_error} />
+            )}
+            {/* 报告生成失败：显示失败原因 + 重试按钮 */}
+            {reportStatus === 'failed' && !report && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
-                <Spin />
-                <p style={{ fontSize: 14, color: THEME.textSecondary, marginTop: 12 }}>{reportQuery.data.task_error || '系统正在生成报告，页面会自动刷新。'}</p>
+                <CloseCircleOutlined style={{ fontSize: 40, color: THEME.danger, marginBottom: 16 }} />
+                <p style={{ fontSize: 16, fontWeight: 600, color: THEME.textMain, marginBottom: 8 }}>报告生成失败</p>
+                <p style={{ fontSize: 14, color: THEME.textSecondary, marginBottom: 20 }}>
+                  {reportQuery.data?.task_error || 'AI 服务暂时不可用，请稍后重试。'}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+                  <Button type="primary" icon={retryReportMutation.isPending ? <LoadingOutlined /> : <ReloadOutlined />} disabled={retryReportMutation.isPending} onClick={() => retryReportMutation.mutate()} style={{ background: THEME.primary, borderColor: THEME.primary, borderRadius: 8 }}>
+                    {retryReportMutation.isPending ? '正在重试...' : '重新生成报告'}
+                  </Button>
+                  <Link to="/interview/$interviewId" params={{ interviewId }}><Button style={{ borderRadius: 8 }}>返回面试页</Button></Link>
+                </div>
               </div>
             )}
-            {accessToken && !reportQuery.isLoading && !reportQuery.isError && reportQuery.data && !report && reportQuery.data.status !== 'report_generating' && (
+            {/* 其他异常状态 */}
+            {accessToken && !reportQuery.isLoading && !reportQuery.isError && reportQuery.data && !report && reportStatus !== 'report_generating' && reportStatus !== 'failed' && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
                 <p style={{ fontSize: 14, color: THEME.textSecondary, marginBottom: 8 }}>
-                  当前面试状态：{reportQuery.data.status || '未知'}
+                  当前面试状态：{reportStatus || '未知'}
                 </p>
                 <p style={{ fontSize: 13, color: THEME.textMuted }}>
                   报告数据暂未返回，可能需要先完成面试或等待报告生成。
@@ -307,13 +366,15 @@ export function InterviewReportPage() {
             )}
           </div>
 
-          {report && report.report_template === 'knowledge' && report.report_data_json && (
+          {report && (
+            <div style={{ animation: 'reportFadeIn 0.5s ease-in' }}>
+          {report.report_template === 'knowledge' && report.report_data_json && (
             <KnowledgeReportView data={parseKnowledgeReport(report.report_data_json)} />
           )}
-          {report && report.report_template === 'job' && report.report_data_json && (
+          {report.report_template === 'job' && report.report_data_json && (
             <JobReportView data={parseJobReport(report.report_data_json)} />
           )}
-          {report && report.report_template !== 'knowledge' && report.report_template !== 'job' && (
+          {report.report_template !== 'knowledge' && report.report_template !== 'job' && (
             <>
               {/* 核心指标 */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -557,6 +618,8 @@ export function InterviewReportPage() {
               </div>
             </>
           )}
+            </div>
+          )}
         </div>
 
         {/* 右侧边栏 */}
@@ -593,6 +656,69 @@ export function InterviewReportPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** 报告生成中的等待视图：步骤指示器 + 已等待时长 + 预估时间 */
+function ReportGeneratingView({ elapsedSeconds, errorMessage }: { elapsedSeconds: number; errorMessage?: string }) {
+  const steps = [
+    { label: '整理面试记录', icon: '1', threshold: 0 },
+    { label: 'AI 分析中', icon: '2', threshold: 8 },
+    { label: '生成报告', icon: '3', threshold: 25 },
+  ]
+  const currentStep = steps.reduce((acc, step, idx) => (elapsedSeconds >= step.threshold ? idx : acc), 0)
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return m > 0 ? `${m}分${sec.toString().padStart(2, '0')}秒` : `${sec}秒`
+  }
+
+  return (
+    <div style={{ textAlign: 'center', padding: '40px 0' }}>
+      <Spin size="large" />
+      <p style={{ fontSize: 16, fontWeight: 600, color: THEME.textMain, marginTop: 20, marginBottom: 8 }}>
+        {errorMessage || '系统正在生成面试报告...'}
+      </p>
+      {/* 步骤指示器 */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 0, marginTop: 24, marginBottom: 16 }}>
+        {steps.map((step, idx) => {
+          const isDone = idx < currentStep
+          const isActive = idx === currentStep
+          return (
+            <div key={step.label} style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, transition: 'all 0.3s ease',
+                  background: isDone ? THEME.success : isActive ? THEME.primary : '#f3f4f6',
+                  color: isDone || isActive ? '#fff' : THEME.textMuted,
+                  border: isActive ? `2px solid ${THEME.primary}40` : '2px solid transparent',
+                  animation: isActive ? 'stepPulse 1.5s ease-in-out infinite' : 'none',
+                }}>
+                  {isDone ? <CheckCircleOutlined /> : step.icon}
+                </div>
+                <span style={{ fontSize: 12, color: isActive ? THEME.primary : isDone ? THEME.success : THEME.textMuted, fontWeight: isActive ? 600 : 400 }}>
+                  {step.label}
+                </span>
+              </div>
+              {idx < steps.length - 1 && (
+                <div style={{ width: 60, height: 2, background: idx < currentStep ? THEME.success : '#e5e7eb', margin: '0 8px', marginBottom: 20, transition: 'background 0.3s ease' }} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* 已等待时长 + 预估时间 */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 24, fontSize: 13, color: THEME.textMuted }}>
+        <span>已等待 <strong style={{ color: THEME.textSecondary }}>{formatTime(elapsedSeconds)}</strong></span>
+        <span>预计需要 30秒 ~ 2分钟</span>
+      </div>
+      {elapsedSeconds > 90 && (
+        <p style={{ fontSize: 12, color: THEME.warning, marginTop: 12 }}>
+          生成时间较长，请耐心等待。如果超过3分钟仍未完成，请刷新页面或稍后重试。
+        </p>
+      )}
     </div>
   )
 }

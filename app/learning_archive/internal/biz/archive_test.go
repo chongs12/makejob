@@ -127,7 +127,11 @@ func TestArchiveUseCaseHandleInterviewFinishedWithoutTopics(t *testing.T) {
 	publisher := &archivePublisherStub{}
 	uc := NewArchiveUseCase(repo, publisher)
 
-	if err := uc.HandleInterviewFinished(context.Background(), 21, 9, 88, nil, nil); err != nil {
+	if err := uc.HandleInterviewFinished(context.Background(), InterviewFinishedContext{
+		InterviewID: 21,
+		UserID:      9,
+		Score:       88,
+	}); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if repo.batchCreateCalls != 1 {

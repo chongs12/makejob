@@ -1829,6 +1829,7 @@ func (gw *Gateway) registerV1Routes(r *gin.Engine) {
 		protected.POST("/growth/study-log", gw.requireService("growth", gw.growthClient != nil, gw.handleSyncStudyLogV1))
 
 		protected.POST("/companion/chat", gw.requireService("companion", gw.companionClient != nil, gw.handleCompanionChat))
+		protected.POST("/companion/greeting", gw.requireService("companion", gw.companionClient != nil, gw.handleCompanionGreeting))
 		protected.GET("/companion/state", gw.requireService("companion", gw.companionClient != nil, gw.handleGetCompanionState))
 		protected.POST("/companion/tts", gw.requireService("companion", gw.companionClient != nil, gw.handleSynthesizeSpeech))
 		protected.POST("/companion/asr", gw.requireService("companion", gw.companionClient != nil, gw.handleRecognizeSpeech))
@@ -4098,6 +4099,27 @@ func (gw *Gateway) handleCompanionChat(c *gin.Context) {
 		Messages:       protoMessages,
 		Live2DModelKey: req.Live2DModelKey,
 		Context:        protoContext,
+	})
+	if err != nil {
+		grpcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// handleCompanionGreeting 生成上下文感知的打招呼消息。
+func (gw *Gateway) handleCompanionGreeting(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Live2DModelKey string `json:"live2d_model_key"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	resp, err := gw.companionClient.Greeting(c.Request.Context(), &companionv1.GreetingRequest{
+		UserId:         userID,
+		Live2DModelKey: req.Live2DModelKey,
 	})
 	if err != nil {
 		grpcErr(c, err)
