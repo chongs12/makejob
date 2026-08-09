@@ -13,8 +13,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // InitTracerProvider 初始化 OTel TracerProvider，通过 OTLP gRPC 导出到 Collector。
@@ -31,8 +29,10 @@ func InitTracerProvider(serviceName, otlpEndpoint string, sampleRatio float64) (
 
 	exporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(otlpEndpoint),
-		// Collector 在集群内为明文 gRPC，使用 insecure credentials。
-		otlptracegrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+		// Collector 为明文 gRPC（本地 dev / 集群内），用 WithInsecure 跳过 TLS。
+		// 注意：WithDialOption(grpc.WithTransportCredentials(insecure)) 不生效——
+		// otlptracegrpc 默认 TLS，必须用 WithInsecure/WithTLSCredentials 覆盖。
+		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("telemetry: create OTLP trace exporter: %w", err)
