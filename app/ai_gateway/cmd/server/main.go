@@ -25,7 +25,7 @@ func main() {
 	flag.Parse()
 
 	// 初始化日志
-	logger := mlog.NewZapLogger()
+	logger := mlog.NewZapLogger("makejob.ai_gateway")
 	log.SetLogger(logger)
 
 	// 加载配置

@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -167,7 +171,16 @@ func routingKeyForQueue(queueName string) string {
 }
 
 // processMessages 处理消息并在最终失败时触发业务补偿。
+//
+// trace 传播（对应决策 4 / 坑 4）：
+//   - 每条消息从 delivery.Headers 提取 traceparent，创建 consumer span，派生 msgCtx
+//   - handler 使用 msgCtx 而非共享的 Start(ctx)，使 trace 跨 MQ 链路连续（interview.finished -> learning_archive）
+//   - 重试用 span event 记录（attempt/err），不创建新 span，避免重试产生碎片 trace
+//   - 日志改用 log.Context(msgCtx)，使 MQ 日志带上 consumer span 的 trace_id（依赖 1.6 的 Valuer 机制）
 func (c *Consumer) processMessages(ctx context.Context, queueName string, msgs <-chan amqp.Delivery, handler TaskHandler) {
+	tracer := otel.Tracer("makejob.mq")
+	propagator := otel.GetTextMapPropagator()
+
 	for delivery := range msgs {
 		select {
 		case <-c.done:
@@ -182,15 +195,36 @@ func (c *Consumer) processMessages(ctx context.Context, queueName string, msgs <
 			continue
 		}
 
+		// per-message: 从 AMQP Headers 提取 traceparent，创建 consumer span，派生 msgCtx。
+		parentCtx := propagator.Extract(ctx, amqpHeaderCarrier(delivery.Headers))
+		msgCtx, span := tracer.Start(parentCtx, "mq.consume."+msg.TaskType,
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(
+				attribute.String("messaging.system", "rabbitmq"),
+				attribute.String("messaging.destination", queueName),
+				attribute.String("messaging.destination_kind", "queue"),
+				attribute.String("messaging.operation", "process"),
+				attribute.String("messaging.message_id", fmt.Sprintf("%s-%d", msg.EntityType, msg.EntityID)),
+			),
+		)
+
 		var lastErr error
 		for attempt := 0; attempt <= msg.RetryCount; attempt++ {
-			log.Infof("MQ handler start: queue=%s task=%s entity_id=%d attempt=%d/%d", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1)
+			log.Context(msgCtx).Infof("MQ handler start: queue=%s task=%s entity_id=%d attempt=%d/%d", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1)
 			handleStart := time.Now()
-			if err := handler.Handle(ctx, msg); err != nil {
+			if err := handler.Handle(msgCtx, msg); err != nil {
 				lastErr = err
-				log.Errorf("MQ handler failed: queue=%s task=%s entity_id=%d attempt=%d/%d duration=%dms err=%v", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1, time.Since(handleStart).Milliseconds(), err)
+				log.Context(msgCtx).Errorf("MQ handler failed: queue=%s task=%s entity_id=%d attempt=%d/%d duration=%dms err=%v", queueName, msg.TaskType, msg.EntityID, attempt+1, msg.RetryCount+1, time.Since(handleStart).Milliseconds(), err)
+				// 重试用 span event 记录，不创建新 span
+				span.AddEvent("retry", trace.WithAttributes(
+					attribute.Int("attempt", attempt+1),
+					attribute.String("error", err.Error()),
+				))
 				select {
 				case <-c.done:
+					span.RecordError(err)
+					span.SetStatus(codes.Error, err.Error())
+					span.End()
 					delivery.Nack(false, true)
 					return
 				case <-time.After(time.Duration(attempt+1) * time.Second):
@@ -198,18 +232,21 @@ func (c *Consumer) processMessages(ctx context.Context, queueName string, msgs <
 				continue
 			}
 			lastErr = nil
-			log.Infof("MQ handler done: queue=%s task=%s entity_id=%d duration=%dms", queueName, msg.TaskType, msg.EntityID, time.Since(handleStart).Milliseconds())
+			log.Context(msgCtx).Infof("MQ handler done: queue=%s task=%s entity_id=%d duration=%dms", queueName, msg.TaskType, msg.EntityID, time.Since(handleStart).Milliseconds())
 			break
 		}
 
 		if lastErr != nil {
-			log.Errorf("MQ handler final failure: queue=%s err=%v", queueName, lastErr)
+			log.Context(msgCtx).Errorf("MQ handler final failure: queue=%s err=%v", queueName, lastErr)
+			span.RecordError(lastErr)
+			span.SetStatus(codes.Error, lastErr.Error())
 			if failureHandler, ok := handler.(TaskFailureHandler); ok {
-				_ = failureHandler.HandleFinalFailure(ctx, msg, lastErr)
+				_ = failureHandler.HandleFinalFailure(msgCtx, msg, lastErr)
 			}
 			delivery.Nack(false, false)
 		} else {
 			delivery.Ack(false)
 		}
+		span.End()
 	}
 }

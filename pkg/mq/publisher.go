@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -59,6 +60,11 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, msg TaskMess
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	// 注入 traceparent 到 AMQP Headers（W3C carrier），使下游 consumer 能恢复 trace 上下文。
+	// 不修改 TaskMessage 的 JSON schema（对应决策 4）。
+	headers := amqp.Table{}
+	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
+
 	if err := p.channel.PublishWithContext(ctx,
 		p.exchange,
 		routingKey,
@@ -68,6 +74,7 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, msg TaskMess
 			ContentType: "application/json",
 			Body:        body,
 			MessageId:   fmt.Sprintf("%s-%d", msg.EntityType, msg.EntityID),
+			Headers:     headers,
 		},
 	); err != nil {
 		return fmt.Errorf("failed to publish message: %w", err)

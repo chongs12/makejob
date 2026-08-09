@@ -23,7 +23,7 @@ func main() {
 	// FIX: 将init()中的flag注册移到main()开头（禁止使用init()函数）
 	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path")
 	flag.Parse()
-	logger := mlog.NewZapLogger()
+	logger := mlog.NewZapLogger("makejob.learning_archive")
 	log.SetLogger(logger)
 
 	bc, err := conf.Load(flagConf)

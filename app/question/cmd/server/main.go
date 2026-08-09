@@ -29,7 +29,7 @@ func main() {
 	flag.StringVar(&flagConf, "conf", "configs/config.yaml", "config path")
 	flag.Parse()
 
-	logger := mlog.NewZapLogger()
+	logger := mlog.NewZapLogger("makejob.question")
 	log.SetLogger(logger)
 
 	bc, err := conf.Load(flagConf)
