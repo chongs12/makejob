@@ -9,42 +9,42 @@
 
 ### 1.1 创建 `pkg/telemetry/` 包
 
-- [ ] `pkg/telemetry/tracer.go`
-  - [ ] `InitTracerProvider(serviceName, otlpEndpoint string, sampleRatio float64) (*sdktrace.TracerProvider, func(), error)`
-  - [ ] 使用 `otlptracegrpc` 导出器连接 OTel Collector（:4317）
-  - [ ] `resource` 包含 `service.name`、`service.version`、`deployment.environment`
-  - [ ] `TraceIDRatioBased` 采样器，比率可配置
-  - [ ] 设置 W3C TraceContext + Baggage Propagator
-  - [ ] 返回 cleanup 函数（`tp.Shutdown(ctx)`）
-- [ ] `pkg/telemetry/meter.go`
-  - [ ] `InitMeterProvider(serviceName string) (*sdkmetric.MeterProvider, func(), error)`
-  - [ ] 不使用 OTLP 导出 metrics，metrics 走 Prometheus 直接 scrape `/metrics` 端点
-- [ ] `pkg/telemetry/http_server.go`
-  - [ ] `NewHTTPServer(port int, registerer prometheus.Registerer) *http.Server`
-  - [ ] 挂载 `/metrics`（`promhttp.Handler()`）
-  - [ ] 挂载 `/healthz`（liveness，返回 200）
-  - [ ] 挂载 `/readyz`（readiness，可扩展检查逻辑）
-  - [ ] 挂载 `/debug/pprof/`（`pprof.Index`/`pprof.Profile`/`pprof.Cmdline` 等）
-  - [ ] 实现优雅停机（`Shutdown(ctx)`）
-- [ ] `pkg/telemetry/telemetry.go`
-  - [ ] `Config struct { OTLPEndpoint string; ServiceName string; SampleRatio float64; HTTPPort int }`
-  - [ ] `Init(cfg Config) (cleanup func(), err error)` 一站式初始化 tracer + meter + HTTP server
-  - [ ] 启动 HTTP server 在独立 goroutine
-  - [ ] `telemetry.Init` 必须显式设 globals：`otel.SetTracerProvider` + `otel.SetTextMapPropagator(TraceContext+Baggage)`
-  - [ ] 每个服务的 resource 必须带 `service.name`
+- [x] `pkg/telemetry/tracer.go`
+  - [x] `InitTracerProvider(serviceName, otlpEndpoint string, sampleRatio float64) (*sdktrace.TracerProvider, func(), error)`
+  - [x] 使用 `otlptracegrpc` 导出器连接 OTel Collector（:4317）
+  - [x] `resource` 包含 `service.name`、`service.version`、`deployment.environment`
+  - [x] `TraceIDRatioBased` 采样器，比率可配置
+  - [x] 设置 W3C TraceContext + Baggage Propagator
+  - [x] 返回 cleanup 函数（`tp.Shutdown(ctx)`）
+- [x] `pkg/telemetry/meter.go`
+  - [x] `InitMeterProvider(serviceName string) (*sdkmetric.MeterProvider, func(), error)`
+  - [x] 不使用 OTLP 导出 metrics，metrics 走 Prometheus 直接 scrape `/metrics` 端点
+- [x] `pkg/telemetry/http_server.go`
+  - [x] `NewHTTPServer(port int, registerer prometheus.Registerer) *http.Server`
+  - [x] 挂载 `/metrics`（`promhttp.Handler()`）
+  - [x] 挂载 `/healthz`（liveness，返回 200）
+  - [x] 挂载 `/readyz`（readiness，可扩展检查逻辑）
+  - [x] 挂载 `/debug/pprof/`（`pprof.Index`/`pprof.Profile`/`pprof.Cmdline` 等）
+  - [x] 实现优雅停机（`Shutdown(ctx)`）
+- [x] `pkg/telemetry/telemetry.go`
+  - [x] `Config struct { OTLPEndpoint string; ServiceName string; SampleRatio float64; HTTPPort int }`
+  - [x] `Init(cfg Config) (cleanup func(), err error)` 一站式初始化 tracer + meter + HTTP server
+  - [x] 启动 HTTP server 在独立 goroutine
+  - [x] `telemetry.Init` 必须显式设 globals：`otel.SetTracerProvider` + `otel.SetTextMapPropagator(TraceContext+Baggage)`
+  - [x] 每个服务的 resource 必须带 `service.name`
 
 **交付物**：`pkg/telemetry/` 目录下 4 个文件，可独立编译，有单元测试
 
 ### 1.2 创建 gRPC 追踪 + 指标拦截器
 
-- [ ] `pkg/middleware/tracing.go`
-  - [ ] `TracingServerInterceptor() grpc.UnaryServerInterceptor`（封装 `otelgrpc.UnaryServerInterceptor`）
-  - [ ] `TracingClientInterceptor() grpc.UnaryClientInterceptor`（封装 `otelgrpc.UnaryClientInterceptor`）
-- [ ] `pkg/middleware/metrics.go`（**选型：gRPC 指标用 go-grpc-prometheus，不自写 gRPC 指标拦截器**）
-  - [ ] 引入 `grpc_prometheus.UnaryServerInterceptor()` + `grpc_prometheus.Register(srv.Server)`（在 `pkg/server.NewGRPCServer` 内统一注册）
-  - [ ] 指标名用 go-grpc-prometheus **标准名**：`grpc_server_handled_total`、`grpc_server_handling_seconds` 等（Grafana 查询按这些名写）
-  - [ ] **不要**自定义 `grpc_requests_total` / `grpc_request_duration_seconds`（会与 go-grpc-prometheus 指标名对不上，Grafana 面板空转）
-  - [ ] AI/HTTP 业务指标用 `prometheus/client_golang` 自写（`prometheus.NewCounter` / `prometheus.NewHistogram`），注册到全局 `prometheus.DefaultRegisterer`
+- [x] `pkg/middleware/tracing.go`
+  - [x] `TracingServerInterceptor() grpc.UnaryServerInterceptor`（封装 `otelgrpc.UnaryServerInterceptor`）
+  - [x] `TracingClientInterceptor() grpc.UnaryClientInterceptor`（封装 `otelgrpc.UnaryClientInterceptor`）
+- [x] `pkg/middleware/metrics.go`（**选型：gRPC 指标用 go-grpc-prometheus，不自写 gRPC 指标拦截器**）
+  - [x] 引入 `grpc_prometheus.UnaryServerInterceptor()` + `grpc_prometheus.Register(srv.Server)`（在 `pkg/server.NewGRPCServer` 内统一注册）
+  - [x] 指标名用 go-grpc-prometheus **标准名**：`grpc_server_handled_total`、`grpc_server_handling_seconds` 等（Grafana 查询按这些名写）
+  - [x] **不要**自定义 `grpc_requests_total` / `grpc_request_duration_seconds`（会与 go-grpc-prometheus 指标名对不上，Grafana 面板空转）
+  - [x] AI/HTTP 业务指标用 `prometheus/client_golang` 自写（`prometheus.NewCounter` / `prometheus.NewHistogram`），注册到全局 `prometheus.DefaultRegisterer`
 
 **交付物**：`pkg/middleware/` 下新增 2 个文件
 
@@ -52,23 +52,23 @@
 
 ### 1.3 统一 gRPC 客户端 Dial 选项
 
-- [ ] `pkg/middleware/dial_options.go`
-  - [ ] `CommonDialOptions() []grpc.DialOption` —— **只含基座，不含 auth**（auth 由各客户端按需追加，见下）
-  - [ ] 内含：`grpc.WithTransportCredentials(insecure.NewCredentials())`
-  - [ ] 内含：`grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor)`
-  - [ ] 内含：`grpc.WithUnaryInterceptor(MetricsClientInterceptor())`（可选，client 侧指标）
-  - [ ] **auth 拦截器不进 CommonDialOptions，各客户端按场景追加**：
-    - [ ] 无 auth：`grpc.Dial(addr, CommonDialOptions()...)`（interview→ai/rag/code_runner）
-    - [ ] ServiceAuth：`grpc.Dial(addr, append(CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(token)))...)`（archive/membership/companion 客户端）
-    - [ ] ForwardToken：`grpc.Dial(addr, append(CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)`（companion→interview、gateway 转发用户 JWT）
-  - [ ] 多个 `grpc.WithUnaryInterceptor` 会被 grpc-go 的 `combine()` 按顺序叠加（先加的最外层），不要误以为"后者覆盖前者"
+- [x] `pkg/middleware/dial_options.go`
+  - [x] `CommonDialOptions() []grpc.DialOption` —— **只含基座，不含 auth**（auth 由各客户端按需追加，见下）
+  - [x] 内含：`grpc.WithTransportCredentials(insecure.NewCredentials())`
+  - [x] 内含：`grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor)`
+  - [x] 内含：`grpc.WithUnaryInterceptor(MetricsClientInterceptor())`（可选，client 侧指标）
+  - [x] **auth 拦截器不进 CommonDialOptions，各客户端按场景追加**：
+    - [x] 无 auth：`grpc.Dial(addr, CommonDialOptions()...)`（interview→ai/rag/code_runner）
+    - [x] ServiceAuth：`grpc.Dial(addr, append(CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(token)))...)`（archive/membership/companion 客户端）
+    - [x] ForwardToken：`grpc.Dial(addr, append(CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)`（companion→interview、gateway 转发用户 JWT）
+  - [x] 多个 `grpc.WithUnaryInterceptor` 会被 grpc-go 的 `combine()` 按顺序叠加（先加的最外层），不要误以为"后者覆盖前者"
 
 **交付物**：`pkg/middleware/dial_options.go`
 
 ### 1.4 抽取 `pkg/server/` 统一 gRPC Server 构造
 
-- [ ] `pkg/server/grpc.go`
-  - [ ] `NewGRPCServer` 签名参数化（auth 用 `grpc.UnaryServerInterceptor`，nil = 无 auth；timeout==0 用默认值兜底）：
+- [x] `pkg/server/grpc.go`
+  - [x] `NewGRPCServer` 签名参数化（auth 用 `grpc.UnaryServerInterceptor`，nil = 无 auth；timeout==0 用默认值兜底）：
     ```go
     func NewGRPCServer(
         addr string,
@@ -78,33 +78,33 @@
         extraOpts ...grpc.ServerOption,
     ) *kratosgrpc.Server
     ```
-  - [ ] 拦截器链统一组装：`otelgrpc -> prometheus(grpc_prometheus) -> recovery -> logging -> auth`
-  - [ ] 内部调用 `grpc_prometheus.Register(srv.Server)`（gRPC 指标一处注册）
-  - [ ] 支持 `RegisterFunc func(*grpc.Server)` 回调注册各服务的 proto service
-  - [ ] **auth 差异由各服务构造自己的 interceptor 传入**：
-    - [ ] 普通服务：`auth.NewInterceptor(secret).UnaryServerInterceptor()`
-    - [ ] user（blacklist 变体）：`auth.NewInterceptor(secret, WithBlacklist(...)).UnaryServerInterceptor()`
-    - [ ] rag/coderunner：传 `nil`
-    - [ ] **不要**用 `extraOpts` 注入 auth 拦截器（grpc.ServerOption 只会 append 到链尾，导致双重 auth）
-  - [ ] timeout 从 config 传入（`cfg.GRPC.Timeout`），与现有 6 个服务的 if/else 行为一致（config 优先、缺省兜底）
-- [ ] 各服务的 `internal/server/grpc.go` 改为调用 `pkg/server.NewGRPCServer`（替换 14 处复制粘贴）
+  - [x] 拦截器链统一组装：`otelgrpc -> prometheus(grpc_prometheus) -> recovery -> logging -> auth`
+  - [x] 内部调用 `grpc_prometheus.Register(srv.Server)`（gRPC 指标一处注册）
+  - [x] 支持 `RegisterFunc func(*grpc.Server)` 回调注册各服务的 proto service
+  - [x] **auth 差异由各服务构造自己的 interceptor 传入**：
+    - [x] 普通服务：`auth.NewInterceptor(secret).UnaryServerInterceptor()`
+    - [x] user（blacklist 变体）：`auth.NewInterceptor(secret, WithBlacklist(...)).UnaryServerInterceptor()`
+    - [x] rag/coderunner：传 `nil`
+    - [x] **不要**用 `extraOpts` 注入 auth 拦截器（grpc.ServerOption 只会 append 到链尾，导致双重 auth）
+  - [x] timeout 从 config 传入（`cfg.GRPC.Timeout`），与现有 6 个服务的 if/else 行为一致（config 优先、缺省兜底）
+- [x] 各服务的 `internal/server/grpc.go` 改为调用 `pkg/server.NewGRPCServer`（替换 14 处复制粘贴）
 
 **交付物**：`pkg/server/grpc.go` + 14 个服务的 grpc.go 精简
 
 ### 1.5 MQ trace context 传递
 
-- [ ] 改 `pkg/mq/publisher.go`
-  - [ ] `Publish(ctx, ...)` 中用 `otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(publishing.Headers))` 注入 traceparent（**注意是 `amqp.Publishing.Headers`，不是消费者侧的 `delivery.Headers`**）
-  - [ ] 不修改 `TaskMessage` 结构体
-- [ ] 改 `pkg/mq/consumer.go`
-  - [ ] `processMessages` 中用 `otel.GetTextMapPropagator().Extract(ctx, amqpHeaderCarrier(delivery.Headers))` 提取 trace context
-  - [ ] 为每条消息创建 consumer span（`tracer.Start(msgCtx, "mq.consume."+msg.TaskType, ...)`)
-  - [ ] handler 用派生的 `msgCtx` 而非共享的 `Start(ctx)`
-  - [ ] span 属性：`messaging.system=rabbitmq`、`messaging.destination=<queue>`、`messaging.message_id=<entity_id>`
-- [ ] 新增 `pkg/mq/propagator.go`
-  - [ ] `amqpHeaderCarrier` 实现 `propagation.TextMapCarrier` 接口（Get/Set/Keys 操作 `amqp.Table`）
-- [ ] Consumer 重试共享同一 consume span，用 span events 记录重试（attempt/delay/err）
-- [ ] handler 内部的 gRPC 子调用仍建 child span
+- [x] 改 `pkg/mq/publisher.go`
+  - [x] `Publish(ctx, ...)` 中用 `otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(publishing.Headers))` 注入 traceparent（**注意是 `amqp.Publishing.Headers`，不是消费者侧的 `delivery.Headers`**）
+  - [x] 不修改 `TaskMessage` 结构体
+- [x] 改 `pkg/mq/consumer.go`
+  - [x] `processMessages` 中用 `otel.GetTextMapPropagator().Extract(ctx, amqpHeaderCarrier(delivery.Headers))` 提取 trace context
+  - [x] 为每条消息创建 consumer span（`tracer.Start(msgCtx, "mq.consume."+msg.TaskType, ...)`)
+  - [x] handler 用派生的 `msgCtx` 而非共享的 `Start(ctx)`
+  - [x] span 属性：`messaging.system=rabbitmq`、`messaging.destination=<queue>`、`messaging.message_id=<entity_id>`
+- [x] 新增 `pkg/mq/propagator.go`
+  - [x] `amqpHeaderCarrier` 实现 `propagation.TextMapCarrier` 接口（Get/Set/Keys 操作 `amqp.Table`）
+- [x] Consumer 重试共享同一 consume span，用 span events 记录重试（attempt/delay/err）
+- [x] handler 内部的 gRPC 子调用仍建 child span
 
 **交付物**：`pkg/mq/` 下改 2 个文件 + 新增 1 个文件
 
@@ -112,12 +112,12 @@
 
 **方案：logger 初始化处用 Kratos `log.With` + `tracing.TraceID()/SpanID()` Valuer（覆盖所有 `log.Context(ctx)` 日志，包括 biz 层的 Errorw/panic 日志）**
 
-- [ ] 改 `pkg/logger/zap.go`
-  - [ ] `NewZapLogger(serviceName string)` 接受服务名参数
-  - [ ] 返回前包装：`log.With(&kratosZapLogger{logger: zl}, "service", serviceName, "trace_id", tracing.TraceID(), "span_id", tracing.SpanID())`
-  - [ ] `tracing.TraceID()`/`SpanID()` 自带 `HasTraceID()` 守卫，无 span 时输出空串
-  - [ ] **不要**手动 `trace.SpanContextFromContext(ctx).TraceID()` 提取——无 span 时它返回 32 位全零串，会污染日志
-- [ ] `pkg/middleware/logging.go` **无需改**：`log.Context(ctx)` 会自动带上包装后的 trace_id（前提：otelgrpc 在 Logging 之前执行，已由 1.2 顺序保证）
+- [x] 改 `pkg/logger/zap.go`
+  - [x] `NewZapLogger(serviceName string)` 接受服务名参数
+  - [x] 返回前包装：`log.With(&kratosZapLogger{logger: zl}, "service", serviceName, "trace_id", tracing.TraceID(), "span_id", tracing.SpanID())`
+  - [x] `tracing.TraceID()`/`SpanID()` 自带 `HasTraceID()` 守卫，无 span 时输出空串
+  - [x] **不要**手动 `trace.SpanContextFromContext(ctx).TraceID()` 提取——无 span 时它返回 32 位全零串，会污染日志
+- [x] `pkg/middleware/logging.go` **无需改**：`log.Context(ctx)` 会自动带上包装后的 trace_id（前提：otelgrpc 在 Logging 之前执行，已由 1.2 顺序保证）
 
 **交付物**：改 `pkg/middleware/logging.go` + `pkg/logger/`
 
@@ -128,81 +128,81 @@
 ### 2.1 gRPC server 拦截器链扩展（14 个 Kratos 服务）
 
 对每个服务执行：
-- [ ] gateway（不适用，用 Gin）
-- [ ] user
-- [ ] membership
-- [ ] question
-- [ ] interview
-- [ ] realtime（**适用**：gRPC(9005) + WS(8085) 双 transport，gRPC server 照常接 otelgrpc 链；WS 部分见 2.6/2.7）
-- [ ] growth
-- [ ] plan
-- [ ] companion
-- [ ] community
-- [ ] learning_archive
-- [ ] ai_gateway
-- [ ] rag
-- [ ] coderunner
-- [ ] admin
+- [x] gateway（不适用，用 Gin）
+- [x] user
+- [x] membership
+- [x] question
+- [x] interview
+- [x] realtime（**适用**：gRPC(9005) + WS(8085) 双 transport，gRPC server 照常接 otelgrpc 链；WS 部分见 2.6/2.7）
+- [x] growth
+- [x] plan
+- [x] companion
+- [x] community
+- [x] learning_archive
+- [x] ai_gateway
+- [x] rag
+- [x] coderunner
+- [x] admin
 
 每个服务的 `internal/server/grpc.go`：
-- [ ] 替换为调用 `pkg/server.NewGRPCServer`（如果 1.4 已完成）
-- [ ] 或手动在拦截器数组最前面追加 `otelgrpc.UnaryServerInterceptor` 和 `grpc_prometheus.UnaryServerInterceptor`
+- [x] 替换为调用 `pkg/server.NewGRPCServer`（如果 1.4 已完成）
+- [x] 或手动在拦截器数组最前面追加 `otelgrpc.UnaryServerInterceptor` 和 `grpc_prometheus.UnaryServerInterceptor`
 
 ### 2.2 gRPC client Dial 替换（有跨服务调用的服务）
 
-- [ ] gateway - `internal/proxy/` 下的所有 `grpc.Dial` 调用
-- [ ] interview - `internal/data/` 下的 ai_client/archive_client/membership_client/rag_client/code_runner_client
-- [ ] companion - `internal/data/` 下的 interview_client/growth_client/plan_client
-- [ ] growth - `internal/data/clients.go` 下的 interview/archive/plan/question client
-- [ ] plan - `internal/data/` 下的 learning_archive_client
-- [ ] admin - `internal/data/` 下的各服务 client
-- [ ] realtime - `internal/data/` 下的 interview/rag client
-- [ ] question - `internal/data/` 下的 ai_client/code_runner_client
+- [x] gateway - `internal/proxy/` 下的所有 `grpc.Dial` 调用
+- [x] interview - `internal/data/` 下的 ai_client/archive_client/membership_client/rag_client/code_runner_client
+- [x] companion - `internal/data/` 下的 interview_client/growth_client/plan_client
+- [x] growth - `internal/data/clients.go` 下的 interview/archive/plan/question client
+- [x] plan - `internal/data/` 下的 learning_archive_client
+- [x] admin - `internal/data/` 下的各服务 client
+- [x] realtime - `internal/data/` 下的 interview/rag client
+- [x] question - `internal/data/` 下的 ai_client/code_runner_client
 
 每个客户端：
-- [ ] `grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))` 替换为 `grpc.Dial(addr, middleware.CommonDialOptions()...)`
+- [x] `grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))` 替换为 `grpc.Dial(addr, middleware.CommonDialOptions()...)`
 
 ### 2.3 各服务 main.go 接入 telemetry
 
 对全部 15 个服务执行：
-- [ ] gateway
-- [ ] user
-- [ ] membership
-- [ ] question
-- [ ] interview
-- [ ] realtime
-- [ ] growth
-- [ ] plan
-- [ ] companion
-- [ ] community
-- [ ] learning_archive
-- [ ] ai_gateway
-- [ ] rag
-- [ ] coderunner
-- [ ] admin
+- [x] gateway
+- [x] user
+- [x] membership
+- [x] question
+- [x] interview
+- [x] realtime
+- [x] growth
+- [x] plan
+- [x] companion
+- [x] community
+- [x] learning_archive
+- [x] ai_gateway
+- [x] rag
+- [x] coderunner
+- [x] admin
 
 每个服务的 `cmd/server/main.go`：
-- [ ] 调用 `telemetry.Init(cfg)` 初始化 TracerProvider + HTTP server
-- [ ] `defer cleanup()` 确保退出时 flush span
-- [ ] pprof 端口：本地 dev 用偏移（6060+服务序号），K8s 内统一 6060（通过环境变量控制）
+- [x] 调用 `telemetry.Init(cfg)` 初始化 TracerProvider + HTTP server
+- [x] `defer cleanup()` 确保退出时 flush span
+- [x] pprof 端口：本地 dev 用偏移（6060+服务序号），K8s 内统一 6060（通过环境变量控制）
 
 ### 2.4 Gateway 接入
 
-- [ ] 追加 `otelgin.Middleware("gateway")` 到 Gin 中间件链（最外层）
-- [ ] 优雅停机改造：
-  - [ ] `r.Run()` 替换为 `http.Server{Handler: r}`
-  - [ ] 添加 signal handling（`signal.Notify(SIGTERM, SIGINT)`）
-  - [ ] 收到信号后 `srv.Shutdown(ctx)` 等待 in-flight 请求完成
-- [ ] 补充业务 Prometheus 指标（在 handler 中埋点）：
-  - [ ] `http_requests_total`（CounterVec: method/path/code）
-  - [ ] `http_request_duration_seconds`（HistogramVec: method/path）
-  - [ ] gateway 同时有 :8082/metrics（现有）与 :6060/metrics（telemetry.Init），**复用同一个 `prometheus.DefaultRegisterer`**，两个端点数据一致，避免指标分裂
-- [ ] Gateway 的 gRPC 客户端 Dial 全部替换为 `CommonDialOptions()`
+- [x] 追加 `otelgin.Middleware("gateway")` 到 Gin 中间件链（最外层）
+- [x] 优雅停机改造：
+  - [x] `r.Run()` 替换为 `http.Server{Handler: r}`
+  - [x] 添加 signal handling（`signal.Notify(SIGTERM, SIGINT)`）
+  - [x] 收到信号后 `srv.Shutdown(ctx)` 等待 in-flight 请求完成
+- [x] 补充业务 Prometheus 指标（在 handler 中埋点）：
+  - [x] `http_requests_total`（CounterVec: method/path/code）
+  - [x] `http_request_duration_seconds`（HistogramVec: method/path）
+  - [x] gateway 同时有 :8082/metrics（现有）与 :6060/metrics（telemetry.Init），**复用同一个 `prometheus.DefaultRegisterer`**，两个端点数据一致，避免指标分裂
+- [x] Gateway 的 gRPC 客户端 Dial 全部替换为 `CommonDialOptions()`
 
 ### 2.5 config.yaml 增加 telemetry 配置
 
 全部 15 个服务的 `configs/config.yaml`：
-- [ ] 增加 `telemetry` 段（**提交的 config.yaml 里 `http_port` 写偏移值（6060+服务序号）避免本地 dev 冲突；K8s ConfigMap 才统一覆盖成 6060**）：
+- [x] 增加 `telemetry` 段（**提交的 config.yaml 里 `http_port` 写偏移值（6060+服务序号）避免本地 dev 冲突；K8s ConfigMap 才统一覆盖成 6060**）：
   ```yaml
   telemetry:
     otlp_endpoint: "localhost:4317"
@@ -210,18 +210,18 @@
     sample_ratio: 1.0
     http_port: 6060  # 本地 dev 各服务写 6060+序号（如 interview 在 6060+4）；K8s ConfigMap 覆盖为 6060
   ```
-- [ ] 增加 `conf.go` 中 `Telemetry` struct 定义
+- [x] 增加 `conf.go` 中 `Telemetry` struct 定义
 
 ### 2.6 realtime WebSocket trace 传播（特殊处理）
 
-- [ ] WS 握手时从 HTTP header 提取 traceparent，创建 server span
-- [ ] WS 消息中携带 traceparent（自定义消息头或 first frame）
-- [ ] realtime -> Interview/RAG 的 gRPC 调用正常用 `CommonDialOptions()`
+- [x] WS 握手时从 HTTP header 提取 traceparent，创建 server span
+- [ ] WS 消息中携带 traceparent（自定义消息头或 first frame）- 未做：需前端配合改 WS 协议；已用 session server span + 关键事件 span 替代覆盖（commit 5cd14b5）
+- [x] realtime -> Interview/RAG 的 gRPC 调用正常用 `CommonDialOptions()`
 
 ### 2.7 realtime 指标
 
-- [ ] realtime 服务注册 `active_websocket_connections`（Gauge）
-- [ ] 在 WS 连接建立时 +1，断开时 -1
+- [x] realtime 服务注册 `active_websocket_connections`（Gauge）
+- [x] 在 WS 连接建立时 +1，断开时 -1
 
 ---
 
@@ -434,19 +434,19 @@
 ## 验收标准
 
 ### 阶段 1 验收
-- [ ] `go build ./pkg/...` 编译通过
-- [ ] `pkg/telemetry/` 有单元测试
-- [ ] MQ trace 传递有集成测试（publisher 注入 -> consumer 提取 -> span 链路连通）
+- [x] `go build ./pkg/...` 编译通过
+- [x] `pkg/telemetry/` 有单元测试
+- [x] MQ trace 传递有集成测试（publisher 注入 -> consumer 提取 -> span 链路连通）
 
 ### 阶段 2 验收
-- [ ] `go build ./app/...` 全部 15 个服务编译通过
-- [ ] 启动 interview + ai_gateway + learning_archive，在 Jaeger UI 看到 `HTTP Gateway -> Interview -> AI Gateway` 完整 trace 链
-- [ ] 日志中出现 `trace_id` 字段
-- [ ] 各服务 `:6060/metrics` 返回 Prometheus 格式数据
-- [ ] 各服务 `:6060/healthz` 返回 200
-- [ ] 各服务 `:6060/debug/pprof/` 可访问
-- [ ] 确认 8 个服务（user/membership/learning_archive/rag/realtime/growth/community/coderunner）超时从 1s 默认值变为配置值，行为变更无异常
-- [ ] learning_archive 补充 config.yaml 中 timeout 字段
+- [x] `go build ./app/...` 全部 15 个服务编译通过
+- [ ] 启动 interview + ai_gateway + learning_archive，在 Jaeger UI 看到 `HTTP Gateway -> Interview -> AI Gateway` 完整 trace 链 - 待运行验证（需先补 observability docker-compose 的 Collector 容器）
+- [ ] 日志中出现 `trace_id` 字段 - 待运行验证
+- [ ] 各服务 `:6060/metrics` 返回 Prometheus 格式数据 - 待运行验证
+- [ ] 各服务 `:6060/healthz` 返回 200 - 待运行验证
+- [ ] 各服务 `:6060/debug/pprof/` 可访问 - 待运行验证
+- [ ] 确认 8 个服务（user/membership/learning_archive/rag/realtime/growth/community/coderunner）超时从 1s 默认值变为配置值，行为变更无异常 - 代码层已改（config 读取 + learning_archive 补字段），待运行回归
+- [x] learning_archive 补充 config.yaml 中 timeout 字段
 
 ### 阶段 3 验收
 - [ ] 在 Jaeger 中看到 AI Gateway 的 `ark.chat` span，含 model/token 属性
