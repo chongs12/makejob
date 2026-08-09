@@ -31,7 +31,15 @@ var (
 	)
 )
 
-func init() {
+// RegisterAIMetrics 显式注册 AI 指标到 prometheus.DefaultRegisterer。
+//
+// 在 main.go 的 telemetry.Init 之后调用（而非 init()）：显式注册确保注册时机明确，
+// 且与 go-grpc-prometheus 的注册（pkg/server.NewGRPCServer 内 grpc_prometheus.Register）
+// 一致地落到 :6060 实际采集的 prometheus.DefaultRegisterer。
+//
+// 注意：CounterVec/HistogramVec 在无 WithLabelValues 调用时不输出 MetricFamily
+// （prometheus 行为），故未发生 AI 调用时 :6060/metrics 看不到 ai_ 指标，属正常。
+func RegisterAIMetrics() {
 	prometheus.MustRegister(aiCallsTotal, aiTokensTotal, aiCallDurationSeconds)
 }
 

@@ -49,6 +49,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer telCleanup()
+	// 显式注册 AI 业务指标（在 telemetry.Init 之后，确保注册到 :6060 采集的 registry）
+	biz.RegisterAIMetrics()
 	app, cleanup, err := wireApp(bc, logger)
 	if err != nil {
 		log.Errorf("failed to wire app: %v", err)
