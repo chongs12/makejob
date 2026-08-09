@@ -403,12 +403,12 @@
     - [ ] 接收 OTLP gRPC :4317
     - [ ] 只导出 trace 到 Jaeger（不导出 metrics）
     - [ ] 采样过滤（可选）
-  - [ ] `collector.yaml` 配置文件
-    - [ ] receivers: otlp (grpc :4317)
-    - [ ] processors: batch（sampling 配好但默认关闭，demo 用 AlwaysOn）
-    - [ ] exporters: otlp/jaeger + debug（本地调试）
-  - [ ] `observability/docker-compose.yml` 增加 OTel Collector 容器
-    - [ ] Jaeger :4317 改为从 Collector 收数据（服务不直连 Jaeger）
+  - [ ] `collector.yaml` 配置文件（本地 dev 栈已写 observability/otel-collector/collector.yaml，K8s ConfigMap 待部署时复用此配置）
+    - [x] receivers: otlp (grpc :4317)
+    - [x] processors: batch（sampling 配好但默认关闭，demo 用 AlwaysOn）
+    - [x] exporters: otlp/jaeger + debug（本地调试）
+  - [x] `observability/docker-compose.yml` 增加 OTel Collector 容器
+    - [x] Jaeger :4317 改为从 Collector 收数据（服务不直连 Jaeger）
   - [ ] Jaeger（Deployment + Service）
     - [ ] `all-in-one:1.57`
     - [ ] `COLLECTOR_OTLP_ENABLED=true`

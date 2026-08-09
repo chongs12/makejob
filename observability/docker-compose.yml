@@ -26,13 +26,25 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: makejob-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC（各服务发 trace 到此，Collector 再转发给 Jaeger）
+      - "4318:4318"   # OTLP HTTP（可选）
+    volumes:
+      - ./otel-collector/collector.yaml:/etc/otelcol/config.yaml
+    command: ["--config=/etc/otelcol/config.yaml"]
+    depends_on:
+      - jaeger
+
   jaeger:
     image: jaegertracing/all-in-one:1.57
     container_name: makejob-jaeger
     restart: unless-stopped
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC (backend telemetry endpoint)
+      - "16686:16686"   # Jaeger UI（只暴露 UI；4317 由 Collector 走内部网络 jaeger:4317 访问）
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
 

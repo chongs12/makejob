@@ -1,0 +1,37 @@
+# OTel Collector 配置（本地 dev 栈）
+# 数据流：各服务(localhost:4317) -> Collector(batch) -> jaeger:4317 -> Jaeger UI(16686)
+# Collector 职责单一：只汇聚 trace 转给 Jaeger；metrics 走 Prometheus 直接 scrape（不走 Collector）。
+# 对应 docs/observability-k8s-plan.md 决策 2 / 5.7。
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  # tail_sampling 配好但默认关闭（demo 用 AlwaysOn 全量 trace，决策 2）。
+  # 如需开启采样，取消注释并调整策略：
+  # tail_sampling:
+  #   decision_wait: 10s
+  #   policies:
+  #     - name: all
+  #       type: always_sample
+
+exporters:
+  otlp/jaeger:              # trace 导出给 Jaeger
+    endpoint: jaeger:4317   # docker 内部网络访问 jaeger 容器
+    tls:
+      insecure: true
+  debug:                    # 本地调试：控制台打印 trace（生产可关闭）
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger, debug]
