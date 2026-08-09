@@ -229,47 +229,47 @@
 
 ### 3.1 AI Gateway LLM 调用 span
 
-- [ ] `app/ai_gateway/internal/data/ark_client.go`
-  - [ ] `Chat()` 前后创建 span：`tracer.Start(ctx, "ark.chat")`
-  - [ ] span 属性：`llm.model`、`llm.provider=volcengine`、`llm.thinking_enabled`
-  - [ ] span 事件：`prompt_tokens`、`completion_tokens`、`total_tokens`
-  - [ ] 异常时记录 `span.RecordError(err)`
-- [ ] `app/ai_gateway/internal/data/openai_client.go`
-  - [ ] 同上，`llm.provider=openai_compatible`
+- [x] `app/ai_gateway/internal/data/ark_client.go`
+  - [x] `Chat()` 前后创建 span：`tracer.Start(ctx, "ark.chat")`
+  - [x] span 属性：`llm.model`、`llm.provider=volcengine`、`llm.thinking_enabled`
+  - [x] span 事件：`prompt_tokens`、`completion_tokens`、`total_tokens`
+  - [x] 异常时记录 `span.RecordError(err)`
+- [x] `app/ai_gateway/internal/data/openai_client.go`
+  - [x] 同上，`llm.provider=openai_compatible`
 
 ### 3.2 AI Gateway 调用指标
 
-- [ ] `app/ai_gateway/internal/biz/` 或 `internal/data/`
-  - [ ] 定义 `ai_calls_total`（CounterVec: scene/model/status）
-  - [ ] 定义 `ai_tokens_total`（CounterVec: scene/model/type=prompt|completion）
-  - [ ] 定义 `ai_call_duration_seconds`（HistogramVec: scene/model）
-  - [ ] 在 LLM 调用后埋点
-  - [ ] 验证 `context.WithoutCancel`（ai_client.go:208）保留 trace context values
+- [x] `app/ai_gateway/internal/biz/` 或 `internal/data/`
+  - [x] 定义 `ai_calls_total`（CounterVec: scene/model/status）
+  - [x] 定义 `ai_tokens_total`（CounterVec: scene/model/type=prompt|completion）
+  - [x] 定义 `ai_call_duration_seconds`（HistogramVec: scene/model）
+  - [x] 在 LLM 调用后埋点
+  - [x] 验证 `context.WithoutCancel` 保留 trace context values - ai_client.go:208 不存在（调研纠正）；实际 ark_client.go:209 + biz/ai.go:21；并修复 interview_session.go 4 处 context.Background() -> WithoutCancel(ctx) 保留 trace
 
 ### 3.3 RAG 检索 span
 
-- [ ] `app/rag/internal/biz/`
-  - [ ] `Retrieve()` 前后创建 span：`tracer.Start(ctx, "rag.retrieve")`
-  - [ ] span 属性：`rag.query_length`、`rag.top_k`、`rag.results_count`
-- [ ] `app/rag/internal/data/milvus_client.go`
-  - [ ] Milvus 搜索 span（如果 Milvus 客户端自带 OTel instrument 则验证即可）
-- [ ] RAG MQ consumer（`rag.sync.question`）trace 提取
+- [x] `app/rag/internal/biz/`
+  - [x] `Retrieve()` 前后创建 span：`tracer.Start(ctx, "rag.retrieve")`
+  - [x] span 属性：`rag.query_length`、`rag.top_k`、`rag.results_count`
+- [x] `app/rag/internal/data/milvus_client.go`
+  - [x] Milvus 搜索 span（如果 Milvus 客户端自带 OTel instrument 则验证即可）
+- [x] RAG MQ consumer（`rag.sync.question`）trace 提取
 
 ### 3.4 Interview 报告生成 span
 
-- [ ] `app/interview/internal/biz/usecase.go`
-  - [ ] `GenerateReport()` 前后创建 span：`tracer.Start(ctx, "interview.generate_report")`
-  - [ ] span 属性：`report.type`（standard/knowledge/job/realtime）、`interview.id`
-  - [ ] 异步 goroutine（如 `SubmitAnswer -> WriteEntry`）用 `otel.Start(ctx)` 显式 span，避免 `context.Background()` 断链
-- [ ] Interview MQ publisher（`interview.finished`）注入 traceparent（已由 1.5 覆盖）
-- [ ] LearningArchive MQ consumer 提取 traceparent 并创建 consumer span（已由 1.5 覆盖）
+- [x] `app/interview/internal/biz/usecase.go`
+  - [x] `GenerateReport()` 前后创建 span：`tracer.Start(ctx, "interview.generate_report")`
+  - [x] span 属性：`report.type`（standard/knowledge/job/realtime）、`interview.id`
+  - [x] 异步 goroutine（如 `SubmitAnswer -> WriteEntry`）用 `otel.Start(ctx)` 显式 span，避免 `context.Background()` 断链
+- [x] Interview MQ publisher（`interview.finished`）注入 traceparent（已由 1.5 覆盖）
+- [x] LearningArchive MQ consumer 提取 traceparent 并创建 consumer span（已由 1.5 覆盖）
 
 ### 3.5 端到端验证脚本
 
-- [ ] 创建 `scripts/e2e-trace-check.sh`
-  - [ ] curl 发起一条面试链路请求（Gateway -> Interview -> AI Gateway）
-  - [ ] 查询 Jaeger API 断言 trace 存在且 span 链完整
-  - [ ] 断言 MQ 链路 trace 从 Interview 跨到 LearningArchive
+- [x] 创建 `scripts/e2e-trace-check.sh`
+  - [x] curl 发起一条面试链路请求（Gateway -> Interview -> AI Gateway）
+  - [x] 查询 Jaeger API 断言 trace 存在且 span 链完整
+  - [ ] 断言 MQ 链路 trace 从 Interview 跨到 LearningArchive - 未做：脚本当前断言 gateway->interview->user 跨服务 trace；MQ 链路(interview.finished)断言待补（需触发报告生成流程）
 
 ---
 
