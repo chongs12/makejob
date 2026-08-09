@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	archivev1 "makejob/api/makejob/learning_archive/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // learningArchiveClient 实现 biz.LearningArchiveClient 接口
@@ -24,11 +24,10 @@ type learningArchiveClient struct {
 
 // NewLearningArchiveClient 创建学习档案客户端，注入内部服务 Token 绕过用户鉴权。
 func NewLearningArchiveClient(cfg *conf.Archive, serviceToken string) (biz.LearningArchiveClient, error) {
-	conn, err := grpc.Dial(
-		cfg.ServiceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := append(middleware.CommonDialOptions(),
 		grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(serviceToken)),
 	)
+	conn, err := grpc.Dial(cfg.ServiceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial LearningArchive service at %s: %w", cfg.ServiceAddr, err)
 	}

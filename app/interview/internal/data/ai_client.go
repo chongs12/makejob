@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 const correctThreshold = 0.6
@@ -20,9 +20,9 @@ const correctThreshold = 0.6
 // aiServiceClient 实现 biz.AIServiceClient 接口
 // 通过 gRPC 调用 AI 服务
 type aiServiceClient struct {
-	client   aiv1.AIServiceClient
-	conn     *grpc.ClientConn
-	timeout  time.Duration
+	client  aiv1.AIServiceClient
+	conn    *grpc.ClientConn
+	timeout time.Duration
 }
 
 // NewAIServiceClient 创建 AI 服务客户端（由 Wire 调用）
@@ -31,8 +31,7 @@ func NewAIServiceClient(cfg *conf.AI) (biz.AIServiceClient, error) {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	conn, err := grpc.NewClient(cfg.ServiceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := append(middleware.CommonDialOptions(),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                10 * time.Second,
 			Timeout:             3 * time.Second,
@@ -42,6 +41,7 @@ func NewAIServiceClient(cfg *conf.AI) (biz.AIServiceClient, error) {
 			grpc.MaxCallRecvMsgSize(16*1024*1024),
 		),
 	)
+	conn, err := grpc.NewClient(cfg.ServiceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service at %s: %w", cfg.ServiceAddr, err)
 	}
@@ -254,12 +254,12 @@ func (c *aiServiceClient) EvaluateAnswer(ctx context.Context, req *biz.EvaluateA
 	}
 
 	return &biz.EvaluateAnswerResponse{
-		Score:      resp.Score,
-		IsCorrect:  resp.IsCorrect,
-		Feedback:   resp.Feedback,
-		KeyPoints:  resp.KeyPoints,
+		Score:       resp.Score,
+		IsCorrect:   resp.IsCorrect,
+		Feedback:    resp.Feedback,
+		KeyPoints:   resp.KeyPoints,
 		Suggestions: resp.Suggestions,
-		FollowUp:   resp.FollowUp,
+		FollowUp:    resp.FollowUp,
 	}, nil
 }
 

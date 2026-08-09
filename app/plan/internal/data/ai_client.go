@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/plan/internal/biz"
 	"makejob/app/plan/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // planAgentClient 实现 biz.PlanAgentClient 接口，通过 gRPC 调用 AI Gateway
@@ -23,7 +23,7 @@ type planAgentClient struct {
 
 // NewPlanAgentClient 创建 AI 服务客户端
 func NewPlanAgentClient(cfg *conf.AI) (biz.PlanAgentClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service at %s: %w", cfg.ServiceAddr, err)
 	}
@@ -402,7 +402,7 @@ type diagnosisClient struct {
 
 // NewDiagnosisClient 创建诊断分析客户端
 func NewDiagnosisClient(cfg *conf.AI) (biz.DiagnosisClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service for diagnosis at %s: %w", cfg.ServiceAddr, err)
 	}

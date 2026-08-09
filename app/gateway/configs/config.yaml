@@ -27,3 +27,9 @@ services:
 
 jwt:
   secret: "makejob-secret-key-change-in-production"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.gateway"
+  sample_ratio: 1.0
+  http_port: 6060  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

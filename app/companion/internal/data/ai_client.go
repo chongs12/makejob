@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/companion/internal/biz"
 	"makejob/app/companion/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // companionAIClient 实现 biz.CompanionClient 接口，通过 gRPC 调用 AI Gateway
@@ -20,7 +20,7 @@ type companionAIClient struct {
 
 // NewCompanionAIClient 创建 AI 服务客户端
 func NewCompanionAIClient(cfg *conf.AI) (biz.CompanionClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service at %s: %w", cfg.ServiceAddr, err)
 	}

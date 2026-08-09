@@ -45,3 +45,9 @@ volcengine:
 dependent_services:
   interview_addr: "localhost:9004"
   rag_addr: "localhost:9012"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.realtime"
+  sample_ratio: 1.0
+  http_port: 6065  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

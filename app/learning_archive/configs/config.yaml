@@ -3,6 +3,7 @@ server:
     addr: 0.0.0.0:8010
   grpc:
     addr: 0.0.0.0:9010
+    timeout: 10s
 
 data:
   database:
@@ -15,3 +16,9 @@ jwt:
 mq:
   url: "amqp://makejob:makejob123@localhost:5672//makejob"
   exchange: "makejob.events"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.learning_archive"
+  sample_ratio: 1.0
+  http_port: 6070  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

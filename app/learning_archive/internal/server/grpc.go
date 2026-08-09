@@ -1,34 +1,37 @@
 package server
 
 import (
-	archivev1 "makejob/api/makejob/learning_archive/v1"
-	"makejob/app/learning_archive/internal/conf"
-	"makejob/app/learning_archive/internal/service"
-	"makejob/pkg/auth"
-	"makejob/pkg/middleware"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
 	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
+	"google.golang.org/grpc"
+
+	"makejob/app/learning_archive/internal/conf"
+	"makejob/app/learning_archive/internal/service"
+	"makejob/pkg/auth"
+	"makejob/pkg/server"
+
+	archivev1 "makejob/api/makejob/learning_archive/v1"
 )
 
+// NewGRPCServer 构造 learning_archive 服务的 gRPC server。
+// 拦截器链（otelgrpc -> prometheus -> recovery -> logging -> auth）由 pkg/server.NewGRPCServer 统一装配。
 func NewGRPCServer(
 	cfg *conf.Server,
 	archiveSvc *service.ArchiveService,
 	authInterceptor *auth.Interceptor,
 	logger log.Logger,
 ) *kratosgrpc.Server {
-	opts := []kratosgrpc.ServerOption{
-		kratosgrpc.Logger(logger),
-		kratosgrpc.UnaryInterceptor(
-			middleware.Recovery(),
-			middleware.Logging(),
-			authInterceptor.UnaryServerInterceptor(),
-		),
+	var addr string
+	var timeout time.Duration
+	if cfg.GRPC != nil {
+		addr = cfg.GRPC.Addr
+		if cfg.GRPC.Timeout != "" {
+			timeout, _ = time.ParseDuration(cfg.GRPC.Timeout)
+		}
 	}
-	if cfg.GRPC != nil && cfg.GRPC.Addr != "" {
-		opts = append(opts, kratosgrpc.Address(cfg.GRPC.Addr))
-	}
-	srv := kratosgrpc.NewServer(opts...)
-	archivev1.RegisterLearningArchiveServiceServer(srv.Server, archiveSvc)
-	return srv
+	return server.NewGRPCServer(addr, timeout, authInterceptor.UnaryServerInterceptor(), func(s *grpc.Server) {
+		archivev1.RegisterLearningArchiveServiceServer(s, archiveSvc)
+	}, logger)
 }

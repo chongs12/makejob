@@ -23,3 +23,9 @@ jwt:
 dependent_services:
   question_addr: "localhost:9003"
   interview_addr: "localhost:9004"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.membership"
+  sample_ratio: 1.0
+  http_port: 6062  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

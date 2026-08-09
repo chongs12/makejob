@@ -15,6 +15,7 @@ import (
 	"makejob/app/learning_archive/internal/service"
 	"makejob/pkg/auth"
 	mlog "makejob/pkg/logger"
+	"makejob/pkg/telemetry"
 )
 
 var flagConf string
@@ -32,9 +33,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// telemetry.Init：必须在 wireApp 之前，让 otelgrpc 拦截器拿到全局 TracerProvider
+	telCleanup, err := telemetry.Init(telemetry.Config{
+		OTLPEndpoint: bc.Telemetry.OTLPEndpoint,
+		ServiceName:  bc.Telemetry.ServiceName,
+		SampleRatio:  bc.Telemetry.SampleRatio,
+		HTTPPort:     bc.Telemetry.HTTPPort,
+	})
+	if err != nil {
+		log.Errorf("failed to init telemetry: %v", err)
+		os.Exit(1)
+	}
+	defer telCleanup()
 	app, cleanup, err := wireApp(bc, logger)
 	if err != nil {
 		log.Errorf("failed to wire app: %v", err)
+		telCleanup()
 		os.Exit(1)
 	}
 	defer cleanup()

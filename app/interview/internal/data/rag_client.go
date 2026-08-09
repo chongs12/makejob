@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	ragv1 "makejob/api/makejob/rag/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // ragClient 实现 biz.RAGClient 接口，通过 gRPC 调用 RAG 检索服务
@@ -20,7 +20,7 @@ type ragClient struct {
 
 // NewRAGClient 创建 RAG 检索服务客户端
 func NewRAGClient(cfg *conf.RAG) (biz.RAGClient, error) {
-	conn, err := grpc.NewClient(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RAG service at %s: %w", cfg.ServiceAddr, err)
 	}

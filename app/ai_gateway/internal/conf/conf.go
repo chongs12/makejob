@@ -13,6 +13,7 @@ type Bootstrap struct {
 	JWT    *JWT    `yaml:"jwt"`
 	ARK      *ARK      `yaml:"ark"`
 	Fallback *Fallback `yaml:"fallback"`
+	Telemetry  *Telemetry  `yaml:"telemetry"`
 }
 
 // ARK 火山引擎 ARK 大模型平台配置
@@ -119,5 +120,16 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Fallback.Timeout <= 0 {
 		bc.Fallback.Timeout = 60
 	}
+	if bc.Telemetry == nil {
+		bc.Telemetry = &Telemetry{}
+	}
 	return &bc, nil
+}
+
+// Telemetry 可观测性配置（OTel tracing/metrics/pprof），对应 config.yaml 的 telemetry 段
+type Telemetry struct {
+	OTLPEndpoint string  `yaml:"otlp_endpoint"`
+	ServiceName  string  `yaml:"service_name"`
+	SampleRatio  float64 `yaml:"sample_ratio"`
+	HTTPPort     int     `yaml:"http_port"`
 }

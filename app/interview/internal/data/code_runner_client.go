@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	coderunnerv1 "makejob/api/makejob/coderunner/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // codeRunnerClient 实现 biz.CodeRunnerClient 接口，通过 gRPC 调用代码执行服务
@@ -21,7 +21,7 @@ type codeRunnerClient struct {
 
 // NewCodeRunnerClient 创建代码执行服务客户端
 func NewCodeRunnerClient(cfg *conf.CodeRunner) (biz.CodeRunnerClient, error) {
-	conn, err := grpc.NewClient(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to CodeRunner service at %s: %w", cfg.ServiceAddr, err)
 	}
@@ -68,11 +68,11 @@ func (c *codeRunnerClient) Execute(ctx context.Context, language, code string, t
 	}
 
 	return &biz.CodeRunnerResult{
-		Success:        resp.Success,
-		Stdout:         resp.Stdout,
-		Stderr:         resp.Stderr,
-		PassedCount:    resp.PassedCount,
-		TotalCount:     resp.TotalCount,
+		Success:         resp.Success,
+		Stdout:          resp.Stdout,
+		Stderr:          resp.Stderr,
+		PassedCount:     resp.PassedCount,
+		TotalCount:      resp.TotalCount,
 		ExecutionTimeMs: resp.ExecutionTimeMs,
 	}, nil
 }

@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	companionv1 "makejob/api/makejob/companion/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // companionClient 实现 biz.TTSPrewarmClient 接口。
@@ -22,11 +22,10 @@ type companionClient struct {
 
 // NewCompanionClient 创建 companion 客户端，注入内部服务 Token。
 func NewCompanionClient(cfg *conf.Companion, serviceToken string) (biz.TTSPrewarmClient, error) {
-	conn, err := grpc.Dial(
-		cfg.ServiceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := append(middleware.CommonDialOptions(),
 		grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(serviceToken)),
 	)
+	conn, err := grpc.Dial(cfg.ServiceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial Companion service at %s: %w", cfg.ServiceAddr, err)
 	}

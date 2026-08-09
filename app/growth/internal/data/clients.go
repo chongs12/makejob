@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	archivev1 "makejob/api/makejob/learning_archive/v1"
 	interviewv1 "makejob/api/makejob/interview/v1"
+	archivev1 "makejob/api/makejob/learning_archive/v1"
 	planv1 "makejob/api/makejob/plan/v1"
 	questionv1 "makejob/api/makejob/question/v1"
 	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/app/growth/internal/biz"
 	"makejob/app/growth/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // --- QuestionClient 实现 ---
@@ -26,7 +26,7 @@ type questionClient struct {
 
 // NewQuestionClient 创建题目服务客户端
 func NewQuestionClient(cfg *conf.DependentServices) (biz.QuestionClient, error) {
-	conn, err := grpc.Dial(cfg.QuestionAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.QuestionAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接题目服务失败(%s): %w", cfg.QuestionAddr, err)
 	}
@@ -112,7 +112,7 @@ type planClient struct {
 
 // NewPlanClient 创建计划服务客户端
 func NewPlanClient(cfg *conf.DependentServices) (biz.PlanClient, error) {
-	conn, err := grpc.Dial(cfg.PlanAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.PlanAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接计划服务失败(%s): %w", cfg.PlanAddr, err)
 	}
@@ -182,7 +182,7 @@ type archiveClient struct {
 
 // NewArchiveClient 创建学习档案服务客户端
 func NewArchiveClient(cfg *conf.DependentServices) (biz.LearningArchiveClient, error) {
-	conn, err := grpc.Dial(cfg.LearningArchiveAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.LearningArchiveAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接学习档案服务失败(%s): %w", cfg.LearningArchiveAddr, err)
 	}
@@ -256,7 +256,7 @@ type interviewClient struct {
 
 // NewInterviewClient 创建面试服务客户端
 func NewInterviewClient(cfg *conf.DependentServices) (biz.InterviewClient, error) {
-	conn, err := grpc.Dial(cfg.InterviewAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.InterviewAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接面试服务失败(%s): %w", cfg.InterviewAddr, err)
 	}

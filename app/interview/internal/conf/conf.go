@@ -19,6 +19,15 @@ type Bootstrap struct {
 	CodeRunner *CodeRunner `yaml:"code_runner"`
 	Interview  *Interview  `yaml:"interview"`
 	Companion  *Companion  `yaml:"companion"`
+	Telemetry  *Telemetry  `yaml:"telemetry"`
+}
+
+// Telemetry 可观测性配置（OTel tracing/metrics/pprof），对应 config.yaml 的 telemetry 段
+type Telemetry struct {
+	OTLPEndpoint string  `yaml:"otlp_endpoint"` // OTel Collector 地址，如 localhost:4317 / collector:4317
+	ServiceName  string  `yaml:"service_name"`  // 如 makejob.interview，Jaeger 据此分组
+	SampleRatio  float64 `yaml:"sample_ratio"`  // TraceIDRatioBased 采样率，demo 用 1.0
+	HTTPPort     int     `yaml:"http_port"`     // :6060 metrics/healthz/readyz/pprof；本地 dev 用 6060+序号
 }
 
 // Companion 面试服务调用 companion 服务（TTS 预热）的配置
@@ -172,6 +181,9 @@ func Load(path string) (*Bootstrap, error) {
 	}
 	if bc.Interview.TimeoutMinutes == 0 {
 		bc.Interview.TimeoutMinutes = 40
+	}
+	if bc.Telemetry == nil {
+		bc.Telemetry = &Telemetry{}
 	}
 
 	return &bc, nil

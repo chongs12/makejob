@@ -30,3 +30,9 @@ dependent_services:
   interview_addr: "127.0.0.1:9004"
   ai_gateway_addr: "127.0.0.1:9011"
   rag_addr: "127.0.0.1:9012"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.admin"
+  sample_ratio: 1.0
+  http_port: 6074  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
 	interviewv1 "makejob/api/makejob/interview/v1"
 	"makejob/app/realtime/internal/biz"
 	"makejob/app/realtime/internal/conf"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // interviewClient 通过 gRPC 调用 Interview 服务
@@ -22,7 +22,7 @@ type interviewClient struct {
 
 // NewInterviewClient 创建 Interview 服务客户端，返回接口实现和可选的关闭函数
 func NewInterviewClient(cfg *conf.DependentServices) (biz.InterviewClient, *interviewClient, error) {
-	conn, err := grpc.NewClient(cfg.InterviewAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(cfg.InterviewAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("连接 Interview 服务失败 (%s): %w", cfg.InterviewAddr, err)
 	}

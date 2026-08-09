@@ -11,6 +11,7 @@ type Bootstrap struct {
 	Server *Server `yaml:"server"`
 	RAG    *RAG    `yaml:"rag"`
 	MQ     *MQ     `yaml:"mq"`
+	Telemetry  *Telemetry  `yaml:"telemetry"`
 }
 
 type Server struct {
@@ -96,5 +97,16 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.MQ.Exchange == "" {
 		bc.MQ.Exchange = "makejob.async"
 	}
+	if bc.Telemetry == nil {
+		bc.Telemetry = &Telemetry{}
+	}
 	return &bc, nil
+}
+
+// Telemetry 可观测性配置（OTel tracing/metrics/pprof），对应 config.yaml 的 telemetry 段
+type Telemetry struct {
+	OTLPEndpoint string  `yaml:"otlp_endpoint"`
+	ServiceName  string  `yaml:"service_name"`
+	SampleRatio  float64 `yaml:"sample_ratio"`
+	HTTPPort     int     `yaml:"http_port"`
 }

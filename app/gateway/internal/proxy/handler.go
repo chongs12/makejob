@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -35,6 +34,7 @@ import (
 	userv1 "makejob/api/makejob/user/v1"
 	"makejob/app/gateway/internal/conf"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // Gateway HTTP → gRPC 代理
@@ -111,7 +111,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 	}
 	setups := []clientSetup{
 		{"user", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -120,7 +120,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"question", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -129,7 +129,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"interview", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -138,7 +138,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"membership", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -147,7 +147,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"growth", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -156,7 +156,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"plan", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"admin", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -174,7 +174,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"companion", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ func NewGateway(cfg *conf.Bootstrap) (*Gateway, error) {
 			return nil
 		}},
 		{"community", func(addr string) error {
-			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial(addr, middleware.CommonDialOptions()...)
 			if err != nil {
 				return err
 			}
@@ -3297,7 +3297,7 @@ func (gw *Gateway) handleCreateInterview(c *gin.Context) {
 		UserId: userID, IndustryCode: req.IndustryCode, Difficulty: req.Difficulty,
 		Topics: req.Topics, QuestionCount: req.QuestionCount, InterviewType: req.InterviewType,
 		InterviewMode: req.InterviewMode,
-		ResumeText: req.ResumeText, JobDescription: req.JobDescription,
+		ResumeText:    req.ResumeText, JobDescription: req.JobDescription,
 		Live2DModelKey: req.Live2DModelKey,
 	})
 	if err != nil {

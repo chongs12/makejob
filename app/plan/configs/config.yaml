@@ -29,3 +29,9 @@ ai:
 
 dependent_services:
   learning_archive_addr: "localhost:9010"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.plan"
+  sample_ratio: 1.0
+  http_port: 6067  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

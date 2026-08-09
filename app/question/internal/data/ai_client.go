@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/question/internal/biz"
 	"makejob/app/question/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // quizAnalyzerClient 实现 biz.QuizAnalyzerClient 接口
@@ -21,7 +21,7 @@ type quizAnalyzerClient struct {
 
 // NewQuizAnalyzerClient 创建 QuizAnalyzer 客户端
 func NewQuizAnalyzerClient(cfg *conf.AI) (biz.QuizAnalyzerClient, error) {
-	conn, err := grpc.Dial(cfg.ServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.ServiceAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI service at %s: %w", cfg.ServiceAddr, err)
 	}

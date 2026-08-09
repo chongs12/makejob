@@ -36,3 +36,9 @@ services:
   growth: "localhost:9006"
   interview: "localhost:9004"
   plan: "localhost:9007"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.companion"
+  sample_ratio: 1.0
+  http_port: 6068  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

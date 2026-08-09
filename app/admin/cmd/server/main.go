@@ -8,7 +8,6 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"makejob/app/admin/internal/biz"
 	"makejob/app/admin/internal/conf"
@@ -17,6 +16,8 @@ import (
 	"makejob/app/admin/internal/service"
 	"makejob/pkg/auth"
 	mlog "makejob/pkg/logger"
+	"makejob/pkg/middleware"
+	"makejob/pkg/telemetry"
 )
 
 var flagConf string
@@ -38,9 +39,22 @@ func main() {
 	}
 
 	// 手动组装依赖
+	// telemetry.Init：必须在 wireApp 之前，让 otelgrpc 拦截器拿到全局 TracerProvider
+	telCleanup, err := telemetry.Init(telemetry.Config{
+		OTLPEndpoint: bc.Telemetry.OTLPEndpoint,
+		ServiceName:  bc.Telemetry.ServiceName,
+		SampleRatio:  bc.Telemetry.SampleRatio,
+		HTTPPort:     bc.Telemetry.HTTPPort,
+	})
+	if err != nil {
+		log.Errorf("failed to init telemetry: %v", err)
+		os.Exit(1)
+	}
+	defer telCleanup()
 	app, cleanup, err := wireApp(bc, logger)
 	if err != nil {
 		log.Errorf("failed to wire app: %v", err)
+		telCleanup()
 		os.Exit(1)
 	}
 	defer cleanup()
@@ -72,9 +86,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	cleanupFns := make([]func(), 0)
 
 	if bc.DependentServices != nil && bc.DependentServices.UserAddr != "" {
-		userConn, err = grpc.NewClient(bc.DependentServices.UserAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		userConn, err = grpc.NewClient(bc.DependentServices.UserAddr, middleware.CommonDialOptions()...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect user service: %w", err)
 		}
@@ -82,9 +94,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	if bc.DependentServices != nil && bc.DependentServices.QuestionAddr != "" {
-		questionConn, err = grpc.NewClient(bc.DependentServices.QuestionAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		questionConn, err = grpc.NewClient(bc.DependentServices.QuestionAddr, middleware.CommonDialOptions()...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect question service: %w", err)
 		}
@@ -92,9 +102,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	if bc.DependentServices != nil && bc.DependentServices.InterviewAddr != "" {
-		interviewConn, err = grpc.NewClient(bc.DependentServices.InterviewAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		interviewConn, err = grpc.NewClient(bc.DependentServices.InterviewAddr, middleware.CommonDialOptions()...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect interview service: %w", err)
 		}
@@ -102,9 +110,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	}
 
 	if bc.DependentServices != nil && bc.DependentServices.AIGatewayAddr != "" {
-		aiGatewayConn, err = grpc.NewClient(bc.DependentServices.AIGatewayAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		aiGatewayConn, err = grpc.NewClient(bc.DependentServices.AIGatewayAddr, middleware.CommonDialOptions()...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect AI gateway service: %w", err)
 		}
@@ -144,9 +150,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	// RAG 服务客户端（可选）
 	var ragConn *grpc.ClientConn
 	if bc.DependentServices != nil && bc.DependentServices.RAGAddr != "" {
-		ragConn, err = grpc.NewClient(bc.DependentServices.RAGAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		ragConn, err = grpc.NewClient(bc.DependentServices.RAGAddr, middleware.CommonDialOptions()...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to connect RAG service: %w", err)
 		}

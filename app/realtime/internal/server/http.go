@@ -10,11 +10,26 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"makejob/app/realtime/internal/biz"
 	"makejob/app/realtime/internal/conf"
 	"makejob/pkg/auth"
 )
+
+// activeWSConnections 当前活跃 WebSocket 连接数（由 realtime 服务管理，gateway 不暴露此指标）。
+var activeWSConnections = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "active_websocket_connections",
+	Help: "Number of active realtime WebSocket interview sessions.",
+})
+
+func init() {
+	prometheus.MustRegister(activeWSConnections)
+}
 
 // httpServer 封装 HTTP/WebSocket 服务器
 type httpServer struct {
@@ -118,10 +133,27 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request, uc *biz.RealtimeUse
 		return
 	}
 
+	// trace：从 HTTP header 提取 traceparent（前端无 OTel 埋点，通常为 root span），
+	// 创建 session server span，使 realtime -> interview/rag 的 gRPC 调用能挂在该 span 下。
+	propagator := otel.GetTextMapPropagator()
+	wsCtx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+	wsCtx, span := otel.Tracer("makejob.realtime").Start(wsCtx, "realtime.ws.session",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.Int64("interview.id", int64(interviewID)),
+			attribute.Int64("user.id", int64(userID)),
+		),
+	)
+	defer span.End()
+
+	// active_websocket_connections Gauge：连接建立 +1，会话结束 -1
+	activeWSConnections.Inc()
+	defer activeWSConnections.Dec()
+
 	logger.Infof("WebSocket 连接建立: interview_id=%d, user_id=%d", interviewID, userID)
 
 	// 4. 进入实时会话处理（阻塞直到会话结束）
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	sessionCtx := auth.WithAccessToken(r.Context(), token)
+	sessionCtx := auth.WithAccessToken(wsCtx, token)
 	uc.HandleSession(sessionCtx, interviewID, userID, sessionID, conn)
 }

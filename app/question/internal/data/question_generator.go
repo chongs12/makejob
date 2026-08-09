@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	aiv1 "makejob/api/makejob/ai/v1"
 	"makejob/app/question/internal/biz"
 	"makejob/app/question/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // questionGeneratorClient 实现 biz.QuestionGeneratorClient 接口
@@ -23,7 +23,7 @@ type questionGeneratorClient struct {
 
 // NewQuestionGeneratorClient 创建题目生成客户端
 func NewQuestionGeneratorClient(cfg *conf.AI) (biz.QuestionGeneratorClient, error) {
-	conn, err := grpc.Dial(cfg.AIGatewayAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.AIGatewayAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial AI Gateway at %s: %w", cfg.AIGatewayAddr, err)
 	}

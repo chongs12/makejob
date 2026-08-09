@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	planv1 "makejob/api/makejob/plan/v1"
 	"makejob/app/companion/internal/biz"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // planClient 实现 biz.PlanClient 接口，通过 gRPC 调用 Plan 服务
@@ -20,10 +20,10 @@ type planClient struct {
 
 // NewPlanClient 创建 Plan 服务客户端
 func NewPlanClient(serviceAddr string) (biz.PlanClient, error) {
-	conn, err := grpc.Dial(serviceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := append(middleware.CommonDialOptions(),
 		grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()),
 	)
+	conn, err := grpc.Dial(serviceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial plan service at %s: %w", serviceAddr, err)
 	}

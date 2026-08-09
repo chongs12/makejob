@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	interviewv1 "makejob/api/makejob/interview/v1"
 	questionv1 "makejob/api/makejob/question/v1"
 	"makejob/app/membership/internal/biz"
 	"makejob/app/membership/internal/conf"
+	"makejob/pkg/middleware"
 )
 
 // --- QuestionClient 实现 ---
@@ -24,7 +24,7 @@ func NewQuestionClient(cfg *conf.DependentServices) (biz.QuestionClient, error) 
 	if cfg == nil || cfg.QuestionAddr == "" {
 		return nil, nil
 	}
-	conn, err := grpc.Dial(cfg.QuestionAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.QuestionAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接题目服务失败(%s): %w", cfg.QuestionAddr, err)
 	}
@@ -64,7 +64,7 @@ func NewInterviewClient(cfg *conf.DependentServices) (biz.InterviewClient, error
 	if cfg == nil || cfg.InterviewAddr == "" {
 		return nil, nil
 	}
-	conn, err := grpc.Dial(cfg.InterviewAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(cfg.InterviewAddr, middleware.CommonDialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("连接面试服务失败(%s): %w", cfg.InterviewAddr, err)
 	}

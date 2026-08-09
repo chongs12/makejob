@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	membershipv1 "makejob/api/makejob/membership/v1"
 	"makejob/app/interview/internal/biz"
 	"makejob/app/interview/internal/conf"
 	"makejob/pkg/auth"
+	"makejob/pkg/middleware"
 )
 
 // membershipClient 实现 biz.MembershipClient 接口
@@ -22,11 +22,10 @@ type membershipClient struct {
 
 // NewMembershipClient 创建会员客户端，注入内部服务 Token。
 func NewMembershipClient(cfg *conf.Membership, serviceToken string) (biz.MembershipClient, error) {
-	conn, err := grpc.Dial(
-		cfg.ServiceAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	opts := append(middleware.CommonDialOptions(),
 		grpc.WithUnaryInterceptor(auth.ServiceAuthInterceptor(serviceToken)),
 	)
+	conn, err := grpc.Dial(cfg.ServiceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial Membership service at %s: %w", cfg.ServiceAddr, err)
 	}

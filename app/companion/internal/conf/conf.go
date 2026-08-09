@@ -15,6 +15,7 @@ type Bootstrap struct {
 	TTS       *TTS       `yaml:"tts"`
 	ASR       *ASR       `yaml:"asr"`
 	Services  *Services  `yaml:"services"`
+	Telemetry  *Telemetry  `yaml:"telemetry"`
 }
 
 // ASR 语音识别服务配置
@@ -140,5 +141,16 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.JWT.ExpireHours == 0 {
 		bc.JWT.ExpireHours = 168
 	}
+	if bc.Telemetry == nil {
+		bc.Telemetry = &Telemetry{}
+	}
 	return &bc, nil
+}
+
+// Telemetry 可观测性配置（OTel tracing/metrics/pprof），对应 config.yaml 的 telemetry 段
+type Telemetry struct {
+	OTLPEndpoint string  `yaml:"otlp_endpoint"`
+	ServiceName  string  `yaml:"service_name"`
+	SampleRatio  float64 `yaml:"sample_ratio"`
+	HTTPPort     int     `yaml:"http_port"`
 }

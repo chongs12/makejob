@@ -19,3 +19,9 @@ jwt:
   secret: "makejob-secret-key-change-in-production"
   expire_hours: 168
   service_secret: "makejob-internal-service-secret"
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.user"
+  sample_ratio: 1.0
+  http_port: 6061  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060

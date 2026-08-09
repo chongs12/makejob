@@ -31,3 +31,9 @@ fallback:
   base_url: "https://api.openai.com/v1"
   model: "gpt-4o"
   timeout: 60
+
+telemetry:
+  otlp_endpoint: "localhost:4317"
+  service_name: "makejob.ai_gateway"
+  sample_ratio: 1.0
+  http_port: 6071  # 本地 dev 偏移；K8s ConfigMap 覆盖为 6060
