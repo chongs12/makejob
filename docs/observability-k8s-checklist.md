@@ -449,9 +449,9 @@
 - [x] learning_archive 补充 config.yaml 中 timeout 字段
 
 ### 阶段 3 验收
-- [ ] 在 Jaeger 中看到 AI Gateway 的 `ark.chat` span，含 model/token 属性
-- [ ] Grafana 仪表盘 `ai_calls_total` / `ai_tokens_total` 有数据
-- [ ] MQ 链路 `interview.finished` 的 trace 从 Interview 跨到 LearningArchive 不断链
+- [x] 在 Jaeger 中看到 AI Gateway 的 `ark.chat` span，含 model/token 属性 - 已验证（grpcurl 调 QuizAnalyzer，ark.chat span 挂在 RPC span 下，model=minimax-m3，tokens prompt=396/completion=942）
+- [x] Grafana 仪表盘 `ai_calls_total` / `ai_tokens_total` 有数据 - 已验证 ai_gateway :6071/metrics 输出指标（Grafana 完整展示待 Prometheus 配置抓取 ai_gateway:6071，当前 prometheus.yml 仅抓 gateway:8082）
+- [ ] MQ 链路 `interview.finished` 的 trace 从 Interview 跨到 LearningArchive 不断链 - 未验证（需触发报告生成流程：FinishInterview -> MQ -> learning_archive 消费）
 
 ### 阶段 4 验收
 - [ ] `docker build` 能构建全部 15 个 Go 服务 + 前端镜像
