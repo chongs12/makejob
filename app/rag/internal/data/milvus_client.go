@@ -14,6 +14,10 @@ import (
 	"github.com/milvus-io/milvus/client/v2/entity"
 	"github.com/milvus-io/milvus/client/v2/index"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	ark_embed "github.com/cloudwego/eino-ext/components/embedding/ark"
 
@@ -129,10 +133,24 @@ func NewMilvusClient(ctx context.Context, cfg *conf.RAG, logger log.Logger) (*mi
 
 // EmbedStrings 调用 Volcengine Ark Embedding API 进行文本向量化
 func (c *milvusClient) EmbedStrings(ctx context.Context, texts []string) ([][]float64, error) {
+	ctx, span := otel.Tracer("makejob.rag").Start(ctx, "ark.embed",
+		trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("llm.provider", "volcengine_ark"),
+		attribute.String("embed.model", c.modelName),
+		attribute.Int("embed.text_count", len(texts)),
+	)
 	c.mu.RLock()
 	embedder := c.embedder
 	c.mu.RUnlock()
-	return embedder.EmbedStrings(ctx, texts)
+	res, err := embedder.EmbedStrings(ctx, texts)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	return res, nil
 }
 
 // UpdateEmbeddingModel 运行时更新 Embedding 模型，并重建 Ark Embedder。
@@ -158,6 +176,16 @@ func (c *milvusClient) UpdateEmbeddingModel(ctx context.Context, modelName strin
 
 // Search 在 Milvus 中进行向量相似度搜索（对齐单体 retriever.go：WithANNSField + 双重 metadata 解析）
 func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, collection string, filters map[string]string) ([]biz.Document, error) {
+	ctx, span := otel.Tracer("makejob.rag").Start(ctx, "milvus.search",
+		trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "milvus"),
+		attribute.String("db.collection", collection),
+		attribute.Int("db.top_k", topK),
+		attribute.Int("db.filter_count", len(filters)),
+	)
+
 	searchOpt := milvusclient.NewSearchOption(collection, topK, []entity.Vector{
 		entity.FloatVector(vector),
 	}).
@@ -172,6 +200,8 @@ func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, c
 
 	resultSets, err := c.client.Search(ctx, searchOpt)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, errors.ServiceUnavailable("RAG_CONNECTION_FAILED", "Milvus搜索失败")
 	}
 	if len(resultSets) == 0 {
@@ -227,6 +257,7 @@ func (c *milvusClient) Search(ctx context.Context, vector []float32, topK int, c
 		docs = append(docs, doc)
 	}
 
+	span.SetAttributes(attribute.Int("db.results_count", len(docs)))
 	return docs, nil
 }
 

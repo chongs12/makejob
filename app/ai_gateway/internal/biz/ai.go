@@ -278,6 +278,7 @@ func (uc *InterviewAgentUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
@@ -480,6 +481,7 @@ func (uc *PlanAgentUseCase) saveLog(ctx context.Context, scene, model string, re
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
@@ -705,6 +707,7 @@ func (uc *CompanionAgentUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
@@ -984,6 +987,7 @@ func (uc *QuizAnalyzerUseCase) saveLog(ctx context.Context, scene, model string,
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
@@ -1073,6 +1077,7 @@ func (uc *ResumeParserUseCase) saveLog(ctx context.Context, scene, model string,
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {
@@ -1173,6 +1178,7 @@ func (uc *Live2DDirectorUseCase) saveLog(ctx context.Context, scene, model strin
 		logEntry.Status = "success"
 	}
 	// FIX: 记录日志写入失败，但不影响主流程
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {

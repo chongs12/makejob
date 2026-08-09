@@ -12,6 +12,10 @@ import (
 	"time"
 
 	kratoserr "github.com/go-kratos/kratos/v2/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"makejob/app/ai_gateway/internal/biz"
 	"makejob/app/ai_gateway/internal/conf"
@@ -45,8 +49,19 @@ func NewOpenAILLMClient(cfg *conf.Fallback) biz.LLMClient {
 }
 
 // Chat 调用 OpenAI 兼容 Chat Completions，支持从 ExtraParamsJSON 读取运行时覆盖。
-func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, config *biz.AIConfig) (*biz.LLMResponse, error) {
-	if err := ctx.Err(); err != nil {
+func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, config *biz.AIConfig) (resp *biz.LLMResponse, err error) {
+	// openai.chat span：备用 LLM 调用，用入参 ctx 创建以继承上游 trace。
+	ctx, span := otel.Tracer("makejob.ai").Start(ctx, "openai.chat",
+		trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	if err = ctx.Err(); err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", llmFallbackErrorMessage(err, 0))
 	}
 
@@ -63,6 +78,12 @@ func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, conf
 	if config != nil && config.Model != "" {
 		model = config.Model
 	}
+	span.SetAttributes(
+		attribute.String("llm.provider", "openai_compatible"),
+		attribute.String("llm.model", model),
+		attribute.Int("llm.message_count", len(messages)),
+		attribute.Bool("llm.is_fallback", true),
+	)
 
 	reqMessages := make([]chatMessage, 0, len(messages))
 	for _, m := range messages {
@@ -100,18 +121,18 @@ func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, conf
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := c.client.Do(req)
+	httpResp, err := c.client.Do(req)
 	if err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", llmFallbackErrorMessage(err, effectiveTimeout))
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "读取 LLM 响应失败")
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if httpResp.StatusCode != http.StatusOK {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "调用备用模型 API 返回非 200 状态")
 	}
 
@@ -137,11 +158,17 @@ func (c *openaiLLMClient) Chat(ctx context.Context, messages []biz.Message, conf
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "备用模型返回空内容（content 与 reasoning_content 均为空），请检查模型配置/额度/max_tokens")
 	}
 
-	return &biz.LLMResponse{
+	resp = &biz.LLMResponse{
 		Content:      content,
 		InputTokens:  chatResp.Usage.PromptTokens,
 		OutputTokens: chatResp.Usage.CompletionTokens,
-	}, nil
+	}
+	span.SetAttributes(
+		attribute.Int("gen_ai.usage.prompt_tokens", resp.InputTokens),
+		attribute.Int("gen_ai.usage.completion_tokens", resp.OutputTokens),
+		attribute.Int("gen_ai.usage.total_tokens", resp.InputTokens+resp.OutputTokens),
+	)
+	return resp, nil
 }
 
 // llmFallbackErrorMessage 将底层错误收敛为备用模型专用的用户可读文案。

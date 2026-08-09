@@ -108,7 +108,7 @@ func (uc *InterviewSessionUseCase) StartInterview(ctx context.Context, req *Star
 	// 必须补一个 user 轮驱动生成，与报告路径保持一致。
 	messages = ensureTrailingUserTurn(messages, "请根据以上要求生成第一道面试题，只返回 JSON 对象。")
 
-	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	llmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer cancel()
 
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
@@ -207,7 +207,7 @@ func (uc *InterviewSessionUseCase) EvaluateAnswer(ctx context.Context, req *Eval
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
 	messages = append(messages, session.History...)
 
-	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	llmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer cancel()
 
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
@@ -302,7 +302,7 @@ func (uc *InterviewSessionUseCase) GetNextQuestion(ctx context.Context, req *Get
 	messages := []Message{{Role: "system", Content: buildJSONContractPrompt(promptText, schema)}}
 	messages = append(messages, session.History...)
 
-	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	llmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer cancel()
 
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
@@ -366,7 +366,7 @@ func (uc *InterviewSessionUseCase) GenerateReport(ctx context.Context, req *Gene
 	// 手动结束面试时历史常以"未作答的题目(assistant)"结尾，推理模型会因此返回空内容，必须补 user 轮驱动生成。
 	messages = ensureTrailingUserTurn(messages, "请根据以上完整对话历史，生成最终的面试报告。")
 
-	llmCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	llmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer cancel()
 
 	resp, err := uc.llm.Chat(llmCtx, messages, cfg)
@@ -632,6 +632,7 @@ func (uc *InterviewSessionUseCase) saveLog(ctx context.Context, scene, model str
 	} else {
 		logEntry.Status = "success"
 	}
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {

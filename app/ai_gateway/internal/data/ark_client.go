@@ -13,6 +13,10 @@ import (
 	"time"
 
 	kratoserr "github.com/go-kratos/kratos/v2/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"makejob/app/ai_gateway/internal/biz"
 	"makejob/app/ai_gateway/internal/conf"
@@ -79,8 +83,19 @@ type chatResponse struct {
 }
 
 // Chat 调用 ARK Chat Completions，并按统一错误语义返回结果。
-func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config *biz.AIConfig) (*biz.LLMResponse, error) {
-	if err := ctx.Err(); err != nil {
+func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config *biz.AIConfig) (resp *biz.LLMResponse, err error) {
+	// ark.chat span：记录 LLM 调用（provider/model/thinking/usage），用入参 ctx 创建以继承上游 RPC trace。
+	ctx, span := otel.Tracer("makejob.ai").Start(ctx, "ark.chat",
+		trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+
+	if err = ctx.Err(); err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", llmCallErrorMessage(err, 0))
 	}
 
@@ -89,6 +104,14 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 	baseURL := strings.TrimRight(c.baseURL, "/")
 	if config != nil && config.Model != "" {
 		model = config.Model
+	}
+	span.SetAttributes(
+		attribute.String("llm.provider", "volcengine_ark"),
+		attribute.String("llm.model", model),
+		attribute.Int("llm.message_count", len(messages)),
+	)
+	if thinking := resolveThinkingOverride(config); thinking != nil {
+		span.SetAttributes(attribute.String("llm.thinking_mode", thinking.Type))
 	}
 	if override := resolveAIConfigRuntimeValue(config, "ai_api_key"); override != "" {
 		apiKey = override
@@ -131,18 +154,18 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := c.client.Do(req)
+	httpResp, err := c.client.Do(req)
 	if err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", llmCallErrorMessage(err, effectiveTimeout))
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "读取 LLM 响应失败")
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if httpResp.StatusCode != http.StatusOK {
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", "调用模型 API 返回非 200 状态")
 	}
 
@@ -172,11 +195,17 @@ func (c *arkLLMClient) Chat(ctx context.Context, messages []biz.Message, config 
 		return nil, kratoserr.ServiceUnavailable("LLM_CALL_FAILED", fmt.Sprintf("模型返回空内容（content 与 reasoning_content 均为空，finish_reason=%s），请检查消息结尾角色/模型配置/max_tokens", finishReason))
 	}
 
-	return &biz.LLMResponse{
+	resp = &biz.LLMResponse{
 		Content:      content,
 		InputTokens:  chatResp.Usage.PromptTokens,
 		OutputTokens: chatResp.Usage.CompletionTokens,
-	}, nil
+	}
+	span.SetAttributes(
+		attribute.Int("gen_ai.usage.prompt_tokens", resp.InputTokens),
+		attribute.Int("gen_ai.usage.completion_tokens", resp.OutputTokens),
+		attribute.Int("gen_ai.usage.total_tokens", resp.InputTokens+resp.OutputTokens),
+	)
+	return resp, nil
 }
 
 // resolveThinkingOverride 将抽象的 ai_thinking_mode 配置翻译为 ARK thinking 字段：

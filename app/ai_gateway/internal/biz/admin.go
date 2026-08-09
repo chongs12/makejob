@@ -199,6 +199,7 @@ func (uc *AdminUseCase) saveLog(ctx context.Context, scene, model string, resp *
 		logEntry.Status = "error"
 		logEntry.ErrorMsg = callErr.Error()
 	}
+	recordAICallMetrics(scene, model, logEntry.Status, logEntry.InputTokens, logEntry.OutputTokens, latencyMs)
 	logCtx, cancel := newCallLogContext(ctx)
 	defer cancel()
 	if err := uc.callLogRepo.Create(logCtx, logEntry); err != nil {

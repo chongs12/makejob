@@ -8,6 +8,10 @@ import (
 	"sync"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Document 检索结果领域实体
@@ -62,7 +66,24 @@ func NewRetrieveUseCase(embedder Embedder, store VectorStore, collection string,
 }
 
 // Retrieve 将查询文本向量化后在 Milvus 中检索最相似的文档（FIX C7: 透传 filters）
-func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int, filters map[string]string) ([]Document, error) {
+func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int, filters map[string]string) (docs []Document, err error) {
+	ctx, span := otel.Tracer("makejob.rag").Start(ctx, "rag.retrieve",
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.SetAttributes(attribute.Int("rag.results_count", len(docs)))
+	}()
+	span.SetAttributes(
+		attribute.Int("rag.query_length", len([]rune(query))),
+		attribute.Int("rag.top_k", topK),
+		attribute.String("rag.collection", uc.CollectionName()),
+		attribute.Int("rag.filter_count", len(filters)),
+	)
+
 	if topK <= 0 {
 		topK = uc.defaultTopK
 	}
@@ -84,7 +105,7 @@ func (uc *RetrieveUseCase) Retrieve(ctx context.Context, query string, topK int,
 	}
 
 	// 在向量库中搜索
-	docs, err := uc.vectorStore.Search(ctx, vec32, topK, uc.CollectionName(), filters)
+	docs, err = uc.vectorStore.Search(ctx, vec32, topK, uc.CollectionName(), filters)
 	if err != nil {
 		return nil, ErrRAGConnectionFailed.WithCause(err)
 	}

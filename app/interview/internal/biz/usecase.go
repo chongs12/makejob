@@ -9,6 +9,10 @@ import (
 
 	kratosErr "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // 业务错误码
@@ -366,9 +370,18 @@ func (uc *InterviewUseCase) SubmitAnswer(ctx context.Context, interviewID, userI
 		return nil, err
 	}
 
-	// 异步写入学习档案
+	// 异步写入学习档案：用 span ctx 派生，避免 context.Background() 断链
+	//（trace + gRPC traceparent 透传到 learning_archive 服务）
+	asyncCtx, archiveSpan := otel.Tracer("makejob.interview").Start(ctx, "archive.write_entry.async",
+		trace.WithSpanKind(trace.SpanKindInternal))
+	archiveSpan.SetAttributes(
+		attribute.Int64("interview.id", int64(interviewID)),
+		attribute.Int64("question.index", int64(index)),
+		attribute.String("archive.source_type", "interview_answer"),
+	)
 	go func() {
-		archiveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer archiveSpan.End()
+		archiveCtx, cancel := context.WithTimeout(asyncCtx, 5*time.Second)
 		defer cancel()
 		if err := uc.archive.WriteEntry(archiveCtx, &ArchiveEntry{
 			UserID:          interview.UserID,
@@ -615,7 +628,21 @@ func (uc *InterviewUseCase) ProcessResumeParse(ctx context.Context, interviewID,
 }
 
 // GenerateReport MQ 消费者：调用 AI 生成面试报告，保存报告记录并更新面试状态
-func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, userID uint64) error {
+func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, userID uint64) (err error) {
+	ctx, span := otel.Tracer("makejob.interview").Start(ctx, "interview.generate_report",
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+	}()
+	span.SetAttributes(
+		attribute.Int64("interview.id", int64(interviewID)),
+		attribute.Int64("user.id", int64(userID)),
+	)
+
 	log.Infof("[ReportGen] start: interview_id=%d user_id=%d", interviewID, userID)
 
 	// 整体超时保护：避免 AI 调用卡住导致 MQ 消费者永久阻塞
@@ -631,6 +658,16 @@ func (uc *InterviewUseCase) GenerateReport(ctx context.Context, interviewID, use
 	if err != nil {
 		return err
 	}
+	// report.type 属性（knowledge/job/realtime/standard）
+	reportType := "standard"
+	if interview.InterviewType == "knowledge" {
+		reportType = "knowledge"
+	} else if interview.InterviewType == "job" {
+		reportType = "job"
+	} else if IsRealtimeInterview(interview) {
+		reportType = "realtime"
+	}
+	span.SetAttributes(attribute.String("report.type", reportType))
 
 	// 幂等检查：已完成的面试跳过报告生成
 	if interview.Status == "completed" {
