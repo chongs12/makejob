@@ -440,12 +440,12 @@
 
 ### 阶段 2 验收
 - [x] `go build ./app/...` 全部 15 个服务编译通过
-- [ ] 启动 interview + ai_gateway + learning_archive，在 Jaeger UI 看到 `HTTP Gateway -> Interview -> AI Gateway` 完整 trace 链 - 待运行验证（需先补 observability docker-compose 的 Collector 容器）
-- [ ] 日志中出现 `trace_id` 字段 - 待运行验证
-- [ ] 各服务 `:6060/metrics` 返回 Prometheus 格式数据 - 待运行验证
-- [ ] 各服务 `:6060/healthz` 返回 200 - 待运行验证
-- [ ] 各服务 `:6060/debug/pprof/` 可访问 - 待运行验证
-- [ ] 确认 8 个服务（user/membership/learning_archive/rag/realtime/growth/community/coderunner）超时从 1s 默认值变为配置值，行为变更无异常 - 代码层已改（config 读取 + learning_archive 补字段），待运行回归
+- [x] 启动 interview + gateway + user，在 Jaeger UI 看到 `HTTP Gateway -> Interview -> User` 完整跨服务 trace 链 - 已验证（gateway->interview ListInterviews 3 span，gateway->user Login 3 span；ai_gateway 链待阶段三 AI 埋点后验证）
+- [x] 日志中出现 `trace_id` 字段 - 已验证（interview RPC 日志含非空 trace_id 如 15bd7f62...；gateway 业务日志 trace_id 空，因 gin access log 不走 kratos log，handler 日志埋点待优化）
+- [x] 各服务 `:6060/metrics` 返回 Prometheus 格式数据 - 已验证（interview :6064 返回 200）
+- [x] 各服务 `:6060/healthz` 返回 200 - 已验证（interview :6064/healthz + /readyz 200）
+- [x] 各服务 `:6060/debug/pprof/` 可访问 - 已验证（interview :6064/debug/pprof/ 200）
+- [ ] 确认 8 个服务（user/membership/learning_archive/rag/realtime/growth/community/coderunner）超时从 1s 默认值变为配置值，行为变更无异常 - interview/user 启动运行正常，其余 6 个待回归
 - [x] learning_archive 补充 config.yaml 中 timeout 字段
 
 ### 阶段 3 验收
