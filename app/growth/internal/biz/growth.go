@@ -346,8 +346,6 @@ func NewGrowthUseCase(
 
 // GetGrowthSummary 获取用户成长摘要，聚合多个下游服务数据，失败时降级处理
 func (uc *GrowthUseCase) GetGrowthSummary(ctx context.Context, userID uint64) (*GrowthSummary, error) {
-	// 将 incoming metadata 中的 JWT token 转发到 outgoing metadata，供下游服务鉴权
-	ctx = auth.ForwardAccessToken(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -642,8 +640,6 @@ func focusSourceLabel(source string) string {
 
 // GetWeeklyFocus 获取本周学习重点，聚合焦点信号、弱项和计划数据生成推荐
 func (uc *GrowthUseCase) GetWeeklyFocus(ctx context.Context, userID uint64) (*WeeklyFocusResponse, error) {
-	// 将 incoming metadata 中的 JWT token 转发到 outgoing metadata，供下游服务鉴权
-	ctx = auth.ForwardAccessToken(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

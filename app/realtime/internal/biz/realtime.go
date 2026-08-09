@@ -12,6 +12,9 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/gorilla/websocket"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"makejob/app/realtime/internal/conf"
 )
@@ -97,7 +100,7 @@ type RealtimeSession struct {
 	mu           sync.Mutex
 	turnState    realtimeTurnState
 	sender       *wsSender
-	ctx          context.Context // 保存 HTTP 请求 context（含 token），供 gRPC 调用透传
+	ctx          context.Context    // 保存 HTTP 请求 context（含 token），供 gRPC 调用透传
 	questions    []RealtimeQuestion // 预生成题目副本（启动时从 rtCtx 复制）
 	currentQIdx  int                // 当前题目索引（用户每答完一题递增）
 }
@@ -205,13 +208,13 @@ func (m *SessionManager) Delete(sessionID string) {
 
 // RealtimeUseCase 实时会话业务用例
 type RealtimeUseCase struct {
-	interview         InterviewClient
-	rag               RAGClient
-	smgr              *SessionManager
-	volcFactory       VolcEngineFactory
+	interview          InterviewClient
+	rag                RAGClient
+	smgr               *SessionManager
+	volcFactory        VolcEngineFactory
 	volcSessionFactory VolcEngineSessionFactory
-	volcCfg           *conf.Volcengine
-	log               *log.Helper
+	volcCfg            *conf.Volcengine
+	log                *log.Helper
 }
 
 // NewRealtimeUseCase 创建实时会话业务用例
@@ -898,6 +901,17 @@ func (uc *RealtimeUseCase) handleVolcEvent(ctx context.Context, session *Realtim
 		EventChatEnded              = 559
 	)
 
+	// 只为关键里程碑事件创建 span（避免高频音频帧/ASR 片段刷屏），
+	// 使 trace 能看到实时会话的事件时序（ASR 结束 -> Chat 回复 -> TTS）。
+	if spanName, ok := keyVolcEventName(event.Type); ok {
+		var span trace.Span
+		ctx, span = otel.Tracer("makejob.realtime").Start(ctx, "realtime.volc."+spanName,
+			trace.WithSpanKind(trace.SpanKindConsumer),
+			trace.WithAttributes(attribute.Int("volc.event_type", int(event.Type))),
+		)
+		defer span.End()
+	}
+
 	switch event.Type {
 	case EventASRInfo:
 		_ = session.sender.sendBargeIn()
@@ -923,6 +937,25 @@ func (uc *RealtimeUseCase) handleVolcEvent(ctx context.Context, session *Realtim
 	case EventSessionFinished:
 		_ = session.sender.sendState("ready", "实时会话已结束。")
 		session.Cancel()
+	}
+}
+
+// keyVolcEventName 返回关键里程碑事件的可读名；仅这些事件创建 span，
+// 高频事件（音频帧/ASR 片段/TTS 句子）不创建，避免 trace 刷屏。
+func keyVolcEventName(t int) (string, bool) {
+	switch t {
+	case 459:
+		return "asr_ended", true // 用户说完，触发 RAG 注入 + AI 回复
+	case 550:
+		return "chat_response", true // LLM 回复片段
+	case 559:
+		return "chat_ended", true // LLM 回复结束
+	case 359:
+		return "tts_ended", true // 语音合成结束
+	case 152:
+		return "session_finished", true // 会话结束
+	default:
+		return "", false
 	}
 }
 

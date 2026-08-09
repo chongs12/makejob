@@ -13,6 +13,7 @@ import (
 	sharedv1 "makejob/api/makejob/shared/v1"
 	"makejob/app/growth/internal/biz"
 	"makejob/app/growth/internal/conf"
+	"makejob/pkg/auth"
 	"makejob/pkg/middleware"
 )
 
@@ -26,7 +27,7 @@ type questionClient struct {
 
 // NewQuestionClient 创建题目服务客户端
 func NewQuestionClient(cfg *conf.DependentServices) (biz.QuestionClient, error) {
-	conn, err := grpc.Dial(cfg.QuestionAddr, middleware.CommonDialOptions()...)
+	conn, err := grpc.Dial(cfg.QuestionAddr, append(middleware.CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)
 	if err != nil {
 		return nil, fmt.Errorf("连接题目服务失败(%s): %w", cfg.QuestionAddr, err)
 	}
@@ -112,7 +113,7 @@ type planClient struct {
 
 // NewPlanClient 创建计划服务客户端
 func NewPlanClient(cfg *conf.DependentServices) (biz.PlanClient, error) {
-	conn, err := grpc.Dial(cfg.PlanAddr, middleware.CommonDialOptions()...)
+	conn, err := grpc.Dial(cfg.PlanAddr, append(middleware.CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)
 	if err != nil {
 		return nil, fmt.Errorf("连接计划服务失败(%s): %w", cfg.PlanAddr, err)
 	}
@@ -182,7 +183,7 @@ type archiveClient struct {
 
 // NewArchiveClient 创建学习档案服务客户端
 func NewArchiveClient(cfg *conf.DependentServices) (biz.LearningArchiveClient, error) {
-	conn, err := grpc.Dial(cfg.LearningArchiveAddr, middleware.CommonDialOptions()...)
+	conn, err := grpc.Dial(cfg.LearningArchiveAddr, append(middleware.CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)
 	if err != nil {
 		return nil, fmt.Errorf("连接学习档案服务失败(%s): %w", cfg.LearningArchiveAddr, err)
 	}
@@ -256,7 +257,7 @@ type interviewClient struct {
 
 // NewInterviewClient 创建面试服务客户端
 func NewInterviewClient(cfg *conf.DependentServices) (biz.InterviewClient, error) {
-	conn, err := grpc.Dial(cfg.InterviewAddr, middleware.CommonDialOptions()...)
+	conn, err := grpc.Dial(cfg.InterviewAddr, append(middleware.CommonDialOptions(), grpc.WithUnaryInterceptor(auth.ForwardTokenClientInterceptor()))...)
 	if err != nil {
 		return nil, fmt.Errorf("连接面试服务失败(%s): %w", cfg.InterviewAddr, err)
 	}
