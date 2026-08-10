@@ -441,7 +441,7 @@
 ### 阶段 2 验收
 - [x] `go build ./app/...` 全部 15 个服务编译通过
 - [x] 启动 interview + gateway + user，在 Jaeger UI 看到 `HTTP Gateway -> Interview -> User` 完整跨服务 trace 链 - 已验证（gateway->interview ListInterviews 3 span，gateway->user Login 3 span；ai_gateway 链待阶段三 AI 埋点后验证）
-- [x] 日志中出现 `trace_id` 字段 - 已验证（interview RPC 日志含非空 trace_id 如 15bd7f62...；gateway 业务日志 trace_id 空，因 gin access log 不走 kratos log，handler 日志埋点待优化）
+- [x] 日志中出现 `trace_id` 字段 - 已验证（interview RPC 日志含非空 trace_id 如 15bd7f62...；gateway access log 经 GinLoggerMiddleware 改走 kratos log，带 trace_id 如 c0ee5906...，commit b7209af）
 - [x] 各服务 `:6060/metrics` 返回 Prometheus 格式数据 - 已验证（interview :6064 返回 200）
 - [x] 各服务 `:6060/healthz` 返回 200 - 已验证（interview :6064/healthz + /readyz 200）
 - [x] 各服务 `:6060/debug/pprof/` 可访问 - 已验证（interview :6064/debug/pprof/ 200）
