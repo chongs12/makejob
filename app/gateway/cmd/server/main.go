@@ -60,8 +60,8 @@ func main() {
 	}
 	defer gw.Close()
 
-	// 创建 Gin 引擎
-	r := gin.Default()
+	// 创建 Gin 引擎（gin.New 不带默认 Logger/Recovery，手动注册以接入 kratos log + otelgin）
+	r := gin.New()
 	if assetsDir, err := live2dassets.EnsureAssetsDir(); err == nil && assetsDir != "" {
 		r.StaticFS(live2dassets.MountPath, gin.Dir(assetsDir, false))
 	} else if err != nil {
@@ -70,6 +70,10 @@ func main() {
 
 	// otelgin 中间件（最外层）：创建 root span，前端无 OTel 埋点，gateway 是 W3C trace 的起点。
 	r.Use(otelgin.Middleware("makejob.gateway"))
+	// panic 恢复（替代 gin.Default 自带的 Recovery）
+	r.Use(gin.Recovery())
+	// access log 走 kratos log，带 otelgin span 的 trace_id（替代 gin.Default 自带的 Logger）
+	r.Use(proxy.GinLoggerMiddleware())
 
 	// 业务 HTTP 指标（http_requests_total / http_request_duration_seconds）
 	r.Use(proxy.HTTPMetricsMiddleware())
