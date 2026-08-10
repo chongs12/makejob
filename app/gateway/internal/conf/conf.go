@@ -1,16 +1,17 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Bootstrap struct {
-	Server   *Server             `yaml:"server"`
-	Services map[string]*Service `yaml:"services"`
-	JWT      *JWT                `yaml:"jwt"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Server    *Server             `yaml:"server"`
+	Services  map[string]*Service `yaml:"services"`
+	JWT       *JWT                `yaml:"jwt"`
+	Telemetry *Telemetry          `yaml:"telemetry"`
 }
 
 type Server struct {
@@ -57,6 +58,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

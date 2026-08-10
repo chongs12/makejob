@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -12,7 +13,7 @@ type Bootstrap struct {
 	Data        *Data              `yaml:"data"`
 	JWT         *JWT               `yaml:"jwt"`
 	DepServices *DependentServices `yaml:"dependent_services"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Telemetry   *Telemetry         `yaml:"telemetry"`
 }
 
 // DependentServices 下游微服务地址配置
@@ -111,6 +112,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

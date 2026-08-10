@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -186,5 +187,6 @@ func Load(path string) (*Bootstrap, error) {
 		bc.Telemetry = &Telemetry{}
 	}
 
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }

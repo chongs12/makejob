@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -8,12 +9,12 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server             *Server             `yaml:"server"`
-	Data               *Data               `yaml:"data"`
-	JWT                *JWT                `yaml:"jwt"`
-	Volcengine         *Volcengine         `yaml:"volcengine"`
-	DependentServices  *DependentServices  `yaml:"dependent_services"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Server            *Server            `yaml:"server"`
+	Data              *Data              `yaml:"data"`
+	JWT               *JWT               `yaml:"jwt"`
+	Volcengine        *Volcengine        `yaml:"volcengine"`
+	DependentServices *DependentServices `yaml:"dependent_services"`
+	Telemetry         *Telemetry         `yaml:"telemetry"`
 }
 
 type Server struct {
@@ -52,9 +53,9 @@ type JWT struct {
 // Volcengine 火山引擎语音服务配置（对齐单体 volcengine.realtime 段）
 type Volcengine struct {
 	// 基础连接
-	AppID  string `yaml:"app_id"`
-	Token  string `yaml:"token"`
-	WSUrl  string `yaml:"ws_url"`
+	AppID string `yaml:"app_id"`
+	Token string `yaml:"token"`
+	WSUrl string `yaml:"ws_url"`
 
 	// 实时对话高级配置（对齐单体 VolcRealtimeDialogConfig）
 	Enabled         bool   `yaml:"enabled"`
@@ -131,6 +132,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

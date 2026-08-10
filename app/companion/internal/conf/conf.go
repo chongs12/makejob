@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -15,7 +16,7 @@ type Bootstrap struct {
 	TTS       *TTS       `yaml:"tts"`
 	ASR       *ASR       `yaml:"asr"`
 	Services  *Services  `yaml:"services"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Telemetry *Telemetry `yaml:"telemetry"`
 }
 
 // ASR 语音识别服务配置
@@ -41,22 +42,22 @@ type AI struct {
 
 // TTS 语音合成服务配置
 type TTS struct {
-	APIKey        string              `yaml:"api_key"`
-	Voice         string              `yaml:"voice"`
-	DefaultEngine string              `yaml:"default_engine"`
+	APIKey        string                `yaml:"api_key"`
+	Voice         string                `yaml:"voice"`
+	DefaultEngine string                `yaml:"default_engine"`
 	Engines       map[string]*TTSEngine `yaml:"engines"`
 }
 
 // TTSEngine 单个 TTS 供应商引擎配置
 type TTSEngine struct {
-	APIKey    string `yaml:"api_key"`
-	VoiceID   string `yaml:"voice_id"`
-	Model     string `yaml:"model"`
-	BaseURL   string `yaml:"base_url"`
-	GroupID   string `yaml:"group_id"`
-	AppID     string `yaml:"app_id"`
-	Format    string `yaml:"format"`
-	SampleRate int   `yaml:"sample_rate"`
+	APIKey     string `yaml:"api_key"`
+	VoiceID    string `yaml:"voice_id"`
+	Model      string `yaml:"model"`
+	BaseURL    string `yaml:"base_url"`
+	GroupID    string `yaml:"group_id"`
+	AppID      string `yaml:"app_id"`
+	Format     string `yaml:"format"`
+	SampleRate int    `yaml:"sample_rate"`
 }
 
 type Server struct {
@@ -144,6 +145,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

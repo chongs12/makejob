@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -8,12 +9,12 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	JWT    *JWT    `yaml:"jwt"`
-	ARK      *ARK      `yaml:"ark"`
-	Fallback *Fallback `yaml:"fallback"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Server    *Server    `yaml:"server"`
+	Data      *Data      `yaml:"data"`
+	JWT       *JWT       `yaml:"jwt"`
+	ARK       *ARK       `yaml:"ark"`
+	Fallback  *Fallback  `yaml:"fallback"`
+	Telemetry *Telemetry `yaml:"telemetry"`
 }
 
 // ARK 火山引擎 ARK 大模型平台配置
@@ -123,6 +124,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

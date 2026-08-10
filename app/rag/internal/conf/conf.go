@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -8,10 +9,10 @@ import (
 
 // Bootstrap Kratos 标准配置顶层结构
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	RAG    *RAG    `yaml:"rag"`
-	MQ     *MQ     `yaml:"mq"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Server    *Server    `yaml:"server"`
+	RAG       *RAG       `yaml:"rag"`
+	MQ        *MQ        `yaml:"mq"`
+	Telemetry *Telemetry `yaml:"telemetry"`
 }
 
 type Server struct {
@@ -31,14 +32,14 @@ type Server_GRPC struct {
 
 // RAG 向量检索配置（对齐单体 rag.Config）
 type RAG struct {
-	MilvusAddr     string `yaml:"milvus_addr"`
-	MilvusUser     string `yaml:"milvus_user"`
-	MilvusPassword string `yaml:"milvus_password"`
-	CollectionName string `yaml:"collection_name"`
-	ArkAPIKey      string `yaml:"ark_api_key"`
-	ArkBaseURL     string `yaml:"ark_base_url"`
-	EmbedModel     string `yaml:"embed_model"`
-	TopK           int    `yaml:"top_k"`
+	MilvusAddr     string  `yaml:"milvus_addr"`
+	MilvusUser     string  `yaml:"milvus_user"`
+	MilvusPassword string  `yaml:"milvus_password"`
+	CollectionName string  `yaml:"collection_name"`
+	ArkAPIKey      string  `yaml:"ark_api_key"`
+	ArkBaseURL     string  `yaml:"ark_base_url"`
+	EmbedModel     string  `yaml:"embed_model"`
+	TopK           int     `yaml:"top_k"`
 	ScoreThreshold float64 `yaml:"score_threshold"`
 }
 
@@ -100,6 +101,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 

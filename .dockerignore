@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# 构建产物
+bin/
+.gocache/
+.gotmp/
+
+# Node / 前端依赖（前端有独立 Dockerfile）
+node_modules/
+frontend-react/node_modules/
+frontend-react/apps/*/node_modules/
+frontend-react/**/dist/
+
+# 本地运行日志/临时
+*.log
+ai_gw_err.log
+asr_debug.log
+comp_err.log
+comp_out.log
+debug.log
+
+# 非后端代码/资产（减小构建上下文）
+Open-LLM-VTuber-Web/
+live2d-src/
+_skill_staging/
+docs/backend/
+对比分析*.md
+项目刨析指南.md
+
+# IDE / 工具
+.vscode/
+.trae/
+.agents/
+.claude/
+.mimocode/

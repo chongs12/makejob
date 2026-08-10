@@ -1,24 +1,27 @@
 package conf
 
 import (
+	"makejob/pkg/config"
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Bootstrap struct {
-	Server *Server `yaml:"server"`
-	Data   *Data   `yaml:"data"`
-	MQ     *MQ     `yaml:"mq"`
-	JWT    *JWT    `yaml:"jwt"`
-	Telemetry  *Telemetry  `yaml:"telemetry"`
+	Server    *Server    `yaml:"server"`
+	Data      *Data      `yaml:"data"`
+	MQ        *MQ        `yaml:"mq"`
+	JWT       *JWT       `yaml:"jwt"`
+	Telemetry *Telemetry `yaml:"telemetry"`
 }
 
 type Server struct {
 	HTTP *Server_HTTP `yaml:"http"`
 	GRPC *Server_GRPC `yaml:"grpc"`
 }
-type Server_HTTP struct{ Addr string `yaml:"addr"` }
+type Server_HTTP struct {
+	Addr string `yaml:"addr"`
+}
 type Server_GRPC struct {
 	Addr    string `yaml:"addr"`
 	Timeout string `yaml:"timeout"`
@@ -38,7 +41,9 @@ type MQ struct {
 	Exchange string `yaml:"exchange"`
 }
 
-type JWT struct{ Secret string `yaml:"secret"` }
+type JWT struct {
+	Secret string `yaml:"secret"`
+}
 
 func Load(path string) (*Bootstrap, error) {
 	data, err := os.ReadFile(path)
@@ -79,6 +84,7 @@ func Load(path string) (*Bootstrap, error) {
 	if bc.Telemetry == nil {
 		bc.Telemetry = &Telemetry{}
 	}
+	config.ApplyEnvOverrides(&bc)
 	return &bc, nil
 }
 
