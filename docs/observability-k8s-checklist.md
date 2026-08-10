@@ -325,109 +325,109 @@
 
 ### 5.1 kind 集群
 
-- [ ] `deploy/kind-cluster.yaml`
-  - [ ] kind 配置：1 control-plane + 2 worker
-  - [ ] `extraPortMappings`：8080（Ingress）、16686（Jaeger UI）、3000（Grafana）、9090（Prometheus）
-  - [ ] ingress-nginx controller 安装
-- [ ] `deploy/kind-setup.sh` 脚本
-  - [ ] 创建集群
-  - [ ] 加载本地镜像（`kind load docker-image`）
-  - [ ] 安装 ingress controller
-  - [ ] 安装 metrics-server（需 `--kubelet-insecure-tls` 参数）
-  - [ ] 基础设施容器部署（PostgreSQL/Redis/RabbitMQ/Piston 可用 Helm subchart 或外部 Service）
+- [x] `deploy/kind-cluster.yaml`
+  - [x] kind 配置：1 control-plane + 2 worker
+  - [x] `extraPortMappings`：8080（Ingress）、16686（Jaeger UI）、3000（Grafana）、9090（Prometheus）
+  - [x] ingress-nginx controller 安装
+- [x] `deploy/kind-setup.sh` 脚本
+  - [x] 创建集群
+  - [x] 加载本地镜像（`kind load docker-image`）
+  - [x] 安装 ingress controller
+  - [x] 安装 metrics-server（需 `--kubelet-insecure-tls` 参数）
+  - [x] 基础设施容器部署（PostgreSQL/Redis/RabbitMQ/Piston 可用 Helm subchart 或外部 Service）
 
 ### 5.2 Helm Chart 骨架
 
-- [ ] `deploy/helm/makejob/Chart.yaml`
-  - [ ] name: makejob, version: 0.1.0
-- [ ] `deploy/helm/makejob/values.yaml`
-  - [ ] 全局：image registry/tag、imagePullPolicy、env（dev/staging/prod）
-  - [ ] 服务列表（15 个 + 前端）：name、port、replicas、resources、config
-  - [ ] 可观测性栈配置
-  - [ ] 数据库/Redis/MQ 连接配置
-- [ ] `deploy/helm/makejob/templates/_helpers.tpl`
-  - [ ] `makejob.fullname`、`makejob.labels`、`makejob.selectorLabels`
-  - [ ] `makejob.serviceName`、`makejob.servicePort`
+- [x] `deploy/helm/makejob/Chart.yaml`
+  - [x] name: makejob, version: 0.1.0
+- [x] `deploy/helm/makejob/values.yaml`
+  - [x] 全局：image registry/tag、imagePullPolicy、env（dev/staging/prod）
+  - [x] 服务列表（15 个 + 前端）：name、port、replicas、resources、config
+  - [x] 可观测性栈配置
+  - [x] 数据库/Redis/MQ 连接配置
+- [x] `deploy/helm/makejob/templates/_helpers.tpl`
+  - [x] `makejob.fullname`、`makejob.labels`、`makejob.selectorLabels`
+  - [x] `makejob.serviceName`、`makejob.servicePort`
 
 ### 5.3 通用 Deployment 模板
 
-- [ ] `deploy/helm/makejob/templates/deployment.yaml`
-  - [ ] `{{- range $svc, $cfg := .Values.services }}` 遍历生成
-  - [ ] `values.yaml` 用 overrides map 做例外覆盖（95% 通用 + 5% overrides）
-  - [ ] 容器：image、ports（gRPC + telemetry HTTP）、env（从 ConfigMap/Secret 引用）
-  - [ ] livenessProbe: `/healthz` on :6060
-  - [ ] readinessProbe: `/readyz` on :6060
-  - [ ] resources: requests/limits（CPU/Memory）
-  - [ ] `terminationGracePeriodSeconds: 30`
-  - [ ] `preStop` hook（可选：`sleep 5` 让 LB 摘除）
-- [ ] Gateway 特殊处理
-  - [ ] HTTP port 8082 暴露
-  - [ ] 优雅停机已由阶段 2.4 保证
-- [ ] coderunner 例外：有 `:6060` telemetry（不例外），唯一例外是无业务 HTTP Service 端口
+- [x] `deploy/helm/makejob/templates/deployment.yaml`
+  - [x] `{{- range $svc, $cfg := .Values.services }}` 遍历生成
+  - [x] `values.yaml` 用 overrides map 做例外覆盖（95% 通用 + 5% overrides）
+  - [x] 容器：image、ports（gRPC + telemetry HTTP）、env（从 ConfigMap/Secret 引用）
+  - [x] livenessProbe: `/healthz` on :6060
+  - [x] readinessProbe: `/readyz` on :6060
+  - [x] resources: requests/limits（CPU/Memory）
+  - [x] `terminationGracePeriodSeconds: 30`
+  - [x] `preStop` hook（可选：`sleep 5` 让 LB 摘除）
+- [x] Gateway 特殊处理
+  - [x] HTTP port 8082 暴露
+  - [x] 优雅停机已由阶段 2.4 保证
+- [x] coderunner 例外：有 `:6060` telemetry（不例外），唯一例外是无业务 HTTP Service 端口
 
 ### 5.4 Service + Ingress
 
-- [ ] `deploy/helm/makejob/templates/service.yaml`
-  - [ ] 每个服务一个 ClusterIP Service（gRPC port + telemetry port）
-  - [ ] Gateway 额外暴露 HTTP port
-- [ ] `deploy/helm/makejob/templates/ingress.yaml`
-  - [ ] 单 Ingress 规则：
+- [x] `deploy/helm/makejob/templates/service.yaml`
+  - [x] 每个服务一个 ClusterIP Service（gRPC port + telemetry port）
+  - [x] Gateway 额外暴露 HTTP port
+- [x] `deploy/helm/makejob/templates/ingress.yaml`
+  - [x] 单 Ingress 规则：
     - `/api/v1` -> gateway:8082（含 WS upgrade 注解）
     - `/live2d-assets` -> gateway:8082
     - `/` -> frontend:80
-  - [ ] `nginx.ingress.kubernetes.io/proxy-body-size: 50m`
-  - [ ] WS 超时注解用 `$cfg.ingress.websocket` 条件判断
+  - [x] `nginx.ingress.kubernetes.io/proxy-body-size: 50m`
+  - [x] WS 超时注解用 `$cfg.ingress.websocket` 条件判断
 
 ### 5.5 ConfigMap + Secret
 
-- [ ] `deploy/helm/makejob/templates/configmap.yaml`
-  - [ ] 每个服务的 config.yaml 挂载（非敏感部分）
-  - [ ] config.yaml 内服务地址用 K8s Service DNS（如 `interview:9004`）
-- [ ] `deploy/helm/makejob/templates/secret.yaml`
-  - [ ] `DB_PASSWORD`、`REDIS_PASSWORD`、`JWT_SECRET`、`ARK_API_KEY`
-  - [ ] MQ URL（含密码）
+- [x] `deploy/helm/makejob/templates/configmap.yaml`
+  - [x] 每个服务的 config.yaml 挂载（非敏感部分）
+  - [x] config.yaml 内服务地址用 K8s Service DNS（如 `interview:9004`）
+- [x] `deploy/helm/makejob/templates/secret.yaml`
+  - [x] `DB_PASSWORD`、`REDIS_PASSWORD`、`JWT_SECRET`、`ARK_API_KEY`
+  - [x] MQ URL（含密码）
 
 ### 5.6 HPA
 
-- [ ] `deploy/helm/makejob/templates/hpa.yaml`
-  - [ ] gateway: CPU > 70% -> 2-5 replicas
-  - [ ] companion: CPU > 70% -> 2-5 replicas
-  - [ ] ai_gateway: CPU > 70% -> 2-3 replicas
-  - [ ] interview: CPU > 70% -> 2-3 replicas
-  - [ ] Deployment 必须设置 `resources.requests.cpu`（否则 HPA 无基准）
+- [x] `deploy/helm/makejob/templates/hpa.yaml`
+  - [x] gateway: CPU > 70% -> 2-5 replicas
+  - [x] companion: CPU > 70% -> 2-5 replicas
+  - [x] ai_gateway: CPU > 70% -> 2-3 replicas
+  - [x] interview: CPU > 70% -> 2-3 replicas
+  - [x] Deployment 必须设置 `resources.requests.cpu`（否则 HPA 无基准）
 
 ### 5.7 可观测性栈 K8s 部署
 
-- [ ] `deploy/helm/makejob/charts/observability/` 子 Chart
-  - [ ] OTel Collector（Deployment + ConfigMap）
-    - [ ] 接收 OTLP gRPC :4317
-    - [ ] 只导出 trace 到 Jaeger（不导出 metrics）
-    - [ ] 采样过滤（可选）
-  - [ ] `collector.yaml` 配置文件（本地 dev 栈已写 observability/otel-collector/collector.yaml，K8s ConfigMap 待部署时复用此配置）
+- [x] `deploy/helm/makejob/charts/observability/` 子 Chart
+  - [x] OTel Collector（Deployment + ConfigMap）
+    - [x] 接收 OTLP gRPC :4317
+    - [x] 只导出 trace 到 Jaeger（不导出 metrics）
+    - [x] 采样过滤（可选）
+  - [x] `collector.yaml` 配置文件（本地 dev 栈已写 observability/otel-collector/collector.yaml，K8s ConfigMap 待部署时复用此配置）
     - [x] receivers: otlp (grpc :4317)
     - [x] processors: batch（sampling 配好但默认关闭，demo 用 AlwaysOn）
     - [x] exporters: otlp/jaeger + debug（本地调试）
   - [x] `observability/docker-compose.yml` 增加 OTel Collector 容器
     - [x] Jaeger :4317 改为从 Collector 收数据（服务不直连 Jaeger）
-  - [ ] Jaeger（Deployment + Service）
-    - [ ] `all-in-one:1.57`
-    - [ ] `COLLECTOR_OTLP_ENABLED=true`
-    - [ ] Service: 16686（UI）+ 4317（OTLP，仅 ClusterIP）
-  - [ ] Prometheus（Deployment + ConfigMap + Service）
-    - [ ] `kube-prometheus-stack` 或独立 `prom/prometheus`
-    - [ ] 抓取配置：kubernetes_sd_configs 或 PodMonitor
-    - [ ] 抓取所有 Pod 的 :6060/metrics
-  - [ ] Grafana（Deployment + ConfigMap + Service）
-    - [ ] 数据源：Prometheus + Jaeger
-    - [ ] 导入 `observability/grafana/dashboards/makejob-overview.json`
-    - [ ] 新增 AI 调用仪表盘（ai_calls_total / ai_tokens_total / ai_call_duration_seconds）
+  - [x] Jaeger（Deployment + Service）
+    - [x] `all-in-one:1.57`
+    - [x] `COLLECTOR_OTLP_ENABLED=true`
+    - [x] Service: 16686（UI）+ 4317（OTLP，仅 ClusterIP）
+  - [x] Prometheus（Deployment + ConfigMap + Service）
+    - [x] `kube-prometheus-stack` 或独立 `prom/prometheus`
+    - [x] 抓取配置：kubernetes_sd_configs 或 PodMonitor
+    - [x] 抓取所有 Pod 的 :6060/metrics
+  - [x] Grafana（Deployment + ConfigMap + Service）
+    - [x] 数据源：Prometheus + Jaeger
+    - [x] 导入 `observability/grafana/dashboards/makejob-overview.json`
+    - [x] 新增 AI 调用仪表盘（ai_calls_total / ai_tokens_total / ai_call_duration_seconds）
 
 ### 5.8 Prometheus 服务发现
 
-- [ ] 改 Prometheus 抓取配置
-  - [ ] 从 `static_configs: [host.docker.internal:8082]` 改为 `kubernetes_sd_configs`
-  - [ ] 按 Pod label `makejob.io/scrape: "true"` 自动发现
-  - [ ] 抓取端口 6060，path `/metrics`
+- [x] 改 Prometheus 抓取配置
+  - [x] 从 `static_configs: [host.docker.internal:8082]` 改为 `kubernetes_sd_configs`
+  - [x] 按 Pod label `makejob.io/scrape: "true"` 自动发现
+  - [x] 抓取端口 6060，path `/metrics`
 
 ---
 
