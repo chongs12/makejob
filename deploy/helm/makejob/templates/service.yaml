@@ -1,0 +1,52 @@
+{{/*
+Service 模板：每个服务一个 ClusterIP（gRPC + telemetry HTTP）；gateway 额外暴露 HTTP
+对应 docs/observability-k8s-checklist.md 5.4
+*/}}
+{{- range $svcName, $cfg := .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $svcName }}
+  labels:
+    {{- include "makejob.labels" $ | nindent 4 }}
+    makejob.io/service: {{ $svcName }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "makejob.selectorLabels" $ | nindent 4 }}
+    makejob.io/service: {{ $svcName }}
+  ports:
+    - name: telemetry
+      port: 6060
+      targetPort: 6060
+    {{- if $cfg.grpcPort }}
+    - name: grpc
+      port: {{ $cfg.grpcPort }}
+      targetPort: grpc
+    {{- end }}
+    {{- if $cfg.httpPort }}
+    - name: http
+      port: {{ $cfg.httpPort }}
+      targetPort: http
+    {{- end }}
+{{- end }}
+
+{{/* 前端 Service */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-frontend
+  labels:
+    {{- include "makejob.labels" . | nindent 4 }}
+    makejob.io/service: frontend
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "makejob.selectorLabels" . | nindent 4 }}
+    makejob.io/service: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

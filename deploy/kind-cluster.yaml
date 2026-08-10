@@ -1,0 +1,18 @@
+# kind 集群配置：1 control-plane + 2 worker
+# 对应 docs/observability-k8s-checklist.md 5.1
+# extraPortMappings 把宿主端口映射到 control-plane，供 Ingress/Jaeger/Grafana/Prometheus 访问
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 80     # Ingress HTTP
+        hostPort: 8080
+      - containerPort: 16686  # Jaeger UI
+        hostPort: 16686
+      - containerPort: 3000   # Grafana
+        hostPort: 3000
+      - containerPort: 9090   # Prometheus
+        hostPort: 9090
+  - role: worker
+  - role: worker

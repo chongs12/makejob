@@ -1,0 +1,65 @@
+# OTel Collector: Deployment + Service + ConfigMap
+# 对应 docs/observability-k8s-checklist.md 5.7
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: makejob-otel-collector-config
+  labels:
+    app.kubernetes.io/name: otel-collector
+data:
+  config.yaml: |
+    {{- .Files.Get "collector.yaml" | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: makejob-otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+spec:
+  replicas: {{ .Values.collector.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+    spec:
+      containers:
+        - name: collector
+          image: {{ .Values.collector.image }}
+          args: ["--config=/etc/otelcol/config.yaml"]
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+              readOnly: true
+          resources:
+            {{- toYaml .Values.collector.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: makejob-otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318

@@ -1,0 +1,95 @@
+# Prometheus: Deployment + ConfigMap(kubernetes_sd_configs, 5.8) + Service
+# 对应 docs/observability-k8s-checklist.md 5.7 + 5.8
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: makejob-prometheus-config
+  labels:
+    app.kubernetes.io/name: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      # 自动发现所有带 makejob.io/scrape=true label 的 Pod，抓取 :6060/metrics
+      - job_name: 'makejob-services'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_makejob_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__address__]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: $1:6060
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_makejob_io_service]
+            action: replace
+            target_label: service
+      # 抓取 gateway :8082/metrics（gateway 额有的 HTTP metrics）
+      - job_name: 'makejob-gateway-http'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_makejob_io_service]
+            action: keep
+            regex: gateway
+          - source_labels: [__address__]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: $1:8082
+            target_label: __address__
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: makejob-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  replicas: {{ .Values.prometheus.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ .Values.prometheus.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=7d
+          ports:
+            - name: web
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+          resources:
+            {{- toYaml .Values.prometheus.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: makejob-prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: makejob-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090
+      nodePort: 30090

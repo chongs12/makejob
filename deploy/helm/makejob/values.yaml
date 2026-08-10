@@ -1,0 +1,118 @@
+# MakeJob Helm Chart values.yaml
+# 对应 docs/observability-k8s-checklist.md 5.2
+
+# ===== 全局 =====
+global:
+  imageRegistry: ""           # 留空 = 本地构建的镜像（kind load）
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+  env: dev                    # dev / staging / prod
+  # 敏感配置通过 Secret + env 注入（conf.go ApplyEnvOverrides 替换 ${VAR}）
+  secretEnv:
+    DB_SOURCE: "host=postgresql port=5432 user=postgres password=password dbname=makejob sslmode=disable"
+    JWT_SECRET: "makejob-secret-key-change-in-production"
+    ARK_API_KEY: ""
+    MQ_URL: "amqp://makejob:makejob123@rabbitmq:5672//makejob"
+
+# ===== 服务列表（15 个后端 + 前端）=====
+# 每个服务: name / grpcPort / httpPort / replicas / resources / config(config.yaml 内容)
+# K8s 内 peer 地址用 Service DNS（如 interview:9004）
+# OTLP 用 collector:4317
+# telemetry http_port 统一 6060（K8s 内不偏移，每 Pod 独立网络命名空间）
+services:
+  gateway:
+    replicas: 2
+    httpPort: 8082
+    grpcPort: 0               # gateway 无 gRPC server
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+    hpa: { enabled: true, maxReplicas: 5, cpu: 70 }
+  user:
+    replicas: 2
+    grpcPort: 9101
+    httpPort: 8001
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  membership:
+    replicas: 2
+    grpcPort: 9002
+    httpPort: 8002
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  question:
+    replicas: 2
+    grpcPort: 9003
+    httpPort: 8003
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
+  interview:
+    replicas: 2
+    grpcPort: 9004
+    httpPort: 8004
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+    hpa: { enabled: true, maxReplicas: 3, cpu: 70 }
+  realtime:
+    replicas: 2
+    grpcPort: 9005
+    httpPort: 8085            # WS server
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
+  growth:
+    replicas: 2
+    grpcPort: 9006
+    httpPort: 8006
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  plan:
+    replicas: 2
+    grpcPort: 9007
+    httpPort: 8007
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
+  companion:
+    replicas: 2
+    grpcPort: 9008
+    httpPort: 8008
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+    hpa: { enabled: true, maxReplicas: 5, cpu: 70 }
+  community:
+    replicas: 2
+    grpcPort: 9009
+    httpPort: 8009
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  learning_archive:
+    replicas: 2
+    grpcPort: 9010
+    httpPort: 8010
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  ai_gateway:
+    replicas: 2
+    grpcPort: 9011
+    httpPort: 8011
+    resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+    hpa: { enabled: true, maxReplicas: 3, cpu: 70 }
+  rag:
+    replicas: 2
+    grpcPort: 9012
+    httpPort: 8012
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
+  coderunner:
+    replicas: 2
+    grpcPort: 9013
+    httpPort: 0               # coderunner 无 HTTP server
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+  admin:
+    replicas: 2
+    grpcPort: 9014
+    httpPort: 8014
+    resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
+
+frontend:
+  replicas: 2
+  port: 80
+  resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 100m, memory: 64Mi } }
+
+# ===== Ingress =====
+ingress:
+  enabled: true
+  className: nginx
+  host: localhost             # kind 本地访问
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+# ===== 可观测性栈子 Chart =====
+observability:
+  enabled: true

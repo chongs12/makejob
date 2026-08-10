@@ -1,0 +1,123 @@
+{{/*
+通用 Deployment 模板：range 遍历 services 生成，95% 统一 + 5% overrides
+对应 docs/observability-k8s-checklist.md 5.3
+*/}}
+{{- range $svcName, $cfg := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $svcName }}
+  labels:
+    {{- include "makejob.labels" $ | nindent 4 }}
+    makejob.io/service: {{ $svcName }}
+    makejob.io/scrape: "true"
+spec:
+  replicas: {{ $cfg.replicas | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "makejob.selectorLabels" $ | nindent 6 }}
+      makejob.io/service: {{ $svcName }}
+  template:
+    metadata:
+      labels:
+        {{- include "makejob.selectorLabels" $ | nindent 8 }}
+        makejob.io/service: {{ $svcName }}
+        makejob.io/scrape: "true"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ $svcName }}
+          image: {{ include "makejob.image" (dict "root" $ "svcName" $svcName) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          args: ["-conf", "/etc/makejob/config.yaml"]
+          ports:
+            - name: telemetry
+              containerPort: 6060
+            {{- if $cfg.grpcPort }}
+            - name: grpc
+              containerPort: {{ $cfg.grpcPort }}
+            {{- end }}
+            {{- if $cfg.httpPort }}
+            - name: http
+              containerPort: {{ $cfg.httpPort }}
+            {{- end }}
+          env:
+            # 敏感配置从 Secret 注入，conf.go ApplyEnvOverrides 替换 ${VAR}
+            - name: DB_SOURCE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: DB_SOURCE
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: JWT_SECRET
+            - name: ARK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: ARK_API_KEY
+            - name: MQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: MQ_URL
+          envFrom:
+            - configMapRef:
+                name: {{ $.Release.Name }}-{{ $svcName }}-config
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6060
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6060
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/makejob
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $.Release.Name }}-{{ $svcName }}-config
+{{- end }}
+
+{{/* 前端 Deployment */}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-frontend
+  labels:
+    {{- include "makejob.labels" . | nindent 4 }}
+    makejob.io/service: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "makejob.selectorLabels" . | nindent 6 }}
+      makejob.io/service: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "makejob.selectorLabels" . | nindent 8 }}
+        makejob.io/service: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: makejob/frontend:{{ .Values.global.imageTag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}

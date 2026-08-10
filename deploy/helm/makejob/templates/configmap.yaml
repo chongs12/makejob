@@ -1,0 +1,126 @@
+{{/*
+ConfigMap 模板：每个服务一份 config.yaml（K8s Service DNS + ${VAR} 占位敏感字段）
+对应 docs/observability-k8s-checklist.md 5.5
+*/}}
+{{- range $svcName, $cfg := .Values.services }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-{{ $svcName }}-config
+  labels:
+    {{- include "makejob.labels" $ | nindent 4 }}
+    makejob.io/service: {{ $svcName }}
+data:
+  config.yaml: |
+    server:
+      grpc:
+        addr: "0.0.0.0:{{ $cfg.grpcPort }}"
+        timeout: 30s
+      {{- if $cfg.httpPort }}
+      http:
+        addr: "0.0.0.0:{{ $cfg.httpPort }}"
+        timeout: 30s
+      {{- end }}
+    data:
+      database:
+        driver: postgres
+        source: ${DB_SOURCE}
+      redis:
+        addr: "redis:6379"
+        password: ""
+        db: 1
+    {{- if eq $svcName "interview" }}
+    ai:
+      service_addr: "ai_gateway:9011"
+      timeout_ms: 90000
+    rag:
+      service_addr: "rag:9012"
+    archive:
+      service_addr: "learning_archive:9010"
+    membership:
+      service_addr: "membership:9002"
+    companion:
+      service_addr: "companion:9008"
+    code_runner:
+      service_addr: "coderunner:9013"
+      timeout_ms: 10000
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
+    jwt:
+      secret: ${JWT_SECRET}
+      expire_hours: 168
+      service_secret: ${JWT_SECRET}
+    interview:
+      timeout_minutes: 40
+    {{- else if eq $svcName "ai_gateway" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "rag" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "learning_archive" }}
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "question" }}
+    ai:
+      service_addr: "ai_gateway:9011"
+    rag:
+      service_addr: "rag:9012"
+    code_runner:
+      service_addr: "coderunner:9013"
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "plan" }}
+    ai:
+      service_addr: "ai_gateway:9011"
+    archive:
+      service_addr: "learning_archive:9010"
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "companion" }}
+    ai:
+      service_addr: "ai_gateway:9011"
+    growth:
+      service_addr: "growth:9006"
+    interview:
+      service_addr: "interview:9004"
+    plan:
+      service_addr: "plan:9007"
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "growth" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "admin" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "user" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "membership" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "realtime" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "community" }}
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- end }}
+    telemetry:
+      otlp_endpoint: "collector:4317"
+      service_name: "makejob.{{ $svcName }}"
+      sample_ratio: 1.0
+      http_port: 6060
+{{- end }}

@@ -1,0 +1,32 @@
+{{/*
+HPA 模板：gateway/companion/ai_gateway/interview（CPU > 70% 自动扩缩）
+对应 docs/observability-k8s-checklist.md 5.6
+*/}}
+{{- range $svcName, $cfg := .Values.services }}
+{{- if $cfg.hpa }}
+{{- if $cfg.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $.Release.Name }}-{{ $svcName }}
+  labels:
+    {{- include "makejob.labels" $ | nindent 4 }}
+    makejob.io/service: {{ $svcName }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $.Release.Name }}-{{ $svcName }}
+  minReplicas: {{ $cfg.replicas | default 2 }}
+  maxReplicas: {{ $cfg.hpa.maxReplicas | default 3 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.hpa.cpu | default 70 }}
+{{- end }}
+{{- end }}
+{{- end }}

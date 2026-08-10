@@ -1,0 +1,32 @@
+# 可观测性栈 values
+# 对应 docs/observability-k8s-checklist.md 5.7
+
+collector:
+  image: otel/opentelemetry-collector-contrib:0.110.0
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+jaeger:
+  image: jaegertracing/all-in-one:1.57
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 512Mi }
+
+prometheus:
+  image: prom/prometheus:v2.53.0
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 512Mi }
+
+grafana:
+  image: grafana/grafana:11.1.0
+  replicas: 1
+  adminUser: admin
+  adminPassword: makejob123
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 100m, memory: 128Mi }
