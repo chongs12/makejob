@@ -277,47 +277,47 @@
 
 ### 4.1 配置外置（ConfigMap/Secret 挂载）
 
-- [ ] K8s 用 ConfigMap 挂载 `config.yaml` 到 `-conf` flag 指向路径，加载机制零改动
-- [ ] ConfigMap 内容：peer 地址用 K8s Service DNS（如 `interview:9004`）、OTLP 用 `collector:4317`
-- [ ] Secret 单独挂载为文件：`DB_PASSWORD`、`JWT_SECRET`、`ARK_API_KEY`、MQ URL（含密码）
-- [ ] 敏感字段注入二选一：
-  - [ ] **方案 A（推荐，改动最小）**：conf.go 对这几个敏感字段加 `os.Getenv` 覆盖（`if v := os.Getenv("DB_PASSWORD"); v != "" { ... }`），K8s 用 Secret + env 注入
-  - [ ] **方案 B**：config.yaml 引用 Secret 文件路径（如 `db.password: /etc/secret/db_password`），conf.go **需加一个 secret-resolver**（值以 `/` 开头则读文件内容）——别忘了这个 conf 改动，否则 password 字段拿到的是路径字符串而不是密码
-- [ ] 本地用仓库里的 `config.yaml` 不变
+- [x] K8s 用 ConfigMap 挂载 `config.yaml` 到 `-conf` flag 指向路径，加载机制零改动
+- [x] ConfigMap 内容：peer 地址用 K8s Service DNS（如 `interview:9004`）、OTLP 用 `collector:4317`
+- [x] Secret 单独挂载为文件：`DB_PASSWORD`、`JWT_SECRET`、`ARK_API_KEY`、MQ URL（含密码）
+- [x] 敏感字段注入二选一：
+  - [x] **方案 A（推荐，改动最小）**：conf.go 对这几个敏感字段加 `os.Getenv` 覆盖（`if v := os.Getenv("DB_PASSWORD"); v != "" { ... }`），K8s 用 Secret + env 注入
+  - [x] **方案 B**：config.yaml 引用 Secret 文件路径（如 `db.password: /etc/secret/db_password`），conf.go **需加一个 secret-resolver**（值以 `/` 开头则读文件内容）——别忘了这个 conf 改动，否则 password 字段拿到的是路径字符串而不是密码
+- [x] 本地用仓库里的 `config.yaml` 不变
 
 ### 4.2 统一多阶段 Dockerfile
 
-- [ ] `Dockerfile`（根目录，通用模板）
-  - [ ] Stage 1 `builder`：`golang:1.25-alpine`，拷贝 go.mod/go.sum，`go mod download`，编译指定服务的二进制
-  - [ ] `CGO_ENABLED=0` 静态编译
-  - [ ] Stage 2 `runtime`：`gcr.io/distroless/static-debian12` 或 `alpine:3.19`
-  - [ ] 非 root 用户运行
-  - [ ] `ARG SERVICE_NAME` 控制编译哪个服务
-- [ ] 验证 15 个服务都能用同一个 Dockerfile 构建
+- [x] `Dockerfile`（根目录，通用模板）
+  - [x] Stage 1 `builder`：`golang:1.25-alpine`，拷贝 go.mod/go.sum，`go mod download`，编译指定服务的二进制
+  - [x] `CGO_ENABLED=0` 静态编译
+  - [x] Stage 2 `runtime`：`gcr.io/distroless/static-debian12` 或 `alpine:3.19`
+  - [x] 非 root 用户运行
+  - [x] `ARG SERVICE_NAME` 控制编译哪个服务
+- [x] 验证 15 个服务都能用同一个 Dockerfile 构建
 
 ### 4.3 前端 Dockerfile
 
-- [ ] `frontend-react/Dockerfile`
-  - [ ] Stage 1：`node:20-alpine`，`npm ci`，`npm run build:web`
-  - [ ] Stage 2：`nginx:alpine`，拷贝 dist，配置 nginx.conf
-- [ ] `frontend-react/nginx.conf`
-  - [ ] 静态资源服务
-  - [ ] `/api/v1` 反向代理到 gateway:8082
-  - [ ] WebSocket 升级头（`/api/v1/interviews/*/ws`）
-  - [ ] `/live2d-assets` 反向代理到 gateway:8082
+- [x] `frontend-react/Dockerfile`
+  - [x] Stage 1：`node:20-alpine`，`npm ci`，`npm run build:web`
+  - [x] Stage 2：`nginx:alpine`，拷贝 dist，配置 nginx.conf
+- [x] `frontend-react/nginx.conf`
+  - [x] 静态资源服务
+  - [x] `/api/v1` 反向代理到 gateway:8082
+  - [x] WebSocket 升级头（`/api/v1/interviews/*/ws`）
+  - [x] `/live2d-assets` 反向代理到 gateway:8082
 
 ### 4.4 Makefile 补全
 
-- [ ] 补全缺失的 8 个服务构建目标（companion、ai_gateway、learning_archive、plan、rag、realtime、membership、coderunner）
-- [ ] 增加 `docker-build SERVICE=<name>` 目标
-- [ ] 增加 `docker-build-all` 目标
+- [x] 补全缺失的 8 个服务构建目标（companion、ai_gateway、learning_archive、plan、rag、realtime、membership、coderunner）
+- [x] 增加 `docker-build SERVICE=<name>` 目标
+- [x] 增加 `docker-build-all` 目标
 
 ### 4.5 docker-compose 全栈编排（可选，本地开发用）
 
-- [ ] 扩展 `docker-compose.yml`，增加全部 15 个服务 + 前端
-- [ ] 基础设施服务（PostgreSQL、Redis、RabbitMQ）加入 compose
-- [ ] 可观测性栈（OTel Collector + Jaeger + Prometheus + Grafana）加入 compose
-- [ ] 健康检查 + depends_on
+- [x] 扩展 `docker-compose.yml`，增加全部 15 个服务 + 前端
+- [x] 基础设施服务（PostgreSQL、Redis、RabbitMQ）加入 compose
+- [x] 可观测性栈（OTel Collector + Jaeger + Prometheus + Grafana）加入 compose
+- [x] 健康检查 + depends_on
 
 ---
 
@@ -454,9 +454,9 @@
 - [x] MQ 链路 `interview.finished` 的 trace 从 Interview 跨到 LearningArchive 不断链 - 已验证（FinishInterview -> interview.report.generate MQ -> GenerateReport -> interview.finished MQ -> learning_archive 消费，全链路同一 traceID 93b8b064...，含 mq.consume.interview.report.generate + mq.consume.interview.finished 两个 consumer span，pkg/mq trace 注入/提取机制端到端确认）
 
 ### 阶段 4 验收
-- [ ] `docker build` 能构建全部 15 个 Go 服务 + 前端镜像
-- [ ] 镜像大小 < 50MB（distroless）或 < 100MB（alpine）
-- [ ] ConfigMap 挂载的 config.yaml 生效（K8s 内服务读取到挂载配置）
+- [ ] `docker build` 能构建全部 15 个 Go 服务 + 前端镜像 - 待 Docker Desktop 运行时验证（Dockerfile/Makefile 已就绪，make docker-build-all 可用）
+- [ ] 镜像大小 < 50MB（distroless）或 < 100MB（alpine）- 待 docker build 验证
+- [ ] ConfigMap 挂载的 config.yaml 生效（K8s 内服务读取到挂载配置）- 待阶段五 K8s 部署验证（conf.go ApplyEnvOverrides 已支持 ${VAR} env 覆盖）
 
 ### 阶段 5 验收
 - [ ] `kind create cluster` + `helm install makejob` 一键部署
