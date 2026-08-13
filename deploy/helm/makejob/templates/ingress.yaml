@@ -10,7 +10,7 @@ metadata:
   labels:
     {{- include "makejob.labels" . | nindent 4 }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.ingress.annotations."nginx.ingress.kubernetes.io/proxy-body-size" | default "50m" | quote }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     # WebSocket 支持（实时语音面试 /interviews/*/ws）
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"

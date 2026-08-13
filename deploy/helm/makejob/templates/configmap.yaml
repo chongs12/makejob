@@ -27,17 +27,17 @@ data:
         driver: postgres
         source: ${DB_SOURCE}
       redis:
-        addr: "redis:6379"
+        addr: "host.docker.internal:6384"
         password: ""
         db: 1
     {{- if eq $svcName "interview" }}
     ai:
-      service_addr: "ai_gateway:9011"
+      service_addr: "ai-gateway:9011"
       timeout_ms: 90000
     rag:
       service_addr: "rag:9012"
     archive:
-      service_addr: "learning_archive:9010"
+      service_addr: "learning-archive:9010"
     membership:
       service_addr: "membership:9002"
     companion:
@@ -54,13 +54,50 @@ data:
       service_secret: ${JWT_SECRET}
     interview:
       timeout_minutes: 40
-    {{- else if eq $svcName "ai_gateway" }}
+    {{- else if eq $svcName "gateway" }}
+    services:
+      user:
+        addr: "makejob-user:9101"
+      membership:
+        addr: "makejob-membership:9002"
+      question:
+        addr: "makejob-question:9003"
+      interview:
+        addr: "makejob-interview:9004"
+      realtime:
+        addr: "makejob-realtime:8085"
+      growth:
+        addr: "makejob-growth:9006"
+      plan:
+        addr: "makejob-plan:9007"
+      companion:
+        addr: "makejob-companion:9008"
+      community:
+        addr: "makejob-community:9009"
+      admin:
+        addr: "makejob-admin:9014"
+    jwt:
+      secret: ${JWT_SECRET}
+    {{- else if eq $svcName "ai-gateway" }}
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "rag" }}
+    rag:
+      milvus_addr: "host.docker.internal:19530"
+      milvus_user: "root"
+      milvus_password: "Milvus"
+      collection_name: "makejob_questions"
+      ark_api_key: "ark-1c544572-9c83-495d-a291-4fe31d71e8d5-91264"
+      ark_base_url: "https://ark.cn-beijing.volces.com/api/v3"
+      embed_model: "doubao-embedding-large-text-240915"
+      top_k: 5
+      score_threshold: 0.0
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
     jwt:
       secret: ${JWT_SECRET}
-    {{- else if eq $svcName "learning_archive" }}
+    {{- else if eq $svcName "learning-archive" }}
     mq:
       url: ${MQ_URL}
       exchange: "makejob.async"
@@ -68,11 +105,13 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "question" }}
     ai:
-      service_addr: "ai_gateway:9011"
-    rag:
-      service_addr: "rag:9012"
-    code_runner:
-      service_addr: "coderunner:9013"
+      service_addr: "ai-gateway:9011"
+      coderunner_addr: "coderunner:9013"
+      ai_gateway_addr: "ai-gateway:9011"
+      rag_addr: "rag:9012"
+      admin_addr: "admin:9014"
+    dependent_services:
+      learning_archive_addr: "learning-archive:9010"
     mq:
       url: ${MQ_URL}
       exchange: "makejob.async"
@@ -80,9 +119,9 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "plan" }}
     ai:
-      service_addr: "ai_gateway:9011"
-    archive:
-      service_addr: "learning_archive:9010"
+      service_addr: "ai-gateway:9011"
+    dependent_services:
+      learning_archive_addr: "learning-archive:9010"
     mq:
       url: ${MQ_URL}
       exchange: "makejob.async"
@@ -90,7 +129,7 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "companion" }}
     ai:
-      service_addr: "ai_gateway:9011"
+      service_addr: "ai-gateway:9011"
     growth:
       service_addr: "growth:9006"
     interview:
@@ -100,9 +139,23 @@ data:
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "growth" }}
+    dependent_services:
+      question_addr: "question:9003"
+      plan_addr: "plan:9007"
+      learning_archive_addr: "learning-archive:9010"
+      interview_addr: "interview:9004"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "admin" }}
+    mq:
+      url: ${MQ_URL}
+      exchange: "makejob.async"
+    dependent_services:
+      user_addr: "user:9101"
+      question_addr: "question:9003"
+      interview_addr: "interview:9004"
+      ai_gateway_addr: "ai-gateway:9011"
+      rag_addr: "rag:9012"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "user" }}

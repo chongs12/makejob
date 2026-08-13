@@ -9,10 +9,10 @@ global:
   env: dev                    # dev / staging / prod
   # 敏感配置通过 Secret + env 注入（conf.go ApplyEnvOverrides 替换 ${VAR}）
   secretEnv:
-    DB_SOURCE: "host=postgresql port=5432 user=postgres password=password dbname=makejob sslmode=disable"
+    DB_SOURCE: "host=host.docker.internal port=5434 user=postgres password=password dbname=makejob sslmode=disable"
     JWT_SECRET: "makejob-secret-key-change-in-production"
     ARK_API_KEY: ""
-    MQ_URL: "amqp://makejob:makejob123@rabbitmq:5672//makejob"
+    MQ_URL: "amqp://makejob:makejob123@host.docker.internal:5672//makejob"
 
 # ===== 服务列表（15 个后端 + 前端）=====
 # 每个服务: name / grpcPort / httpPort / replicas / resources / config(config.yaml 内容)
@@ -73,12 +73,12 @@ services:
     grpcPort: 9009
     httpPort: 8009
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
-  learning_archive:
+  learning-archive:
     replicas: 2
     grpcPort: 9010
     httpPort: 8010
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
-  ai_gateway:
+  ai-gateway:
     replicas: 2
     grpcPort: 9011
     httpPort: 8011
