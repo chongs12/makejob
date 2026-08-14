@@ -32,18 +32,18 @@ data:
         db: 1
     {{- if eq $svcName "interview" }}
     ai:
-      service_addr: "ai-gateway:9011"
+      service_addr: "makejob-ai-gateway:9011"
       timeout_ms: 90000
     rag:
-      service_addr: "rag:9012"
+      service_addr: "makejob-rag:9012"
     archive:
-      service_addr: "learning-archive:9010"
+      service_addr: "makejob-learning-archive:9010"
     membership:
-      service_addr: "membership:9002"
+      service_addr: "makejob-membership:9002"
     companion:
-      service_addr: "companion:9008"
+      service_addr: "makejob-companion:9008"
     code_runner:
-      service_addr: "coderunner:9013"
+      service_addr: "makejob-coderunner:9013"
       timeout_ms: 10000
     mq:
       url: ${MQ_URL}
@@ -105,13 +105,13 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "question" }}
     ai:
-      service_addr: "ai-gateway:9011"
-      coderunner_addr: "coderunner:9013"
-      ai_gateway_addr: "ai-gateway:9011"
-      rag_addr: "rag:9012"
-      admin_addr: "admin:9014"
+      service_addr: "makejob-ai-gateway:9011"
+      coderunner_addr: "makejob-coderunner:9013"
+      ai_gateway_addr: "makejob-ai-gateway:9011"
+      rag_addr: "makejob-rag:9012"
+      admin_addr: "makejob-admin:9014"
     dependent_services:
-      learning_archive_addr: "learning-archive:9010"
+      learning_archive_addr: "makejob-learning-archive:9010"
     mq:
       url: ${MQ_URL}
       exchange: "makejob.async"
@@ -119,9 +119,9 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "plan" }}
     ai:
-      service_addr: "ai-gateway:9011"
+      service_addr: "makejob-ai-gateway:9011"
     dependent_services:
-      learning_archive_addr: "learning-archive:9010"
+      learning_archive_addr: "makejob-learning-archive:9010"
     mq:
       url: ${MQ_URL}
       exchange: "makejob.async"
@@ -129,21 +129,21 @@ data:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "companion" }}
     ai:
-      service_addr: "ai-gateway:9011"
+      service_addr: "makejob-ai-gateway:9011"
     growth:
-      service_addr: "growth:9006"
+      service_addr: "makejob-growth:9006"
     interview:
-      service_addr: "interview:9004"
+      service_addr: "makejob-interview:9004"
     plan:
-      service_addr: "plan:9007"
+      service_addr: "makejob-plan:9007"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "growth" }}
     dependent_services:
-      question_addr: "question:9003"
-      plan_addr: "plan:9007"
-      learning_archive_addr: "learning-archive:9010"
-      interview_addr: "interview:9004"
+      question_addr: "makejob-question:9003"
+      plan_addr: "makejob-plan:9007"
+      learning_archive_addr: "makejob-learning-archive:9010"
+      interview_addr: "makejob-interview:9004"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "admin" }}
@@ -151,11 +151,11 @@ data:
       url: ${MQ_URL}
       exchange: "makejob.async"
     dependent_services:
-      user_addr: "user:9101"
-      question_addr: "question:9003"
-      interview_addr: "interview:9004"
-      ai_gateway_addr: "ai-gateway:9011"
-      rag_addr: "rag:9012"
+      user_addr: "makejob-user:9101"
+      question_addr: "makejob-question:9003"
+      interview_addr: "makejob-interview:9004"
+      ai_gateway_addr: "makejob-ai-gateway:9011"
+      rag_addr: "makejob-rag:9012"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "user" }}
