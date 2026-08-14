@@ -21,87 +21,87 @@ global:
 # telemetry http_port 统一 6060（K8s 内不偏移，每 Pod 独立网络命名空间）
 services:
   gateway:
-    replicas: 2
+    replicas: 1
     httpPort: 8082
     grpcPort: 0               # gateway 无 gRPC server
     resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
     hpa: { enabled: true, maxReplicas: 5, cpu: 70 }
   user:
-    replicas: 2
+    replicas: 1
     grpcPort: 9101
     httpPort: 8001
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   membership:
-    replicas: 2
+    replicas: 1
     grpcPort: 9002
     httpPort: 8002
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   question:
-    replicas: 2
+    replicas: 1
     grpcPort: 9003
     httpPort: 8003
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
   interview:
-    replicas: 2
+    replicas: 1
     grpcPort: 9004
     httpPort: 8004
     resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
     hpa: { enabled: true, maxReplicas: 3, cpu: 70 }
   realtime:
-    replicas: 2
+    replicas: 1
     grpcPort: 9005
     httpPort: 8085            # WS server
     resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } }
   growth:
-    replicas: 2
+    replicas: 1
     grpcPort: 9006
     httpPort: 8006
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   plan:
-    replicas: 2
+    replicas: 1
     grpcPort: 9007
     httpPort: 8007
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
   companion:
-    replicas: 2
+    replicas: 1
     grpcPort: 9008
     httpPort: 8008
     resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
     hpa: { enabled: true, maxReplicas: 5, cpu: 70 }
   community:
-    replicas: 2
+    replicas: 1
     grpcPort: 9009
     httpPort: 8009
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   learning-archive:
-    replicas: 2
+    replicas: 1
     grpcPort: 9010
     httpPort: 8010
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   ai-gateway:
-    replicas: 2
+    replicas: 1
     grpcPort: 9011
     httpPort: 8011
     resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
     hpa: { enabled: true, maxReplicas: 3, cpu: 70 }
   rag:
-    replicas: 2
+    replicas: 1
     grpcPort: 9012
     httpPort: 8012
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 256Mi } }
   coderunner:
-    replicas: 2
+    replicas: 1
     grpcPort: 9013
     httpPort: 0               # coderunner 无 HTTP server
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
   admin:
-    replicas: 2
+    replicas: 1
     grpcPort: 9014
     httpPort: 8014
     resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 128Mi } }
 
 frontend:
-  replicas: 2
+  replicas: 1
   port: 80
   resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { cpu: 100m, memory: 64Mi } }
 
