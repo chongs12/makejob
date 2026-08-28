@@ -66,8 +66,16 @@ dist/
 coverage/
 *.coverprofile
 _skill_staging/
+# 内部过程文档（本地保留，不推送云端），仅保留 docs/backend/piston（Piston 引擎配置）
 docs/*
-!docs/*.md
+!docs/backend/
+docs/backend/*
+!docs/backend/piston/
+!docs/backend/piston/**
+# 根目录内部笔记（对比分析/刨析指南/启动提示，本地保留）
+/对比分析_*.md
+/项目刨析指南.md
+/start.md
 live2d-src/
 realtime_dialog/
 .gocache/
@@ -76,3 +84,7 @@ Open-LLM-VTuber-Web/
 
 # Claude Code worktrees (local, disposable)
 .claude/worktrees/
+# 本地 AI 工具计划/临时文件（不推送）
+.claude/plans/
+.gotmp/
+.mimocode/.cron-lock

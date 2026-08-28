@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // 生产构建资源前缀：管理端部署在 nginx 的 /admin 路径下（K8s 与主页面同端口访问）
+  base: '/admin/',
   server: {
     port: 3102,
     proxy: {

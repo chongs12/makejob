@@ -87,7 +87,7 @@ data:
       milvus_user: "root"
       milvus_password: "Milvus"
       collection_name: "makejob_questions"
-      ark_api_key: "ark-1c544572-9c83-495d-a291-4fe31d71e8d5-91264"
+      ark_api_key: ${ARK_API_KEY}
       ark_base_url: "https://ark.cn-beijing.volces.com/api/v3"
       embed_model: "doubao-embedding-large-text-240915"
       top_k: 5
@@ -162,11 +162,40 @@ data:
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "membership" }}
+    dependent_services:
+      question_addr: "makejob-question:9003"
+      interview_addr: "makejob-interview:9004"
     jwt:
       secret: ${JWT_SECRET}
     {{- else if eq $svcName "realtime" }}
+    dependent_services:
+      interview_addr: "makejob-interview:9004"
+      rag_addr: "makejob-rag:9012"
+    volcengine:
+      enabled: true
+      app_id: "${VOLC_APP_ID}"
+      access_token: "${VOLC_ACCESS_TOKEN}"
+      app_key: "${VOLC_APP_KEY}"
+      base_url: "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
+      resource_id: "volc.speech.dialog"
+      speaker: "zh_female_vv_jupiter_bigtts"
+      input_mode: "push_to_talk"
+      audio_format: "pcm"
+      sample_rate: 16000
+      tts_format: "pcm_s16le"
+      tts_sample_rate: 24000
+      bot_name: "Ariu"
+      system_role: "你是一位专业、耐心、会逐题推进的中文技术面试官。"
+      speaking_style: "请用口语化中文进行简洁播报，每次只问一个问题。"
+      character_prompt: ""
+      location_city: "北京"
+      recv_timeout: 120
     jwt:
       secret: ${JWT_SECRET}
+    {{- else if eq $svcName "coderunner" }}
+    piston:
+      endpoint: "http://host.docker.internal:2000"
+      timeout_ms: 10000
     {{- else if eq $svcName "community" }}
     jwt:
       secret: ${JWT_SECRET}

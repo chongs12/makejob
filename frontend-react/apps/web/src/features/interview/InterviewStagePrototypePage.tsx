@@ -141,7 +141,7 @@ function StageLive2DCanvas({ modelUrl, backgroundImageUrl, mouthOpen, motions, d
   const MAX_SCALE = 3.0
   const WHEEL_STEP = 0.02
 
-  // 嘴型开合由父组件传入，每帧写入模型参数，避免 React 重渲染参与逐帧更新。
+  // 嘴型开合由父组件传入，通过 ref 每帧写入模型参数，避免 React 重渲染参与逐帧更新。
   const mouthOpenRef = useRef(0)
   useEffect(() => {
     mouthOpenRef.current = mouthOpen
@@ -323,8 +323,10 @@ function StageLive2DCanvas({ modelUrl, backgroundImageUrl, mouthOpen, motions, d
           animFrameRef.current = requestAnimationFrame(animateScale)
         }
 
-        // 每帧把最新嘴型开合写入模型，与音频分析器输出同步驱动说话口型。
-        app.ticker.add(() => {
+        // 在 internalModel 应用完 motion/表情/自然动作之后、绘制烘焙之前写入最新嘴型开合，
+        // 避免被动作曲线每帧覆盖。注意：pixi-live2d-display 只在 internalModel 上提供
+        // beforeModelUpdate 等事件，模型层并不存在 afterUpdate 事件。
+        model.internalModel?.on?.('beforeModelUpdate', () => {
           applyLive2DMouthOpen(model, mouthOpenRef.current)
         })
 

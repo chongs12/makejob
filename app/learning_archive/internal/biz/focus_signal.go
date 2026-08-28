@@ -8,6 +8,18 @@ import (
 
 const defaultFocusSignalLimit = 3
 
+// focusSignalIgnoredTags 不参与趋势信号聚合的无训练价值兜底标签。
+// "综合能力"是面试报告对无法归类胜任力的兜底命名，对训练没有指向性，属废话标签。
+var focusSignalIgnoredTags = map[string]struct{}{
+	"综合能力": {},
+}
+
+// isNonActionableFocusTag 判断标签是否为应忽略的无指向性兜底标签。
+func isNonActionableFocusTag(tag string) bool {
+	_, ok := focusSignalIgnoredTags[tag]
+	return ok
+}
+
 // TrainingFocusSignal 表示可被成长页、推荐接口和学习计划共同复用的训练重点信号。
 type TrainingFocusSignal struct {
 	Tag                       string   `json:"tag"`
@@ -95,7 +107,7 @@ func collectFocusSignalSeeds(entries []*ArchiveEntry) []focusSignalSeed {
 
 		for _, tag := range tags {
 			tag = strings.TrimSpace(tag)
-			if tag == "" {
+			if tag == "" || isNonActionableFocusTag(tag) {
 				continue
 			}
 			topicCode := ResolveMistakeTopicCodeByTag(tag)

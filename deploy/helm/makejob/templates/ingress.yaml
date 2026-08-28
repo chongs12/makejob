@@ -41,4 +41,39 @@ spec:
                 name: {{ .Release.Name }}-frontend
                 port:
                   number: 80
+  {{- if .Values.observability.enabled }}
+  # 可观测性工具子域名路由：*.localhost 由浏览器自动解析到本机（127.0.0.1），
+  # 让 Prometheus/Jaeger/Grafana 以根路径渲染，避免子路径导致前端静态资源 404。
+  # 访问示例：http://prometheus.localhost:8080 / http://jaeger.localhost:8080 / http://grafana.localhost:8080
+    - host: prometheus.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-prometheus
+                port:
+                  number: 9090
+    - host: jaeger.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-jaeger
+                port:
+                  number: 16686
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-grafana
+                port:
+                  number: 3000
+  {{- end }}
 {{- end }}

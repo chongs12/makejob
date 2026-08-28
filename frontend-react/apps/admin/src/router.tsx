@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  createBrowserHistory,
   createRootRouteWithContext,
   createRoute,
   createRouter,
@@ -147,7 +148,7 @@ function AdminLayout() {
             <SafetyOutlined style={{ fontSize: 18, color: '#fff' }} />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>MakeJob</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>PreHire</div>
             <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.2 }}>Admin Panel</div>
           </div>
         </div>
@@ -446,7 +447,7 @@ function LoginPage() {
             <SafetyCertificateOutlined style={{ fontSize: 28, color: '#fff' }} />
           </div>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>
-            MakeJob
+            PreHire
           </h1>
           <p style={{ margin: '8px 0 0', fontSize: 14, color: '#94a3b8' }}>管理员控制台登录</p>
         </div>
@@ -770,6 +771,8 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
+  // 管理端部署在 /admin 路径下（nginx 路径分流），history 需带 basepath 才能正确解析路由
+  history: createBrowserHistory({ basepath: '/admin' }),
   context: {
     queryClient: undefined as never,
   },

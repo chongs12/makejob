@@ -5348,14 +5348,16 @@ func (gw *Gateway) handleAdminImportQuestionPipeline(c *gin.Context) {
 	var req struct {
 		IndustryCode string `json:"industry_code"`
 		Cards        []struct {
-			Title       string   `json:"title"`
-			Content     string   `json:"content"`
-			Type        string   `json:"type"`
-			Difficulty  string   `json:"difficulty"`
-			Category    string   `json:"category"`
-			Answer      string   `json:"answer"`
-			Explanation string   `json:"explanation"`
-			Tags        []string `json:"tags"`
+			Title       string          `json:"title"`
+			Content     string          `json:"content"`
+			Type        string          `json:"type"`
+			Difficulty  string          `json:"difficulty"`
+			Category    string          `json:"category"`
+			Answer      string          `json:"answer"`
+			Explanation string          `json:"explanation"`
+			Solution    string          `json:"solution"`
+			JudgeConfig json.RawMessage `json:"judge_config"`
+			Tags        []string        `json:"tags"`
 		} `json:"cards"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -5367,7 +5369,12 @@ func (gw *Gateway) handleAdminImportQuestionPipeline(c *gin.Context) {
 		cards[i] = &adminv1.PipelineCard{
 			Title: c.Title, Content: c.Content, Type: c.Type,
 			Difficulty: c.Difficulty, Category: c.Category,
-			Answer: c.Answer, Explanation: c.Explanation, Tags: c.Tags,
+			Answer: c.Answer, Explanation: c.Explanation,
+			Solution: c.Solution, Tags: c.Tags,
+		}
+		// judge_config 是对象，序列化成 JSON 字符串透传给 admin 服务
+		if len(c.JudgeConfig) > 0 {
+			cards[i].JudgeConfig = string(c.JudgeConfig)
 		}
 	}
 	resp, err := gw.adminClient.ImportQuestionPipeline(c.Request.Context(), &adminv1.ImportQuestionPipelineRequest{

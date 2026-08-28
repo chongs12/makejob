@@ -1080,6 +1080,40 @@ func normalizeCategoryName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+// ResolveCategoryByName 按名称在当前行业下解析分类 ID；不存在则自动创建并返回新 ID。
+// 用于题卡流水线导入：AI 生成的分类名可能未在题库中预建，需要“找不到就建”。
+func (uc *AdminUseCase) ResolveCategoryByName(ctx context.Context, industryID uint64, name string) (uint64, error) {
+	normalized := normalizeCategoryName(name)
+	if normalized == "" {
+		return 0, fmt.Errorf("分类名称不能为空")
+	}
+	categories, err := uc.repo.ListCategories(ctx)
+	if err != nil {
+		return 0, err
+	}
+	index := buildCategoryIndex(categories, industryID)
+	if id, ok := index[normalized]; ok {
+		return id, nil
+	}
+	// 不存在则创建；若创建因并发/唯一约束冲突失败，再查一次兜底
+	newCategory := &CategoryRecord{
+		IndustryID: industryID,
+		Name:       strings.TrimSpace(name),
+		SortOrder:  0,
+	}
+	if err := uc.repo.CreateCategory(ctx, newCategory); err == nil && newCategory.ID > 0 {
+		return newCategory.ID, nil
+	}
+	categories, err = uc.repo.ListCategories(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if id, ok := buildCategoryIndex(categories, industryID)[normalized]; ok {
+		return id, nil
+	}
+	return 0, fmt.Errorf("分类 %q 创建失败或不存在", name)
+}
+
 // buildScraperImportedQuestion 将清洗后的题目转换为下游 question 服务可接受的结构。
 func (uc *AdminUseCase) buildScraperImportedQuestion(industry *IndustryRecord, categoryIDs map[string]uint64, question *ScraperCleanedQuestionRecord) (*QuestionRecord, error) {
 	if industry == nil {

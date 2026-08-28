@@ -215,17 +215,20 @@ func normalizeQuestionPipelineModelCard(value any) (*QuestionCandidate, bool) {
 		readQuestionPipelineString(item, "标准答案"),
 		readQuestionPipelineString(item, "解析"),
 	)
-	solution := firstNonEmptyString(
-		readQuestionPipelineString(item, "solution"),
-		readQuestionPipelineString(item, "structured_solution"),
-		readQuestionPipelineString(item, "solution_text"),
-		readQuestionPipelineString(item, "code_solution"),
-		readQuestionPipelineString(item, "solution_analysis"),
-		readQuestionPipelineString(item, "code_analysis"),
-		readQuestionPipelineString(item, "思路解析"),
-		readQuestionPipelineString(item, "代码思路解析"),
-		readQuestionPipelineString(item, "题解"),
-	)
+	solution := readStructuredQuestionPipelineSolution(item)
+	if solution == "" {
+		solution = firstNonEmptyString(
+			readQuestionPipelineString(item, "solution"),
+			readQuestionPipelineString(item, "structured_solution"),
+			readQuestionPipelineString(item, "solution_text"),
+			readQuestionPipelineString(item, "code_solution"),
+			readQuestionPipelineString(item, "solution_analysis"),
+			readQuestionPipelineString(item, "code_analysis"),
+			readQuestionPipelineString(item, "思路解析"),
+			readQuestionPipelineString(item, "代码思路解析"),
+			readQuestionPipelineString(item, "题解"),
+		)
+	}
 	if title == "" {
 		title = summarizeQuestionPipelineTitle(content)
 	}
@@ -858,9 +861,25 @@ func normalizeQuestionPipelineDifficulty(raw string) string {
 	}
 }
 
+// readStructuredQuestionPipelineSolution 读取 AI 输出的结构化 solution。
+// 当 solution（或 solution_structure 等）字段是 JSON 对象（含 summary/approach/key_steps 等）时，
+// 序列化成 JSON 字符串返回，便于导入时解析为题库管理的结构化解析字段；
+// 对象缺失或非对象时返回空字符串，由调用方回退到纯文本读取。
+func readStructuredQuestionPipelineSolution(item map[string]any) string {
+	for _, key := range []string{"solution", "solution_structure", "solution_structured", "structured_solution"} {
+		if value, ok := item[key]; ok {
+			if obj, ok := value.(map[string]any); ok {
+				if b, err := json.Marshal(obj); err == nil {
+					return string(b)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // readQuestionPipelineString 从 map 中读取字符串值。
-func readQuestionPipelineString(item map[string]any, keys ...string) string {
-	for _, key := range keys {
+func readQuestionPipelineString(item map[string]any, keys ...string) string {	for _, key := range keys {
 		if value, ok := item[key]; ok {
 			if str, ok := value.(string); ok {
 				return strings.TrimSpace(str)

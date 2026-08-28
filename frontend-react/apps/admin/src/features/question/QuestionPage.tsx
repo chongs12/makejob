@@ -68,6 +68,10 @@ interface QuestionListItem {
   options: string[]
   answer: string
   explanation: string
+  // 后端以 JSON 字符串返回（solution_json 等），前端 fetchQuestions 时解析为下方对象
+  solution_json?: string
+  judge_config_json?: string
+  answer_template_json?: string
   solution?: QuestionSolution | null
   judge_config?: QuestionJudgeConfig | null
   answer_template?: QuestionAnswerTemplate | null
@@ -286,7 +290,17 @@ async function fetchQuestions(token: string | null, filters: QuestionFilters): P
     throw new Error(response.message || '获取题库列表失败')
   }
 
-  return response.data
+  // 后端以 JSON 字符串返回 solution_json/judge_config_json/answer_template_json，
+  // 这里解析为对象并映射到 solution/judge_config/answer_template，供编辑表单填充
+  return {
+    ...response.data,
+    list: response.data.list.map((item) => ({
+      ...item,
+      solution: parseQuestionJSONField(item.solution_json) as QuestionSolution | null,
+      judge_config: parseQuestionJSONField(item.judge_config_json) as QuestionJudgeConfig | null,
+      answer_template: parseQuestionJSONField(item.answer_template_json) as QuestionAnswerTemplate | null,
+    })),
+  }
 }
 
 async function fetchQuestionTagTaxonomy(token: string | null): Promise<QuestionTagTaxonomyGroup[]> {
@@ -436,6 +450,18 @@ function buildQuestionForm(question?: QuestionListItem | null): QuestionFormStat
   }
 }
 
+// parseQuestionJSONField 安全解析后端返回的 JSON 字符串字段（solution_json 等），解析失败返回 null
+function parseQuestionJSONField(value?: string): unknown {
+  if (!value || !value.trim()) {
+    return null
+  }
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
 function parseQuestionOptionsText(value: string): string[] {
   return value
     .split(/\r?\n/)
@@ -534,9 +560,9 @@ function buildQuestionPayload(form: QuestionFormState): Record<string, unknown> 
     options_json: requiresQuestionOptions(form.type) ? JSON.stringify(options) : '',
     answer: form.answer.trim(),
     explanation: form.explanation.trim(),
-    solution: solution || undefined,
-    judge_config: judgeConfig || undefined,
-    answer_template: answerTemplate || undefined,
+    solution_json: solution ? JSON.stringify(solution) : undefined,
+    judge_config_json: judgeConfig ? JSON.stringify(judgeConfig) : undefined,
+    answer_template_json: answerTemplate ? JSON.stringify(answerTemplate) : undefined,
     tags: parseQuestionTagsText(form.tagsText).join(','),
     is_active: form.isActive,
   }
@@ -642,8 +668,8 @@ function validateQuestionForm(form: QuestionFormState): string {
   if (requiresQuestionOptions(form.type) && parseQuestionOptionsText(form.optionsText).length < 2) {
     return '选择题至少需要两个选项'
   }
-  if (form.type === 'code' && (!form.solutionSummary.trim() || !form.solutionApproach.trim())) {
-    return '编程题至少需要补齐结构化解析中的“题意总结”和“解题思路”'
+  if (form.type === 'code' && !form.solutionSummary.trim() && !form.solutionApproach.trim()) {
+    return '编程题至少需要补齐结构化解析中的“题意总结”或“解题思路”'
   }
   if (form.type === 'code' && form.evaluationMode === 'testcase') {
     try {

@@ -22,8 +22,8 @@ comp_out.log
 debug.log
 
 # 非后端代码/资产（减小构建上下文）
+# 注意：live2d-src/ 必须保留进构建上下文 —— gateway 镜像需要 COPY 它作为 Live2D 静态资源
 Open-LLM-VTuber-Web/
-live2d-src/
 _skill_staging/
 docs/backend/
 对比分析*.md

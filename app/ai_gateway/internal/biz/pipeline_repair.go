@@ -116,7 +116,7 @@ func (uc *AdminUseCase) supplementCodeCard(ctx context.Context, card *QuestionCa
 1. 只能输出一个 JSON 对象，结构必须是 {"cards":[{...}]}。
 2. cards 数组只能保留 1 张题卡，type 固定为 code。
 3. 必须保留原题 title、content、answer 的核心语义，不要换题，不要改成别的考点。
-4. answer 只放代码参考答案；solution 只放纯文本思路解析，不要输出 Markdown 标题、代码块或额外说明。
+4. answer 只放代码参考答案；solution 必须按固定小节格式输出（纯文本小节标题，不要用 JSON 对象、Markdown 标题或代码块），包含：题意总结、解题思路、关键步骤（1. 2. 3. 编号）、边界条件、复杂度分析（时间复杂度/空间复杂度）、常见错法。
 5. judge_config 必须使用 testcase 判题模式，并且完整包含 default_language、allowed_languages、starter_code、public_test_cases、hidden_test_cases、reference_solutions、time_limit_ms、memory_limit_mb。
 6. public_test_cases 必须恰好 3 条，供前端"运行代码"直接使用；hidden_test_cases 至少 3 条，供最终提交判题使用。
 7. reference_solutions 至少 1 条，且代码要与题干一致；如果原 answer 已经是完整代码，应复用为主要参考实现。

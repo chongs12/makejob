@@ -59,10 +59,16 @@ func (c *codeRunnerClient) Execute(ctx context.Context, req *biz.CodeRunnerReque
 		return nil, fmt.Errorf("CodeRunner gRPC call failed: %w", err)
 	}
 
+	// 编译/运行失败信息：优先取业务错误（如超时），其次取 stderr（编译错误在 Piston 的 stderr 中）
+	errMsg := resp.Error
+	if errMsg == "" {
+		errMsg = resp.Stderr
+	}
+
 	return &biz.CodeRunnerResponse{
 		Success:         resp.Success,
 		Output:          resp.Stdout,
-		Error:           resp.Error,
+		Error:           errMsg,
 		TestCasesPassed: resp.PassedCount,
 		TotalTestCases:  resp.TotalCount,
 		ExecutionTimeMs: resp.ExecutionTimeMs,

@@ -437,9 +437,9 @@ function RootLayout() {
                 color: '#fff',
               }}
             >
-              M
+              P
             </div>
-            <span style={{ fontSize: 20, fontWeight: 800, color: '#1c1917', letterSpacing: -0.5 }}>MakeJob</span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#1c1917', letterSpacing: -0.5 }}>PreHire</span>
           </Link>
 
           {/* Nav */}
@@ -660,7 +660,7 @@ function LoginPage() {
           }}>
             M
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>登录 MakeJob</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>登录 PreHire</h1>
           <p style={{ margin: '8px 0 0', fontSize: 14, color: ROUTER_THEME.textSecondary }}>
             登录后解锁完整功能，继续你的学习之旅
           </p>
@@ -823,7 +823,7 @@ function RegisterPage() {
           }}>
             M
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>注册 MakeJob</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: ROUTER_THEME.textMain }}>注册 PreHire</h1>
           <p style={{ margin: '8px 0 0', fontSize: 14, color: ROUTER_THEME.textSecondary }}>
             注册即登录，立刻开始你的学习之旅
           </p>

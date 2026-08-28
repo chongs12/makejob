@@ -18,8 +18,6 @@ import (
 // 火山实时语音事件常量（对齐单体 realtime/volcengine/client.go）
 
 const (
-	defaultRealtimeDialogAppKey = "PlgvMymc7f3tQnJ6"
-
 	EventStartConnection  int32 = 1
 	EventFinishConnection int32 = 2
 	EventStartSession     int32 = 100
@@ -199,7 +197,11 @@ func (c *volcengineClient) Start(ctx context.Context, opts biz.VolcStartOptions)
 	if baseURL == "" {
 		baseURL = "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
 	}
-	appKey := defaultRealtimeDialogAppKey
+	// App-Key 从部署配置注入（${VOLC_APP_KEY}），不在仓库硬编码真实密钥；未配置时使用占位符
+	appKey := strings.TrimSpace(c.cfg.AppKey)
+	if appKey == "" {
+		appKey = "volc.dialog.default"
+	}
 	resourceID := strings.TrimSpace(c.cfg.ResourceID)
 	if resourceID == "" {
 		resourceID = "volc.speech.dialog"

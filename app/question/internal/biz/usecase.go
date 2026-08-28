@@ -176,6 +176,18 @@ func (uc *QuestionUseCase) GetQuestion(ctx context.Context, id uint64) (*Questio
 	if err != nil {
 		return nil, ErrQuestionNotFound
 	}
+	// 补齐行业与分类冗余字段：历史/批量导入的题目可能未写入冗余字段，这里从分类与行业表反查，
+	// 保证题目详情能展示真实的行业编码与分类名称（否则前端详情页会出现"未标注方向"）。
+	if q.CategoryID > 0 {
+		if category, cerr := uc.categoryRepo.GetByID(ctx, q.CategoryID); cerr == nil {
+			q.CategoryName = category.Name
+			if q.IndustryCode == "" && category.IndustryID > 0 {
+				if industry, ierr := uc.industryRepo.GetByID(ctx, category.IndustryID); ierr == nil {
+					q.IndustryCode = industry.Code
+				}
+			}
+		}
+	}
 	return q, nil
 }
 
@@ -203,7 +215,12 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 			EvaluationMode: "local",
 		}
 	default:
-		// 编程题/主观题：调用 AI 分析
+		// 编程题/主观题：testcase 模式先运行隐藏用例，把判题反馈带给 AI 分析，再统一按用例结果判定
+		var judgeSummary *JudgeSummary
+		if question.JudgeConfig != nil && question.JudgeConfig.EvaluationMode == EvaluationModeTestcase {
+			judgeSummary = uc.runCodeForJudgeSummary(ctx, question, answer, language)
+		}
+
 		resp, err = uc.quizAnalyzer.Analyze(ctx, &QuizAnalyzerRequest{
 			Question:   question.Content,
 			Answer:     answer,
@@ -215,9 +232,8 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 		}
 		resp.EvaluationMode = ResolveEvaluationMode(question.JudgeConfig)
 
-		// 编程题 testcase 模式：运行代码获取 judge_summary（使用隐藏用例）
+		// 编程题 testcase 模式：以隐藏用例运行结果覆盖 AI 判定，并把未通过用例说明并入解析
 		if question.JudgeConfig != nil && question.JudgeConfig.EvaluationMode == EvaluationModeTestcase {
-			judgeSummary := uc.runCodeForJudgeSummary(ctx, question, answer, language)
 			if judgeSummary != nil {
 				resp.JudgeSummary = judgeSummary
 				resp.IsCorrect = judgeSummary.AllPassed
@@ -225,6 +241,9 @@ func (uc *QuestionUseCase) SubmitAnswer(ctx context.Context, questionID, userID 
 					resp.Score = 100
 				} else if judgeSummary.TotalCases > 0 {
 					resp.Score = float64(judgeSummary.PassedCases) / float64(judgeSummary.TotalCases) * 100
+				}
+				if note := formatJudgeFailedNote(judgeSummary); note != "" {
+					resp.Suggestions = note + "\n\n" + resp.Suggestions
 				}
 			}
 		}
@@ -345,6 +364,28 @@ func (uc *QuestionUseCase) runCodeForJudgeSummary(ctx context.Context, question 
 		PassedCases: passedCount,
 		Results:     results,
 	}
+}
+
+// formatJudgeFailedNote 生成判题未通过用例的说明文本，供 AI 分析与前端解析展示。
+// 全部通过或判题摘要为空时返回空串。
+func formatJudgeFailedNote(judgeSummary *JudgeSummary) string {
+	if judgeSummary == nil || judgeSummary.AllPassed || len(judgeSummary.Results) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("【判题反馈】隐藏用例 %d/%d 通过，未通过用例：", judgeSummary.PassedCases, judgeSummary.TotalCases))
+	for _, r := range judgeSummary.Results {
+		if r.Passed {
+			continue
+		}
+		b.WriteString("\n- ")
+		if r.Description != "" {
+			b.WriteString(fmt.Sprintf("%s：输入 %q，期望 %q，实际 %q", r.Description, r.Input, r.ExpectedOutput, r.ActualOutput))
+		} else {
+			b.WriteString(fmt.Sprintf("输入 %q，期望 %q，实际 %q", r.Input, r.ExpectedOutput, r.ActualOutput))
+		}
+	}
+	return b.String()
 }
 
 func (uc *QuestionUseCase) CreateFavorite(ctx context.Context, userID, questionID uint64) error {
@@ -648,8 +689,7 @@ func (uc *QuestionUseCase) ListNotes(ctx context.Context, userID, questionID uin
 }
 
 // RunCode 调用代码运行服务执行用户代码
-func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, language, code string) (*CodeRunnerResponse, error) {
-	question, err := uc.questionRepo.GetByID(ctx, questionID)
+func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, language, code string) (*CodeRunnerResponse, error) {	question, err := uc.questionRepo.GetByID(ctx, questionID)
 	if err != nil {
 		return nil, ErrQuestionNotFound
 	}
@@ -697,6 +737,12 @@ func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, langu
 			resp.TestResults[i].Passed = resp.TestResults[i].ActualOutput == resp.TestResults[i].ExpectedOutput
 		}
 
+		// testcase 模式下 stdout 无意义，把每条公开用例结果格式化成可读文本作为运行输出，
+		// 否则前端只会看到"运行完成"而没有任何内容。
+		if len(resp.TestResults) > 0 {
+			resp.Output = formatTestResultsOutput(resp.TestResults, resp.TestCasesPassed, resp.TotalTestCases)
+		}
+
 		return resp, nil
 	}
 
@@ -710,6 +756,27 @@ func (uc *QuestionUseCase) RunCode(ctx context.Context, questionID uint64, langu
 		return nil, kratosErr.InternalServer("CODE_RUNNER_FAILED", "代码运行服务调用失败").WithCause(err)
 	}
 	return resp, nil
+}
+
+// formatTestResultsOutput 把测试用例运行结果格式化成可读文本。
+// 用于 testcase 判题模式：该模式下代码的 stdout 无意义，运行结果体现在每条用例上，
+// 这里拼成"公开用例 X/Y 通过 + 逐条输入/期望/实际"文本，作为运行输出返回给前端展示。
+func formatTestResultsOutput(results []CodeTestResult, passed, total int32) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "公开用例 %d/%d 通过", passed, total)
+	for i, r := range results {
+		status := "失败"
+		if r.Passed {
+			status = "通过"
+		}
+		fmt.Fprintf(&b, "\n\n用例 %d：%s", i+1, status)
+		if r.Input != "" {
+			fmt.Fprintf(&b, "\n  输入：%s", r.Input)
+		}
+		fmt.Fprintf(&b, "\n  期望：%s", r.ExpectedOutput)
+		fmt.Fprintf(&b, "\n  实际：%s", r.ActualOutput)
+	}
+	return b.String()
 }
 
 // GenerateTimedExamRequest 定义限时考试生成所需的筛选参数。

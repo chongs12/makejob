@@ -184,7 +184,7 @@ func buildConstraintSummary(profile questionPipelineConstraintProfile) string {
 	}
 	if profile.RequireCode {
 		parts = append(parts, "本轮明确要求编程题，type 必须使用 code，禁止回退成 subjective。")
-		parts = append(parts, "编程题必须同时提供 4 个核心部分：answer（代码参考答案）、solution（代码思路解析）、judge_config.public_test_cases（恰好 3 条公开运行用例）、judge_config.hidden_test_cases（提交判题隐藏用例集）。")
+		parts = append(parts, "编程题必须同时提供 4 个核心部分：answer（代码参考答案）、solution（代码思路解析，必须按标题式小节输出，含题意总结/解题思路/关键步骤/边界条件/复杂度分析/常见错法六节）、judge_config.public_test_cases（恰好 3 条公开运行用例）、judge_config.hidden_test_cases（提交判题隐藏用例集）。")
 		parts = append(parts, "编程题 judge_config 必须使用 testcase 判题模式，并包含 default_language、allowed_languages、starter_code、reference_solutions、time_limit_ms、memory_limit_mb。")
 	} else if profile.RequireSubjective {
 		parts = append(parts, "题型优先使用问答题（subjective），不要退化成选择题。")
@@ -216,7 +216,7 @@ func buildTypeRequirements(profile questionPipelineConstraintProfile) string {
 	}
 	return strings.TrimSpace(`
 6. 本轮需求明确要求编程题，type 必须固定为 code，禁止输出 subjective。
-7. 编程题必须同时输出 4 个核心部分：answer（代码参考答案）、solution（代码思路解析）、judge_config.public_test_cases（恰好 3 条公开样例）、judge_config.hidden_test_cases（提交判题使用的隐藏用例集）。
+7. 编程题必须同时输出 4 个核心部分：answer（代码参考答案）、solution（代码思路解析，必须按标题式小节输出，含题意总结/解题思路/关键步骤/边界条件/复杂度分析/常见错法六节）、judge_config.public_test_cases（恰好 3 条公开样例）、judge_config.hidden_test_cases（提交判题使用的隐藏用例集）。
 8. 当 type=code 时，judge_config 必须输出为对象，不能缺省也不能写成字符串说明；evaluation_mode 必须固定为 testcase。
 9. judge_config 至少包含 evaluation_mode、default_language、allowed_languages、starter_code、public_test_cases、hidden_test_cases、reference_solutions、time_limit_ms、memory_limit_mb；reference_solutions 至少 1 条。
 10. 测试用例字段固定为 input、expected_output、description，按标准输入/标准输出模式编写；public_test_cases 必须正好 3 条。`)
@@ -322,7 +322,13 @@ func buildSingleCardPrompt(
 2. 不允许额外解释、Markdown、代码块或前后缀文本；尤其不要在 answer、solution 或 reference_solutions.code 内再嵌三反引号 json 代码块。
 3. 本轮题卡必须与已生成题卡考点明显不同，禁止同义改写。
 4. 如果指定了目标语言，必须严格按目标语言出题；不要输出项目经历、职业规划、微服务治理等凑数题。
-5. title、content、answer、explanation 都必须填写完整；当 type=code 时，还必须额外输出 solution 字段。
+5. title、content、answer、explanation 都必须填写完整；当 type=code 时，solution 必须按下面固定小节格式输出（用纯文本小节标题，不要用 JSON 对象，不要用 Markdown 的 # 符号）：
+题意总结：一句话概括题目要做什么
+解题思路：详细说明核心算法思路
+关键步骤：1. 步骤一 2. 步骤二 3. 步骤三
+边界条件：空输入、单个元素、超大输入等特殊情况如何处理
+复杂度分析：时间复杂度 O(...)，空间复杂度 O(...)
+常见错法：容易犯的错误点
 %s
 
 行业：
@@ -898,6 +904,20 @@ func enforceQuestionPipelineCardConstraints(cards []*QuestionCandidate, constrai
 	return filtered
 }
 
+// pipelineCommandPrefixes 岗位要求片段里常见的命令引导词，提取主题词时需剔除。
+// 注意：更长的前缀需放在较短前缀之前（如"但保证"先于"保证"），保证一次剥离到主题词。
+var pipelineCommandPrefixes = []string{
+	"请生成", "生成", "聚焦于", "其中必须包括", "其中必须", "必须包括", "必须",
+	"务必", "确保", "但保证", "保证", "其余题目", "其余", "并且", "同时", "要求",
+	"需要", "结合", "输出", "请", "但", "例如",
+}
+
+// pipelineNoiseWords 剥离引导词后剩余的无信息量词，不作为主题词。
+var pipelineNoiseWords = map[string]bool{
+	"随意": true, "任意": true, "即可": true, "就行": true, "就好": true,
+	"都可以": true, "都行": true, "等等": true, "等": true, "其它": true, "其他": true,
+}
+
 // buildPipelineTags 合并标签并从需求中提取关键词补充（对齐单体 buildQuestionPipelineTags）。
 func buildPipelineTags(tags []string, requirement string) []string {
 	merged := make([]string, 0, len(tags)+2)
@@ -916,26 +936,98 @@ func buildPipelineTags(tags []string, requirement string) []string {
 	return deduplicateStrings(merged)
 }
 
-// extractTopicsFromRequirement 从岗位要求中提炼关键词主题。
+// extractTopicsFromRequirement 从岗位要求中提炼主题词：剔除命令式引导语，只保留有信息量的短词，
+// 并额外提取"XX和YY问题"句式里的明确知识点（如"岛屿数量和无重复最长子串两个问题"）。
 func extractTopicsFromRequirement(requirement string) []string {
 	parts := strings.FieldsFunc(requirement, func(r rune) bool {
 		return r == '，' || r == ',' || r == '；' || r == ';' || r == '、' || r == '\n' || r == '\r'
 	})
 
-	topics := make([]string, 0, len(parts))
+	topics := make([]string, 0, len(parts)+2)
+	seen := make(map[string]bool, len(parts)+2)
+	appendTopic := func(raw string) {
+		cleaned := cleanPipelineTopic(raw)
+		if cleaned == "" || seen[cleaned] {
+			return
+		}
+		// 剔除无信息量的虚词
+		if pipelineNoiseWords[cleaned] {
+			return
+		}
+		// 只保留 2~14 个字符的主题词：过短无信息量，过长说明不是提炼结果
+		runeLen := len([]rune(cleaned))
+		if runeLen < 2 || runeLen > 14 {
+			return
+		}
+		seen[cleaned] = true
+		topics = append(topics, cleaned)
+	}
+
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
 		if trimmed == "" {
 			continue
 		}
-		topics = append(topics, trimmed)
+		// 去掉开头的命令引导词与句尾残留标点
+		stripped := trimPipelineCommandPrefix(trimmed)
+		stripped = strings.TrimRight(stripped, "。.!！?？;；,，")
+		appendTopic(stripped)
+	}
+
+	// 提取"XX和YY（两个）问题"句式里的知识点
+	for _, knowledge := range extractPipelineKnowledgePoints(requirement) {
+		appendTopic(knowledge)
 	}
 
 	if len(topics) == 0 {
-		return []string{strings.TrimSpace(requirement)}
+		appendTopic(requirement)
 	}
-
 	return topics
+}
+
+// trimPipelineCommandPrefix 去掉片段开头出现的命令引导词。
+func trimPipelineCommandPrefix(raw string) string {
+	text := strings.TrimSpace(raw)
+	for _, prefix := range pipelineCommandPrefixes {
+		if strings.HasPrefix(text, prefix) {
+			text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			break
+		}
+	}
+	return text
+}
+
+// cleanPipelineTopic 清理主题词里的平台修饰词，保留知识点本体。
+func cleanPipelineTopic(raw string) string {
+	text := strings.TrimSpace(raw)
+	for _, repl := range []string{"力扣同款的", "力扣同款", "力扣", "LeetCode", "leetcode"} {
+		text = strings.ReplaceAll(text, repl, "")
+	}
+	// 去掉可能残留的定语"的"字开头
+	text = strings.TrimPrefix(strings.TrimSpace(text), "的")
+	return strings.TrimSpace(text)
+}
+
+// extractPipelineKnowledgePoints 提取"XX和YY问题"句式里的知识点名称。
+// 先移除命令引导词与平台修饰词，避免被卷进知识点（如"其中必须包括力扣同款的岛屿数量"）。
+func extractPipelineKnowledgePoints(requirement string) []string {
+	cleaned := requirement
+	for _, token := range []string{
+		"请生成", "力扣同款的", "其中必须包括", "其中必须", "必须包括", "聚焦于",
+		"力扣同款", "必须", "力扣", "LeetCode", "leetcode", "生成",
+	} {
+		cleaned = strings.ReplaceAll(cleaned, token, "")
+	}
+	// 组 1/组 2 用非贪婪匹配，避免把"两个"等量词卷进知识点
+	re := regexp.MustCompile(`([\p{Han}A-Za-z0-9]{2,12}?)[和、与及]([\p{Han}A-Za-z0-9]{2,12}?)\s*(?:两个|两|等|等等)?\s*问题`)
+	matches := re.FindAllStringSubmatch(cleaned, -1)
+	result := make([]string, 0, len(matches)*2)
+	for _, m := range matches {
+		if len(m) >= 3 {
+			result = append(result, m[1], m[2])
+		}
+	}
+	return result
 }
 
 // deduplicateStrings 字符串切片去重。

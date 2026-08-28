@@ -64,6 +64,21 @@ spec:
                 secretKeyRef:
                   name: {{ $.Release.Name }}-secret
                   key: MQ_URL
+            - name: VOLC_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: VOLC_APP_ID
+            - name: VOLC_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: VOLC_ACCESS_TOKEN
+            - name: VOLC_APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-secret
+                  key: VOLC_APP_KEY
           envFrom:
             - configMapRef:
                 name: {{ $.Release.Name }}-{{ $svcName }}-config

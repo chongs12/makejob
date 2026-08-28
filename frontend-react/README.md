@@ -1,10 +1,10 @@
-# MakeJob React Frontend
+# PreHire React Frontend
 
 本文档基于当前代码状态更新于 `2026-07-09`，描述 `frontend-react` 工作区的真实现状。后端已微服务化（15 个 Kratos 服务 + Gateway，详见 `docs/phase-progress-and-run-guide.md`），前端通过 Gateway HTTP `:8080` 的 `/api/v1` 访问后端。
 
 ## 1. 目录定位
 
-`frontend-react` 是 MakeJob 当前有效前端主线，包含两个应用和两个共享包：
+`frontend-react` 是 PreHire 当前有效前端主线，包含两个应用和两个共享包：
 
 - `apps/web`：用户前台
 - `apps/admin`：后台管理

@@ -22,11 +22,11 @@ jwt:
 
 volcengine:
   # 实时对话配置（对齐单体 volcengine.realtime 段）
-  # 注意：app_id 和 access_token 需要替换为实际值
+  # 注意：真实凭证通过部署注入（K8s Secret 环境变量替换 ${VAR}），本地开发自行填写
   enabled: true
   app_id: "5042896829"
-  access_token: "MuzdjRWpCVidGWeCslyFMbQ0w8aDLRxZ"
-  app_key: "PlgvMymc7f3tQnJ6"
+  access_token: ""
+  app_key: ""
   base_url: "wss://openspeech.bytedance.com/api/v3/realtime/dialogue"
   resource_id: "volc.speech.dialog"
   speaker: "zh_female_vv_jupiter_bigtts"

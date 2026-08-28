@@ -378,7 +378,12 @@ func (r *adminRepo) CreateCategory(ctx context.Context, c *biz.CategoryRecord) e
 		pid := uint(c.ParentID)
 		m.ParentID = &pid
 	}
-	return r.db.WithContext(ctx).Create(m).Error
+	if err := r.db.WithContext(ctx).Create(m).Error; err != nil {
+		return err
+	}
+	// 回填自增 ID，供调用方立即使用（如题卡导入时创建新分类）
+	c.ID = uint64(m.ID)
+	return nil
 }
 
 func (r *adminRepo) UpdateCategory(ctx context.Context, c *biz.CategoryRecord) error {

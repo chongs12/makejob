@@ -28,5 +28,6 @@ grafana:
   adminUser: admin
   adminPassword: makejob123
   resources:
-    requests: { cpu: 25m, memory: 64Mi }
-    limits: { cpu: 100m, memory: 128Mi }
+    # 128Mi 限制对 Grafana 过小，会触发 SQLite 锁与频繁重启；提升到 512Mi 保证稳定
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 512Mi }

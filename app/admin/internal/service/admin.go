@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -507,25 +508,49 @@ func (s *AdminService) ImportQuestionPipeline(ctx context.Context, req *adminv1.
 	if err != nil {
 		return nil, err
 	}
-	questions := make([]*biz.QuestionRecord, len(req.Cards))
+	questions := make([]*biz.QuestionRecord, 0, len(req.Cards))
+	importErrors := make([]string, 0)
 	for i, c := range req.Cards {
-		questions[i] = &biz.QuestionRecord{
-			IndustryID: industry.ID,
-			Type:       c.Type,
-			Difficulty: c.Difficulty,
-			Title:      c.Title,
-			Content:    c.Content,
-			Answer:     c.Answer,
-			Tags:       joinTags(c.Tags),
-			IsActive:   true,
+		question := &biz.QuestionRecord{
+			IndustryID:   industry.ID,
+			Type:         c.Type,
+			Difficulty:   c.Difficulty,
+			Title:        c.Title,
+			Content:      c.Content,
+			Answer:       c.Answer,
+			Explanation:  c.Explanation,
+			SolutionJSON: resolvePipelineSolutionJSON(c.Solution),
+			Tags:         joinTags(c.Tags),
+			IsActive:     true,
+			HasIsActive:  true,
 		}
+		// judge_config 必须是合法 JSON 才落库，避免写入损坏数据
+		if judgeConfig := strings.TrimSpace(c.JudgeConfig); judgeConfig != "" && json.Valid([]byte(judgeConfig)) {
+			question.JudgeConfigJSON = judgeConfig
+		}
+		// 分类名 -> category_id：已存在则复用，不存在则自动创建。
+		// 必须解析出合法分类 ID，否则 category_id=0 会触发 fk_questions_category 外键失败。
+		categoryName := strings.TrimSpace(c.Category)
+		if categoryName == "" {
+			importErrors = append(importErrors, fmt.Sprintf("第%d张题卡《%s》: 分类不能为空", i+1, c.Title))
+			continue
+		}
+		categoryID, resolveErr := s.uc.ResolveCategoryByName(ctx, industry.ID, categoryName)
+		if resolveErr != nil {
+			importErrors = append(importErrors, fmt.Sprintf("第%d张题卡《%s》: %v", i+1, c.Title, resolveErr))
+			continue
+		}
+		question.CategoryID = categoryID
+		question.CategoryName = categoryName
+		questions = append(questions, question)
 	}
 	success, fail, errors := s.uc.BatchImportQuestions(ctx, questions)
+	allErrors := append(importErrors, errors...)
 	return &adminv1.BatchImportQuestionsResponse{
-		TotalCount:   int32(len(questions)),
+		TotalCount:   int32(len(req.Cards)),
 		SuccessCount: int32(success),
-		FailCount:    int32(fail),
-		Errors:       errors,
+		FailCount:    int32(fail + len(importErrors)),
+		Errors:       allErrors,
 	}, nil
 }
 
@@ -537,6 +562,146 @@ func joinTags(tags []string) string {
 	for i := 1; i < len(tags); i++ {
 		result += "," + tags[i]
 	}
+	return result
+}
+
+// numberedStepRe 匹配"1. "、"2) "、"3、" 等编号步骤行，用于从纯文本思路中拆出关键步骤。
+var numberedStepRe = regexp.MustCompile(`^\s*(?:\d+[.)、]\s*)(.+)$`)
+
+// pipelineSectionOrder 纯文本思路可识别的小节标题（按出现顺序），映射到题库管理结构化字段名。
+var pipelineSectionOrder = []struct{ Title, Field string }{
+	{"题意总结", "summary"},
+	{"解题思路", "approach"},
+	{"关键步骤", "key_steps"},
+	{"边界条件", "edge_cases"},
+	{"复杂度分析", "complexity"},
+	{"常见错法", "common_mistakes"},
+}
+
+// matchPipelineSectionTitle 判断一行文本是否以某个小节标题开头，命中则返回对应结构化字段名，否则返回空串。
+func matchPipelineSectionTitle(line string) string {
+	for _, sec := range pipelineSectionOrder {
+		if strings.HasPrefix(line, sec.Title) {
+			return sec.Field
+		}
+	}
+	return ""
+}
+
+// splitPipelineSectionLines 把小节下的多行内容拆成字符串数组，并去掉行首编号（如"1. "）。
+func splitPipelineSectionLines(lines []string) []string {
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if m := numberedStepRe.FindStringSubmatch(l); m != nil {
+			l = strings.TrimSpace(m[1])
+		}
+		result = append(result, l)
+	}
+	return result
+}
+
+// resolvePipelineSolutionJSON 解析题卡的 solution 为题库管理的结构化解析 JSON。
+// 优先级：1) AI 已按结构化输出（JSON 对象且含 summary 字段）直接采用；
+// 2) 标题式/纯文本思路尽力拆成 summary/approach/key_steps 等字段；
+// 兜底保证"题意总结"至少可见。
+func resolvePipelineSolutionJSON(solution string) string {
+	trimmed := strings.TrimSpace(solution)
+	if trimmed == "" {
+		return ""
+	}
+	if json.Valid([]byte(trimmed)) {
+		var probe map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &probe); err == nil {
+			if _, ok := probe["summary"]; ok {
+				return trimmed
+			}
+		}
+	}
+	if b, err := json.Marshal(parsePipelinePlainSolution(trimmed)); err == nil {
+		return string(b)
+	}
+	return ""
+}
+
+// parsePipelinePlainSolution 从 AI 的解题思路文本中尽力拆出结构化解析字段。
+// 优先按"题意总结/解题思路/关键步骤/边界条件/复杂度分析/常见错法"小节标题解析；
+// 无小节标题时退化为：含"复杂度/O("的句子拆成 complexity、编号步骤拆成 key_steps、
+// 其余描述拼成 approach，整段文本同时保留在 summary 供查看。
+func parsePipelinePlainSolution(text string) map[string]any {
+	result := map[string]any{}
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return result
+	}
+
+	// 1) 标题式小节解析
+	fields := map[string][]string{}
+	var currentField string
+	for _, line := range strings.Split(trimmed, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if section := matchPipelineSectionTitle(l); section != "" {
+			currentField = section
+			rest := strings.TrimSpace(strings.TrimLeft(strings.TrimPrefix(l, section), "：:。"))
+			if rest != "" {
+				fields[section] = append(fields[section], rest)
+			}
+			continue
+		}
+		if currentField != "" {
+			fields[currentField] = append(fields[currentField], l)
+		}
+	}
+	if len(fields) > 0 {
+		for field, lines := range fields {
+			switch field {
+			case "key_steps", "edge_cases", "common_mistakes":
+				result[field] = splitPipelineSectionLines(lines)
+			default:
+				result[field] = strings.Join(lines, "\n")
+			}
+		}
+		if _, ok := result["summary"]; !ok {
+			result["summary"] = trimmed
+		}
+		return result
+	}
+
+	// 2) 无小节标题：编号步骤/复杂度句/描述拆解
+	var complexityLines []string
+	var steps []string
+	var approachLines []string
+	for _, line := range strings.Split(trimmed, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if strings.Contains(l, "复杂度") || strings.Contains(l, "O(") {
+			complexityLines = append(complexityLines, l)
+			continue
+		}
+		if m := numberedStepRe.FindStringSubmatch(l); m != nil {
+			steps = append(steps, strings.TrimSpace(m[1]))
+			continue
+		}
+		approachLines = append(approachLines, l)
+	}
+	if len(complexityLines) > 0 {
+		result["complexity"] = strings.Join(complexityLines, "；")
+	}
+	if len(steps) > 0 {
+		result["key_steps"] = steps
+	}
+	if len(approachLines) > 0 {
+		result["approach"] = strings.Join(approachLines, "\n")
+	}
+	result["summary"] = trimmed
 	return result
 }
 

@@ -28,6 +28,9 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /
 COPY --from=builder /out/server /server
+# Live2D 静态资源（live2dcubismcore.min.js + 模型），gateway 通过 /live2d-assets 提供
+# EnsureAssetsDir 会命中候选路径 live2d-src（工作目录 / 下），无需额外环境变量
+COPY --from=builder /build/live2d-src /live2d-src
 
 # 6060 = telemetry(metrics/healthz/pprof)；业务 gRPC/HTTP 端口由 config.yaml 决定，不在此 EXPOSE
 EXPOSE 6060

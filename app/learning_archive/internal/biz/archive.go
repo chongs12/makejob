@@ -123,12 +123,24 @@ func (uc *ArchiveUseCase) ListByUser(ctx context.Context, userID uint64, limit i
 	return uc.repo.ListByUser(ctx, userID, limit)
 }
 
-// GetWeakTopics 获取用户薄弱知识点（支持 limit 参数）
+// GetWeakTopics 获取用户薄弱知识点（支持 limit 参数），并过滤无训练价值的兜底标签（如"综合能力"），与焦点信号保持一致。
 func (uc *ArchiveUseCase) GetWeakTopics(ctx context.Context, userID uint64, limit int32) ([]string, error) {
 	if limit <= 0 {
 		limit = 10
 	}
-	return uc.repo.GetWeakTopics(ctx, userID, limit)
+	topics, err := uc.repo.GetWeakTopics(ctx, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	filtered := topics[:0]
+	for _, topic := range topics {
+		topic = strings.TrimSpace(topic)
+		if topic == "" || isNonActionableFocusTag(topic) {
+			continue
+		}
+		filtered = append(filtered, topic)
+	}
+	return filtered, nil
 }
 
 // GetFocusSignals 获取用户聚焦信号（合并档案 + 面试归档两路数据源，多级排序，水合专题卡片）

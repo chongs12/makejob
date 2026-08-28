@@ -22,6 +22,19 @@ export function findFrontendIndustryById(industries: FrontendIndustry[], industr
 }
 
 /**
+ * 根据行业编码精确匹配前台行业对象（不回落默认行业），
+ * 供题目详情等只返回 industry_code 的接口使用，避免把未标注行业误显示为默认方向。
+ */
+export function findFrontendIndustryByCode(industries: FrontendIndustry[], industryCode?: string): FrontendIndustry | null {
+  const normalizedCode = (industryCode || '').trim()
+  if (!normalizedCode) {
+    return null
+  }
+
+  return industries.find((item) => item.code === normalizedCode) || null
+}
+
+/**
  * 统一维护前台行业偏好，让导航、首页和工作台能共享同一份方向上下文。
  */
 export function useFrontendIndustryPreference() {

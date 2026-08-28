@@ -6,7 +6,7 @@ import { extractErrorMessage, requestJson } from '@makejob/api-client'
 import { isSuccessCode, type ApiEnvelope } from '@makejob/shared-types'
 import { useAuthStore } from '../../state/auth'
 import { readCurrentBrowserPath } from '../../shared/authRedirect'
-import { findFrontendIndustryById } from '../../shared/frontendIndustryPreference'
+import { findFrontendIndustryByCode, findFrontendIndustryById } from '../../shared/frontendIndustryPreference'
 import {
   fetchFrontendIndustries,
   formatFrontendIndustryLabel,
@@ -146,6 +146,9 @@ interface PracticeQuestionDetail extends PracticeQuestion {
   answer_template?: PracticeQuestionAnswerTemplate | null
   is_favorited?: boolean
   user_note?: PracticeNote | null
+  // 题目详情接口（/questions/:id）返回的行业/分类字段：行业只有编码、分类是对象
+  industry_code?: string
+  category?: { id: number; name: string; parent_id?: number } | null
 }
 
 interface SubmitAnswerResult {
@@ -160,6 +163,7 @@ interface SubmitAnswerResult {
 interface RunCodeResult {
   output: string
   passed: boolean
+  error?: string
   evaluation_mode?: string
   judge_summary?: PracticeJudgeSummary | null
 }
@@ -257,7 +261,7 @@ import "fmt"
 
 func solution() {
     // 在这里编写你的代码
-    fmt.Println("Hello, MakeJob!")
+    fmt.Println("Hello, PreHire!")
 }
 
 func main() {
@@ -543,7 +547,7 @@ async function submitAnswerRequest(
 }
 
 async function runCodeRequest(token: string, questionId: number, answer: string, language?: string): Promise<RunCodeResult> {
-  const response = await requestJson<ApiEnvelope<{ output: string; success: boolean; execution_time_ms: number }>>(`/questions/${questionId}/run`, {
+  const response = await requestJson<ApiEnvelope<{ output: string; success: boolean; error?: string; execution_time_ms: number }>>(`/questions/${questionId}/run`, {
     method: 'POST',
     token,
     body: { code: answer, language },
@@ -556,6 +560,7 @@ async function runCodeRequest(token: string, questionId: number, answer: string,
   return {
     output: response.data.output || '',
     passed: response.data.success || false,
+    error: response.data.error || '',
   }
 }
 
@@ -1064,12 +1069,12 @@ export function PracticeQuestionPage() {
   )
   const options = useMemo(() => parseQuestionOptions(question?.options_json), [question?.options_json])
   const questionIndustry = useMemo(
-    () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
-    [industriesQuery.data, question?.industry_id],
+    () => findFrontendIndustryByCode(industriesQuery.data || [], question?.industry_code),
+    [industriesQuery.data, question?.industry_code],
   )
   const questionIndustryLabel = questionIndustry
     ? formatFrontendIndustryLabel(questionIndustry, questionIndustry.code)
-    : (question?.industry_id ? `方向 #${question.industry_id}` : '未标注方向')
+    : '未标注方向'
 
   useEffect(() => {
     setSingleAnswer('')
@@ -1360,7 +1365,7 @@ export function PracticeQuestionPage() {
                     {questionTypeLabel(question.type)}
                   </Tag>
                   <span style={{ fontSize: 13, color: THEME.textMuted }}>
-                    {questionIndustryLabel} · {question.category_name || `分类 #${question.category_id}`}
+                    {questionIndustryLabel} · {question.category?.name || (question.category?.id ? `分类 #${question.category.id}` : '未分类')}
                   </span>
                 </div>
               </div>
@@ -1942,12 +1947,12 @@ export function PracticeEditorPage() {
     [submitResult?.ai_analysis],
   )
   const questionIndustry = useMemo(
-    () => findFrontendIndustryById(industriesQuery.data || [], question?.industry_id),
-    [industriesQuery.data, question?.industry_id],
+    () => findFrontendIndustryByCode(industriesQuery.data || [], question?.industry_code),
+    [industriesQuery.data, question?.industry_code],
   )
   const questionIndustryLabel = questionIndustry
     ? formatFrontendIndustryLabel(questionIndustry, questionIndustry.code)
-    : (question?.industry_id ? `方向 #${question.industry_id}` : '未标注方向')
+    : '未标注方向'
 
   useEffect(() => {
     setSubmitResult(null)
@@ -2115,6 +2120,14 @@ export function PracticeEditorPage() {
 
     try {
       const result = await runCodeRequest(accessToken, question.id, codeContent, editorLanguage)
+      // 编译/运行失败：优先把错误信息展示在输出区，而不是显示空输出
+      if (!result.passed && result.error) {
+        setRunOutput(result.error)
+        setRunPassed(false)
+        setRunJudgeSummary(null)
+        setSubmitMessage('运行失败')
+        return
+      }
       setRunOutput(result.output)
       setRunPassed(result.passed)
       setRunJudgeSummary(result.judge_summary || null)
@@ -2843,7 +2856,7 @@ export function PracticeWrongPage() {
                         {question?.title || `题目 #${item.question_id}`}
                       </div>
                       <div style={{ fontSize: 11, color: THEME.textMuted }}>
-                        {question?.category_name || '未分类'} · #{item.question_id}
+                        {question?.category?.name || '未分类'} · #{item.question_id}
                       </div>
                     </div>
 

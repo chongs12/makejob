@@ -13,6 +13,11 @@ global:
     JWT_SECRET: "makejob-secret-key-change-in-production"
     ARK_API_KEY: ""
     MQ_URL: "amqp://makejob:makejob123@host.docker.internal:5672//makejob"
+    # 火山引擎实时语音对话凭证（对齐 app/realtime/configs/config.yaml 的 volcengine 段）
+    # 注意：真实凭证通过 helm --set 注入，不写入仓库（本地备份见 .gotmp/volc-backup.txt）
+    VOLC_APP_ID: "5042896829"
+    VOLC_ACCESS_TOKEN: ""
+    VOLC_APP_KEY: ""
 
 # ===== 服务列表（15 个后端 + 前端）=====
 # 每个服务: name / grpcPort / httpPort / replicas / resources / config(config.yaml 内容)
