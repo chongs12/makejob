@@ -73,7 +73,7 @@ cd frontend-react && npm install && npm run dev:web
 # 浏览器打开 http://localhost:3101
 ```
 
-### 路径 B：K8s 完整部署（作品核心，演示/面试推荐）
+### 路径 B：K8s 完整部署
 
 ```bash
 # 1. 基础设施（同路径 A 第 1 步，K8s 内服务通过 host.docker.internal 访问宿主机）
